@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Event Horizon VPN — Login</title>
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@300;400;500;600;700&family=Orbitron:wght@400;500;700;900&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --purple: #9b2de8;
+    --purple-light: #c792f5;
+    --purple-dim: rgba(155,45,232,0.25);
+    --glass-bg: rgba(5, 0, 20, 0.58);
+    --glass-border: rgba(155, 45, 232, 0.25);
+    --input-bg: rgba(0, 0, 0, 0.45);
+    --input-border: rgba(155, 45, 232, 0.3);
+    --input-focus: rgba(155, 45, 232, 0.7);
+    --white-dim: rgba(255,255,255,0.55);
+  }
+
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
+
+  body {
+    font-family: 'Inter', sans-serif;
+    min-height: 100vh;
+    position: relative;
+  }
+
+  #bg-image {
+    position: fixed;
+    inset: 0;
+    width: 100%; height: 100%;
+    background: url('MidJourney Login FINAL.png') center top / cover no-repeat;
+    z-index: 0;
+  }
+
+  .bg-overlay {
+    position: fixed;
+    inset: 0;
+    background: linear-gradient(to bottom, rgba(0,0,0,0.08) 0%, rgba(0,0,0,0) 35%, rgba(0,0,0,0.6) 70%, rgba(0,0,0,0.85) 100%);
+    z-index: 1;
+  }
+
+  .container {
+    position: fixed;
+    bottom: 5vh;
+    left: 0;
+    right: 0;
+    margin: 0 auto;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 420px;
+    max-width: 95vw;
+    padding: 0 24px;
+    animation: fadeUp 1.2s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(28px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Logo */
+  .logo-block {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    animation: fadeUp 1s 0.1s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .vpn-watermark {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -58%);
+    font-family: 'Orbitron', monospace;
+    font-size: 88px;
+    font-weight: 900;
+    letter-spacing: 14px;
+    color: transparent;
+    -webkit-text-stroke: 1px rgba(155,45,232,0.18);
+    white-space: nowrap;
+    pointer-events: none;
+    z-index: 0;
+    user-select: none;
+  }
+
+  .logo {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 6px;
+  }
+
+  .shield { width: 36px; height: 36px; filter: drop-shadow(0 0 10px rgba(155,45,232,0.9)); }
+
+  .logo-text {
+    font-family: 'Orbitron', monospace;
+    font-size: 21px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    color: #fff;
+    text-shadow: 0 0 24px rgba(155,45,232,0.5);
+  }
+
+  .logo-text span { color: var(--purple-light); }
+
+  .tagline {
+    position: relative;
+    z-index: 1;
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 4.5px;
+    color: var(--purple-light);
+    opacity: 0.7;
+    text-transform: uppercase;
+    margin-bottom: 24px;
+  }
+
+  /* Card */
+  .card {
+    width: 100%;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 16px;
+    padding: 30px 28px;
+    backdrop-filter: blur(28px);
+    -webkit-backdrop-filter: blur(28px);
+    box-shadow: 0 0 0 1px rgba(155,45,232,0.08), 0 32px 64px rgba(0,0,0,0.75), inset 0 1px 0 rgba(255,255,255,0.05);
+    animation: fadeUp 1s 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  /* Toggle switch */
+  .toggle-wrap {
+    display: flex;
+    background: rgba(0,0,0,0.4);
+    border: 1px solid rgba(155,45,232,0.2);
+    border-radius: 8px;
+    padding: 3px;
+    margin-bottom: 22px;
+    gap: 3px;
+  }
+
+  .toggle-btn {
+    flex: 1;
+    padding: 9px 8px;
+    border: none;
+    border-radius: 6px;
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.25s;
+    background: transparent;
+    color: rgba(255,255,255,0.35);
+  }
+
+  .toggle-btn.active {
+    background: linear-gradient(135deg, #5a0d9e, #9b2de8);
+    color: #fff;
+    box-shadow: 0 2px 12px rgba(155,45,232,0.35);
+  }
+
+  /* Login type label */
+  .login-label {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 2.5px;
+    color: var(--purple-light);
+    opacity: 0.75;
+    text-transform: uppercase;
+    margin-bottom: 7px;
+    display: block;
+  }
+
+  /* Fields */
+  .field { margin-bottom: 14px; }
+
+  .input-wrap { position: relative; }
+
+  .field input {
+    width: 100%;
+    background: var(--input-bg);
+    border: 1px solid var(--input-border);
+    border-radius: 8px;
+    padding: 12px 14px 12px 40px;
+    font-family: 'Inter', sans-serif;
+    font-size: 14px;
+    color: #fff;
+    outline: none;
+    transition: border-color 0.25s, box-shadow 0.25s;
+  }
+
+  /* Account number input - monospace feel */
+  #account-input {
+    font-family: 'Orbitron', monospace;
+    font-size: 13px;
+    letter-spacing: 2px;
+  }
+
+  .field input::placeholder { color: rgba(255,255,255,0.2); }
+
+  .field input:focus {
+    border-color: var(--input-focus);
+    box-shadow: 0 0 0 3px rgba(155,45,232,0.12);
+  }
+
+  .icon {
+    position: absolute;
+    left: 13px; top: 50%;
+    transform: translateY(-50%);
+    opacity: 0.35;
+    pointer-events: none;
+    transition: opacity 0.2s;
+  }
+
+  .field input:focus ~ .icon { opacity: 0.8; }
+
+  /* Anonymous badge */
+  .anon-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: rgba(155,45,232,0.1);
+    border: 1px solid rgba(155,45,232,0.25);
+    border-radius: 20px;
+    padding: 3px 10px;
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    color: var(--purple-light);
+    text-transform: uppercase;
+    margin-bottom: 14px;
+  }
+
+  .anon-badge::before {
+    content: '';
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: #2ecc71;
+    box-shadow: 0 0 5px #2ecc71;
+  }
+
+  /* Row */
+  .row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin: 4px 0 20px;
+  }
+
+  .remember { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+
+  .remember input[type="checkbox"] {
+    appearance: none;
+    width: 15px; height: 15px;
+    border: 1px solid var(--input-border);
+    border-radius: 4px;
+    background: var(--input-bg);
+    cursor: pointer;
+    position: relative;
+    transition: all 0.2s;
+  }
+
+  .remember input[type="checkbox"]:checked { background: var(--purple); border-color: var(--purple); }
+
+  .remember input[type="checkbox"]:checked::after {
+    content: '';
+    position: absolute;
+    left: 4px; top: 1px;
+    width: 5px; height: 8px;
+    border: 1.5px solid #fff;
+    border-top: none; border-left: none;
+    transform: rotate(45deg);
+  }
+
+  .remember span { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--white-dim); }
+
+  .forgot { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--purple-light); opacity: 0.65; text-decoration: none; transition: opacity 0.2s; }
+  .forgot:hover { opacity: 1; }
+
+  /* Connect button */
+  .btn-login {
+    width: 100%;
+    padding: 13px;
+    background: linear-gradient(135deg, #5a0d9e 0%, #9b2de8 55%, #b450f5 100%);
+    border: none;
+    border-radius: 8px;
+    font-family: 'Orbitron', monospace;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 4px;
+    color: #fff;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+    transition: transform 0.15s, box-shadow 0.2s;
+    box-shadow: 0 4px 24px rgba(155,45,232,0.4), inset 0 1px 0 rgba(255,255,255,0.1);
+    text-transform: uppercase;
+  }
+
+  .btn-login:hover { transform: translateY(-1px); box-shadow: 0 8px 32px rgba(155,45,232,0.55); }
+  .btn-login:active { transform: translateY(0); }
+
+  .btn-login::after {
+    content: '';
+    position: absolute;
+    top: 0; left: -100%;
+    width: 60%; height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.12), transparent);
+    transition: left 0.4s;
+  }
+  .btn-login:hover::after { left: 150%; }
+
+  /* Divider */
+  .divider { display: flex; align-items: center; gap: 12px; margin: 16px 0; }
+  .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: rgba(155,45,232,0.18); }
+  .divider span { font-family: 'Rajdhani', sans-serif; font-size: 10px; letter-spacing: 2px; color: rgba(255,255,255,0.18); text-transform: uppercase; }
+
+  /* Secondary */
+  .secondary-actions { display: flex; gap: 10px; }
+
+  .btn-secondary {
+    flex: 1;
+    padding: 11px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.09);
+    border-radius: 8px;
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    color: var(--white-dim);
+    cursor: pointer;
+    transition: all 0.2s;
+    text-transform: uppercase;
+  }
+
+  .btn-secondary:hover { background: rgba(155,45,232,0.1); border-color: rgba(155,45,232,0.35); color: #fff; }
+
+  /* Footer */
+  .footer {
+    margin-top: 16px;
+    text-align: center;
+    font-family: 'Inter', sans-serif;
+    font-size: 11px;
+    color: rgba(255,255,255,0.2);
+    animation: fadeUp 1s 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+    line-height: 1.6;
+  }
+
+  .footer a { color: var(--purple-light); opacity: 0.5; text-decoration: none; transition: opacity 0.2s; }
+  .footer a:hover { opacity: 0.9; }
+
+  .status { display: flex; align-items: center; justify-content: center; gap: 7px; margin-top: 10px; }
+
+  .status-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: #2ecc71;
+    box-shadow: 0 0 7px #2ecc71;
+    animation: blink 2.5s ease-in-out infinite;
+  }
+
+  @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+  .status span { font-family: 'Rajdhani', sans-serif; font-size: 10px; letter-spacing: 2px; color: rgba(255,255,255,0.25); text-transform: uppercase; }
+
+  /* Slide animation for switching modes */
+  .field-group { transition: opacity 0.2s; }
+  .field-group.hidden { display: none; }
+</style>
+</head>
+<body>
+
+<div id="bg-image"></div>
+
+<div class="bg-overlay"></div>
+
+<div class="container">
+
+  <!-- Big ghosted VPN behind logo -->
+  <div class="logo-block">
+    <div class="vpn-watermark">VPN</div>
+    <div class="logo">
+      <svg class="shield" viewBox="0 0 38 44" fill="none">
+        <path d="M19 2L35 9V22C35 31 28 39 19 42C10 39 3 31 3 22V9L19 2Z" fill="rgba(155,45,232,0.12)" stroke="#9b2de8" stroke-width="1.5"/>
+        <path d="M19 2L35 9V22C35 31 28 39 19 42C10 39 3 31 3 22V9L19 2Z" fill="none" stroke="rgba(199,146,245,0.3)" stroke-width="0.5" transform="translate(0.5,0.5)"/>
+        <path d="M13 21L17.5 26L25 17" stroke="#c792f5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <div class="logo-text">EVENT <span>HORIZON</span></div>
+    </div>
+    <div class="tagline">Your Data. Beyond Reach.</div>
+  </div>
+
+  <div class="card">
+
+    <!-- Toggle -->
+    <div class="toggle-wrap">
+      <button class="toggle-btn active" id="btn-email" onclick="switchMode('email')">Email Login</button>
+      <button class="toggle-btn" id="btn-anon" onclick="switchMode('anon')">Account Number</button>
+    </div>
+
+    <!-- Email mode -->
+    <div class="field-group" id="group-email">
+      <div class="field">
+        <label class="login-label">Email</label>
+        <div class="input-wrap">
+          <input type="email" placeholder="you@domain.com" autocomplete="email"/>
+          <svg class="icon" width="15" height="15" viewBox="0 0 16 16" fill="none">
+            <path d="M2 4h12v8H2V4zm0 0l6 5 6-5" stroke="#9b2de8" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+      </div>
+    </div>
+
+    <!-- Anonymous mode -->
+    <div class="field-group hidden" id="group-anon">
+      <div class="anon-badge">Zero-knowledge login</div>
+      <div class="field">
+        <label class="login-label">Account Number</label>
+        <div class="input-wrap">
+          <input type="text" id="account-input" placeholder="0000 0000 0000 0000" maxlength="19" autocomplete="off"/>
+          <svg class="icon" width="15" height="15" viewBox="0 0 16 16" fill="none">
+            <rect x="2" y="2" width="12" height="12" rx="2" stroke="#9b2de8" stroke-width="1.2"/>
+            <path d="M5 8h6M5 5.5h3M5 10.5h4" stroke="#9b2de8" stroke-width="1.2" stroke-linecap="round"/>
+          </svg>
+        </div>
+      </div>
+    </div>
+
+    <!-- Password — always shown -->
+    <div class="field">
+      <label class="login-label">Password</label>
+      <div class="input-wrap">
+        <input type="password" placeholder="••••••••••••" autocomplete="current-password"/>
+        <svg class="icon" width="15" height="15" viewBox="0 0 16 16" fill="none">
+          <rect x="3" y="7" width="10" height="7" rx="1.5" stroke="#9b2de8" stroke-width="1.2"/>
+          <path d="M5 7V5a3 3 0 016 0v2" stroke="#9b2de8" stroke-width="1.2" stroke-linecap="round"/>
+        </svg>
+      </div>
+    </div>
+
+    <div class="row">
+      <label class="remember">
+        <input type="checkbox"/>
+        <span>Remember me</span>
+      </label>
+      <a href="#" class="forgot">Forgot password?</a>
+    </div>
+
+    <button class="btn-login">Connect</button>
+
+    <div class="divider"><span>or</span></div>
+
+    <div class="secondary-actions">
+      <button class="btn-secondary">Create Account</button>
+      <button class="btn-secondary">Need Help?</button>
+    </div>
+
+  </div>
+
+  <div class="footer">
+    256-bit AES encryption &nbsp;·&nbsp; <a href="#">Privacy Policy</a> &nbsp;·&nbsp; <a href="#">Terms</a>
+    <div class="status">
+      <div class="status-dot"></div>
+      <span>All systems operational</span>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  // TO ENABLE VIDEO: replace #bg-image div with:
+  // <video id="bg-video" autoplay muted loop playsinline>
+  //   <source src="YOUR_VIDEO.mp4" type="video/mp4">
+  // </video>
+  // And add: video.playbackRate = 0.04; video.currentTime = Math.random() * video.duration;
+
+  function switchMode(mode) {
+    const emailGroup = document.getElementById('group-email');
+    const anonGroup  = document.getElementById('group-anon');
+    const btnEmail   = document.getElementById('btn-email');
+    const btnAnon    = document.getElementById('btn-anon');
+    if (mode === 'email') {
+      emailGroup.classList.remove('hidden');
+      anonGroup.classList.add('hidden');
+      btnEmail.classList.add('active');
+      btnAnon.classList.remove('active');
+    } else {
+      emailGroup.classList.add('hidden');
+      anonGroup.classList.remove('hidden');
+      btnAnon.classList.add('active');
+      btnEmail.classList.remove('active');
+    }
+  }
+
+  // Format account number as user types: 0000 0000 0000 0000
+  const accountInput = document.getElementById('account-input');
+  accountInput.addEventListener('input', (e) => {
+    let val = e.target.value.replace(/\D/g, '').slice(0, 16);
+    e.target.value = val.replace(/(\d{4})(?=\d)/g, '$1 ');
+  });
+</script>
+    const emailGroup = document.getElementById('group-email');
+    const anonGroup  = document.getElementById('group-anon');
+    const btnEmail   = document.getElementById('btn-email');
+    const btnAnon    = document.getElementById('btn-anon');
+
+    if (mode === 'email') {
+      emailGroup.classList.remove('hidden');
+      anonGroup.classList.add('hidden');
+      btnEmail.classList.add('active');
+      btnAnon.classList.remove('active');
+    } else {
+      emailGroup.classList.add('hidden');
+      anonGroup.classList.remove('hidden');
+      btnAnon.classList.add('active');
+      btnEmail.classList.remove('active');
+    }
+  }
+
+  // Format account number as user types: 0000 0000 0000 0000
+  const accountInput = document.getElementById('account-input');
+  accountInput.addEventListener('input', (e) => {
+    let val = e.target.value.replace(/\D/g, '').slice(0, 16);
+    e.target.value = val.replace(/(\d{4})(?=\d)/g, '$1 ');
+  });
+</script>
+
+</body>
+</html>
