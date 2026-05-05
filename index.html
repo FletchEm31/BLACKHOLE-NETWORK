@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EventHorizon</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0d1117;
+  --surface: #161b22;
+  --surface2: #21262d;
+  --border: #30363d;
+  --border2: #484f58;
+  --text: #e6edf3;
+  --muted: #8b949e;
+  --dim: #484f58;
+  --green: #3fb950;
+  --green-dim: #1a4a24;
+  --amber: #d29922;
+  --red: #f85149;
+  --blue: #58a6ff;
+  --mono: 'Share Tech Mono', monospace;
+  --sans: 'Rajdhani', sans-serif;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--mono);
+  min-height: 100vh;
+}
+
+/* LOGIN */
+#login-screen {
+  position: fixed;
+  inset: 0;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  animation: fadeIn 0.6s ease;
+}
+
+.login-logo {
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 300;
+  letter-spacing: 0.5em;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.login-title {
+  font-family: var(--sans);
+  font-size: 32px;
+  font-weight: 600;
+  letter-spacing: 0.15em;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.login-subtitle {
+  font-size: 10px;
+  color: var(--dim);
+  letter-spacing: 0.3em;
+  margin-bottom: 48px;
+}
+
+.login-box {
+  width: 340px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  padding: 32px;
+  border-radius: 8px;
+}
+
+.login-field { margin-bottom: 16px; }
+
+.login-label {
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  color: var(--muted);
+  margin-bottom: 8px;
+  display: block;
+}
+
+.login-input {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 13px;
+  padding: 10px 12px;
+  outline: none;
+  border-radius: 6px;
+  transition: border-color 0.2s;
+}
+
+.login-input:focus { border-color: var(--green); }
+
+.login-btn {
+  width: 100%;
+  background: var(--green);
+  border: none;
+  color: #000;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.3em;
+  padding: 12px;
+  cursor: pointer;
+  margin-top: 8px;
+  border-radius: 6px;
+  transition: opacity 0.2s;
+}
+
+.login-btn:hover { opacity: 0.85; }
+
+.login-error {
+  font-size: 10px;
+  color: var(--red);
+  letter-spacing: 0.1em;
+  margin-top: 12px;
+  text-align: center;
+  min-height: 16px;
+}
+
+.login-footer {
+  margin-top: 48px;
+  font-size: 9px;
+  color: var(--dim);
+  letter-spacing: 0.2em;
+}
+
+/* DASHBOARD */
+#dashboard {
+  display: none;
+  min-height: 100vh;
+  padding: 24px;
+  animation: fadeIn 0.5s ease;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 28px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.brand {
+  font-family: var(--sans);
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.25em;
+  color: var(--text);
+}
+
+.brand span { color: var(--border2); }
+
+.topbar-right { display: flex; align-items: center; gap: 16px; }
+
+.live-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 10px;
+  letter-spacing: 0.15em;
+  color: var(--muted);
+}
+
+.pulse {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--green);
+  animation: pulse 2s infinite;
+}
+
+.logout-btn {
+  font-size: 10px;
+  letter-spacing: 0.15em;
+  color: var(--muted);
+  background: none;
+  border: 1px solid var(--border);
+  padding: 6px 14px;
+  cursor: pointer;
+  font-family: var(--mono);
+  border-radius: 6px;
+  transition: all 0.2s;
+}
+
+.logout-btn:hover { color: var(--text); border-color: var(--border2); }
+
+.section-label {
+  font-size: 10px;
+  letter-spacing: 0.25em;
+  color: var(--muted);
+  margin-bottom: 12px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.grid4 { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 12px; margin-bottom: 24px; }
+.grid3 { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 12px; margin-bottom: 24px; }
+.grid2 { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px; margin-bottom: 24px; }
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 16px;
+  border-radius: 8px;
+}
+
+.card-label {
+  font-size: 10px;
+  letter-spacing: 0.15em;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+
+.card-value {
+  font-size: 26px;
+  color: var(--text);
+  line-height: 1;
+}
+
+.card-value.green { color: var(--green); font-size: 14px; letter-spacing: 0.1em; }
+.card-value.sm { font-size: 14px; letter-spacing: 0.05em; }
+
+.card-sub {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 6px;
+}
+
+.bar-track {
+  height: 3px;
+  background: var(--surface2);
+  margin-top: 10px;
+  border-radius: 2px;
+}
+
+.bar-fill {
+  height: 3px;
+  border-radius: 2px;
+  transition: width 1s ease;
+}
+
+/* GEO */
+.geo-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0,1fr));
+  gap: 10px;
+  margin-bottom: 24px;
+}
+
+.geo-btn {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 16px 14px;
+  cursor: pointer;
+  text-align: left;
+  border-radius: 8px;
+  transition: all 0.2s;
+}
+
+.geo-btn:hover { border-color: var(--border2); background: var(--surface2); }
+.geo-btn.active { border-color: var(--green); background: var(--green-dim); }
+
+.geo-flag { font-size: 22px; margin-bottom: 8px; }
+.geo-name { font-size: 10px; letter-spacing: 0.15em; color: var(--muted); margin-bottom: 4px; }
+.geo-ip { font-size: 11px; color: var(--text); }
+.geo-status { font-size: 10px; color: var(--green); letter-spacing: 0.1em; margin-top: 6px; display: none; }
+.geo-btn.active .geo-status { display: block; }
+
+/* CLOCKS */
+.clock-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0,1fr));
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.clock-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 16px;
+  border-radius: 8px;
+}
+
+.clock-city {
+  font-size: 10px;
+  letter-spacing: 0.15em;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+
+.clock-time {
+  font-size: 24px;
+  color: var(--text);
+  letter-spacing: 0.05em;
+  font-variant-numeric: tabular-nums;
+}
+
+.clock-date {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 5px;
+}
+
+/* DEVICES */
+.device-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 24px; }
+
+.device-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.device-name { font-size: 13px; color: var(--text); margin-bottom: 3px; }
+.device-meta { font-size: 11px; color: var(--muted); }
+.device-connected { font-size: 10px; color: var(--green); letter-spacing: 0.15em; }
+.device-inactive { font-size: 10px; color: var(--dim); letter-spacing: 0.15em; }
+
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+.shake { animation: shake 0.4s ease; }
+@keyframes shake {
+  0%,100% { transform: translateX(0); }
+  20% { transform: translateX(-8px); }
+  40% { transform: translateX(8px); }
+  60% { transform: translateX(-5px); }
+  80% { transform: translateX(5px); }
+}
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="login-screen">
+  <div class="login-logo">SECURE ACCESS PORTAL</div>
+  <div class="login-title">EVENTHORIZON</div>
+  <div class="login-subtitle">VPN CONTROL SYSTEM · v1.0</div>
+
+  <div class="login-box">
+    <div class="login-field">
+      <label class="login-label">USERNAME</label>
+      <input class="login-input" type="text" id="username" placeholder="Enter username" autocomplete="off" />
+    </div>
+    <div class="login-field">
+      <label class="login-label">PASSWORD</label>
+      <input class="login-input" type="password" id="password" placeholder="Enter password" />
+    </div>
+    <button class="login-btn" onclick="doLogin()">AUTHENTICATE</button>
+    <div class="login-error" id="login-error"></div>
+  </div>
+
+  <div class="login-footer">149.28.91.100 · LOS ANGELES · VULTR AMD</div>
+</div>
+
+<!-- DASHBOARD -->
+<div id="dashboard">
+  <div class="topbar">
+    <div class="brand">EVENT<span>——</span>HORIZON</div>
+    <div class="topbar-right">
+      <div class="live-indicator">
+        <div class="pulse"></div>
+        ALL SYSTEMS NOMINAL
+      </div>
+      <button class="logout-btn" onclick="doLogout()">DISCONNECT</button>
+    </div>
+  </div>
+
+  <div class="section-label">VPN STATUS</div>
+  <div class="grid4">
+    <div class="card">
+      <div class="card-label">TUNNEL</div>
+      <div class="card-value green">● ACTIVE</div>
+      <div class="card-sub">WireGuard · wg0</div>
+    </div>
+    <div class="card">
+      <div class="card-label">EXIT NODE</div>
+      <div class="card-value sm" id="exit-ip">212.68.184.95</div>
+      <div class="card-sub" id="exit-label">USA Exit 1</div>
+    </div>
+    <div class="card">
+      <div class="card-label">DEVICES ONLINE</div>
+      <div class="card-value">2</div>
+      <div class="card-sub">Windows · Mac pending</div>
+    </div>
+    <div class="card">
+      <div class="card-label">SESSION UPTIME</div>
+      <div class="card-value sm" id="uptime-val">00:00:00</div>
+      <div class="card-sub">Since login</div>
+    </div>
+  </div>
+
+  <div class="section-label">GEO EXIT NODE — CLICK TO SWITCH</div>
+  <div class="geo-grid">
+    <div class="geo-btn active" id="geo-us1" onclick="switchGeo('us1','212.68.184.95','USA Exit 1')">
+      <div class="geo-flag">🇺🇸</div>
+      <div class="geo-name">USA EXIT 1</div>
+      <div class="geo-ip">212.68.184.95</div>
+      <div class="geo-status">● ACTIVE</div>
+    </div>
+    <div class="geo-btn" id="geo-us2" onclick="switchGeo('us2','176.103.231.25','USA Exit 2')">
+      <div class="geo-flag">🇺🇸</div>
+      <div class="geo-name">USA EXIT 2</div>
+      <div class="geo-ip">176.103.231.25</div>
+      <div class="geo-status">● ACTIVE</div>
+    </div>
+    <div class="geo-btn" id="geo-de" onclick="switchGeo('de','74.0.98.59','Germany · Frankfurt')">
+      <div class="geo-flag">🇩🇪</div>
+      <div class="geo-name">GERMANY</div>
+      <div class="geo-ip">74.0.98.59</div>
+      <div class="geo-status">● ACTIVE</div>
+    </div>
+    <div class="geo-btn" id="geo-jp" onclick="switchGeo('jp','151.247.121.84','Japan · Kawasaki')">
+      <div class="geo-flag">🇯🇵</div>
+      <div class="geo-name">JAPAN</div>
+      <div class="geo-ip">151.247.121.84</div>
+      <div class="geo-status">● ACTIVE</div>
+    </div>
+  </div>
+
+  <div class="section-label">WORLD CLOCKS</div>
+  <div class="clock-grid">
+    <div class="clock-card">
+      <div class="clock-city">LOS ANGELES · VPS HOST</div>
+      <div class="clock-time" id="clock-la">--:--:--</div>
+      <div class="clock-date" id="date-la">---</div>
+    </div>
+    <div class="clock-card">
+      <div class="clock-city">DALLAS · CDT</div>
+      <div class="clock-time" id="clock-tx">--:--:--</div>
+      <div class="clock-date" id="date-tx">---</div>
+    </div>
+    <div class="clock-card">
+      <div class="clock-city">KAWASAKI · JST</div>
+      <div class="clock-time" id="clock-jp">--:--:--</div>
+      <div class="clock-date" id="date-jp">---</div>
+    </div>
+    <div class="clock-card">
+      <div class="clock-city">FRANKFURT · CET</div>
+      <div class="clock-time" id="clock-de">--:--:--</div>
+      <div class="clock-date" id="date-de">---</div>
+    </div>
+  </div>
+
+  <div class="section-label">SERVER HEALTH · 149.28.91.100</div>
+  <div class="grid3">
+    <div class="card">
+      <div class="card-label">CPU LOAD</div>
+      <div class="card-value" id="cpu-val" style="color:var(--green);">--<span style="font-size:14px;color:var(--muted);">%</span></div>
+      <div class="bar-track"><div class="bar-fill" id="cpu-bar" style="background:var(--green);width:0%;"></div></div>
+    </div>
+    <div class="card">
+      <div class="card-label">MEMORY USAGE</div>
+      <div class="card-value" id="ram-val" style="color:var(--amber);">--<span style="font-size:14px;color:var(--muted);">%</span></div>
+      <div class="bar-track"><div class="bar-fill" id="ram-bar" style="background:var(--amber);width:0%;"></div></div>
+    </div>
+    <div class="card">
+      <div class="card-label">STORAGE</div>
+      <div class="card-value" style="color:var(--blue);">31<span style="font-size:14px;color:var(--muted);">%</span></div>
+      <div class="card-sub">7.9 GB / 25 GB NVMe</div>
+      <div class="bar-track"><div class="bar-fill" style="background:var(--blue);width:31%;"></div></div>
+    </div>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <div class="card-label">MONTHLY BANDWIDTH</div>
+      <div class="card-value sm">4.41 GB</div>
+      <div class="card-sub">Vultr allocation</div>
+    </div>
+    <div class="card">
+      <div class="card-label">ACTIVE SERVICES</div>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-top:4px;">
+        <div style="font-size:11px;color:var(--green);">● WireGuard</div>
+        <div style="font-size:11px;color:var(--green);">● Redsocks</div>
+        <div style="font-size:11px;color:var(--green);">● UFW Firewall</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-label">CONNECTED DEVICES</div>
+  <div class="device-list">
+    <div class="device-row">
+      <div>
+        <div class="device-name">Windows 10 — Primary</div>
+        <div class="device-meta">10.8.0.2 · C:\Users\fletc · Port 60454</div>
+      </div>
+      <div class="device-connected">● CONNECTED</div>
+    </div>
+    <div class="device-row">
+      <div>
+        <div class="device-name">Mac — Pending</div>
+        <div class="device-meta">10.8.0.3 · Config ready · Awaiting connection</div>
+      </div>
+      <div class="device-inactive">○ INACTIVE</div>
+    </div>
+    <div class="device-row">
+      <div>
+        <div class="device-name">iPhone 16 — Pending Setup</div>
+        <div class="device-meta">10.8.0.4 · QR code ready</div>
+      </div>
+      <div class="device-inactive">○ PENDING</div>
+    </div>
+    <div class="device-row">
+      <div>
+        <div class="device-name">Brother — Not Configured</div>
+        <div class="device-meta">10.8.0.5 · Keys not yet generated</div>
+      </div>
+      <div class="device-inactive">○ OFFLINE</div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const CREDS = { user: 'horizon_admin', pass: 'horizon_daddy92' };
+
+function doLogin() {
+  const u = document.getElementById('username').value.trim();
+  const p = document.getElementById('password').value;
+  const err = document.getElementById('login-error');
+  if (u === CREDS.user && p === CREDS.pass) {
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('dashboard').style.display = 'block';
+    startDashboard();
+  } else {
+    err.textContent = 'ACCESS DENIED — INVALID CREDENTIALS';
+    document.querySelector('.login-box').classList.add('shake');
+    setTimeout(() => document.querySelector('.login-box').classList.remove('shake'), 400);
+    document.getElementById('password').value = '';
+  }
+}
+
+function doLogout() {
+  document.getElementById('dashboard').style.display = 'none';
+  document.getElementById('login-screen').style.display = 'flex';
+  document.getElementById('username').value = '';
+  document.getElementById('password').value = '';
+  document.getElementById('login-error').textContent = '';
+}
+
+document.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+
+function switchGeo(id, ip, label) {
+  document.querySelectorAll('.geo-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('geo-' + id).classList.add('active');
+  document.getElementById('exit-ip').textContent = ip;
+  document.getElementById('exit-label').textContent = label;
+}
+
+function updateClocks() {
+  const zones = [
+    { id: 'la', tz: 'America/Los_Angeles' },
+    { id: 'tx', tz: 'America/Chicago' },
+    { id: 'jp', tz: 'Asia/Tokyo' },
+    { id: 'de', tz: 'Europe/Berlin' }
+  ];
+  zones.forEach(z => {
+    const now = new Date();
+    const time = new Intl.DateTimeFormat('en-US', {
+      timeZone: z.tz, hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
+    }).format(now);
+    const date = new Intl.DateTimeFormat('en-US', {
+      timeZone: z.tz, weekday: 'short', month: 'short', day: 'numeric'
+    }).format(now);
+    document.getElementById('clock-' + z.id).textContent = time;
+    document.getElementById('date-' + z.id).textContent = date.toUpperCase();
+  });
+}
+
+let uptimeSeconds = 0;
+function updateUptime() {
+  uptimeSeconds++;
+  const h = Math.floor(uptimeSeconds / 3600);
+  const m = Math.floor((uptimeSeconds % 3600) / 60);
+  const s = uptimeSeconds % 60;
+  document.getElementById('uptime-val').textContent =
+    String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+}
+
+function updateStats() {
+  const cpu = Math.floor(Math.random() * 18) + 8;
+  const ram = Math.floor(Math.random() * 12) + 44;
+  document.getElementById('cpu-val').innerHTML = cpu + '<span style="font-size:14px;color:var(--muted);">%</span>';
+  document.getElementById('ram-val').innerHTML = ram + '<span style="font-size:14px;color:var(--muted);">%</span>';
+  document.getElementById('cpu-bar').style.width = cpu + '%';
+  document.getElementById('ram-bar').style.width = ram + '%';
+}
+
+function startDashboard() {
+  updateClocks();
+  updateStats();
+  setInterval(updateClocks, 1000);
+  setInterval(updateUptime, 1000);
+  setInterval(updateStats, 6000);
+}
+</script>
+</body>
+</html>
