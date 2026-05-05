@@ -262,7 +262,7 @@ body {
   margin-bottom: 24px;
 }
 
-.geo-btn {
+.geo-btn { position: relative;
   background: var(--surface);
   border: 1px solid var(--border);
   padding: 16px 14px;
@@ -275,9 +275,12 @@ body {
 .geo-btn:hover { border-color: var(--border2); background: var(--surface2); }
 .geo-btn.active { border-color: var(--green); background: var(--green-dim); }
 
-.geo-flag { font-size: 22px; margin-bottom: 8px; }
+.geo-flag { font-size: 16px; position: absolute; top: 8px; right: 8px; }
 .geo-name { font-size: 10px; letter-spacing: 0.15em; color: var(--muted); margin-bottom: 4px; }
 .geo-ip { font-size: 11px; color: var(--text); }
+.geo-city { font-size: 10px; color: var(--muted); margin-top: 3px; }
+.geo-time { font-size: 13px; color: var(--text); margin-top: 6px; font-variant-numeric: tabular-nums; }
+.geo-offset { font-size: 10px; color: var(--muted); margin-top: 2px; }
 .geo-status { font-size: 10px; color: var(--green); letter-spacing: 0.1em; margin-top: 6px; display: none; }
 .geo-btn.active .geo-status { display: block; }
 
@@ -412,25 +415,37 @@ body {
     <div class="geo-btn active" id="geo-us1" onclick="switchGeo('us1','212.68.184.95','USA Exit 1')">
       <div class="geo-flag">🇺🇸</div>
       <div class="geo-name">USA EXIT 1</div>
+      <div class="geo-city">Los Angeles, CA</div>
       <div class="geo-ip">212.68.184.95</div>
+      <div class="geo-time" id="gtime-us1">--:--</div>
+      <div class="geo-offset">UTC -7</div>
       <div class="geo-status">● ACTIVE</div>
     </div>
     <div class="geo-btn" id="geo-us2" onclick="switchGeo('us2','176.103.231.25','USA Exit 2')">
       <div class="geo-flag">🇺🇸</div>
       <div class="geo-name">USA EXIT 2</div>
+      <div class="geo-city">Dallas, TX</div>
       <div class="geo-ip">176.103.231.25</div>
+      <div class="geo-time" id="gtime-us2">--:--</div>
+      <div class="geo-offset">UTC -5</div>
       <div class="geo-status">● ACTIVE</div>
     </div>
     <div class="geo-btn" id="geo-de" onclick="switchGeo('de','74.0.98.59','Germany · Frankfurt')">
       <div class="geo-flag">🇩🇪</div>
       <div class="geo-name">GERMANY</div>
+      <div class="geo-city">Frankfurt, DE</div>
       <div class="geo-ip">74.0.98.59</div>
+      <div class="geo-time" id="gtime-de">--:--</div>
+      <div class="geo-offset">UTC +2</div>
       <div class="geo-status">● ACTIVE</div>
     </div>
     <div class="geo-btn" id="geo-jp" onclick="switchGeo('jp','151.247.121.84','Japan · Kawasaki')">
       <div class="geo-flag">🇯🇵</div>
       <div class="geo-name">JAPAN</div>
+      <div class="geo-city">Kawasaki, JP</div>
       <div class="geo-ip">151.247.121.84</div>
+      <div class="geo-time" id="gtime-jp">--:--</div>
+      <div class="geo-offset">UTC +9</div>
       <div class="geo-status">● ACTIVE</div>
     </div>
   </div>
@@ -566,6 +581,20 @@ function switchGeo(id, ip, label) {
 }
 
 function updateClocks() {
+  const geoZones = [
+    { id: "us1", tz: "America/Los_Angeles" },
+    { id: "us2", tz: "America/Chicago" },
+    { id: "de", tz: "Europe/Berlin" },
+    { id: "jp", tz: "Asia/Tokyo" }
+  ];
+  geoZones.forEach(z => {
+    const el = document.getElementById("gtime-" + z.id);
+    if (el) {
+      el.textContent = new Intl.DateTimeFormat("en-US", {
+        timeZone: z.tz, hour: "2-digit", minute: "2-digit", hour12: true
+      }).format(new Date());
+    }
+  });
   const zones = [
     { id: 'la', tz: 'America/Los_Angeles' },
     { id: 'tx', tz: 'America/Chicago' },
