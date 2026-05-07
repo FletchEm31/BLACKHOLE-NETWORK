@@ -256,6 +256,15 @@ ufw allow from ${TUNNEL_NETWORK} to any port 3000 proto tcp > /dev/null  # Grafa
 ufw allow from ${TUNNEL_NETWORK} to any port 5432 proto tcp > /dev/null  # PostgreSQL
 
 ufw --force enable > /dev/null
+
+# Allow forwarded traffic from the WG tunnel out to the public NIC. Without
+# this, UFW's default FORWARD policy (DROP) silently drops legitimate VPN
+# egress — most browsing survives via conntrack ESTABLISHED tracking but
+# every new connection's first SYN gets logged-and-dropped, polluting the
+# event stream with thousands of bogus "ufw_block" entries from the
+# operator's own tunnel IP.
+ufw route allow in on ${WG_INTERFACE} out on ${NET_IFACE} > /dev/null
+
 ok "UFW firewall configured"
 
 # Insert iptables ACCEPT rule for VPN→SSH (defense in depth, position 1)
