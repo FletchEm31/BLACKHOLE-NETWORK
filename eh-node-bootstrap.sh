@@ -182,6 +182,18 @@ systemctl stop systemd-resolved > /dev/null 2>&1 || true
 systemctl daemon-reload
 systemctl restart dnscrypt-proxy.socket
 systemctl restart dnscrypt-proxy
+
+# Point /etc/resolv.conf at the local dnscrypt-proxy and lock it so resolvconf
+# can't restore an invalid `nameserver 0.0.0.0` (which Node.js / nodemailer
+# query directly and time out on, even though dig falls back to 127.0.0.1).
+chattr -i /etc/resolv.conf 2>/dev/null || true
+cat > /etc/resolv.conf << 'RESOLVCONF'
+# Locked. dnscrypt-proxy on 127.0.0.1 — fans out to Cloudflare/Quad9/Mullvad/NextDNS.
+nameserver 127.0.0.1
+options edns0 timeout:2 attempts:2
+RESOLVCONF
+chattr +i /etc/resolv.conf
+
 ok "Encrypted DNS configured"
 
 # ─── 6. IP forwarding ──────────────────────────────────────────
