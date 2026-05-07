@@ -6,8 +6,8 @@ Last updated: **2026-05-07**
 
 ```
 Phase 1: NETWORK              ███████░░░  ~70%
-Phase 2: DASHBOARD            ████░░░░░░  ~40%
-Phase 3: AI INTEGRATION       ░░░░░░░░░░   0%
+Phase 2: DASHBOARD            ███████░░░  ~65%
+Phase 3: AI INTEGRATION       █░░░░░░░░░  ~10%
 ```
 
 ## Nodes
@@ -64,7 +64,9 @@ Phase 3: AI INTEGRATION       ░░░░░░░░░░   0%
 | Hourly stats snapshots | ❌ Not yet implemented |
 | Weekly analysis | ❌ Not yet implemented |
 | n8n install | ✅ Running at `https://n8n.eventhorizonvpn.com` (nginx + LE on 443) |
-| First n8n workflow — `EH Network Pulse - 2h` | ⚠️ Built, pending user import (`n8n-workflows/eh-pulse-2h.json`); pulls 3 metadata tables every 2h, sends to Claude API, writes to `pulse_reports`, ntfy push on important |
+| n8n: `EH Network Pulse - 2h` workflow | ✅ Live — schedule trigger + manual UI execute + on-demand webhook all firing correctly. Pulls 3 metadata tables every 2h, sends aggregate to Claude (Sonnet 4.6) with structured outputs, writes to `pulse_reports`, ntfy push to `eh-alerts-hayden-x7k2` when `important=true`. Alert thresholds calibrated to operator's actual baseline (~470 high events/cycle is honeypot+fail2ban noise, not anomaly) |
+| n8n: `EventHorizon Proxy Health Monitor v1.0` | ✅ Live — was failing every 5 min on email DNS (resolv.conf bug); fixed |
+| n8n: `EventHorizon AI Agent v1.0` | ✅ Live (chat-trigger workflow, pre-existing) |
 
 ## Database row counts (snapshot)
 
@@ -74,7 +76,7 @@ Phase 3: AI INTEGRATION       ░░░░░░░░░░   0%
 | `security_events` | 12,280 (predominantly bot SSH brute-force attempts on the public IP) |
 | `anomalies` | 0 |
 | `purge_log` | 1 (manual smoke run on 2026-05-07) |
-| `pulse_reports` | 0 (table created 2026-05-07; workflow not yet activated) |
+| `pulse_reports` | 8 (workflow live; schedule + webhook + manual all firing) |
 
 `dns_queries` was dropped on 2026-05-07 — domains are content, not metadata.
 
@@ -133,4 +135,8 @@ In rough order:
 - Grafana admin credential stored as `EH-Grafana-Admin` in password manager
 - `grafana_reader` PostgreSQL role exists for read-only dashboard queries
 - Leak-test pass on 2026-05-07 caught a DNS bypass: client config had `DNS = 1.1.1.1, 1.0.0.1` (queries went straight to Cloudflare, skipping the on-hub dnscrypt-proxy resolver rotation). Fixed by setting client `DNS = 10.8.0.1` and adding UFW rule allowing port 53 from the tunnel network — bootstrap script updated so future nodes don't ship with this gap
+- Hub-side DNS was also broken on 2026-05-07: `/etc/resolv.conf` had `nameserver 0.0.0.0` (resolvconf populated it from dnscrypt-proxy's bind address). `dig` fell back to 127.0.0.1 silently, but Node.js / nodemailer queried 0.0.0.0:53 directly and timed out — which is why the Proxy Health Monitor n8n workflow had been failing every 5 min for hours. Fixed by writing `nameserver 127.0.0.1` to resolv.conf and `chattr +i` to lock it; bootstrap script updated.
 - `iperf3` over WG measured ~55 Mbps up / ~360–420 Mbps down sustained between operator PC and LA hub; bandwidth ceiling is the home upload, not the VPN. Suricata-CPU is the realistic scale ceiling (~100 Mbps inspected per vCPU with the full 50k ruleset)
+- Pulse workflow is live with three trigger paths: schedule (every 2h at :00 UTC), manual (n8n UI Execute Workflow), and webhook (POST to a path stored in operator's password manager — anyone with the URL can trigger a Claude API call, so treat as a secret)
+- `EventHorizonVPN-Claude` n8n credential is the shared Anthropic API key used by both the Pulse and Proxy Health Monitor workflows
+- Pulse alert calibration: 30-60 sessions / 50-200 GB inbound / ~2-5k events_total / ~400-700 events_high per 2h cycle is BASELINE for this hub. Honeypot + fail2ban events are routine. Alerts now fire only on critical events, anomalies, novel event_types, internal-IP source IPs, or genuinely anomalous volume
