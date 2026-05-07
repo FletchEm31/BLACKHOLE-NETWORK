@@ -17,7 +17,10 @@
       "name": "Every 2 hours",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.1,
-      "position": [240, 300]
+      "position": [
+        240,
+        300
+      ]
     },
     {
       "parameters": {
@@ -32,7 +35,10 @@
       "name": "Manual Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [240, 500],
+      "position": [
+        240,
+        500
+      ],
       "webhookId": "WEBHOOK_ID_PLACEHOLDER"
     },
     {
@@ -71,7 +77,10 @@
       "name": "Set Period & Topic",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
-      "position": [460, 300]
+      "position": [
+        460,
+        300
+      ]
     },
     {
       "parameters": {
@@ -85,7 +94,10 @@
       "name": "Query Aggregates",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
-      "position": [680, 300],
+      "position": [
+        680,
+        300
+      ],
       "credentials": {
         "postgres": {
           "id": "REPLACE_WITH_PG_CRED_ID",
@@ -95,13 +107,16 @@
     },
     {
       "parameters": {
-        "jsCode": "// Build the Claude API request body from upstream data.\n// References:\n//   - Set Period & Topic    -> period_start, period_end, ntfy_topic\n//   - Query Aggregates      -> sessions_active, sessions_new, bytes_in, bytes_out,\n//                              events_total, events_high, events_medium,\n//                              events_critical, anomalies_open, top_source_ips,\n//                              top_event_types\n\nconst period   = $('Set Period & Topic').first().json;\nconst metrics  = $('Query Aggregates').first().json;\n\nconst payload = {\n  period_start:    period.period_start,\n  period_end:      period.period_end,\n  sessions_active: metrics.sessions_active,\n  sessions_new:    metrics.sessions_new,\n  bytes_in:        Number(metrics.bytes_in),\n  bytes_out:       Number(metrics.bytes_out),\n  events_total:    metrics.events_total,\n  events_high:     metrics.events_high,\n  events_medium:   metrics.events_medium,\n  events_critical: metrics.events_critical,\n  anomalies_open:  metrics.anomalies_open,\n  top_source_ips:  metrics.top_source_ips || [],\n  top_event_types: metrics.top_event_types || []\n};\n\nconst systemPrompt = `You are the AI ops analyst for EventHorizon VPN, a self-hosted privacy VPN running on a Vultr LA hub. Your job: review the network metadata pulse every 2 hours and flag anything that genuinely needs operator attention. The operator is solo, hands-on, and you are NOT his only line of defense — fail2ban, UFW, Suricata, and CrowdSec already react in real time. Your job is the 2h trend layer, not paging on every blocked scanner.\n\nThe operator is the SOLE user of this VPN — no customers. Logging exists for self-validation. Threat model: \"is the operator's own infrastructure leaking or under unusual attack?\"\n\nFields per pulse:\n- sessions_active / sessions_new: WireGuard peer connection counts in the period\n- bytes_in / bytes_out: aggregate traffic over WG tunnels\n- events_total / events_high / events_medium / events_critical: counts by severity\n- top_source_ips: top 5 attacker IPs with counts\n- top_event_types: top 5 event types with counts\n- anomalies_open: count of unresolved anomalies\n\nKNOWN BASELINE for THIS operator's hub (do NOT flag these as anomalies — they are the steady state):\n- sessions: 1-5 distinct active users per 2h cycle is normal. The operator is the SOLE primary user with occasional friends and family on the network — there are no customers. sessions_active counts distinct user_keys, not session rows. 0 is OK during quiet periods; >5 sustained warrants a look.\n- bandwidth: 50-200 GB inbound and 5-30 GB outbound per 2h is normal during active use (streaming, downloads, syncs)\n- events_total ~2,000-4,000 per cycle is steady-state public-IP scanner noise\n- events_high ~400-700 per cycle is normal — almost all of it is honeypot hits + fail2ban actions (the honeypot's literal job is to get hit; fail2ban's job is to ban repeat offenders). NEITHER is anomalous on its own.\n- events_medium ~1,000-1,500 (mostly ssh_failure, the SSH brute-force background)\n- top_event_types steadily contains: ssh_failure, ufw_block, honeypot, fail2ban\n\nFlag IMPORTANT = true ONLY if any of:\n  1. anomalies_open > 0 (the system itself flagged something)\n  2. events_critical > 0 (any critical event)\n  3. A NEW event_type appears in top_event_types that is NOT in {ssh_failure, ufw_block, honeypot, fail2ban} (suggests a novel attack vector or a new detection rule firing)\n  4. An internal WireGuard tunnel IP (10.8.0.0/24) appears in top_source_ips (would indicate a compromised peer or operator's own traffic tripping IDS rules — both worth a look)\n  5. events_high > 1,500 (>3x baseline — sustained heavy attack, not routine)\n  6. events_total > 25,000 (>5x baseline — burst attack)\n  7. sessions_active == 0 for two cycles in a row (operator has lost connectivity)\n  8. bandwidth pattern is structurally weird — e.g. bytes_out >> bytes_in (data exfiltration shape) or bytes_in suddenly 10x prior cycles\n\nDo NOT flag IMPORTANT just because events_high > 0 or sessions are above 30. Those are baseline.\n\nRespond ONLY with valid JSON, no other text:\n{\n  \"summary\": \"<2-3 sentence operator-friendly summary; mention the dominant event_type, any notable source IPs, and whether this is a quiet or busy cycle relative to baseline>\",\n  \"important\": <true|false>,\n  \"reason\": \"<one short sentence — which rule above fired; empty string if not important>\"\n}`;\n\nconst body = {\n  model: \"claude-sonnet-4-6\",\n  max_tokens: 600,\n  system: [\n    {\n      type: \"text\",\n      text: systemPrompt,\n      cache_control: { type: \"ephemeral\" }\n    }\n  ],\n  messages: [\n    {\n      role: \"user\",\n      content: \"Analyze this 2-hour pulse and return the JSON verdict:\\n\\n\" + JSON.stringify(payload, null, 2)\n    }\n  ],\n  output_config: {\n    format: {\n      type: \"json_schema\",\n      schema: {\n        type: \"object\",\n        properties: {\n          summary:   { type: \"string\" },\n          important: { type: \"boolean\" },\n          reason:    { type: \"string\" }\n        },\n        required: [\"summary\", \"important\", \"reason\"],\n        additionalProperties: false\n      }\n    }\n  }\n};\n\nreturn [{ json: { body, payload } }];"
+        "jsCode": "// Build the Claude API request body from upstream data, with retrieved memories\n// from the Retrieve Memories node injected into the system prompt as past context.\nconst period   = $('Set Period & Topic').first().json;\nconst metrics  = $('Query Aggregates').first().json;\n\n// Pull retrieved memories. .all() returns an array of items (one per row).\nlet memories = [];\ntry {\n  memories = $('Retrieve Memories').all().map(r => r.json).filter(Boolean);\n} catch (e) {\n  memories = [];\n}\n\nlet memoryBlock = '';\nif (memories.length > 0) {\n  memoryBlock = '\\n\\nPAST RELEVANT CONTEXT (from operator memory, ranked by semantic similarity to this cycle):\\n';\n  for (const m of memories) {\n    const snippet = (m.content || '').slice(0, 300);\n    memoryBlock += `- [${m.memory_type}] ${m.title} (importance ${m.importance}, similarity ${m.similarity}): ${snippet}\\n`;\n  }\n  memoryBlock += '\\nWhen relevant, reference these in your summary or reason. If you spot a recurrence of a past incident, name it explicitly.';\n}\n\nconst payload = {\n  period_start:    period.period_start,\n  period_end:      period.period_end,\n  sessions_active: metrics.sessions_active,\n  sessions_new:    metrics.sessions_new,\n  bytes_in:        Number(metrics.bytes_in),\n  bytes_out:       Number(metrics.bytes_out),\n  events_total:    metrics.events_total,\n  events_high:     metrics.events_high,\n  events_medium:   metrics.events_medium,\n  events_critical: metrics.events_critical,\n  anomalies_open:  metrics.anomalies_open,\n  top_source_ips:  metrics.top_source_ips || [],\n  top_event_types: metrics.top_event_types || []\n};\n\nconst systemPrompt = `You are the AI ops analyst for EventHorizon VPN, a self-hosted privacy VPN running on a Vultr LA hub. Your job: review the network metadata pulse every 2 hours and flag anything that genuinely needs operator attention. The operator is solo, hands-on, and you are NOT his only line of defense \u2014 fail2ban, UFW, Suricata, and CrowdSec already react in real time. Your job is the 2h trend layer, not paging on every blocked scanner.\n\nThe operator is the SOLE user of this VPN \u2014 no customers. Logging exists for self-validation. Threat model: \"is the operator's own infrastructure leaking or under unusual attack?\"\n\nFields per pulse:\n- sessions_active / sessions_new: WireGuard peer connection counts in the period\n- bytes_in / bytes_out: aggregate traffic over WG tunnels\n- events_total / events_high / events_medium / events_critical: counts by severity\n- top_source_ips: top 5 attacker IPs with counts\n- top_event_types: top 5 event types with counts\n- anomalies_open: count of unresolved anomalies\n\nKNOWN BASELINE for THIS operator's hub (do NOT flag these as anomalies \u2014 they are the steady state):\n- sessions: 1-5 distinct active users per 2h cycle is normal. The operator is the SOLE primary user with occasional friends and family on the network \u2014 there are no customers. sessions_active counts distinct user_keys, not session rows. 0 is OK during quiet periods; >5 sustained warrants a look.\n- bandwidth: 50-200 GB inbound and 5-30 GB outbound per 2h is normal during active use (streaming, downloads, syncs)\n- events_total ~2,000-4,000 per cycle is steady-state public-IP scanner noise\n- events_high ~400-700 per cycle is normal \u2014 almost all of it is honeypot hits + fail2ban actions (the honeypot's literal job is to get hit; fail2ban's job is to ban repeat offenders). NEITHER is anomalous on its own.\n- events_medium ~1,000-1,500 (mostly ssh_failure, the SSH brute-force background)\n- top_event_types steadily contains: ssh_failure, ufw_block, honeypot, fail2ban\n\nFlag IMPORTANT = true ONLY if any of:\n  1. anomalies_open > 0 (the system itself flagged something)\n  2. events_critical > 0 (any critical event)\n  3. A NEW event_type appears in top_event_types that is NOT in {ssh_failure, ufw_block, honeypot, fail2ban} (suggests a novel attack vector or a new detection rule firing)\n  4. An internal WireGuard tunnel IP (10.8.0.0/24) appears in top_source_ips (would indicate a compromised peer or operator's own traffic tripping IDS rules \u2014 both worth a look)\n  5. events_high > 1,500 (>3x baseline \u2014 sustained heavy attack, not routine)\n  6. events_total > 25,000 (>5x baseline \u2014 burst attack)\n  7. sessions_active == 0 for two cycles in a row (operator has lost connectivity)\n  8. bandwidth pattern is structurally weird \u2014 e.g. bytes_out >> bytes_in (data exfiltration shape) or bytes_in suddenly 10x prior cycles\n\nDo NOT flag IMPORTANT just because events_high > 0 or sessions are above 30. Those are baseline.${memoryBlock}\n\nRespond ONLY with valid JSON, no other text:\n{\n  \"summary\": \"<2-3 sentence operator-friendly summary; mention the dominant event_type, any notable source IPs, and whether this is a quiet or busy cycle relative to baseline>\",\n  \"important\": <true|false>,\n  \"reason\": \"<one short sentence \u2014 which rule above fired; empty string if not important>\"\n}`;\n\nconst body = {\n  model: \"claude-sonnet-4-6\",\n  max_tokens: 600,\n  system: [\n    {\n      type: \"text\",\n      text: systemPrompt,\n      cache_control: { type: \"ephemeral\" }\n    }\n  ],\n  messages: [\n    {\n      role: \"user\",\n      content: \"Analyze this 2-hour pulse and return the JSON verdict:\\n\\n\" + JSON.stringify(payload, null, 2)\n    }\n  ],\n  output_config: {\n    format: {\n      type: \"json_schema\",\n      schema: {\n        type: \"object\",\n        properties: {\n          summary:   { type: \"string\" },\n          important: { type: \"boolean\" },\n          reason:    { type: \"string\" }\n        },\n        required: [\"summary\", \"important\", \"reason\"],\n        additionalProperties: false\n      }\n    }\n  }\n};\n\nreturn [{ json: { body, payload, retrieved_memory_count: memories.length } }];\n"
       },
       "id": "44444444-4444-4444-4444-444444444444",
       "name": "Build Claude Request",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [900, 300]
+      "position": [
+        900,
+        300
+      ]
     },
     {
       "parameters": {
@@ -133,7 +148,10 @@
       "name": "Claude API",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1120, 300],
+      "position": [
+        1120,
+        300
+      ],
       "credentials": {
         "anthropicApi": {
           "id": "REPLACE_WITH_ANTHROPIC_CRED_ID",
@@ -143,13 +161,16 @@
     },
     {
       "parameters": {
-        "jsCode": "// Extract Claude's JSON verdict from the response.\n// Claude returns content as an array of blocks; we want the first text block.\n\nconst response = $json;\nconst textBlock = (response.content || []).find(b => b.type === 'text');\nconst rawText = textBlock ? textBlock.text : '';\n\nlet verdict;\ntry {\n  // With output_config.format, the entire text block IS the JSON.\n  // As a fallback for chatty models, strip anything outside the first { ... }\n  // pair so a preamble or trailing prose doesn't break parsing.\n  let cleaned = rawText.trim();\n  const firstBrace = cleaned.indexOf('{');\n  const lastBrace  = cleaned.lastIndexOf('}');\n  if (firstBrace !== -1 && lastBrace > firstBrace) {\n    cleaned = cleaned.slice(firstBrace, lastBrace + 1);\n  }\n  verdict = JSON.parse(cleaned);\n} catch (e) {\n  verdict = {\n    summary: 'Parse error: Claude response was not valid JSON. Raw text: ' + rawText.slice(0, 500),\n    important: true,\n    reason: 'Claude response failed to parse — investigate workflow'\n  };\n}\n\nconst usage = response.usage || {};\nconst payload = $('Build Claude Request').first().json.payload;\n\nreturn [{\n  json: {\n    // Verdict from Claude\n    summary:   verdict.summary || '',\n    important: verdict.important === true,\n    reason:    verdict.reason || '',\n    // Source metrics for the INSERT\n    period_start:    payload.period_start,\n    period_end:      payload.period_end,\n    sessions_active: payload.sessions_active,\n    sessions_new:    payload.sessions_new,\n    bytes_in:        payload.bytes_in,\n    bytes_out:       payload.bytes_out,\n    events_total:    payload.events_total,\n    events_high:     payload.events_high,\n    events_medium:   payload.events_medium,\n    events_critical: payload.events_critical,\n    anomalies_open:  payload.anomalies_open,\n    top_source_ips:  payload.top_source_ips,\n    top_event_types: payload.top_event_types,\n    // Raw + token usage\n    raw_payload:         payload,\n    raw_claude_response: response,\n    model_used:    response.model || 'claude-opus-4-7',\n    input_tokens:  usage.input_tokens || 0,\n    output_tokens: usage.output_tokens || 0,\n    // For ntfy push\n    ntfy_topic:  $('Set Period & Topic').first().json.ntfy_topic,\n    ntfy_server: $('Set Period & Topic').first().json.ntfy_server\n  }\n}];"
+        "jsCode": "// Extract Claude's JSON verdict from the response.\n// Claude returns content as an array of blocks; we want the first text block.\n\nconst response = $json;\nconst textBlock = (response.content || []).find(b => b.type === 'text');\nconst rawText = textBlock ? textBlock.text : '';\n\nlet verdict;\ntry {\n  // With output_config.format, the entire text block IS the JSON.\n  // As a fallback for chatty models, strip anything outside the first { ... }\n  // pair so a preamble or trailing prose doesn't break parsing.\n  let cleaned = rawText.trim();\n  const firstBrace = cleaned.indexOf('{');\n  const lastBrace  = cleaned.lastIndexOf('}');\n  if (firstBrace !== -1 && lastBrace > firstBrace) {\n    cleaned = cleaned.slice(firstBrace, lastBrace + 1);\n  }\n  verdict = JSON.parse(cleaned);\n} catch (e) {\n  verdict = {\n    summary: 'Parse error: Claude response was not valid JSON. Raw text: ' + rawText.slice(0, 500),\n    important: true,\n    reason: 'Claude response failed to parse \u2014 investigate workflow'\n  };\n}\n\nconst usage = response.usage || {};\nconst payload = $('Build Claude Request').first().json.payload;\n\nreturn [{\n  json: {\n    // Verdict from Claude\n    summary:   verdict.summary || '',\n    important: verdict.important === true,\n    reason:    verdict.reason || '',\n    // Source metrics for the INSERT\n    period_start:    payload.period_start,\n    period_end:      payload.period_end,\n    sessions_active: payload.sessions_active,\n    sessions_new:    payload.sessions_new,\n    bytes_in:        payload.bytes_in,\n    bytes_out:       payload.bytes_out,\n    events_total:    payload.events_total,\n    events_high:     payload.events_high,\n    events_medium:   payload.events_medium,\n    events_critical: payload.events_critical,\n    anomalies_open:  payload.anomalies_open,\n    top_source_ips:  payload.top_source_ips,\n    top_event_types: payload.top_event_types,\n    // Raw + token usage\n    raw_payload:         payload,\n    raw_claude_response: response,\n    model_used:    response.model || 'claude-opus-4-7',\n    input_tokens:  usage.input_tokens || 0,\n    output_tokens: usage.output_tokens || 0,\n    // For ntfy push\n    ntfy_topic:  $('Set Period & Topic').first().json.ntfy_topic,\n    ntfy_server: $('Set Period & Topic').first().json.ntfy_server\n  }\n}];"
       },
       "id": "66666666-6666-6666-6666-666666666666",
       "name": "Parse Verdict",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1340, 300]
+      "position": [
+        1340,
+        300
+      ]
     },
     {
       "parameters": {
@@ -163,7 +184,10 @@
       "name": "Insert Pulse Report",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
-      "position": [1560, 300],
+      "position": [
+        1560,
+        300
+      ],
       "credentials": {
         "postgres": {
           "id": "REPLACE_WITH_PG_CRED_ID",
@@ -217,7 +241,10 @@
       "name": "If Important",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
-      "position": [1780, 300]
+      "position": [
+        1780,
+        300
+      ]
     },
     {
       "parameters": {
@@ -253,38 +280,171 @@
       "name": "Send ntfy Push",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [2000, 220]
+      "position": [
+        2000,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build a concise text describing the current situation, then embed it via the local\n// embedding service. The result vector is passed to Retrieve Memories for top-K recall.\nconst period  = $('Set Period & Topic').first().json;\nconst metrics = $('Query Aggregates').first().json;\n\nconst topIps   = (metrics.top_source_ips  || []).map(x => x.source_ip).slice(0, 3).join(', ');\nconst topTypes = (metrics.top_event_types || []).map(x => x.event_type).slice(0, 3).join(', ');\n\nconst queryText = `Pulse cycle: ${metrics.events_total || 0} events total, ${metrics.events_high || 0} high, ${metrics.events_critical || 0} critical, ${metrics.anomalies_open || 0} anomalies. ${metrics.sessions_active || 0} active sessions. Top source IPs: ${topIps}. Top event types: ${topTypes}.`;\n\nconst resp = await fetch('http://127.0.0.1:8001/embed', {\n  method: 'POST',\n  headers: { 'Content-Type': 'application/json' },\n  body: JSON.stringify({ text: queryText })\n});\nif (!resp.ok) {\n  // Soft-fail: return empty vector so retrieval returns nothing rather than breaking the run\n  return [{ json: { embed_query: queryText, embed_vector: [], embed_ms: 0, embed_error: 'service ' + resp.status } }];\n}\nconst data = await resp.json();\nreturn [{ json: { embed_query: queryText, embed_vector: data.vector, embed_ms: data.ms } }];\n"
+      },
+      "id": "ph-c-embed",
+      "name": "Embed Pulse Query",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        800,
+        300
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, memory_type, title, content, importance, created_at,\n       ROUND((1 - (embedding <=> $1::vector))::numeric, 4) AS similarity\nFROM memories\nWHERE (expires_at IS NULL OR expires_at > NOW())\n  AND CARDINALITY(string_to_array(TRIM(BOTH '[]' FROM $1), ',')) > 0\nORDER BY embedding <=> $1::vector\nLIMIT 3;",
+        "options": {
+          "queryReplacement": "={{ JSON.stringify($('Embed Pulse Query').first().json.embed_vector) }}"
+        }
+      },
+      "id": "ph-c-retrieve",
+      "name": "Retrieve Memories",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        950,
+        300
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_PG_CRED_ID",
+          "name": "Postgres EventHorizon"
+        }
+      },
+      "onError": "continueRegularOutput"
     }
   ],
   "connections": {
     "Every 2 hours": {
-      "main": [[{ "node": "Set Period & Topic", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Set Period & Topic",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Manual Webhook": {
-      "main": [[{ "node": "Set Period & Topic", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Set Period & Topic",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Set Period & Topic": {
-      "main": [[{ "node": "Query Aggregates", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Query Aggregates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Query Aggregates": {
-      "main": [[{ "node": "Build Claude Request", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Embed Pulse Query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Build Claude Request": {
-      "main": [[{ "node": "Claude API", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Claude API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Claude API": {
-      "main": [[{ "node": "Parse Verdict", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Parse Verdict",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Parse Verdict": {
-      "main": [[{ "node": "Insert Pulse Report", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Insert Pulse Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Insert Pulse Report": {
-      "main": [[{ "node": "If Important", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "If Important",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "If Important": {
       "main": [
-        [{ "node": "Send ntfy Push", "type": "main", "index": 0 }],
+        [
+          {
+            "node": "Send ntfy Push",
+            "type": "main",
+            "index": 0
+          }
+        ],
         []
+      ]
+    },
+    "Embed Pulse Query": {
+      "main": [
+        [
+          {
+            "node": "Retrieve Memories",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Retrieve Memories": {
+      "main": [
+        [
+          {
+            "node": "Build Claude Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     }
   },
@@ -293,7 +453,14 @@
     "timezone": "UTC"
   },
   "tags": [
-    { "name": "eventhorizon" },
-    { "name": "pulse" }
+    {
+      "name": "eventhorizon"
+    },
+    {
+      "name": "pulse"
+    },
+    {
+      "name": "phase-c"
+    }
   ]
 }
