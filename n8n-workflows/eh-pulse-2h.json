@@ -38,7 +38,7 @@
             {
               "id": "a3",
               "name": "ntfy_topic",
-              "value": "eh-pulse-fletch-CHANGE-ME-TO-SOMETHING-RANDOM",
+              "value": "eh-alerts-hayden-x7k2",
               "type": "string"
             },
             {
@@ -161,7 +161,7 @@
           "options": {
             "caseSensitive": true,
             "leftValue": "",
-            "typeValidation": "strict"
+            "typeValidation": "loose"
           },
           "conditions": [
             {
@@ -173,9 +173,36 @@
                 "operation": "true",
                 "singleValue": true
               }
+            },
+            {
+              "id": "c2",
+              "leftValue": "={{ $('Parse Verdict').first().json.events_high }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            },
+            {
+              "id": "c3",
+              "leftValue": "={{ $('Parse Verdict').first().json.events_critical }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            },
+            {
+              "id": "c4",
+              "leftValue": "={{ $('Parse Verdict').first().json.anomalies_open }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
             }
           ],
-          "combinator": "and"
+          "combinator": "or"
         },
         "options": {}
       },
@@ -194,7 +221,7 @@
           "parameters": [
             {
               "name": "Title",
-              "value": "EH Network Pulse — Attention Needed"
+              "value": "EH Network Pulse - Attention Needed"
             },
             {
               "name": "Priority",
