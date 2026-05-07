@@ -63,7 +63,8 @@ Phase 3: AI INTEGRATION       ░░░░░░░░░░   0%
 | Packet payload capture | ⛔ Intentionally not enabled — payloads are content |
 | Hourly stats snapshots | ❌ Not yet implemented |
 | Weekly analysis | ❌ Not yet implemented |
-| n8n action automation | ❌ Not yet installed |
+| n8n install | ✅ Running at `https://n8n.eventhorizonvpn.com` (nginx + LE on 443) |
+| First n8n workflow — `EH Network Pulse - 2h` | ⚠️ Built, pending user import (`n8n-workflows/eh-pulse-2h.json`); pulls 3 metadata tables every 2h, sends to Claude API, writes to `pulse_reports`, ntfy push on important |
 
 ## Database row counts (snapshot)
 
@@ -73,6 +74,7 @@ Phase 3: AI INTEGRATION       ░░░░░░░░░░   0%
 | `security_events` | 12,280 (predominantly bot SSH brute-force attempts on the public IP) |
 | `anomalies` | 0 |
 | `purge_log` | 1 (manual smoke run on 2026-05-07) |
+| `pulse_reports` | 0 (table created 2026-05-07; workflow not yet activated) |
 
 `dns_queries` was dropped on 2026-05-07 — domains are content, not metadata.
 
@@ -101,10 +103,11 @@ In rough order:
 2. v3 bootstrap apply to Frankfurt
 3. Tokyo or other 3rd region node
 4. tmpfs migration for ephemeral content per external-observer principle (Suricata payload audit, /var/log/suricata logrotate tuning)
-5. n8n install + initial workflows
-6. Claude API integration for analysis
-7. pgvector memory layer
-8. Voice ops interface (Vapi or Retell evaluation)
+5. n8n: import + activate the `eh-pulse-2h` workflow on the live instance, subscribe to ntfy topic from phone
+6. Additional n8n workflows (deeper analysis, weekly summaries, action automation)
+7. Claude API integration for deeper / on-demand analysis
+8. pgvector memory layer
+9. Voice ops interface (Vapi or Retell evaluation)
 
 ## Cost snapshot
 

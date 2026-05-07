@@ -1,0 +1,262 @@
+{
+  "name": "EH Network Pulse - 2h",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 */2 * * *"
+            }
+          ]
+        }
+      },
+      "id": "11111111-1111-1111-1111-111111111111",
+      "name": "Every 2 hours",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a1",
+              "name": "period_end",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            },
+            {
+              "id": "a2",
+              "name": "period_start",
+              "value": "={{ $now.minus({hours: 2}).toISO() }}",
+              "type": "string"
+            },
+            {
+              "id": "a3",
+              "name": "ntfy_topic",
+              "value": "eh-pulse-fletch-CHANGE-ME-TO-SOMETHING-RANDOM",
+              "type": "string"
+            },
+            {
+              "id": "a4",
+              "name": "ntfy_server",
+              "value": "https://ntfy.sh",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "22222222-2222-2222-2222-222222222222",
+      "name": "Set Period & Topic",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n  (SELECT COUNT(*)::int FROM sessions WHERE connected_at >= $1::timestamptz AND (disconnected_at IS NULL OR disconnected_at >= $1::timestamptz)) AS sessions_active,\n  (SELECT COUNT(*)::int FROM sessions WHERE connected_at >= $1::timestamptz) AS sessions_new,\n  (SELECT COALESCE(SUM(bytes_in), 0)::bigint FROM sessions WHERE connected_at >= $1::timestamptz) AS bytes_in,\n  (SELECT COALESCE(SUM(bytes_out), 0)::bigint FROM sessions WHERE connected_at >= $1::timestamptz) AS bytes_out,\n  (SELECT COUNT(*)::int FROM security_events WHERE detected_at >= $1::timestamptz) AS events_total,\n  (SELECT COUNT(*)::int FROM security_events WHERE detected_at >= $1::timestamptz AND severity = 'high') AS events_high,\n  (SELECT COUNT(*)::int FROM security_events WHERE detected_at >= $1::timestamptz AND severity = 'critical') AS events_critical,\n  (SELECT COUNT(*)::int FROM anomalies WHERE resolved = FALSE) AS anomalies_open,\n  (SELECT COALESCE(json_agg(t), '[]'::json) FROM (\n    SELECT source_ip, COUNT(*)::int AS cnt FROM security_events\n    WHERE detected_at >= $1::timestamptz\n    GROUP BY source_ip ORDER BY cnt DESC LIMIT 5\n  ) t) AS top_source_ips;",
+        "options": {
+          "queryReplacement": "={{ $json.period_start }}"
+        }
+      },
+      "id": "33333333-3333-3333-3333-333333333333",
+      "name": "Query Aggregates",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [680, 300],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_PG_CRED_ID",
+          "name": "Postgres EventHorizon"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build the Claude API request body from upstream data.\n// References:\n//   - Set Period & Topic    -> period_start, period_end, ntfy_topic\n//   - Query Aggregates      -> sessions_active, sessions_new, bytes_in, bytes_out,\n//                              events_total, events_high, events_critical,\n//                              anomalies_open, top_source_ips\n\nconst period   = $('Set Period & Topic').first().json;\nconst metrics  = $('Query Aggregates').first().json;\n\nconst payload = {\n  period_start:    period.period_start,\n  period_end:      period.period_end,\n  sessions_active: metrics.sessions_active,\n  sessions_new:    metrics.sessions_new,\n  bytes_in:        Number(metrics.bytes_in),\n  bytes_out:       Number(metrics.bytes_out),\n  events_total:    metrics.events_total,\n  events_high:     metrics.events_high,\n  events_critical: metrics.events_critical,\n  anomalies_open:  metrics.anomalies_open,\n  top_source_ips:  metrics.top_source_ips || []\n};\n\nconst systemPrompt = `You are the AI ops analyst for EventHorizon VPN, a self-hosted privacy VPN running on a Vultr LA hub. Your job: review the network metadata pulse every 2 hours and flag anything that needs operator attention.\n\nThe operator is the SOLE user of this VPN — there are no customers. Logging exists for self-validation (leak detection, security posture), not for any customers. The threat model is \"is the operator's own infrastructure leaking or under unusual attack?\".\n\nEach pulse contains metadata only (no DNS queries, no payloads). Fields:\n- sessions_active / sessions_new: WireGuard peer connection counts in the period\n- bytes_in / bytes_out: aggregate traffic over WG tunnels\n- events_total: count of IDS/fail2ban-detected events. Predominantly internet bot SSH brute-force attempts on the public IP — this is BASELINE NOISE and runs at ~5,000 events per 2h cycle. Do not flag unless it spikes >5x baseline (~25,000) or critical/high events appear.\n- events_high / events_critical: severity-tagged subset\n- top_source_ips: top 5 attacker IPs in the period with counts\n- anomalies_open: count of anomalies the system has flagged but not resolved\n\nFlag IMPORTANT = true if any of:\n  1. anomalies_open > 0\n  2. events_critical > 0\n  3. events_high > 5 (a few stragglers from misconfigured scanners are normal)\n  4. events_total > 25,000 (5x baseline brute-force volume)\n  5. sessions_active == 0 for more than a single cycle (operator may have lost connectivity)\n  6. bytes_in or bytes_out is wildly outside the operator's normal range (operator is one person; massive throughput suggests something is wrong)\n\nRespond ONLY with valid JSON, no other text:\n{\n  \"summary\": \"<2-3 sentence operator-friendly summary of the period>\",\n  \"important\": <true|false>,\n  \"reason\": \"<one short sentence explaining why this is important; empty string if not>\"\n}`;\n\nconst body = {\n  model: \"claude-opus-4-7\",\n  max_tokens: 600,\n  system: [\n    {\n      type: \"text\",\n      text: systemPrompt,\n      cache_control: { type: \"ephemeral\" }\n    }\n  ],\n  messages: [\n    {\n      role: \"user\",\n      content: \"Analyze this 2-hour pulse and return the JSON verdict:\\n\\n\" + JSON.stringify(payload, null, 2)\n    }\n  ]\n};\n\nreturn [{ json: { body, payload } }];"
+      },
+      "id": "44444444-4444-4444-4444-444444444444",
+      "name": "Build Claude Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "55555555-5555-5555-5555-555555555555",
+      "name": "Claude API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_ANTHROPIC_CRED_ID",
+          "name": "Anthropic API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract Claude's JSON verdict from the response.\n// Claude returns content as an array of blocks; we want the first text block.\n\nconst response = $json;\nconst textBlock = (response.content || []).find(b => b.type === 'text');\nconst rawText = textBlock ? textBlock.text : '';\n\nlet verdict;\ntry {\n  // Strip code fences if Claude wrapped the JSON\n  const cleaned = rawText.trim().replace(/^```json\\s*/i, '').replace(/```\\s*$/, '');\n  verdict = JSON.parse(cleaned);\n} catch (e) {\n  verdict = {\n    summary: 'Parse error: Claude response was not valid JSON. Raw text: ' + rawText.slice(0, 500),\n    important: true,\n    reason: 'Claude response failed to parse — investigate workflow'\n  };\n}\n\nconst usage = response.usage || {};\nconst payload = $('Build Claude Request').first().json.payload;\n\nreturn [{\n  json: {\n    // Verdict from Claude\n    summary:   verdict.summary || '',\n    important: verdict.important === true,\n    reason:    verdict.reason || '',\n    // Source metrics for the INSERT\n    period_start:    payload.period_start,\n    period_end:      payload.period_end,\n    sessions_active: payload.sessions_active,\n    sessions_new:    payload.sessions_new,\n    bytes_in:        payload.bytes_in,\n    bytes_out:       payload.bytes_out,\n    events_total:    payload.events_total,\n    events_high:     payload.events_high,\n    events_critical: payload.events_critical,\n    anomalies_open:  payload.anomalies_open,\n    top_source_ips:  payload.top_source_ips,\n    // Raw + token usage\n    raw_payload:         payload,\n    raw_claude_response: response,\n    model_used:    response.model || 'claude-opus-4-7',\n    input_tokens:  usage.input_tokens || 0,\n    output_tokens: usage.output_tokens || 0,\n    // For ntfy push\n    ntfy_topic:  $('Set Period & Topic').first().json.ntfy_topic,\n    ntfy_server: $('Set Period & Topic').first().json.ntfy_server\n  }\n}];"
+      },
+      "id": "66666666-6666-6666-6666-666666666666",
+      "name": "Parse Verdict",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO pulse_reports (\n  period_start, period_end,\n  sessions_active, sessions_new, bytes_in, bytes_out,\n  events_total, events_high, events_critical, top_source_ips,\n  anomalies_open,\n  summary, important, reason,\n  raw_payload, raw_claude_response,\n  model_used, input_tokens, output_tokens\n) VALUES (\n  $1::timestamptz, $2::timestamptz,\n  $3::int, $4::int, $5::bigint, $6::bigint,\n  $7::int, $8::int, $9::int, $10::jsonb,\n  $11::int,\n  $12, $13::boolean, $14,\n  $15::jsonb, $16::jsonb,\n  $17, $18::int, $19::int\n) RETURNING id;",
+        "options": {
+          "queryReplacement": "={{ $json.period_start }},{{ $json.period_end }},{{ $json.sessions_active }},{{ $json.sessions_new }},{{ $json.bytes_in }},{{ $json.bytes_out }},{{ $json.events_total }},{{ $json.events_high }},{{ $json.events_critical }},{{ JSON.stringify($json.top_source_ips) }},{{ $json.anomalies_open }},{{ $json.summary }},{{ $json.important }},{{ $json.reason }},{{ JSON.stringify($json.raw_payload) }},{{ JSON.stringify($json.raw_claude_response) }},{{ $json.model_used }},{{ $json.input_tokens }},{{ $json.output_tokens }}"
+        }
+      },
+      "id": "77777777-7777-7777-7777-777777777777",
+      "name": "Insert Pulse Report",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1560, 300],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_PG_CRED_ID",
+          "name": "Postgres EventHorizon"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $('Parse Verdict').first().json.important }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "88888888-8888-8888-8888-888888888888",
+      "name": "If Important",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1780, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Parse Verdict').first().json.ntfy_server }}/{{ $('Parse Verdict').first().json.ntfy_topic }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Title",
+              "value": "EH Network Pulse — Attention Needed"
+            },
+            {
+              "name": "Priority",
+              "value": "high"
+            },
+            {
+              "name": "Tags",
+              "value": "warning,satellite_antenna"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "string",
+        "contentType": "raw",
+        "rawContentType": "text/plain",
+        "body": "={{ $('Parse Verdict').first().json.summary }}\n\nReason: {{ $('Parse Verdict').first().json.reason }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "99999999-9999-9999-9999-999999999999",
+      "name": "Send ntfy Push",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2000, 220]
+    }
+  ],
+  "connections": {
+    "Every 2 hours": {
+      "main": [[{ "node": "Set Period & Topic", "type": "main", "index": 0 }]]
+    },
+    "Set Period & Topic": {
+      "main": [[{ "node": "Query Aggregates", "type": "main", "index": 0 }]]
+    },
+    "Query Aggregates": {
+      "main": [[{ "node": "Build Claude Request", "type": "main", "index": 0 }]]
+    },
+    "Build Claude Request": {
+      "main": [[{ "node": "Claude API", "type": "main", "index": 0 }]]
+    },
+    "Claude API": {
+      "main": [[{ "node": "Parse Verdict", "type": "main", "index": 0 }]]
+    },
+    "Parse Verdict": {
+      "main": [[{ "node": "Insert Pulse Report", "type": "main", "index": 0 }]]
+    },
+    "Insert Pulse Report": {
+      "main": [[{ "node": "If Important", "type": "main", "index": 0 }]]
+    },
+    "If Important": {
+      "main": [
+        [{ "node": "Send ntfy Push", "type": "main", "index": 0 }],
+        []
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "UTC"
+  },
+  "tags": [
+    { "name": "eventhorizon" },
+    { "name": "pulse" }
+  ]
+}
