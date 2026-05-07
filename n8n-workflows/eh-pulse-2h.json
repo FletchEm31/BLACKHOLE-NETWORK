@@ -21,6 +21,22 @@
     },
     {
       "parameters": {
+        "httpMethod": "POST",
+        "path": "WEBHOOK_PATH_PLACEHOLDER",
+        "responseMode": "onReceived",
+        "responseCode": 202,
+        "responseData": "{\"status\":\"triggered\",\"workflow\":\"EH Network Pulse - 2h\"}",
+        "options": {}
+      },
+      "id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+      "name": "Manual Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 500],
+      "webhookId": "WEBHOOK_ID_PLACEHOLDER"
+    },
+    {
+      "parameters": {
         "assignments": {
           "assignments": [
             {
@@ -251,6 +267,9 @@
   ],
   "connections": {
     "Every 2 hours": {
+      "main": [[{ "node": "Set Period & Topic", "type": "main", "index": 0 }]]
+    },
+    "Manual Webhook": {
       "main": [[{ "node": "Set Period & Topic", "type": "main", "index": 0 }]]
     },
     "Set Period & Topic": {
