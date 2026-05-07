@@ -56,9 +56,9 @@ Phase 3: AI INTEGRATION       ░░░░░░░░░░   0%
 | PostgreSQL on NVMe | ✅ Migrated, online |
 | Grafana installed | ✅ Live, connected to PostgreSQL |
 | Initial dashboards | ✅ 8-panel "EH Network Overview" live |
-| Purge cycle (`eh-purge` script) | ❌ Not yet built |
-| Cron schedule (48hr default) | ❌ Not yet configured |
-| 80% capacity safety net | ❌ Not yet implemented |
+| Purge cycle (`eh-purge` script) | ✅ Deployed to `/usr/local/sbin/eh-purge` on LA hub |
+| Cron schedule (48hr default) | ✅ `/etc/cron.d/eh-purge` — `--auto` at 03:00 UTC every 48h |
+| 80% capacity safety net | ✅ Same cron — `--check-capacity` every 15 min |
 | Full DNS query capture | ⚠️ Logger not capturing (only 1 row) |
 | Packet payload capture (testing-only) | ❌ Not yet enabled |
 | Hourly stats snapshots | ❌ Not yet implemented |
@@ -95,16 +95,14 @@ The "EH Network Overview" Grafana dashboard currently includes:
 
 In rough order:
 
-1. `eh-purge` script — manual + cron-driven archive/cleanup
-2. 80% capacity safety net trigger
-3. DNS logger fix (currently only capturing 1 row)
-4. Frankfurt UDP fix (blocked on Vultr)
-5. v3 bootstrap apply to Frankfurt
-6. Tokyo or other 3rd region node
-7. n8n install + initial workflows
-8. Claude API integration for analysis
-9. pgvector memory layer
-10. Voice ops interface (Vapi or Retell evaluation)
+1. DNS logger fix (currently only capturing 1 row)
+2. Frankfurt UDP fix (blocked on Vultr)
+3. v3 bootstrap apply to Frankfurt
+4. Tokyo or other 3rd region node
+5. n8n install + initial workflows
+6. Claude API integration for analysis
+7. pgvector memory layer
+8. Voice ops interface (Vapi or Retell evaluation)
 
 ## Cost snapshot
 
