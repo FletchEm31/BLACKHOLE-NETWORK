@@ -34,18 +34,20 @@ Phase 3: AI INTEGRATION       █░░░░░░░░░  ~10%
 | iptables ACCEPT for VPN→SSH | ✅ Persisted |
 | Reboot survival | ✅ Verified |
 
-### Frankfurt — `EH|VPS-FRANKFURT-EU1` ⚠️ Partial
+### Frankfurt — `EH|VPS-FRANKFURT-EU1` ⚠️ Hardened, tunnel still blocked
 
 | Component | Status |
 |-----------|--------|
 | IP | `192.248.187.208` |
 | OS | Ubuntu 22.04 |
-| WireGuard installed | ✅ |
-| WireGuard tunnel to LA | ❌ UDP packets dropped at Vultr's LA edge |
-| Shadowsocks | ✅ |
+| v3 bootstrap applied | ✅ 2026-05-07 (via Vultr web console; SSH key auth confirmed working) |
+| SSH | ✅ Key-only root, passwords disabled |
+| WireGuard installed + configured | ✅ Local config + LA hub registration in place (peer key `zkfJNbdL9Ptdxv...KA8=`, allowed-ips 10.9.0.2/32) |
+| WireGuard tunnel handshake | ❌ Still no handshake — UDP filtering at Vultr's LA edge is upstream of the bootstrap |
+| Shadowsocks (8388) | ✅ |
 | dnscrypt-proxy | ✅ |
-| **Vultr support ticket** | 🟡 Open — MTR data submitted, awaiting response |
-| v3 hardening applied | ❌ Pending (will replicate from LA after v3 stabilizes) |
+| Fail2ban + UFW + iptables | ✅ Hardened by v3 |
+| **Vultr support ticket** | 🟡 Open — once UDP path is restored, tunnel will establish automatically with no further config |
 
 ## Data pipeline
 
@@ -101,9 +103,8 @@ The "EH Network Overview" Grafana dashboard currently includes:
 
 In rough order:
 
-1. Frankfurt UDP fix (blocked on Vultr)
-2. v3 bootstrap apply to Frankfurt
-3. Tokyo or other 3rd region node
+1. Frankfurt UDP fix (blocked on Vultr ticket)
+2. Tokyo or other 3rd region node
 4. tmpfs migration for ephemeral content per external-observer principle (Suricata payload audit, /var/log/suricata logrotate tuning)
 5. n8n: import + activate the `eh-pulse-2h` workflow on the live instance, subscribe to ntfy topic from phone
 6. Additional n8n workflows (deeper analysis, weekly summaries, action automation)
@@ -127,7 +128,7 @@ In rough order:
 ## Operational notes
 
 - LA root password rotated on 2026-05-07 (stored in operator's password manager)
-- Frankfurt still uses original `EventHorizon2026` password
+- Frankfurt: v3 bootstrap applied 2026-05-07; SSH is now key-only root, passwords disabled. Bootstrap was delivered via Vultr web console (operator ran `bash /root/eh-node-bootstrap.sh EH-VPS-FRANKFURT-EU1 192.248.187.208 wg1` after pulling the script from LA's temp HTTP server)
 - LUKS passphrases backed up in operator's password manager as `EH-NVMe-LUKS` and `EH-HDD-LUKS`
 - LUKS keyfiles on LA at `/root/.luks-eh-nvme` and `/root/.luks-eh-hdd` (auto-unlock)
 - SSH key authorization for `fletch-desktop` workstation deployed to LA
