@@ -287,7 +287,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Build a concise text describing the current situation, then embed it via the local\n// embedding service. The result vector is passed to Retrieve Memories for top-K recall.\nconst period  = $('Set Period & Topic').first().json;\nconst metrics = $('Query Aggregates').first().json;\n\nconst topIps   = (metrics.top_source_ips  || []).map(x => x.source_ip).slice(0, 3).join(', ');\nconst topTypes = (metrics.top_event_types || []).map(x => x.event_type).slice(0, 3).join(', ');\n\nconst queryText = `Pulse cycle: ${metrics.events_total || 0} events total, ${metrics.events_high || 0} high, ${metrics.events_critical || 0} critical, ${metrics.anomalies_open || 0} anomalies. ${metrics.sessions_active || 0} active sessions. Top source IPs: ${topIps}. Top event types: ${topTypes}.`;\n\nconst resp = await fetch('http://127.0.0.1:8001/embed', {\n  method: 'POST',\n  headers: { 'Content-Type': 'application/json' },\n  body: JSON.stringify({ text: queryText })\n});\nif (!resp.ok) {\n  // Soft-fail: return empty vector so retrieval returns nothing rather than breaking the run\n  return [{ json: { embed_query: queryText, embed_vector: [], embed_ms: 0, embed_error: 'service ' + resp.status } }];\n}\nconst data = await resp.json();\nreturn [{ json: { embed_query: queryText, embed_vector: data.vector, embed_ms: data.ms } }];\n"
+        "jsCode": "// Build a concise text describing the current situation, then embed it via the local\n// embedding service. The result vector is passed to Retrieve Memories for top-K recall.\nconst period  = $('Set Period & Topic').first().json;\nconst metrics = $('Query Aggregates').first().json;\n\nconst topIps   = (metrics.top_source_ips  || []).map(x => x.source_ip).slice(0, 3).join(', ');\nconst topTypes = (metrics.top_event_types || []).map(x => x.event_type).slice(0, 3).join(', ');\n\nconst queryText = `Pulse cycle: ${metrics.events_total || 0} events total, ${metrics.events_high || 0} high, ${metrics.events_critical || 0} critical, ${metrics.anomalies_open || 0} anomalies. ${metrics.sessions_active || 0} active sessions. Top source IPs: ${topIps}. Top event types: ${topTypes}.`;\n\nlet vector = [];\nlet ms = 0;\nlet embedError = null;\ntry {\n  const resp = await this.helpers.httpRequest({\n    method: 'POST',\n    url: 'http://127.0.0.1:8001/embed',\n    body: { text: queryText },\n    json: true,\n  });\n  vector = resp.vector || [];\n  ms = resp.ms || 0;\n} catch (e) {\n  embedError = String(e).slice(0, 300);\n}\n\nreturn [{ json: { embed_query: queryText, embed_vector: vector, embed_ms: ms, embed_error: embedError } }];\n"
       },
       "id": "ph-c-embed",
       "name": "Embed Pulse Query",
@@ -314,6 +314,44 @@
       "position": [
         950,
         300
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_PG_CRED_ID",
+          "name": "Postgres EventHorizon"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Construct a memory payload from upstream data, then embed its content via the\n// local embedding service. Output goes to Insert Memory which writes the row.\nconst verdict = $('Parse Verdict').first().json;\nconst period  = $('Set Period & Topic').first().json;\nconst metrics = $('Query Aggregates').first().json;\n\nlet pulseId = null;\ntry { pulseId = $('Insert Pulse Report').first().json.id; } catch (e) { pulseId = null; }\n\nconst topTypes = (metrics.top_event_types || []).map(x => x.event_type);\nconst topIps   = (metrics.top_source_ips  || []).map(x => x.source_ip);\n\nconst tags = ['pulse'];\nif (pulseId) tags.push('pulse-' + pulseId);\nif (topIps.some(ip => ip && ip.startsWith('10.'))) tags.push('internal-ip');\nif ((metrics.events_critical || 0) > 0) tags.push('critical');\nif ((metrics.anomalies_open  || 0) > 0) tags.push('anomaly');\nfor (const t of topTypes) {\n  if (!['ssh_failure', 'ufw_block', 'honeypot', 'fail2ban'].includes(t)) {\n    tags.push('new-event-type-' + t);\n  }\n}\n\nlet memoryType = 'observation';\nlet importance = 6;\nif ((metrics.events_critical || 0) > 0 || (metrics.anomalies_open || 0) > 0) {\n  memoryType = 'incident';\n  importance = 9;\n} else if (verdict.important) {\n  importance = 7;\n}\n\nconst periodEnd = new Date(period.period_end);\nconst reasonShort = (verdict.reason || 'flagged').slice(0, 100);\nconst title = ('Pulse ' + periodEnd.toISOString().slice(0, 16) + ' UTC \u2014 ' + reasonShort).slice(0, 200);\n\nconst gbIn  = Math.round(Number(metrics.bytes_in)  / 1e9);\nconst gbOut = Math.round(Number(metrics.bytes_out) / 1e9);\nconst content = [\n  'Pulse cycle covering ' + period.period_start + ' to ' + period.period_end + '.',\n  'Sessions: ' + metrics.sessions_active + ' active distinct users.',\n  'Bandwidth: ' + gbIn + ' GB inbound / ' + gbOut + ' GB outbound.',\n  'Events: ' + metrics.events_total + ' total, ' + metrics.events_high + ' high, ' + metrics.events_medium + ' medium, ' + metrics.events_critical + ' critical. Anomalies: ' + metrics.anomalies_open + '.',\n  'Top source IPs: ' + topIps.slice(0, 3).join(', ') + '.',\n  'Top event types: ' + topTypes.slice(0, 3).join(', ') + '.',\n  '',\n  'Analyst summary: ' + (verdict.summary || ''),\n  'Flagged because: ' + (verdict.reason || ''),\n].join('\\n');\n\nconst resp = await this.helpers.httpRequest({\n  method: 'POST',\n  url: 'http://127.0.0.1:8001/embed',\n  body: { text: content },\n  json: true,\n});\n\nconst tagsPgLiteral = '{' + tags.map(t => '\"' + String(t).replace(/\\\\/g, '\\\\\\\\').replace(/\"/g, '\\\\\"') + '\"').join(',') + '}';\n\nconst metadata = {\n  pulse_id:        pulseId,\n  pulse_report_id: pulseId,\n  period_start:    period.period_start,\n  period_end:      period.period_end,\n  important:       verdict.important,\n  reason:          verdict.reason,\n  metrics: {\n    sessions_active: metrics.sessions_active,\n    events_total:    metrics.events_total,\n    events_high:     metrics.events_high,\n    events_medium:   metrics.events_medium,\n    events_critical: metrics.events_critical,\n    anomalies_open:  metrics.anomalies_open,\n  },\n  top_source_ips:  metrics.top_source_ips,\n  top_event_types: metrics.top_event_types,\n};\n\nreturn [{ json: {\n  memory_type: memoryType,\n  title: title,\n  content: content,\n  embedding: JSON.stringify(resp.vector),\n  metadata: JSON.stringify(metadata),\n  tags_pg_literal: tagsPgLiteral,\n  source: 'pulse',\n  importance: importance,\n} }];\n"
+      },
+      "id": "ph-b-build",
+      "name": "Build & Embed Memory",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2000,
+        380
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO memories (memory_type, title, content, embedding, metadata, tags, source, importance)\nVALUES ($1, $2, $3, $4::vector, $5::jsonb, $6::text[], $7, $8::smallint)\nRETURNING id;",
+        "options": {
+          "queryReplacement": "={{ [$json.memory_type, $json.title, $json.content, $json.embedding, $json.metadata, $json.tags_pg_literal, $json.source, $json.importance] }}"
+        }
+      },
+      "id": "ph-b-insert",
+      "name": "Insert Memory",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        2200,
+        380
       ],
       "credentials": {
         "postgres": {
@@ -420,6 +458,11 @@
             "node": "Send ntfy Push",
             "type": "main",
             "index": 0
+          },
+          {
+            "node": "Build & Embed Memory",
+            "type": "main",
+            "index": 0
           }
         ],
         []
@@ -446,6 +489,17 @@
           }
         ]
       ]
+    },
+    "Build & Embed Memory": {
+      "main": [
+        [
+          {
+            "node": "Insert Memory",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "settings": {
@@ -460,7 +514,7 @@
       "name": "pulse"
     },
     {
-      "name": "phase-c"
+      "name": "phase-b-c"
     }
   ]
 }
