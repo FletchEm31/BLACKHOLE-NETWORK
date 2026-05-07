@@ -130,6 +130,7 @@ In rough order:
 - Frankfurt: v3 bootstrap applied 2026-05-07; SSH is now key-only root, passwords disabled. Bootstrap was delivered via Vultr web console (operator ran `bash /root/eh-node-bootstrap.sh EH-VPS-FRANKFURT-EU1 192.248.187.208 wg1` after pulling the script from LA's temp HTTP server)
 - LUKS passphrases backed up in operator's password manager as `EH-NVMe-LUKS` and `EH-HDD-LUKS`
 - LUKS keyfiles on LA at `/root/.luks-eh-nvme` and `/root/.luks-eh-hdd` (auto-unlock)
+- **WireGuard PreSharedKeys deployed network-wide 2026-05-07** — every peer-pair now negotiates with an additional symmetric secret in addition to the X25519 ECDH handshake. Mitigates "harvest now, decrypt later" quantum attacks on the key exchange. PSK files at `/etc/wireguard/psk/{frankfurt,operator-pc,device-2,device-3}.psk` on LA hub (chmod 600). Frankfurt has the LA PSK at `/etc/wireguard/psk-la.psk`. Operator's three personal-device PSKs are also in his password manager (`EH-WG-PSK-PC`, `EH-WG-PSK-Device2`, `EH-WG-PSK-Device3`)
 - SSH key authorization for `fletch-desktop` workstation deployed to LA
 - Fail2ban whitelist includes VPN tunnel range (`10.8.0.0/24`) and operator's PC home IP
 - Grafana admin credential stored as `EH-Grafana-Admin` in password manager
