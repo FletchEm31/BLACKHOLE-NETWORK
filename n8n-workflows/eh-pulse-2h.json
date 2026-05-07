@@ -140,7 +140,7 @@
         "operation": "executeQuery",
         "query": "INSERT INTO pulse_reports (\n  period_start, period_end,\n  sessions_active, sessions_new, bytes_in, bytes_out,\n  events_total, events_high, events_critical, top_source_ips,\n  anomalies_open,\n  summary, important, reason,\n  raw_payload, raw_claude_response,\n  model_used, input_tokens, output_tokens\n) VALUES (\n  $1::timestamptz, $2::timestamptz,\n  $3::int, $4::int, $5::bigint, $6::bigint,\n  $7::int, $8::int, $9::int, $10::jsonb,\n  $11::int,\n  $12, $13::boolean, $14,\n  $15::jsonb, $16::jsonb,\n  $17, $18::int, $19::int\n) RETURNING id;",
         "options": {
-          "queryReplacement": "={{ $json.period_start }},{{ $json.period_end }},{{ $json.sessions_active }},{{ $json.sessions_new }},{{ $json.bytes_in }},{{ $json.bytes_out }},{{ $json.events_total }},{{ $json.events_high }},{{ $json.events_critical }},{{ JSON.stringify($json.top_source_ips) }},{{ $json.anomalies_open }},{{ $json.summary }},{{ $json.important }},{{ $json.reason }},{{ JSON.stringify($json.raw_payload) }},{{ JSON.stringify($json.raw_claude_response) }},{{ $json.model_used }},{{ $json.input_tokens }},{{ $json.output_tokens }}"
+          "queryReplacement": "={{ [$json.period_start, $json.period_end, $json.sessions_active, $json.sessions_new, $json.bytes_in, $json.bytes_out, $json.events_total, $json.events_high, $json.events_critical, JSON.stringify($json.top_source_ips), $json.anomalies_open, $json.summary, $json.important, $json.reason, JSON.stringify($json.raw_payload), JSON.stringify($json.raw_claude_response), $json.model_used, $json.input_tokens, $json.output_tokens] }}"
         }
       },
       "id": "77777777-7777-7777-7777-777777777777",
