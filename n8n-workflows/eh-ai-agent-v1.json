@@ -4,7 +4,10 @@
   "nodes": [
     {
       "parameters": {
-        "options": {}
+        "options": {
+          "responseMode": "lastNode"
+        },
+        "public": false
       },
       "type": "@n8n/n8n-nodes-langchain.chatTrigger",
       "typeVersion": 1.4,
@@ -36,8 +39,8 @@
         "model": {
           "__rl": true,
           "mode": "list",
-          "value": "claude-opus-4-7",
-          "cachedResultName": "Claude Opus 4.7"
+          "value": "claude-sonnet-4-6",
+          "cachedResultName": "Claude Sonnet 4.6"
         },
         "options": {}
       },
@@ -58,27 +61,15 @@
     },
     {
       "parameters": {
-        "toolDescription": "Embed a text string into a 384-dimensional vector using the local BAAI/bge-small-en-v1.5 model. Use this as the first step for semantic memory search: embed the operator's question, then call query_db with a similarity query against the memories table. Input: a single text string. Output: vector array as JSON.",
-        "url": "http://127.0.0.1:8001/embed",
-        "method": "POST",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={\n  \"text\": \"{text}\"\n}",
-        "placeholderDefinitions": {
-          "values": [
-            {
-              "name": "text",
-              "description": "the text to embed; <= 8000 characters",
-              "type": "string"
-            }
-          ]
-        },
-        "options": {}
+        "name": "embed_text",
+        "description": "Embed a text string into a 384-dim vector via the local BAAI/bge-small-en-v1.5 model. Returns the vector as a pgvector literal string like \"[0.123,0.456,...,0.789]\" \u2014 paste this exact string (with the brackets) into query_db as: SELECT title, content FROM memories ORDER BY embedding <=> \"<paste_vector_here>\"::vector LIMIT 5. Input parameter: query (the text to embed).",
+        "language": "javaScript",
+        "jsCode": "// Embed the input text using the local embedding service.\n// Returns the 384-dim vector formatted as a pgvector literal string,\n// ready to paste into a query_db SQL call.\nconst resp = await this.helpers.httpRequest({\n  method: \"POST\",\n  url: \"http://127.0.0.1:8001/embed\",\n  body: { text: query },\n  json: true,\n});\nreturn JSON.stringify(resp.vector);\n"
       },
       "id": "ag-embed-tool",
       "name": "embed_text",
-      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
-      "typeVersion": 1.1,
+      "type": "@n8n/n8n-nodes-langchain.toolCode",
+      "typeVersion": 1.2,
       "position": [
         800,
         380
