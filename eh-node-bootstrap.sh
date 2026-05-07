@@ -326,6 +326,11 @@ fi
 # ─── 12. Start services ────────────────────────────────────────
 log "Starting services..."
 systemctl enable wg-quick@${WG_INTERFACE} > /dev/null
+# Restart cleanly: if the interface is already up from a prior install/bootstrap,
+# `wg-quick up` is a no-op and the kernel keeps running the OLD config — which can
+# leave the disk config and the live config diverged. Take it down then up so the
+# fresh /etc/wireguard/${WG_INTERFACE}.conf actually loads.
+wg-quick down ${WG_INTERFACE} 2>/dev/null || true
 wg-quick up ${WG_INTERFACE} 2>/dev/null || true
 systemctl enable shadowsocks-libev > /dev/null && systemctl start shadowsocks-libev
 ok "All services running"

@@ -5,9 +5,9 @@ Last updated: **2026-05-07**
 ## Phase progress
 
 ```
-Phase 1: NETWORK              ███████░░░  ~70%
-Phase 2: DASHBOARD            ███████░░░  ~65%
-Phase 3: AI INTEGRATION       █░░░░░░░░░  ~10%
+Phase 1: NETWORK              ████████░░  ~85%
+Phase 2: DASHBOARD            ███████░░░  ~75%
+Phase 3: AI INTEGRATION       ███░░░░░░░  ~30%
 ```
 
 ## Nodes
@@ -34,7 +34,7 @@ Phase 3: AI INTEGRATION       █░░░░░░░░░  ~10%
 | iptables ACCEPT for VPN→SSH | ✅ Persisted |
 | Reboot survival | ✅ Verified |
 
-### Frankfurt — `EH|VPS-FRANKFURT-EU1` ⚠️ Hardened, tunnel still blocked
+### Frankfurt — `EH|VPS-FRANKFURT-EU1` ✅ Operational
 
 | Component | Status |
 |-----------|--------|
@@ -43,11 +43,11 @@ Phase 3: AI INTEGRATION       █░░░░░░░░░  ~10%
 | v3 bootstrap applied | ✅ 2026-05-07 (via Vultr web console; SSH key auth confirmed working) |
 | SSH | ✅ Key-only root, passwords disabled |
 | WireGuard installed + configured | ✅ Local config + LA hub registration in place (peer key `zkfJNbdL9Ptdxv...KA8=`, allowed-ips 10.9.0.2/32) |
-| WireGuard tunnel handshake | ❌ Still no handshake — UDP filtering at Vultr's LA edge is upstream of the bootstrap |
+| WireGuard tunnel handshake | ✅ 2026-05-07 — Vultr UDP path restored, tunnel up, 140 ms LA↔Frankfurt RTT, 0% loss bidirectional |
 | Shadowsocks (8388) | ✅ |
 | dnscrypt-proxy | ✅ |
 | Fail2ban + UFW + iptables | ✅ Hardened by v3 |
-| **Vultr support ticket** | 🟡 Open — once UDP path is restored, tunnel will establish automatically with no further config |
+| **Vultr support ticket** | ✅ Resolved 2026-05-07. UDP path restored. Required two follow-up fixes after handshake landed: (a) Frankfurt's `wg1.conf` had stale `AllowedIPs = 10.9.0.0/30` from a prior install — the latest bootstrap wrote correct config but didn't down/up wg1, so kernel kept the old mapping. Bootstrap script patched to `wg-quick down && up` after writing config. (b) UFW route-allow added on `wg1 → enp1s0` so peer traffic can egress to internet (same FORWARD-chain default-deny gap LA had earlier today) |
 
 ## Data pipeline
 
@@ -97,14 +97,13 @@ The "EH Network Overview" Grafana dashboard currently includes:
 
 ## Outstanding tickets
 
-- **Vultr LA UDP filtering** — MTR shows 58% loss starting at hop 12 (`ce-1-3-3.a03.lsanca07.us.bb.gin.ntt.net`) and 100% at destination. Anthony confirmed WG is configured; awaiting infrastructure investigation.
+- **Vultr LA UDP filtering** — ✅ Resolved 2026-05-07. Path restored. Frankfurt tunnel is up and bidirectional ping is clean.
 
 ## Pending build items
 
 In rough order:
 
-1. Frankfurt UDP fix (blocked on Vultr ticket)
-2. Tokyo or other 3rd region node
+1. Tokyo or other 3rd region node
 4. tmpfs migration for ephemeral content per external-observer principle (Suricata payload audit, /var/log/suricata logrotate tuning)
 5. n8n: import + activate the `eh-pulse-2h` workflow on the live instance, subscribe to ntfy topic from phone
 6. Additional n8n workflows (deeper analysis, weekly summaries, action automation)
