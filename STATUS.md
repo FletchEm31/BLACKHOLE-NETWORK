@@ -59,8 +59,8 @@ Phase 3: AI INTEGRATION       ░░░░░░░░░░   0%
 | Purge cycle (`eh-purge` script) | ✅ Deployed to `/usr/local/sbin/eh-purge` on LA hub |
 | Cron schedule (48hr default) | ✅ `/etc/cron.d/eh-purge` — `--auto` at 03:00 UTC every 48h |
 | 80% capacity safety net | ✅ Same cron — `--check-capacity` every 15 min |
-| Full DNS query capture | ⚠️ Logger not capturing (only 1 row) |
-| Packet payload capture (testing-only) | ❌ Not yet enabled |
+| DNS query persistence | ⛔ Intentionally disabled — `dns_queries` table dropped per external-observer principle (domains are content) |
+| Packet payload capture | ⛔ Intentionally not enabled — payloads are content |
 | Hourly stats snapshots | ❌ Not yet implemented |
 | Weekly analysis | ❌ Not yet implemented |
 | n8n action automation | ❌ Not yet installed |
@@ -69,10 +69,12 @@ Phase 3: AI INTEGRATION       ░░░░░░░░░░   0%
 
 | Table | Rows |
 |-------|------|
-| `sessions` | 198 |
-| `dns_queries` | 1 (logger needs investigation) |
-| `security_events` | 7,969 |
+| `sessions` | 280 |
+| `security_events` | 12,280 (predominantly bot SSH brute-force attempts on the public IP) |
 | `anomalies` | 0 |
+| `purge_log` | 1 (manual smoke run on 2026-05-07) |
+
+`dns_queries` was dropped on 2026-05-07 — domains are content, not metadata.
 
 ## Live dashboard panels
 
@@ -95,10 +97,10 @@ The "EH Network Overview" Grafana dashboard currently includes:
 
 In rough order:
 
-1. DNS logger fix (currently only capturing 1 row)
-2. Frankfurt UDP fix (blocked on Vultr)
-3. v3 bootstrap apply to Frankfurt
-4. Tokyo or other 3rd region node
+1. Frankfurt UDP fix (blocked on Vultr)
+2. v3 bootstrap apply to Frankfurt
+3. Tokyo or other 3rd region node
+4. tmpfs migration for ephemeral content per external-observer principle (Suricata payload audit, /var/log/suricata logrotate tuning)
 5. n8n install + initial workflows
 6. Claude API integration for analysis
 7. pgvector memory layer
@@ -127,3 +129,5 @@ In rough order:
 - Fail2ban whitelist includes VPN tunnel range (`10.8.0.0/24`) and operator's PC home IP
 - Grafana admin credential stored as `EH-Grafana-Admin` in password manager
 - `grafana_reader` PostgreSQL role exists for read-only dashboard queries
+- Leak-test pass on 2026-05-07 caught a DNS bypass: client config had `DNS = 1.1.1.1, 1.0.0.1` (queries went straight to Cloudflare, skipping the on-hub dnscrypt-proxy resolver rotation). Fixed by setting client `DNS = 10.8.0.1` and adding UFW rule allowing port 53 from the tunnel network — bootstrap script updated so future nodes don't ship with this gap
+- `iperf3` over WG measured ~55 Mbps up / ~360–420 Mbps down sustained between operator PC and LA hub; bandwidth ceiling is the home upload, not the VPN. Suricata-CPU is the realistic scale ceiling (~100 Mbps inspected per vCPU with the full 50k ruleset)

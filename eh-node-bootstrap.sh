@@ -238,6 +238,8 @@ ufw allow from ${LA_IP} to any port ${SS_PORT} > /dev/null
 
 # Allow VPN tunnel admin access on common admin ports
 ufw allow from ${TUNNEL_NETWORK} to any port 22 proto tcp > /dev/null
+ufw allow from ${TUNNEL_NETWORK} to any port 53 proto udp > /dev/null  # dnscrypt-proxy
+ufw allow from ${TUNNEL_NETWORK} to any port 53 proto tcp > /dev/null  # dnscrypt-proxy (TCP fallback)
 ufw allow from ${TUNNEL_NETWORK} to any port 3000 proto tcp > /dev/null  # Grafana
 ufw allow from ${TUNNEL_NETWORK} to any port 5432 proto tcp > /dev/null  # PostgreSQL
 
