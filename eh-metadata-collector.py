@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
-EH metadata collector — runs every 5 minutes via /etc/crontab.
+EH metadata collector — runs every 30 minutes via /etc/crontab.
+
+Cron entry:
+    */30 * * * * root python3 /usr/local/bin/eh-metadata-collector.py >> /var/log/eh-metadata.log 2>&1
 
 Polls `wg show wg0 dump` and reconciles the `sessions` table:
   - For each WG peer with a recent handshake (within ACTIVE_WINDOW seconds),

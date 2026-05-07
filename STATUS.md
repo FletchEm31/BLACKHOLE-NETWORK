@@ -66,7 +66,7 @@ Phase 3: AI INTEGRATION       ███░░░░░░░  ~30%
 | Hourly stats snapshots | ❌ Not yet implemented |
 | Weekly analysis | ❌ Not yet implemented |
 | n8n install | ✅ Running at `https://n8n.eventhorizonvpn.com` (nginx + LE on 443) |
-| n8n: `EH Network Pulse - 2h` workflow | ✅ Live — schedule trigger + manual UI execute + on-demand webhook all firing correctly. Pulls 3 metadata tables every 2h, sends aggregate to Claude (Sonnet 4.6) with structured outputs, writes to `pulse_reports`, ntfy push to `eh-alerts-hayden-x7k2` when `important=true`. Alert thresholds calibrated to operator's actual baseline (~470 high events/cycle is honeypot+fail2ban noise, not anomaly) |
+| n8n: `EH Network Pulse - 2h` workflow | ⏸️ Deactivated 2026-05-07 to reduce Anthropic API spend. Workflow logic intact (Sonnet 4.6, structured outputs, semantic memory retrieval + ingestion), webhook still registered for ad-hoc trigger. Re-enable by flipping `active=1` and restarting n8n |
 | n8n: `EventHorizon Proxy Health Monitor v1.0` | ⛔ Deactivated 2026-05-07 — the 4 monitored proxies were decommissioned (operator concluded they were insecure). Workflow JSON archived in `n8n-workflows/eh-proxy-health-monitor.json` for future reactivation/repurposing |
 | n8n: `EventHorizon AI Agent v1.0` | ✅ Live (chat-trigger workflow, pre-existing) |
 
