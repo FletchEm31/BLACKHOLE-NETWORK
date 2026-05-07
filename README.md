@@ -67,6 +67,7 @@ Each node runs:
 | File | Purpose |
 |------|---------|
 | `eh-node-bootstrap.sh` | v3 deployment script — provisions a new node end-to-end |
+| `eh-purge.sh` | Archive/purge job — hot→cold tiering, pg_dump + VACUUM, 48h cron + 80% safety net |
 | `STATUS.md` | Current state of all nodes and components |
 | `docs/dashboard.md` | Grafana access and panel SQL reference |
 | `docs/credentials-recovery.md` | Recovery procedures for lost keys/passwords |
