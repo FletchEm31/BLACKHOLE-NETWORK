@@ -135,10 +135,15 @@ In rough order:
 - **2026-05-08 Frankfurt security delta** — fail2ban removed (was inactive on a clean v3 bootstrap — silent gap), CrowdSec + cs-firewall-bouncer-iptables installed, Suricata 6.0.4 with 49,968 rules listening on enp1s0
 - **2026-05-08 LA cleanup** — `eh-honeypot.service` (custom python listener on 2222/3306/6379/8081) removed along with its UFW rules. fail2ban stripped to a lean 4-jail config: sshd, grafana, postgresql, n8n. VPN whitelist (`10.8.0.0/24`, `10.9.0.0/24`) added back; was missing on the prior config
 - **2026-05-08 bootstrap v3 revision** — fail2ban removed from script, CrowdSec install added. Suricata intentionally NOT in bootstrap (per-node based on capacity). `SS_PASSWORD` no longer hardcoded; per-node random by default with env-var override
+- **2026-05-08 PostgreSQL `ehuser` rotation** — done. ALTER ROLE'd to fresh 32-char random; updated dependents:
+  - `/usr/local/bin/eh-security-collector.py` (cron `*/5 * * * *` in `/etc/crontab`) — was hardcoded `EventHorizon2026`
+  - `/usr/local/bin/eh-dns-collector.py` (cron `*/5 * * * *` in `/etc/crontab`) — was hardcoded `EventHorizon2026`
+  - `/root/.eh-metadata.env` `EH_METADATA_PG_PASSWORD` (read by `eh-metadata-collector.py`, cron `*/30 * * * *`)
+  - n8n + Grafana + `eh-purge.sh` confirmed NOT to use `ehuser` — n8n uses `n8n_user` + `agent_reader`, Grafana uses `grafana_reader`, eh-purge uses peer auth as `postgres`. So no n8n/Grafana cred edits needed for this rotation. Verified pulse webhook + Grafana dashboard still load post-rotation
+  - PG log auth-failures stopped at 13:01 UTC — 13:00:01 cron tick was the last gasp before sed completed; 13:05+ ticks all clean
 - **Outstanding follow-ups (flagged 2026-05-08, not yet acted on)**:
   1. Operator-PC ↔ LA WireGuard tunnel is broken from the operator's workstation (handshake stale; `ssh root@10.8.0.1` times out). Used FRA as ProxyJump for today's work. Likely needs PSK refresh on the operator-pc client config
   2. Frankfurt UFW has manually-added rules contradicting bootstrap intent: `51820/udp Anywhere`, `51821/udp Anywhere`, `8443/tcp Anywhere`, `Anywhere ALLOW IN from LA`. Source of "server is exposed" feeling. Awaiting decision on which to prune
-  3. PostgreSQL `ehuser` role still uses `EventHorizon2026` (was hardcoded in `eh-honeypot.py`, also referenced by n8n / Grafana / eh-purge). Active auth failures observed at 12:35 UTC during today's work suggest a process holding stale creds. Rotation deferred — multi-service coordination needed
 - LA root password rotated on 2026-05-07 (stored in operator's password manager)
 - Frankfurt: v3 bootstrap applied 2026-05-07; SSH is now key-only root, passwords disabled. Bootstrap was delivered via Vultr web console (operator ran `bash /root/eh-node-bootstrap.sh EH-VPS-FRANKFURT-EU1 192.248.187.208 wg1` after pulling the script from LA's temp HTTP server)
 - LUKS passphrases backed up in operator's password manager as `EH-NVMe-LUKS` and `EH-HDD-LUKS`
