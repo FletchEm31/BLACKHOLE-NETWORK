@@ -20,10 +20,18 @@
 #   + SSH hardening: PermitRootLogin = prohibit-password (key-only)
 #   + SSH host keys regenerated (safe for snapshot-based deployments)
 #   + Pre-loaded admin SSH keys for immediate access
-#   + Fail2ban auto-whitelists VPN tunnel range
 #   + iptables ACCEPT rule for VPN→SSH at position 1
 #   + Skips fwknop entirely (was causing silent SSH drops)
 #   + Optional PostgreSQL install for hub nodes
+#
+# CHANGES IN 2026-05-08 REVISION:
+#   - Removed fail2ban entirely (CrowdSec replaces it; fail2ban was being silently
+#     bypassed — Frankfurt's service was inactive even after a clean v3 bootstrap)
+#   + Installs CrowdSec + cs-firewall-bouncer-iptables (linux + sshd collections)
+#   - Removed hardcoded SS_PASSWORD; per-node random password generated and
+#     printed in the summary (operator stores in password manager)
+#   * Suricata is intentionally NOT in the bootstrap — its 50k-rule load and
+#     ~100 Mbps/vCPU ceiling means it gets installed per-node based on capacity
 
 set -e
 
@@ -36,8 +44,11 @@ WG_INTERFACE=${3:-"wg1"}
 LA_IP="149.28.91.100"
 LA_PUBKEY="TOYnFt18v4NynEN91o6zkmV5hsvHBLJTb8qL7GG/KAo="
 LA_WG_PORT="51820"
-SS_PASSWORD="EventHorizon2026"
 SS_PORT="8388"
+# Per-node Shadowsocks password generated at bootstrap time — printed in the
+# summary so the operator can save it to the password manager. Override by
+# exporting SS_PASSWORD before running this script.
+SS_PASSWORD="${SS_PASSWORD:-$(openssl rand -base64 32 | tr -dc 'A-Za-z0-9' | head -c 32)}"
 
 # ─── Colors ────────────────────────────────────────────────────
 RED='\033[0;31m'; GREEN='\033[0;32m'; CYAN='\033[0;36m'; YELLOW='\033[1;33m'; NC='\033[0m'
@@ -279,28 +290,17 @@ iptables -t nat -C POSTROUTING -o ${NET_IFACE} -j MASQUERADE 2>/dev/null || \
 netfilter-persistent save > /dev/null
 ok "NAT masquerade enabled on $NET_IFACE"
 
-# ─── 10. Fail2ban with VPN whitelist ───────────────────────────
-log "Configuring Fail2ban..."
-apt install -y fail2ban -qq
-
-# Ensure jail.local exists with VPN whitelist
-cat > /etc/fail2ban/jail.local << EOF
-[DEFAULT]
-ignoreip = 127.0.0.1/8 ::1 ${TUNNEL_NETWORK} 10.8.0.0/24
-bantime = 1h
-findtime = 10m
-maxretry = 5
-
-[sshd]
-enabled = true
-port = 22
-filter = sshd
-logpath = /var/log/auth.log
-maxretry = 3
-EOF
-
-systemctl restart fail2ban
-ok "Fail2ban configured with VPN whitelist"
+# ─── 10. CrowdSec (replaces fail2ban) ──────────────────────────
+# CrowdSec has the same surface (block bad SSH actors) but pulls collaborative
+# threat intel and doesn't silently die the way fail2ban did on Frankfurt's
+# clean v3 install. cs-firewall-bouncer-iptables installs an INPUT chain at
+# position 1, before the UFW chains.
+log "Installing CrowdSec..."
+curl -fsSL https://install.crowdsec.net | sh > /dev/null 2>&1
+DEBIAN_FRONTEND=noninteractive apt-get install -y crowdsec crowdsec-firewall-bouncer-iptables -qq
+systemctl enable --now crowdsec > /dev/null 2>&1 || true
+systemctl enable --now crowdsec-firewall-bouncer > /dev/null 2>&1 || true
+ok "CrowdSec installed (linux + sshd collections active by default)"
 
 # ─── 11. Optional: PostgreSQL (hub-only) ───────────────────────
 if [[ "$INSTALL_POSTGRES" == "1" ]]; then
@@ -349,9 +349,12 @@ echo "║  Tunnel:   ${TUNNEL_IP}/30"
 echo "║  Storage:  $([ -d /mnt/eh-nvme-hot ] && echo "NVMe encrypted ✓" || echo "no NVMe")"
 echo "║            $([ -d /mnt/eh-hdd-cold ] && echo "HDD encrypted ✓" || echo "no HDD")"
 echo "║  Services: WireGuard ✓ Shadowsocks ✓ Encrypted DNS ✓"
-echo "║            Fail2ban ✓ UFW ✓ NAT ✓"
+echo "║            CrowdSec ✓ UFW ✓ NAT ✓"
 echo "║  SSH:      Key-only root login, passwords disabled"
 echo "║  NIC:      ${NET_IFACE}"
+echo "╠══════════════════════════════════════════════════════════╣"
+echo "║  SHADOWSOCKS PASSWORD (save to password manager):"
+echo "║  ${SS_PASSWORD}"
 echo "╠══════════════════════════════════════════════════════════╣"
 echo "║  PUBLIC KEY (give to LA hub):"
 echo "║  ${NODE_PUBKEY}"

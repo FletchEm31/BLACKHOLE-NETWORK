@@ -1,6 +1,6 @@
 # EventHorizon — Network Status
 
-Last updated: **2026-05-07**
+Last updated: **2026-05-08**
 
 ## Phase progress
 
@@ -20,11 +20,12 @@ Phase 3: AI INTEGRATION       ███░░░░░░░  ~30%
 | Specs | 2 vCPU, 2 GB RAM, 60 GB system NVMe |
 | OS | Ubuntu 22.04.5 LTS |
 | WireGuard server (port 51820) | ✅ Active |
-| Shadowsocks (port 8388) | ✅ Active |
+| Shadowsocks (port 8388) | ✅ Active (password rotated 2026-05-08) |
 | dnscrypt-proxy | ✅ Active |
-| Fail2ban + CrowdSec | ✅ Active |
+| Fail2ban (lean: sshd + grafana + postgresql + n8n jails, VPN-whitelisted) | ✅ Active |
+| CrowdSec (linux + sshd + nginx + http-cve collections, cs-firewall-bouncer) | ✅ Active |
 | Suricata IDS | ✅ Active (49,955 rules) |
-| Honeypots (4 services) | ✅ Active |
+| Honeypots | ⛔ Removed 2026-05-08 (low signal, ehuser PG creds in source) |
 | UFW firewall | ✅ Configured |
 | **NVMe block storage** (`SSD-LOSANGELES-US1`, 101 GB) | ✅ LUKS2 encrypted, XFS, mounted |
 | **HDD block storage** (`HDD-LOSANGELES-US1`, 399 GB) | ✅ LUKS2 encrypted, XFS, mounted |
@@ -44,9 +45,13 @@ Phase 3: AI INTEGRATION       ███░░░░░░░  ~30%
 | SSH | ✅ Key-only root, passwords disabled |
 | WireGuard installed + configured | ✅ Local config + LA hub registration in place (peer key `zkfJNbdL9Ptdxv...KA8=`, allowed-ips 10.9.0.2/32) |
 | WireGuard tunnel handshake | ✅ 2026-05-07 — Vultr UDP path restored, tunnel up, 140 ms LA↔Frankfurt RTT, 0% loss bidirectional |
-| Shadowsocks (8388) | ✅ |
+| Shadowsocks (8388) | ✅ Password rotated 2026-05-08 |
 | dnscrypt-proxy | ✅ |
-| Fail2ban + UFW + iptables | ✅ Hardened by v3 |
+| Fail2ban | ⛔ Removed 2026-05-08 (was already inactive on a clean v3 bootstrap — silent gap) |
+| CrowdSec + cs-firewall-bouncer-iptables (linux + sshd collections) | ✅ Installed 2026-05-08 |
+| Suricata IDS (49,968 rules, listening on enp1s0) | ✅ Installed 2026-05-08 |
+| Root password rotated away from `EventHorizon2026` | ✅ 2026-05-08 |
+| UFW + iptables | ⚠️ See operational notes — overly permissive rules for `51820/udp Anywhere`, `51821/udp Anywhere`, `8443/tcp Anywhere` flagged but not yet pruned |
 | **Vultr support ticket** | ✅ Resolved 2026-05-07. UDP path restored. Required two follow-up fixes after handshake landed: (a) Frankfurt's `wg1.conf` had stale `AllowedIPs = 10.9.0.0/30` from a prior install — the latest bootstrap wrote correct config but didn't down/up wg1, so kernel kept the old mapping. Bootstrap script patched to `wg-quick down && up` after writing config. (b) UFW route-allow added on `wg1 → enp1s0` so peer traffic can egress to internet (same FORWARD-chain default-deny gap LA had earlier today) |
 
 ## Data pipeline
@@ -126,6 +131,14 @@ In rough order:
 
 ## Operational notes
 
+- **2026-05-08 rotation pass** — Frankfurt root password, Shadowsocks password (both nodes, shared), and n8n admin password all rotated. New values stored in operator's password manager only; no plaintext on disk or in repo. Old defaults (`EventHorizon2026` family) are dead.
+- **2026-05-08 Frankfurt security delta** — fail2ban removed (was inactive on a clean v3 bootstrap — silent gap), CrowdSec + cs-firewall-bouncer-iptables installed, Suricata 6.0.4 with 49,968 rules listening on enp1s0
+- **2026-05-08 LA cleanup** — `eh-honeypot.service` (custom python listener on 2222/3306/6379/8081) removed along with its UFW rules. fail2ban stripped to a lean 4-jail config: sshd, grafana, postgresql, n8n. VPN whitelist (`10.8.0.0/24`, `10.9.0.0/24`) added back; was missing on the prior config
+- **2026-05-08 bootstrap v3 revision** — fail2ban removed from script, CrowdSec install added. Suricata intentionally NOT in bootstrap (per-node based on capacity). `SS_PASSWORD` no longer hardcoded; per-node random by default with env-var override
+- **Outstanding follow-ups (flagged 2026-05-08, not yet acted on)**:
+  1. Operator-PC ↔ LA WireGuard tunnel is broken from the operator's workstation (handshake stale; `ssh root@10.8.0.1` times out). Used FRA as ProxyJump for today's work. Likely needs PSK refresh on the operator-pc client config
+  2. Frankfurt UFW has manually-added rules contradicting bootstrap intent: `51820/udp Anywhere`, `51821/udp Anywhere`, `8443/tcp Anywhere`, `Anywhere ALLOW IN from LA`. Source of "server is exposed" feeling. Awaiting decision on which to prune
+  3. PostgreSQL `ehuser` role still uses `EventHorizon2026` (was hardcoded in `eh-honeypot.py`, also referenced by n8n / Grafana / eh-purge). Active auth failures observed at 12:35 UTC during today's work suggest a process holding stale creds. Rotation deferred — multi-service coordination needed
 - LA root password rotated on 2026-05-07 (stored in operator's password manager)
 - Frankfurt: v3 bootstrap applied 2026-05-07; SSH is now key-only root, passwords disabled. Bootstrap was delivered via Vultr web console (operator ran `bash /root/eh-node-bootstrap.sh EH-VPS-FRANKFURT-EU1 192.248.187.208 wg1` after pulling the script from LA's temp HTTP server)
 - LUKS passphrases backed up in operator's password manager as `EH-NVMe-LUKS` and `EH-HDD-LUKS`
