@@ -7,7 +7,7 @@ Last updated: **2026-05-09**
 ```
 Phase 1: NETWORK              ████████░░  ~85%
 Phase 2: DASHBOARD            ███████░░░  ~75%
-Phase 3: AI INTEGRATION       ███░░░░░░░  ~30%
+Phase 3: AI INTEGRATION       ████░░░░░░  ~40%   (pgvector memory live, JARVIS→HORIZON rename done, voice/SMS/calling pending)
 ```
 
 ## Nodes
@@ -134,6 +134,26 @@ What should be in the operator's password manager. **No values stored here** —
 | `EH-PG-ehuser` | PG role password | scripts that read it: `eh-security-collector.py`, `eh-dns-collector.py`, `/root/.eh-metadata.env` | Rotated 2026-05-08 |
 | `EH-PG-bootstrap_writer` | PG role password | `/root/.eh-heartbeat.env` (mode 0600, both nodes) | Used by `eh-heartbeat` script + future v4 bootstraps via `EH_BOOTSTRAP_PG_DSN` |
 | `EH-PG-log_shipper` | PG role password | `/root/.eh-log-shipper.env` (mode 0600, FRA + future non-hub nodes) | INSERT-only on `node_logs`; used by `eh-log-shipper.py` cron */5 |
+
+### 🟠 HORIZON service credentials (operator-provisioned — see `infrastructure/docs/horizon-roadmap.md`)
+
+These are **TBD until operator creates the accounts**. Listed here so they have canonical PM entry names from day one. Once provisioned, values land in n8n's encrypted credential store on LA (workflow-side) and in operator's Proton Pass (recovery-side). No values ever in this repo.
+
+| PM entry | Type | Live copy on server | Notes |
+|----------|------|--------------------|-------|
+| `EH-Twilio-AccountSID` | Twilio account SID | n8n credential (encrypted via n8n master key) | TBD — operator provisions Twilio account |
+| `EH-Twilio-AuthToken` | Twilio auth token | n8n credential | TBD |
+| `EH-Twilio-PhoneNumber` | E.164 phone number | n8n credential + STATUS.md / config | TBD |
+| `EH-ElevenLabs-API-Key` | ElevenLabs API key | n8n credential | TBD — Creator tier ($22/mo) for Professional Voice Clone |
+| `EH-ElevenLabs-VoiceID-HORIZON` | Voice ID (string, library voice) | n8n credential / config | TBD — operator picks library female voice at setup |
+| `EH-ElevenLabs-VoiceID-Operator` | Voice ID (cloned operator voice) | n8n credential / config | TBD — generated after PVC upload of 30s sample |
+| `EH-Google-Horizon-Account` | Login + 2FA recovery | Google account + n8n OAuth credential | TBD — `horizon@gmail.com` for Calendar API |
+| `EH-OpenWeatherMap-API-Key` | API key (free tier, 60 req/min) | n8n credential | TBD |
+| `EH-NewsAPI-API-Key` | API key (free tier, 100 req/day) | n8n credential | TBD |
+| `EH-Alpaca-Paper-KeyID` + `EH-Alpaca-Paper-SecretKey` | Alpaca paper API credentials | n8n credential | TBD |
+| `EH-Alpaca-Live-KeyID` + `EH-Alpaca-Live-SecretKey` | Alpaca live API credentials | n8n credential | **Provision LATER** — only after operator flips a STATUS.md "PROMOTE TO LIVE" gate per individual ruleset |
+| `EH-eBay-AppID` + `EH-eBay-CertID` + `EH-eBay-Token` | eBay API credentials | n8n credential | Already approved; operator needs to feed values into n8n |
+| `EH-FMP-API-Key` | Financial Modeling Prep API key | n8n credential / MCP config | Already connected via MCP — verify the key is also captured in PM |
 | `EH-PG-n8n_user` | PG role password | n8n encrypted credential `Postgres EventHorizon` (`/root/.n8n/database.sqlite`) | Used by n8n workflows that write to PG |
 | `EH-PG-grafana_reader` | PG role password | Grafana datasource `secureJsonData` in `/var/lib/grafana/grafana.db` (encrypted with Grafana `secret_key`) | Read-only, used by dashboard queries |
 | `EH-PG-agent_reader` | PG role password | n8n encrypted credential `Postgres EventHorizon (agent read-only)` | Used by AI Agent workflow |
@@ -197,12 +217,10 @@ The "EH Network Overview" Grafana dashboard currently includes:
 In rough order:
 
 1. Tokyo or other 3rd region node
-4. tmpfs migration for ephemeral content per external-observer principle (Suricata payload audit, /var/log/suricata logrotate tuning)
-5. n8n: import + activate the `eh-pulse-2h` workflow on the live instance, subscribe to ntfy topic from phone
-6. Additional n8n workflows (deeper analysis, weekly summaries, action automation)
-7. Claude API integration for deeper / on-demand analysis
-8. pgvector memory layer
-9. Voice ops interface (Vapi or Retell evaluation)
+2. tmpfs migration for ephemeral content per external-observer principle (Suricata payload audit, /var/log/suricata logrotate tuning)
+3. **HORIZON Phase 3 modules** — see `infrastructure/docs/horizon-roadmap.md` for the full 10-module spec, build phasing, voice stack architecture, jurisdictional posture, and decisions log. Operator pre-session-1 actions: provision Twilio + ElevenLabs Creator + Google `horizon@gmail.com` + OpenWeatherMap + NewsAPI + Alpaca paper, plus record a 30s voice sample for operator-voice cloning. Session 1 build target: M1 Voice Pipeline + start on M2 Morning Briefing.
+4. Hourly stats snapshots + Weekly analysis (long-pending from Phase 2 data pipeline; can be a HORIZON M3/M4 by-product)
+5. Hetzner Storage Box swap for backups (DR completion — see `BACKUP.md`)
 
 ## Cost snapshot
 
@@ -262,6 +280,11 @@ In rough order:
     JARVIS's existing `embed_text` and `query_db` agent tools are retained — auto-retrieval happens FIRST (no agent decision required); the tools remain available for ad-hoc deeper queries the agent decides it needs.
     Test memory seeded (id 7, memory_type=`deployment`, title="JARVIS pgvector retrieval wiring") so the next chat that semantically relates to JARVIS / pgvector / memory wiring will demonstrate the recall loop.
   - **`node_logs` schema applied + log_shipper PG role created on LA** (committed earlier as `6523cd4`) — INSERT-only role, password rotated to PM-stored value. `pg_hba.conf` extended with two `host eventhorizon log_shipper` rules for 10.8.0.0/24 and 10.9.0.0/24. FRA's `eh-log-shipper.py` deployed and cron'd; ready to ship Suricata + CrowdSec events to LA when any actually fire.
+- **2026-05-09 HORIZON — JARVIS rename + roadmap landing**:
+  - **Persona renamed JARVIS → HORIZON** across the live n8n workflow (workflow row name + entire system prompt swept case-insensitively, 0 residual references), seeded memory id 7 in `memories` table updated, repo file `n8n-workflows/eh-ai-agent-v1.json` renamed to `n8n-workflows/eh-horizon.json` and re-exported from the live install. `EventHorizon AI Agent v1.0` is now `HORIZON` in n8n.
+  - **Roadmap doc landed** at `infrastructure/docs/horizon-roadmap.md` — consolidates the operator's `HORIZON PLAN.txt` (repo root) plus all interactive decisions captured during this session. Covers: identity, build phasing, 10 module specs (M1 Voice Pipeline → M10 Job Search), voice stack architecture (LA-only, Whisper tiny, ElevenLabs Creator, Twilio), recording posture (delete immediately all phases for now; 48h business-test hold deferred until operator activates business calls), **jurisdictional posture** (FRA never touches voice data — § 201 StGB risk; LA-only with universal disclosure prefix is the defensible pattern), three pgvector memory lanes, retention policy, RAG-first cost cascade with Haiku query router, ~$37-47/mo HORIZON monthly add at full build.
+  - **Operator pre-Session-1 actions**: provision 6 service accounts (Twilio, ElevenLabs Creator, Google `horizon@gmail.com`, OpenWeatherMap, NewsAPI, Alpaca paper), record a 30s voice sample for PVC, populate the new HORIZON entries in the secrets inventory above.
+  - **Phase 3 progress** bumped 30% → 40% reflecting pgvector memory live + JARVIS→HORIZON rename complete + roadmap finalized; voice/SMS/calling/integrations are the remaining ~60%.
 - **Outstanding follow-ups (flagged 2026-05-08, not yet acted on)**:
   1. Frankfurt UFW has manually-added rules contradicting bootstrap intent: `51820/udp Anywhere`, `51821/udp Anywhere`, `8443/tcp Anywhere`, `Anywhere ALLOW IN from LA`. Source of "server is exposed" feeling. Awaiting decision on which to prune
 - LA root password rotated on 2026-05-07 (stored in operator's password manager)
