@@ -1,0 +1,20 @@
+# /etc/grafana/provisioning/dashboards/eh-dashboards.yaml
+#
+# Provisions EH dashboards from JSON files under /var/lib/grafana/dashboards.
+# Dashboards under that path are auto-loaded on Grafana start and re-scanned
+# every `updateIntervalSeconds`. To version them, copy the canonical JSON from
+# infrastructure/grafana/dashboards/ (this repo) to that directory.
+apiVersion: 1
+
+providers:
+  - name: 'eh-dashboards'
+    orgId: 1
+    folder: 'EventHorizon'
+    folderUid: 'eh'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false
