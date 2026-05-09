@@ -106,12 +106,14 @@ for f in pg_globals.sql "${PG_DB}.dump" n8n-database.sqlite n8n-files.tar.zst; d
 done
 
 # 5. restic backup
+# NOTE: no `tee -a "$LOG_FILE"` here — cron already redirects stdout/stderr
+# to LOG_FILE via `>>`, and tee'ing on top duplicates every line in the log.
 log "restic backup → $RESTIC_REPOSITORY"
 restic backup \
   --tag daily \
   --tag "host=$(hostname)" \
   --host eh-la \
-  "$STAGING" 2>&1 | tee -a "$LOG_FILE"
+  "$STAGING" 2>&1
 
 # 6. Retention prune
 log "applying retention (keep-daily 7, keep-weekly 4, keep-monthly 6)"
@@ -120,7 +122,7 @@ restic forget \
   --keep-weekly 4 \
   --keep-monthly 6 \
   --prune \
-  --tag daily 2>&1 | tee -a "$LOG_FILE"
+  --tag daily 2>&1
 
 # 7. Wipe staging (artifacts now live in encrypted restic repo)
 rm -rf "$STAGING"/*
