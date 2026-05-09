@@ -1,0 +1,61 @@
+# Secrets / env (never commit credentials)
+*.env
+!*.env.example
+.eh-*.env
+.env.*
+!.env.example
+*.key
+*.pem
+!letsencrypt-fullchain.example.pem
+*_secret*
+*_credentials*
+
+# Backup files (created by sed -i.bak, editors)
+*.bak
+*.bak.*
+*~
+*.orig
+*.swp
+*.swo
+
+# Logs
+*.log
+logs/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+.pytest_cache/
+
+# Node
+node_modules/
+.pnp.*
+.yarn/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build / dist
+dist/
+build/
+*.egg-info/
+
+# Editor / IDE
+.vscode/
+.idea/
+*.iml
+
+# OS junk
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Claude Code local state (per-machine, not for sharing)
+.claude/
+
+# Local-only ops artifacts
+*.local.*
+*.private.*

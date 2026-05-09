@@ -62,21 +62,32 @@ Each node runs:
 - **LUKS2** — full-disk encryption for storage volumes
 - **SSH hardening** — key-only root login, passwords disabled
 
-## Repository contents
+## Repository layout
 
-| File | Purpose |
-|------|---------|
-| `eh-node-bootstrap.sh` | v3 deployment script — provisions a new node end-to-end |
-| `eh-purge.sh` | Archive/purge job — hot→cold tiering, pg_dump + VACUUM, 48h cron + 80% safety net |
-| `STATUS.md` | Current state of all nodes and components |
-| `docs/dashboard.md` | Grafana access and panel SQL reference |
-| `docs/credentials-recovery.md` | Recovery procedures for lost keys/passwords |
+```
+.
+├── README.md                    Project overview (this file)
+├── STATUS.md                    Live state of every node + component
+├── BACKUP.md                    Backup/restore procedures + Hetzner swap
+├── scripts/                     Admin & ops scripts (deployed to /usr/local/sbin)
+│   ├── eh-node-bootstrap.sh     v3 deployment — provisions a new node end-to-end
+│   ├── eh-purge.sh              Hot→cold tiering, pg_dump + VACUUM, 48h cron + 80% safety net
+│   ├── eh-backup.sh             Daily encrypted offsite backup (PG + n8n via restic)
+│   └── eh-metadata-collector.py Sessions/security-events ingestion into PostgreSQL
+├── services/
+│   └── embedding/               pgvector embedding service (systemd unit + installer)
+├── web/
+│   ├── index.html               Public landing redirect
+│   └── login-ui/                Customer login UI (HTML + assets)
+├── n8n-workflows/               Exported n8n workflow JSONs
+└── sql/                         PostgreSQL schemas (memories, agent token log, etc.)
+```
 
 ## Quick start (new node)
 
 ```bash
 # On a fresh Ubuntu 22.04 VPS in any region
-curl -O https://raw.githubusercontent.com/[your-org]/EVENT-HORIZON-VPN-DASH/main/eh-node-bootstrap.sh
+curl -O https://raw.githubusercontent.com/[your-org]/EVENT-HORIZON-VPN-DASH/main/scripts/eh-node-bootstrap.sh
 chmod +x eh-node-bootstrap.sh
 
 # Standard exit node
