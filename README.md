@@ -69,8 +69,17 @@ Each node runs:
 ├── README.md                    Project overview (this file)
 ├── STATUS.md                    Live state of every node + component
 ├── BACKUP.md                    Backup/restore procedures + Hetzner swap
+├── infrastructure/
+│   └── bootstrap/               v4 node bootstrap — three-phase orchestrator
+│       ├── eh-node-bootstrap.sh master script (open → install → lockdown)
+│       ├── node-types/          hub.sh, exit.sh, scan.sh, proxy.sh
+│       ├── modules/             reusable libraries: wireguard, crowdsec, suricata,
+│       │                        shadowsocks, dnscrypt, firewall, ssh-hardening,
+│       │                        storage, network-policy, backup
+│       ├── policies/            declarative network policies per node type
+│       └── docs/                bootstrap-guide.md + network-access-policy.md
 ├── scripts/                     Admin & ops scripts (deployed to /usr/local/sbin)
-│   ├── eh-node-bootstrap.sh     v3 deployment — provisions a new node end-to-end
+│   ├── eh-node-bootstrap.sh     v3 — single-script deployment (production-tested)
 │   ├── eh-purge.sh              Hot→cold tiering, pg_dump + VACUUM, 48h cron + 80% safety net
 │   ├── eh-backup.sh             Daily encrypted offsite backup (PG + n8n via restic)
 │   └── eh-metadata-collector.py Sessions/security-events ingestion into PostgreSQL
@@ -80,8 +89,10 @@ Each node runs:
 │   ├── index.html               Public landing redirect
 │   └── login-ui/                Customer login UI (HTML + assets)
 ├── n8n-workflows/               Exported n8n workflow JSONs
-└── sql/                         PostgreSQL schemas (memories, agent token log, etc.)
+└── sql/                         PostgreSQL schemas (memories, agent token log, nodes, etc.)
 ```
+
+Both bootstrap paths exist intentionally during the v3→v4 transition. v3 (`scripts/`) remains the field-proven path; v4 (`infrastructure/bootstrap/`) introduces explicit node types, declarative network policies, three-phase install, and auto-registration. See `infrastructure/bootstrap/docs/bootstrap-guide.md` for v4 usage.
 
 ## Quick start (new node)
 
