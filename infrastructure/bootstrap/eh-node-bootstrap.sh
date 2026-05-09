@@ -150,10 +150,20 @@ trap 'err "Phase 1 failed at line $LINENO" 2' ERR
 log "System update + base utilities"
 DEBIAN_FRONTEND=noninteractive apt-get update -qq
 DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::="--force-confold" upgrade -y -qq
-DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
-  curl wget gnupg2 ca-certificates lsb-release software-properties-common \
-  ufw iptables-persistent jq postgresql-client
-ok "Base packages installed"
+BASE_PKGS=(curl wget gnupg2 ca-certificates lsb-release software-properties-common ufw jq postgresql-client)
+# Ubuntu 24.04+ declares `ufw : Breaks: netfilter-persistent` AND
+# `ufw : Breaks: iptables-persistent`. UFW now persists its own rules natively;
+# the only thing we used netfilter-persistent for was persisting custom non-UFW
+# iptables rules (NAT MASQUERADE + VPN→SSH ACCEPT). On 24.04+ those need a
+# different home (UFW before.rules) — TODO: refactor for full exit/scan/hub
+# portability on 24.04. For 22.04 nodes, install netfilter-persistent so
+# existing behaviour is preserved.
+. /etc/os-release
+if [[ "$VERSION_ID" =~ ^(20\.04|22\.04)$ ]]; then
+  BASE_PKGS+=(netfilter-persistent)
+fi
+DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "${BASE_PKGS[@]}"
+ok "Base packages installed (Ubuntu $VERSION_ID)"
 
 setup_ssh_hardening
 setup_firewall_open_window   # ingress: 22, 80, 443; egress: allow-all (temporary)
