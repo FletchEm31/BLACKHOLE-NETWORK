@@ -1,6 +1,6 @@
 # EventHorizon — Network Status
 
-Last updated: **2026-05-08**
+Last updated: **2026-05-09**
 
 ## Phase progress
 
@@ -74,6 +74,93 @@ Phase 3: AI INTEGRATION       ███░░░░░░░  ~30%
 | n8n: `EH Network Pulse - 2h` workflow | ⏸️ Deactivated 2026-05-07 to reduce Anthropic API spend. Workflow logic intact (Sonnet 4.6, structured outputs, semantic memory retrieval + ingestion), webhook still registered for ad-hoc trigger. Re-enable by flipping `active=1` and restarting n8n |
 | n8n: `EventHorizon Proxy Health Monitor v1.0` | ⛔ Deactivated 2026-05-07 — the 4 monitored proxies were decommissioned (operator concluded they were insecure). Workflow JSON archived in `n8n-workflows/eh-proxy-health-monitor.json` for future reactivation/repurposing |
 | n8n: `EventHorizon AI Agent v1.0` | ✅ Live (chat-trigger workflow, pre-existing) |
+
+## WireGuard peer registry
+
+Hub `wg0` on LA listens on UDP `51820`. Peers identified below by pubkey (public, safe to commit). Private keys + PSKs live in operator's password manager (see "Secrets inventory" below).
+
+| Label | Device | Pubkey | Tunnel IP | Endpoint (last seen) | Client profile(s) |
+|-------|--------|--------|-----------|---------------------|--------------------|
+| **FRA exit** | `EH-VPS-FRANKFURT-EU1` | `zkfJNbdL9Ptdxv+fxwV2e1q0mbCR5Z/9T80QanSxKA8=` | `10.9.0.2/32` | `192.248.187.208:51821` | server peer, persistent keepalive 25s |
+| **FLETCH-DESKTOP** | operator workstation (Windows) | `y+ekkxKZsCn9LERiQ3unZxn2zDjsS1yqbz12limv1kA=` | `10.8.0.4/32` | `68.96.70.83:<dynamic>` | `EH-admin` (split: `10.8.0.0/24, 10.9.0.0/24`) + `EH-full` (full: `0.0.0.0/0, ::/0` + `DNS=10.8.0.1`) |
+| **FLETCH-PHONE** | operator phone (iOS) | `N9Tg0dOEE7GQgE7lG1FgfI+pGSQoIo9+EmSUucnEAVA=` | `10.8.0.2/32` | `68.96.70.83:<dynamic>` | `FLETCH-PHONE-SPLIT` + `FLETCH-PHONE-FULL` (same PSK + privkey across both, only `AllowedIPs` differs) |
+
+Hub-side persistent config at `/etc/wireguard/wg0.conf` on LA. `wg-quick save wg0` rewrites the file and **drops any inline comments above [Peer] blocks** — peer labels are kept here in STATUS.md as the durable record, not in the conf file.
+
+WG-rotation runbook (with the 2026-05-09 race-condition lesson): `infrastructure/bootstrap/docs/wg-key-rotation.md`.
+
+## Secrets inventory
+
+What should be in the operator's password manager. **No values stored here** — values live in the PM (and on each server's root-only configs as the runtime copy). When a new secret is generated or rotated, update this table in the same commit.
+
+### 🔴 Disk encryption (lose = data unrecoverable)
+
+| PM entry | Type | Live copy on server | Notes |
+|----------|------|--------------------|-------|
+| `EH-NVMe-LUKS` | LUKS2 passphrase | `/root/.luks-eh-nvme` (LA) | Hot tier (PG data) |
+| `EH-HDD-LUKS` | LUKS2 passphrase | `/root/.luks-eh-hdd` (LA) | Cold tier (backups, archives) |
+| `EH-Restic-Repo` | restic repo password | `/root/.eh-backup.env` (LA, mode 0600) | Decrypts daily encrypted snapshots |
+
+### 🔴 Server root access
+
+| PM entry | Type | Live copy on server | Notes |
+|----------|------|--------------------|-------|
+| `EH-LA-Root` | Linux root password | shadow on LA | Rotated 2026-05-07 |
+| `EH-FRA-Root` | Linux root password | shadow on FRA | Rotated 2026-05-08 |
+| `EH-SSH-Privkey-fletch-desktop` | SSH ed25519 private key | `~/.ssh/id_ed25519` (operator-pc) | Backup off-machine; if workstation dies, you can't SSH in either node |
+
+### 🔴 WireGuard private keys (lose = device can't reconnect without rotation)
+
+| PM entry | Type | Live copy on server | Notes |
+|----------|------|--------------------|-------|
+| `EH-WG-LA-Hub-Privkey` | WG ed25519 privkey | `/etc/wireguard/wg0.conf` `[Interface] PrivateKey` line on LA | v3 bootstrap stored inline; v4 splits to `/etc/wireguard/private.key` |
+| `EH-WG-FRA-Exit-Privkey` | WG ed25519 privkey | `/etc/wireguard/private.key` on FRA | v3 bootstrap stored separately |
+| `EH-WG-FLETCH-DESKTOP-Privkey` | WG ed25519 privkey | DPAPI-encrypted in WireGuard for Windows | Both `EH-admin` and `EH-full` profiles use same key |
+| `EH-WG-FLETCH-PHONE-Privkey` | WG ed25519 privkey | iOS keychain (WireGuard app) | Both phone profiles use same key |
+
+### 🟠 WireGuard pre-shared keys (per peer pair — quantum-resistance hedge)
+
+| PM entry | Type | Live copy on server | Notes |
+|----------|------|--------------------|-------|
+| `EH-WG-FRA-PSK` | 32-byte symmetric secret | `/etc/wireguard/wg0.conf` (LA) + `/etc/wireguard/wg1.conf` (FRA) | Same value on both ends |
+| `EH-WG-FLETCH-DESKTOP-PSK` | 32-byte symmetric secret | `/etc/wireguard/wg0.conf` (LA, peer `y+ekkxKZ…`) | Rotated 2026-05-09 |
+| `EH-WG-FLETCH-PHONE-PSK` | 32-byte symmetric secret | `/etc/wireguard/wg0.conf` (LA, peer `N9Tg0d…`) | Generated 2026-05-09 |
+
+### 🟠 PostgreSQL roles (LA — `eventhorizon` DB)
+
+| PM entry | Type | Live copy on server | Notes |
+|----------|------|--------------------|-------|
+| `EH-PG-postgres` | PG superuser password | currently **unset** — peer auth via local socket | Set with `ALTER ROLE postgres WITH PASSWORD '…';` if remote superuser needed |
+| `EH-PG-ehuser` | PG role password | scripts that read it: `eh-security-collector.py`, `eh-dns-collector.py`, `/root/.eh-metadata.env` | Rotated 2026-05-08 |
+| `EH-PG-bootstrap_writer` | PG role password | `/root/.eh-heartbeat.env` (mode 0600, both nodes) | Used by `eh-heartbeat` script + future v4 bootstraps via `EH_BOOTSTRAP_PG_DSN` |
+| `EH-PG-n8n_user` | PG role password | n8n encrypted credential `Postgres EventHorizon` (`/root/.n8n/database.sqlite`) | Used by n8n workflows that write to PG |
+| `EH-PG-grafana_reader` | PG role password | Grafana datasource `secureJsonData` in `/var/lib/grafana/grafana.db` (encrypted with Grafana `secret_key`) | Read-only, used by dashboard queries |
+| `EH-PG-agent_reader` | PG role password | n8n encrypted credential `Postgres EventHorizon (agent read-only)` | Used by AI Agent workflow |
+
+### 🟠 Service logins
+
+| PM entry | Type | Live copy on server | Notes |
+|----------|------|--------------------|-------|
+| `EH-Grafana-Admin` | Grafana admin password | grafana.db (bcrypt) | Used to log into `http://10.8.0.1:3000` |
+| `EH-n8n-Admin` | n8n admin password | `/root/.n8n/database.sqlite` `user` table (bcrypt cost 10) | `admin@eventhorizonvpn.com`; rotated 2026-05-09 |
+| `EH-Shadowsocks-Password` | SS password (shared) | `/etc/shadowsocks-libev/config.json` on both nodes | Rotated 2026-05-08 |
+
+### 🟠 n8n workflow credentials (encrypted in `/root/.n8n` with n8n's `config` encryption key)
+
+| PM entry | Type | Live copy on server | Notes |
+|----------|------|--------------------|-------|
+| `EH-n8n-SMTP-ProtonMail` | SMTP submission token | n8n credential `SMTP account` | `admin@eventhorizonvpn.com` @ `smtp.protonmail.ch:587` |
+| `EH-Anthropic-API-Key` | API key | n8n credential `EventHorizonVPN-Claude` | Rotate via console.anthropic.com if exposed |
+| `EH-n8n-Pulse-Webhook-URL` | Webhook URL (treat as secret) | n8n workflow definition | Anyone with URL can trigger Claude API calls |
+| `EH-n8n-Encryption-Key` | n8n master key (encrypts all above) | `/root/.n8n/config` (mode 0600) | If lost, all stored credentials become unrecoverable; backup pipeline tars this file |
+
+### 🟡 External / provider
+
+| PM entry | Type | Notes |
+|----------|------|-------|
+| `Vultr-Account` | Cloud provider login | Controls VPS billing + web console (out-of-band recovery path) |
+| `Domain-Registrar` | DNS registrar account | Holds `eventhorizonvpn.com` records |
+| `EH-CrowdSec-Console-Enroll` | Enrollment key | Only relevant if shipping to CrowdSec central |
 
 ## Database row counts (snapshot)
 
@@ -150,6 +237,13 @@ In rough order:
   3. `netfilter-persistent.service` was failing at every boot (status: failed since 2026-05-07) because saved `rules.v4` referenced CrowdSec ipset `crowdsec-blacklists-0` which doesn't exist at boot — chicken-and-egg with `crowdsec-firewall-bouncer` startup ordering. Re-saved `rules.v4`/`v6` with CrowdSec lines stripped (`iptables-save | grep -v crowdsec`); the bouncer rebuilds its own chain on its own start. Service now `active (exited)` — manual iptables rules (VPN→SSH ACCEPT pos 1, NAT MASQUERADE) now actually survive reboot.
   4. Grafana bind tightened from `*:3000` (all interfaces, UFW-protected) to `10.8.0.1:3000` (tunnel-only at the socket layer). `http_addr = 10.8.0.1` set in `/etc/grafana/grafana.ini`. Public-IP `:3000` now refuses connections at TCP level instead of getting dropped at UFW — defense-in-depth alignment with v4 `hub.sh` intent. dnscrypt-proxy `0.0.0.0:53` deliberately left wide (UFW-protected from non-tunnel) since it serves both LA-host lookups (127.0.0.1) and tunnel clients (10.8.0.1).
 - Backups of pre-change configs left at `/etc/iptables/rules.v4.bak.20260509-050053` (+ v6) and `/etc/grafana/grafana.ini.bak.20260509-050053` on LA.
+- **2026-05-09 follow-up cleanup queue (items 4a, 5, 6b, 7, 8, 9a)**:
+  - **FRA sshd alt-port listeners removed** — `Port 80` and `Port 443` lines deleted from `/etc/ssh/sshd_config`; sshd now listens only on `22/tcp` (v4 + v6). Pre-edit backup at `/etc/ssh/sshd_config.bak.20260509-*`. Was inconsistent (listeners with no UFW allows); now clean.
+  - **`linuxuser` (uid 1000) hardened on both nodes** — was already password-locked with empty `authorized_keys` from cloud-init; further reduced surface: shell changed to `/usr/sbin/nologin`, removed from `sudo` group. Even if a future config error allowed key auth, no shell + no sudo.
+  - **`eventhorizon` (uid 1001) on LA locked** — operator's secondary account used to compile n8n's native `sqlite3` module on 2026-05-06; work complete. Shell `/usr/sbin/nologin`, password locked (`L`), removed from `sudo`. SSH key in `/home/eventhorizon/.ssh/authorized_keys` retained but unusable without shell. Files owned by this user under `/usr/lib/node_modules/n8n/...` (build artifacts) intentionally left in place.
+  - **eh-backup duplicate-log fix deployed** — `scripts/eh-backup.sh` no longer pipes `restic backup` / `restic forget` through `tee -a $LOG_FILE` (cron's `>>` redirect already covers it; tee'ing duplicated every line). Manual trial verified clean. Commit `2c3e18c`.
+  - **Unknown WG peer `YJBUy0o9Ge6QxkX4RXTmd8S0v4Z9BTStAiobRCJk1lw=` (10.8.0.3) removed** — never connected, no endpoint ever recorded, no documented purpose. `wg-quick save wg0` persisted. PSK `EH-WG-PSK-Device3` in PM is now stale.
+  - **PC + phone tunnel identities separated** — phone generated its own keypair (`N9Tg0dOE…`) on the iOS WG app, registered on hub at `10.8.0.2/32` with fresh PSK. `FLETCH-DESKTOP` peer (`y+ekkxKZ…`) trimmed to allowed-ips `10.8.0.4/32` only. Phone now has two profiles (`FLETCH-PHONE-SPLIT` + `FLETCH-PHONE-FULL`) mirroring the desktop pattern. Verified end-to-end: split-tunnel test loads `http://10.8.0.1:5678` (n8n login), full-tunnel test returns LA's public IP from `ifconfig.me`, DNS leak test shows dnscrypt-proxy upstreams (Cloudflare + Anexia/Digitale Gesellschaft), IPv6 kill-switch'd by iOS WG. Old `EH-WG-PSK-Device2` PM entry (the previous `PPjYFx…` phone key) is now stale — both old peers (`PPjYFx`, `1Slpqh`) are gone from the hub.
 - **Outstanding follow-ups (flagged 2026-05-08, not yet acted on)**:
   1. Frankfurt UFW has manually-added rules contradicting bootstrap intent: `51820/udp Anywhere`, `51821/udp Anywhere`, `8443/tcp Anywhere`, `Anywhere ALLOW IN from LA`. Source of "server is exposed" feeling. Awaiting decision on which to prune
 - LA root password rotated on 2026-05-07 (stored in operator's password manager)
