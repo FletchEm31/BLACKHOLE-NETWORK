@@ -26,7 +26,7 @@ Phase 3: AI INTEGRATION       ███░░░░░░░  ~30%
 | CrowdSec (linux + sshd + nginx + http-cve collections, cs-firewall-bouncer) | ✅ Active |
 | Suricata IDS | ✅ Active (49,955 rules) |
 | Honeypots | ⛔ Removed 2026-05-08 (low signal, ehuser PG creds in source) |
-| UFW firewall | ✅ Configured |
+| UFW firewall | ✅ Configured. **Outbound default-deny** since 2026-05-08, whitelist: 53/udp+tcp, 123/udp (NTP), 443/tcp (HTTPS — apt mirrors converted to HTTPS, certbot, dnscrypt-proxy DoH, n8n→Anthropic API, CrowdSec central), 587/tcp (SMTP submission), 51821/udp→192.248.187.208 (FRA wg underlay), 10.9.0.0/24 (LA→FRA via tunnel). ICMP egress and outbound SSH intentionally blocked — use `apt`/HTTPS git instead of git+ssh. |
 | **NVMe block storage** (`SSD-LOSANGELES-US1`, 101 GB) | ✅ LUKS2 encrypted, XFS, mounted |
 | **HDD block storage** (`HDD-LOSANGELES-US1`, 399 GB) | ✅ LUKS2 encrypted, XFS, mounted |
 | PostgreSQL 14 | ✅ Running on encrypted NVMe |
@@ -51,7 +51,7 @@ Phase 3: AI INTEGRATION       ███░░░░░░░  ~30%
 | CrowdSec + cs-firewall-bouncer-iptables (linux + sshd collections) | ✅ Installed 2026-05-08 |
 | Suricata IDS (49,968 rules, listening on enp1s0) | ✅ Installed 2026-05-08 |
 | Root password rotated away from `EventHorizon2026` | ✅ 2026-05-08 |
-| UFW + iptables | ⚠️ See operational notes — overly permissive rules for `51820/udp Anywhere`, `51821/udp Anywhere`, `8443/tcp Anywhere` flagged but not yet pruned |
+| UFW + iptables | ✅ Pruned 2026-05-08 — removed `51820/udp Anywhere` (wrong port, FRA uses 51821), `51821/udp Anywhere` (redundant with LA-scoped rule), `8443/tcp Anywhere` (nothing listening), `Anywhere from 149.28.91.100` (over-grant). Final rule set: 22/tcp anywhere, 51821/udp from LA, 8388 from LA, wg1→enp1s0 FWD. Note: sshd still listens on 80+443 with no UFW allow → those alt-ports unreachable. SSH-config cleanup deferred (operator confirmation required). |
 | **Vultr support ticket** | ✅ Resolved 2026-05-07. UDP path restored. Required two follow-up fixes after handshake landed: (a) Frankfurt's `wg1.conf` had stale `AllowedIPs = 10.9.0.0/30` from a prior install — the latest bootstrap wrote correct config but didn't down/up wg1, so kernel kept the old mapping. Bootstrap script patched to `wg-quick down && up` after writing config. (b) UFW route-allow added on `wg1 → enp1s0` so peer traffic can egress to internet (same FORWARD-chain default-deny gap LA had earlier today) |
 
 ## Data pipeline
@@ -70,7 +70,7 @@ Phase 3: AI INTEGRATION       ███░░░░░░░  ~30%
 | Packet payload capture | ⛔ Intentionally not enabled — payloads are content |
 | Hourly stats snapshots | ❌ Not yet implemented |
 | Weekly analysis | ❌ Not yet implemented |
-| n8n install | ✅ Running at `https://n8n.eventhorizonvpn.com` (nginx + LE on 443) |
+| n8n install | ✅ VPN-only access at `http://10.8.0.1:5678` (mirrors Grafana). Public hostname `n8n.eventhorizonvpn.com` deprecated 2026-05-08, LE cert deleted, nginx site removed. **DNS A record at provider should be removed by operator.** |
 | n8n: `EH Network Pulse - 2h` workflow | ⏸️ Deactivated 2026-05-07 to reduce Anthropic API spend. Workflow logic intact (Sonnet 4.6, structured outputs, semantic memory retrieval + ingestion), webhook still registered for ad-hoc trigger. Re-enable by flipping `active=1` and restarting n8n |
 | n8n: `EventHorizon Proxy Health Monitor v1.0` | ⛔ Deactivated 2026-05-07 — the 4 monitored proxies were decommissioned (operator concluded they were insecure). Workflow JSON archived in `n8n-workflows/eh-proxy-health-monitor.json` for future reactivation/repurposing |
 | n8n: `EventHorizon AI Agent v1.0` | ✅ Live (chat-trigger workflow, pre-existing) |
