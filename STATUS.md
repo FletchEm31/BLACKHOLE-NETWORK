@@ -68,6 +68,7 @@ Phase 3: AI INTEGRATION       ████░░░░░░  ~40%   (pgvector m
 | Provisioning | ⏸ Vultr cross-region WG block suspected (parallel to early Frankfurt UDP issue); SSH over tunnel failing despite UFW allow on wg0 |
 | Trading workloads (FMP, Congress.gov, Polymarket, Kalshi, Alpaca paper) | 🔨 Blocked on tunnel |
 | LibreSpeed (US-East speed test endpoint) | 🔨 Planned 2026-05-11 |
+| Tor bridge/relay (non-exit middle relay, BHNNewJersey, 512 KB/s + 750 GB/month cap; pairs with Frankfurt relay via MyFamily) | 🔨 Planned 2026-05-11 — can deploy independently of tunnel since ORPort is on public IP |
 
 ## Data pipeline
 

@@ -1,0 +1,31 @@
+# BHN — Tor non-exit middle relay on NJ trading node.
+#
+# Bandwidth halved vs Frankfurt's relay (512 KB/s rate, 750 GB/month cap)
+# to leave headroom for trading-API workloads on the same host.
+#
+# ORPort 9001/tcp MUST be publicly reachable. Operator: BEFORE first start,
+# run on NJ:
+#   ufw allow 9001/tcp comment 'Tor relay ORPort'
+#
+# SocksPort 9050 is bound to NJ's WG tunnel IP. The tunnel is currently
+# broken (Vultr cross-region block suspected, parked for next session) —
+# the SocksPort binding will be unreachable until the tunnel is fixed,
+# but that doesn't block the relay's primary ORPort function.
+
+services:
+  tor:
+    build: .
+    container_name: bhn-tor-relay
+    restart: unless-stopped
+    ports:
+      # ORPort — PUBLIC, required for Tor consensus reachability
+      - "9001:9001/tcp"
+      # SocksPort — bound to tunnel IP (will activate when tunnel is fixed)
+      - "${BIND_IP}:9050:9050/tcp"
+    volumes:
+      - tor-data:/var/lib/tor
+      - tor-logs:/var/log/tor
+
+volumes:
+  tor-data:
+  tor-logs:

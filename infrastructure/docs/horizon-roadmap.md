@@ -227,6 +227,7 @@ Frankfurt's formal role broadens from pure WG exit to **exit + privacy routing**
 
 ### NJ (trading node — currently blocked on tunnel issue)
 - **LibreSpeed** — US-East speed-test endpoint. Per-node instance.
+- **Tor bridge/relay (non-exit middle relay)** — adds capacity to the privacy stack; pairs with Frankfurt's relay via MyFamily so consensus never routes a circuit through both. Bandwidth halved vs Frankfurt (512 KB/s rate, 750 GB/month cap) to leave headroom for trading-API workloads on the same host. Deployable independently of the WG tunnel since ORPort 9001 is on NJ's public IP. **Trading-API coexistence note:** NJ's public IP will appear on Tor-relay scraper lists once consensus-published; trading workloads make their calls directly (not through Tor SocksPort), so flows are separate, but monitor Alpaca/Polymarket/Kalshi for unusual rate-limiting in the first 1-2 weeks after first start.
 
 ### All nodes (baseline)
 - **LibreSpeed** is a baseline module: every node hosts an instance. Results land in PostgreSQL (new `speedtest_results` table) via a per-node cron probing both its own endpoint and peer endpoints. HORIZON consumes the table for latency-trend monitoring — surfaces in pulse cycles and morning briefing when a node's RTT degrades beyond a rolling-baseline threshold.
@@ -236,7 +237,9 @@ Frankfurt's formal role broadens from pure WG exit to **exit + privacy routing**
 These services slot into `bhn-node-bootstrap.sh` v4's module/node-type structure:
 - `modules/librespeed.sh` — baseline, sourced on every node-type
 - `modules/wallos.sh` — sourced only on hub.sh
-- `modules/searxng.sh` + `modules/tor-relay.sh` — sourced only on a new `privacy.sh` node-type (or appended to `exit.sh` since Frankfurt is dual-role)
+- `modules/searxng.sh` + `modules/tor-relay.sh` — sourced on `exit.sh` (Frankfurt's dual exit+privacy role) and on `trading.sh` (NJ, when the trading node-type lands — Tor relay only, not SearXNG)
+
+**MyFamily — post-deploy bookkeeping:** once Frankfurt + NJ relays are both bootstrapped, the operator must update BOTH torrc files with the joint MyFamily fingerprint declaration so Tor consensus never builds a circuit passing through both. Documented in `infrastructure/services/tor-relay/README.md` under "MyFamily — REQUIRED post-deploy step".
 
 Build order: LibreSpeed baseline first (gives latency telemetry on day one), then Wallos (closes the cost-monitoring gap before HORIZON's morning briefing comes online), then SearXNG + Tor on Frankfurt (privacy stack — biggest scope, lowest urgency).
 

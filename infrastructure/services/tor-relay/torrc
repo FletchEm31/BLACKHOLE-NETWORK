@@ -52,9 +52,20 @@ AssumeReachable 0
 # in a follow-up if monitoring requires it.
 ControlSocket 0
 
-## ─── MyFamily ──────────────────────────────────────────────────────────
-# Once additional BHN relays exist on other nodes, list their fingerprints
-# here (comma-separated, prefixed with $). Tells Tor consensus that these
-# relays are operated by the same entity → consensus won't build a circuit
-# that passes through two BHN relays.
-# MyFamily $FINGERPRINT1,$FINGERPRINT2
+## ─── MyFamily — LOAD-BEARING POST-DEPLOY STEP ─────────────────────────
+# A second BHN relay exists on NJ (see ../tor-relay-nj/). After BOTH
+# relays bootstrap and produce fingerprints, MyFamily MUST be set on
+# BOTH torrc files (this one + ../tor-relay-nj/torrc) so Tor consensus
+# refuses to build circuits that pass through both. Without MyFamily,
+# the privacy benefit of running multiple relays is partially defeated.
+#
+# Get fingerprints:
+#   ssh frankfurt 'docker exec bhn-tor-relay cat /var/lib/tor/fingerprint'
+#   ssh root@<nj-public-ip> 'docker exec bhn-tor-relay cat /var/lib/tor/fingerprint'
+#
+# Then uncomment and edit BOTH torrc files identically:
+# MyFamily $FRANKFURT_FINGERPRINT,$NJ_FINGERPRINT
+#
+# Commit the updated torrc files to the repo with the actual fingerprints
+# baked in — they're public information, not secrets. Restart both
+# containers after editing.

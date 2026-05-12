@@ -1,0 +1,51 @@
+# BHN — Tor non-exit middle relay configuration.
+# NJ trading node (BHN|VPS-NEWJERSEY-US2), 2026-05-11.
+#
+# Role: middle relay. Bandwidth halved vs Frankfurt's relay to leave
+# headroom for trading-API workloads sharing the same host.
+
+## ─── Identity ──────────────────────────────────────────────────────────
+Nickname BHNNewJersey
+ContactInfo admin@eventhorizonvpn.com
+
+## ─── Ports ─────────────────────────────────────────────────────────────
+ORPort 9001
+SocksPort 0.0.0.0:9050
+# DirPort 9030      # optional; commented to reduce surface
+
+## ─── Relay type (explicit non-exit) ────────────────────────────────────
+ExitRelay 0
+ExitPolicy reject *:*       # belt + suspenders — refuse all exit traffic
+BridgeRelay 0               # middle relay, not bridge
+
+## ─── Bandwidth limits — REDUCED for trading-node coexistence ───────────
+# Vultr NJ allowance: assumed 2 TB/month (standard).
+# Frankfurt relay uses 1 MB/s + 1500 GB cap. NJ is halved to leave more
+# room for trading workloads (Alpaca polling, Congress.gov, Polymarket,
+# Kalshi, FMP). Adjust upward later if trading bandwidth stays low.
+RelayBandwidthRate 512 KB
+RelayBandwidthBurst 1 MB
+AccountingMax 750 GB
+AccountingStart month 1 00:00
+
+## ─── Data + logging ────────────────────────────────────────────────────
+DataDirectory /var/lib/tor
+Log notice file /var/log/tor/notices.log
+Log notice stdout
+
+## ─── Hardening ─────────────────────────────────────────────────────────
+AssumeReachable 0
+ControlSocket 0
+
+## ─── MyFamily ──────────────────────────────────────────────────────────
+# After Frankfurt's relay is also running and both have produced
+# fingerprints, fill in BOTH fingerprints here (and in Frankfurt's
+# torrc — see ../tor-relay/torrc). Tor consensus then knows these
+# relays are operated by the same entity and refuses to build a
+# circuit that traverses both.
+#
+# Get fingerprints:
+#   docker exec bhn-tor-relay cat /var/lib/tor/fingerprint
+#
+# Then uncomment and edit:
+# MyFamily $FRANKFURT_FINGERPRINT,$NJ_FINGERPRINT
