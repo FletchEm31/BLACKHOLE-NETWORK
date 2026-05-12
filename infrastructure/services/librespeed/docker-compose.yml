@@ -1,0 +1,32 @@
+# BHN — LibreSpeed self-hosted speedtest endpoint.
+# Same compose file deploys to every BHN node. Per-node tunnel IP comes from
+# the local .env file (see .env.example). VPN-only access by binding to the
+# tunnel interface — never 0.0.0.0.
+#
+# Deploy:
+#   cd /opt/bhn-librespeed
+#   cp .env.example .env
+#   # edit .env to set BIND_IP to this node's tunnel IP
+#   docker compose up -d
+#
+# Verify:
+#   curl -fsS http://${BIND_IP}:8088/ | head -5    # should return HTML
+#   docker ps --filter name=bhn-librespeed
+
+services:
+  librespeed:
+    image: ghcr.io/linuxserver/librespeed:latest
+    container_name: bhn-librespeed
+    restart: unless-stopped
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=UTC
+      - PASSWORD=disabled       # admin UI disabled — endpoint is read-only public-test only
+      - WEBPORT=80              # internal container port
+    ports:
+      # Bind only to this node's WG tunnel interface. Public IP must NOT
+      # be exposed (no Vultr edge inbound on 8088).
+      - "${BIND_IP}:8088:80"
+    volumes:
+      - ./config:/config

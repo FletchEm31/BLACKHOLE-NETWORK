@@ -1,0 +1,27 @@
+# BHN — Tor non-exit middle relay on Frankfurt.
+#
+# ORPort 9001/tcp MUST be publicly reachable from the Tor consensus dirs.
+# Operator: BEFORE first start, run on Frankfurt:
+#   ufw allow 9001/tcp comment 'Tor relay ORPort'
+#
+# SocksPort 9050 is bound to the WG tunnel IP only — local SearXNG (and
+# any future BHN service on Frankfurt) can use it as upstream proxy; the
+# wider internet cannot.
+
+services:
+  tor:
+    build: .
+    container_name: bhn-tor-relay
+    restart: unless-stopped
+    ports:
+      # ORPort — PUBLIC, required for Tor consensus reachability
+      - "9001:9001/tcp"
+      # SocksPort — VPN-only, for local SearXNG / future BHN clients
+      - "${BIND_IP}:9050:9050/tcp"
+    volumes:
+      - tor-data:/var/lib/tor
+      - tor-logs:/var/log/tor
+
+volumes:
+  tor-data:
+  tor-logs:

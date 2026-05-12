@@ -1,0 +1,52 @@
+# BHN SearXNG settings.
+# `use_default_settings: true` inherits everything else from the image's
+# bundled defaults — only override what we explicitly want different.
+#
+# secret_key: gets replaced at container startup by the entrypoint script
+# using the SEARXNG_SECRET env var. Leave the literal "ultrasecretkey"
+# placeholder here — the image's docker-entrypoint.sh does the substitution.
+
+use_default_settings: true
+
+general:
+  instance_name: "BHN SearXNG"
+  contact_url: false
+  enable_metrics: false       # private instance — no public metrics
+
+search:
+  safe_search: 0              # operator-only instance; no children's filter needed
+  autocomplete: "duckduckgo"
+  default_lang: "auto"
+  formats:
+    - html
+    - json                    # enable JSON so HORIZON can use SearXNG as a tool later
+
+server:
+  secret_key: "ultrasecretkey"    # replaced at startup from SEARXNG_SECRET env
+  limiter: false                  # no rate limiting on a private instance
+  image_proxy: false              # don't proxy result images
+  bind_address: "0.0.0.0"         # inside container; host port mapping does the VPN-only bind
+  port: 8080
+
+redis:
+  url: "redis://redis:6379/0"
+
+ui:
+  static_use_hash: true
+  default_locale: "en"
+  query_in_title: true
+
+# ──────────────────────────────────────────────────────────────────────────
+# Tor upstream — phase 2.
+# Uncomment after Tor relay is running on Frankfurt. SearXNG will route
+# search-engine requests through the local Tor SOCKS proxy, unlinking
+# this instance from upstream engines' fingerprinting.
+# ──────────────────────────────────────────────────────────────────────────
+# outgoing:
+#   request_timeout: 10.0
+#   pool_connections: 100
+#   pool_maxsize: 20
+#   enable_http2: true
+#   proxies:
+#     all://:
+#       - socks5h://10.9.0.2:9050   # Frankfurt's Tor relay SocksPort

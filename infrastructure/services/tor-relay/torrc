@@ -1,0 +1,60 @@
+# BHN — Tor non-exit middle relay configuration.
+# Frankfurt node (BHN|VPS-FRANKFURT-EU1), 2026-05-11.
+#
+# Role: middle relay (also called guard once enough uptime accumulates).
+# Forwards traffic between Tor nodes. NOT an exit. NOT a bridge.
+
+## ─── Identity ──────────────────────────────────────────────────────────
+Nickname BHNFrankfurt
+ContactInfo admin@eventhorizonvpn.com
+
+## ─── Ports ─────────────────────────────────────────────────────────────
+# ORPort: where other Tor nodes connect to us. Must be publicly reachable.
+ORPort 9001
+
+# SocksPort: local SOCKS5 proxy. Bound to 0.0.0.0 inside the container;
+# the compose port-mapping restricts external exposure to the host's
+# tunnel IP only (10.9.0.2:9050). Allows BHN services on Frankfurt to
+# route their own egress through Tor.
+SocksPort 0.0.0.0:9050
+
+# DirPort: optional, helps directory authorities reach us. Middle relays
+# don't strictly need it; leave commented to reduce attack surface.
+# DirPort 9030
+
+## ─── Relay type (explicit non-exit) ────────────────────────────────────
+ExitRelay 0
+ExitPolicy reject *:*       # belt + suspenders — refuse all exit traffic
+BridgeRelay 0               # we're a middle relay, not a bridge
+
+## ─── Bandwidth limits ──────────────────────────────────────────────────
+# Vultr Frankfurt allowance: 2 TB/month. Cap to stay well under quota.
+# 1 MB/s sustained ≈ 2.5 TB/month if fully used → cap rate + accounting.
+RelayBandwidthRate 1 MB
+RelayBandwidthBurst 2 MB
+
+# Hard monthly cap. When hit, relay goes into hibernation until next cycle.
+AccountingMax 1500 GB
+AccountingStart month 1 00:00
+
+## ─── Data + logging ────────────────────────────────────────────────────
+DataDirectory /var/lib/tor
+Log notice file /var/log/tor/notices.log
+Log notice stdout         # also stream to docker logs
+
+## ─── Hardening ─────────────────────────────────────────────────────────
+# Force Tor to verify it's actually reachable on ORPort before publishing
+# the descriptor. If UFW isn't open yet, the relay will log loudly instead
+# of silently advertising an unreachable address.
+AssumeReachable 0
+
+# No control socket — we don't need stem/nyx access for now. Re-enable
+# in a follow-up if monitoring requires it.
+ControlSocket 0
+
+## ─── MyFamily ──────────────────────────────────────────────────────────
+# Once additional BHN relays exist on other nodes, list their fingerprints
+# here (comma-separated, prefixed with $). Tells Tor consensus that these
+# relays are operated by the same entity → consensus won't build a circuit
+# that passes through two BHN relays.
+# MyFamily $FINGERPRINT1,$FINGERPRINT2

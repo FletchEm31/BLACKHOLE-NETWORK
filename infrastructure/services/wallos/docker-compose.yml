@@ -1,0 +1,22 @@
+# BHN — Wallos subscription tracker. LA hub only.
+# VPN-only access via LA's WG tunnel.
+#
+# Storage: SQLite (Wallos's native — no Postgres connector exists).
+# Persistent volumes hold the DB + uploaded logos.
+#
+# HORIZON integration: deferred. Wallos has a REST API; a follow-up n8n
+# workflow will poll it into a PG `subscriptions` table so HORIZON can
+# surface BHN's monthly burn in the morning briefing.
+
+services:
+  wallos:
+    image: bellamy/wallos:latest
+    container_name: bhn-wallos
+    restart: unless-stopped
+    environment:
+      - TZ=America/Los_Angeles    # operator timezone — affects renewal-date displays
+    ports:
+      - "${BIND_IP}:8090:80"
+    volumes:
+      - ./db:/var/www/html/db
+      - ./logos:/var/www/html/images/uploads/logos
