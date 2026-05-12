@@ -31,14 +31,23 @@ setup_dnscrypt() {
   systemctl restart dnscrypt-proxy.socket
   systemctl restart dnscrypt-proxy
 
-  # Lock /etc/resolv.conf — point at local dnscrypt and prevent resolvconf drift
+  # Lock /etc/resolv.conf — point at local dnscrypt and prevent resolvconf drift.
+  # Hetzner Cloud VPS images use a filesystem that doesn't support the immutable
+  # flag (chattr returns ENOTSUP). systemd-resolved + resolvconf were disabled
+  # above, so the file shouldn't drift in practice — but the chattr lock is
+  # belt-and-suspenders, not load-bearing. Make both calls non-fatal so the
+  # bootstrap succeeds on Hetzner; warn loudly so the operator knows the
+  # hard lock isn't in place.
   chattr -i /etc/resolv.conf 2>/dev/null || true
   cat >/etc/resolv.conf <<'RESOLVCONF'
-# Locked. dnscrypt-proxy on 127.0.0.1 — fans out to multiple encrypted resolvers.
+# dnscrypt-proxy on 127.0.0.1 — fans out to multiple encrypted resolvers.
+# (Immutable flag attempted; not guaranteed across all VPS providers.)
 nameserver 127.0.0.1
 options edns0 timeout:2 attempts:2
 RESOLVCONF
-  chattr +i /etc/resolv.conf
-
-  ok "dnscrypt-proxy listening on 0.0.0.0:53 (resolv.conf locked to 127.0.0.1)"
+  if chattr +i /etc/resolv.conf 2>/dev/null; then
+    ok "dnscrypt-proxy listening on 0.0.0.0:53 (resolv.conf locked to 127.0.0.1)"
+  else
+    warn "dnscrypt-proxy up, but chattr +i /etc/resolv.conf failed (filesystem doesn't support immutable flag — typical on Hetzner Cloud). systemd-resolved + resolvconf are disabled, so drift should not occur; monitor /etc/resolv.conf if issues arise."
+  fi
 }
