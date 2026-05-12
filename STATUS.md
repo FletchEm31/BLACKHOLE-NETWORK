@@ -1,6 +1,8 @@
-# EventHorizon — Network Status
+# Blackhole Network (BHN) — Network Status
 
-Last updated: **2026-05-09**
+Last updated: **2026-05-11**
+
+> **Note:** Project renamed 2026-05-11 from EventHorizon → Blackhole Network. Legacy hostnames (`EH|VPS-LOSANGELES-US1`, `EH|VPS-FRANKFURT-EU1`), n8n credential names (`EH-Twilio`, `EH-NewsAPI`, etc.), Proton Pass entries (`EH-*`), LA-deployed script paths (`/usr/local/sbin/eh-purge`, `/opt/eh-diagnostics/eh-*`), the PostgreSQL database name `eventhorizon`, and the email domain `eventhorizonvpn.com` are intentionally preserved per the operator's immutable list. LA-side script renames are deferred to a coordinated migration session. The "EventHorizon VPN" name is reserved for the future separate commercial product.
 
 ## Phase progress
 
@@ -62,7 +64,7 @@ Phase 3: AI INTEGRATION       ████░░░░░░  ~40%   (pgvector m
 | Directory structure | ✅ Created on both tiers |
 | PostgreSQL on NVMe | ✅ Migrated, online |
 | Grafana installed | ✅ Live, connected to PostgreSQL |
-| Initial dashboards | ✅ 8-panel "EH Network Overview" live |
+| Initial dashboards | ✅ 8-panel "BHN Network Overview" live (Grafana dashboard JSON still named under old `eh-` prefix until coordinated migration) |
 | Purge cycle (`eh-purge` script) | ✅ Deployed to `/usr/local/sbin/eh-purge` on LA hub |
 | Cron schedule (48hr default) | ✅ `/etc/cron.d/eh-purge` — `--auto` at 03:00 UTC every 48h |
 | 80% capacity safety net | ✅ Same cron — `--check-capacity` every 15 min |
@@ -71,9 +73,9 @@ Phase 3: AI INTEGRATION       ████░░░░░░  ~40%   (pgvector m
 | Hourly stats snapshots | ❌ Not yet implemented |
 | Weekly analysis | ❌ Not yet implemented |
 | n8n install | ✅ VPN-only access at `http://10.8.0.1:5678` (mirrors Grafana). Public hostname `n8n.eventhorizonvpn.com` deprecated 2026-05-08, LE cert deleted, nginx site removed. **DNS A record at provider should be removed by operator.** |
-| n8n: `EH Network Pulse - 2h` workflow | ✅ Re-enabled 2026-05-09 with tightened `If Important` threshold — dropped the `important==true` (Claude verdict) clause; ntfy now fires only on `events_critical > 0` OR `anomalies_open > 0`. `pulse_reports` table accumulates every 2h regardless; phone pings only land for real signals |
-| n8n: `EventHorizon Proxy Health Monitor v1.0` | ⛔ **Permanently deleted 2026-05-09** — workflow row + execution history removed from n8n DB (the 5-min schedule trigger had been bleeding queued alerts into operator's ProtonMail inbox even after deactivation). JSON archived in `n8n-workflows/eh-proxy-health-monitor.json` for reference; will NOT auto-import on n8n restart |
-| n8n: `EventHorizon AI Agent v1.0` | ✅ Live (chat-trigger workflow, pre-existing) |
+| n8n: `BHN Network Pulse - 2h` workflow (renamed from `EH Network Pulse - 2h` 2026-05-11) | ✅ Re-enabled 2026-05-09 with tightened `If Important` threshold — dropped the `important==true` (Claude verdict) clause; ntfy now fires only on `events_critical > 0` OR `anomalies_open > 0`. `pulse_reports` table accumulates every 2h regardless; phone pings only land for real signals |
+| n8n: `BHN Proxy Health Monitor v1.0` (renamed from `EventHorizon Proxy Health Monitor v1.0` 2026-05-11) | ⛔ **Permanently deleted 2026-05-09** — workflow row + execution history removed from n8n DB (the 5-min schedule trigger had been bleeding queued alerts into operator's ProtonMail inbox even after deactivation). JSON archived in `n8n-workflows/bhn-proxy-health-monitor.json` (renamed from eh- 2026-05-11) for reference; will NOT auto-import on n8n restart |
+| n8n: `HORIZON` (workflow renamed from `EventHorizon AI Agent v1.0` 2026-05-09) | ✅ Live (chat-trigger workflow) |
 
 ## WireGuard peer registry
 
@@ -197,7 +199,7 @@ These are **TBD until operator creates the accounts**. Listed here so they have 
 
 ## Live dashboard panels
 
-The "EH Network Overview" Grafana dashboard currently includes:
+The "BHN Network Overview" Grafana dashboard currently includes:
 
 1. Active Sessions (Stat) — `204` at last check
 2. Bandwidth Today (Stat with bytes unit)

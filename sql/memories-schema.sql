@@ -1,4 +1,4 @@
--- EH long-term memory layer.
+-- BHN long-term memory layer.
 -- Stores semantic memories (incidents, deployments, operator preferences, etc.)
 -- keyed by 384-dim vector embeddings produced by /opt/eh-embed (bge-small-en-v1.5).
 --

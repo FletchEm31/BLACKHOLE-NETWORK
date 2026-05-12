@@ -1,7 +1,7 @@
 #!/bin/bash
 # infrastructure/bootstrap/modules/backup.sh
 #
-# Sourced by eh-node-bootstrap.sh. Provides:
+# Sourced by bhn-node-bootstrap.sh. Provides:
 #   setup_backup_pipeline
 #
 # Hub-only. Installs restic + the eh-backup orchestrator + cron + logrotate.
@@ -26,7 +26,7 @@ setup_backup_pipeline() {
     pw="$(openssl rand -base64 36 | tr -d "\n=" | cut -c1-44)"
     umask 077
     cat >/root/.eh-backup.env <<EOF
-# EH offsite backup config — managed by eh-backup script
+# BHN offsite backup config — managed by eh-backup script (LA-side binary)
 # DO NOT COMMIT. Mode 0600 root:root.
 RESTIC_REPOSITORY=/mnt/eh-hdd-cold/backup-restic
 RESTIC_PASSWORD=${pw}
@@ -53,12 +53,13 @@ EOF
   fi
 
   # Deploy eh-backup orchestrator. Source-of-truth lives in repo at
-  # scripts/eh-backup.sh; bootstrap embeds a self-contained copy so a fresh
-  # node doesn't need the repo cloned.
+  # scripts/bhn-backup.sh (LA-side binary kept as `eh-backup` until coordinated
+  # migration); bootstrap embeds a self-contained copy so a fresh node doesn't
+  # need the repo cloned.
   cat >/usr/local/sbin/eh-backup <<'BACKUP_SCRIPT'
 #!/bin/bash
-# eh-backup — daily encrypted offsite backup for EventHorizon hub
-# Source of truth: <repo>/scripts/eh-backup.sh
+# eh-backup — daily encrypted offsite backup for Blackhole Network (BHN) hub
+# Source of truth: <repo>/scripts/bhn-backup.sh
 set -euo pipefail
 ENV_FILE=/root/.eh-backup.env
 LOCK_FILE=/run/eh-backup.lock
@@ -104,7 +105,7 @@ BACKUP_SCRIPT
   chmod 750 /usr/local/sbin/eh-backup
 
   cat >/etc/cron.d/eh-backup <<'EOF'
-# /etc/cron.d/eh-backup — managed by eh-node-bootstrap v4
+# /etc/cron.d/eh-backup — managed by bhn-node-bootstrap v4
 SHELL=/bin/bash
 PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 30 2 * * * root /usr/local/sbin/eh-backup backup >> /var/log/eh-backup.log 2>&1

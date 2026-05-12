@@ -1,7 +1,7 @@
 #!/bin/bash
 # infrastructure/bootstrap/modules/ssh-hardening.sh
 #
-# Sourced by eh-node-bootstrap.sh. Provides:
+# Sourced by bhn-node-bootstrap.sh. Provides:
 #   setup_ssh_hardening
 #
 # Behavior:

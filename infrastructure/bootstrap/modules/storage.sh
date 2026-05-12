@@ -1,7 +1,7 @@
 #!/bin/bash
 # infrastructure/bootstrap/modules/storage.sh
 #
-# Sourced by eh-node-bootstrap.sh. Provides:
+# Sourced by bhn-node-bootstrap.sh. Provides:
 #   setup_encrypted_storage <device> <luks_name> <mountpoint> [subdir1 subdir2 ...]
 #
 # Encrypts a block device with LUKS2 (if not already), formats XFS, mounts at

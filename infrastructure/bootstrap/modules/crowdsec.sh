@@ -1,7 +1,7 @@
 #!/bin/bash
 # infrastructure/bootstrap/modules/crowdsec.sh
 #
-# Sourced by eh-node-bootstrap.sh. Provides:
+# Sourced by bhn-node-bootstrap.sh. Provides:
 #   setup_crowdsec
 #
 # Installs CrowdSec + cs-firewall-bouncer-iptables. CrowdSec replaces fail2ban

@@ -1,4 +1,4 @@
-# EventHorizon — WireGuard Key Rotation Runbook
+# Blackhole Network (BHN) — WireGuard Key Rotation Runbook
 
 When to run this: any time a peer's private key or pre-shared key is exposed (chat logs, leaked backups, lost device, etc.), or as periodic hygiene.
 

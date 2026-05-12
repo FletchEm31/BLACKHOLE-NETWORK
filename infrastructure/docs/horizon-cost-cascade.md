@@ -79,7 +79,7 @@ If similarity > **0.92** (high threshold to avoid wrong-answer reuse): return th
 
 ### Layer 3 — memories semantic retrieval
 
-The same retrieval JARVIS/HORIZON already does on every chat turn (already wired in `n8n-workflows/eh-horizon.json`). Returns top-5 memories. **This is context, not an answer** — it feeds the LLM step.
+The same retrieval HORIZON already does on every chat turn (already wired in `n8n-workflows/bhn-horizon.json`). Returns top-5 memories. **This is context, not an answer** — it feeds the LLM step.
 
 ### Layer 4 — Haiku classifier (cost gate)
 

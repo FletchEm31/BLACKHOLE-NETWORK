@@ -1,10 +1,14 @@
-# EventHorizon VPN
+# Blackhole Network (BHN)
 
-A privacy-focused VPN service built on WireGuard with deep defense-in-depth security and AI-powered operations.
+A privacy-focused personal VPN built on WireGuard with deep defense-in-depth security and AI-powered operations. **Single-operator network — no customers, no public service offering. Personal infrastructure only.**
+
+> **Note:** Repo renamed 2026-05-11 from EventHorizon VPN → Blackhole Network. LA-deployed script paths and many legacy hostnames (`EH|VPS-LOSANGELES-US1`, `EH|VPS-FRANKFURT-EU1`, `eh-*` script names, `/opt/eh-diagnostics/*`) still use `eh-*` until a coordinated LA migration session. The "EventHorizon VPN" name is reserved for the future separate commercial product. See `project_blackhole_network_rename` memory for full scope.
 
 ## Overview
 
-EventHorizon is a self-hosted VPN network designed for solo operation at scale. The architecture combines battle-tested open-source tools (WireGuard, Shadowsocks, dnscrypt-proxy, PostgreSQL, Grafana) with custom automation and AI-driven monitoring.
+Blackhole Network is the operator's self-hosted personal VPN for a single user (Hayden). No outside users on this infrastructure, ever. The architecture combines battle-tested open-source tools (WireGuard, Shadowsocks, dnscrypt-proxy, PostgreSQL, Grafana) with custom automation and AI-driven monitoring.
+
+Any future public VPN product is a separate concern (different servers, different protocol, different holding entity) and is not part of this repository.
 
 ## Architecture
 
@@ -13,7 +17,7 @@ EventHorizon is a self-hosted VPN network designed for solo operation at scale. 
 ```
 Phase 1: NETWORK
 ├─ LA hub (operational)
-├─ Frankfurt exit (UDP issue, Vultr ticket open)
+├─ Frankfurt exit (operational; reachable only via WG tunnel — Vultr blocks cross-region public TCP)
 ├─ Bootstrap script v3 (codifies all hardening)
 └─ Future nodes via snapshot deployment
 
@@ -71,23 +75,20 @@ Each node runs:
 ├── BACKUP.md                    Backup/restore procedures + Hetzner swap
 ├── infrastructure/
 │   └── bootstrap/               v4 node bootstrap — three-phase orchestrator
-│       ├── eh-node-bootstrap.sh master script (open → install → lockdown)
+│       ├── bhn-node-bootstrap.sh master script (open → install → lockdown)
 │       ├── node-types/          hub.sh, exit.sh, scan.sh, proxy.sh
 │       ├── modules/             reusable libraries: wireguard, crowdsec, suricata,
 │       │                        shadowsocks, dnscrypt, firewall, ssh-hardening,
 │       │                        storage, network-policy, backup
 │       ├── policies/            declarative network policies per node type
 │       └── docs/                bootstrap-guide.md + network-access-policy.md
-├── scripts/                     Admin & ops scripts (deployed to /usr/local/sbin)
-│   ├── eh-node-bootstrap.sh     v3 — single-script deployment (production-tested)
-│   ├── eh-purge.sh              Hot→cold tiering, pg_dump + VACUUM, 48h cron + 80% safety net
-│   ├── eh-backup.sh             Daily encrypted offsite backup (PG + n8n via restic)
-│   └── eh-metadata-collector.py Sessions/security-events ingestion into PostgreSQL
+├── scripts/                     Admin & ops scripts (deployed to /usr/local/sbin as `eh-*` until LA migration)
+│   ├── bhn-node-bootstrap.sh    v3 — single-script deployment (production-tested)
+│   ├── bhn-purge.sh             Hot→cold tiering, pg_dump + VACUUM, 48h cron + 80% safety net
+│   ├── bhn-backup.sh            Daily encrypted offsite backup (PG + n8n via restic)
+│   └── bhn-metadata-collector.py Sessions/security-events ingestion into PostgreSQL
 ├── services/
 │   └── embedding/               pgvector embedding service (systemd unit + installer)
-├── web/
-│   ├── index.html               Public landing redirect
-│   └── login-ui/                Customer login UI (HTML + assets)
 ├── n8n-workflows/               Exported n8n workflow JSONs
 └── sql/                         PostgreSQL schemas (memories, agent token log, nodes, etc.)
 ```
@@ -98,17 +99,17 @@ Both bootstrap paths exist intentionally during the v3→v4 transition. v3 (`scr
 
 ```bash
 # On a fresh Ubuntu 22.04 VPS in any region
-curl -O https://raw.githubusercontent.com/[your-org]/EVENT-HORIZON-VPN-DASH/main/scripts/eh-node-bootstrap.sh
-chmod +x eh-node-bootstrap.sh
+curl -O https://raw.githubusercontent.com/FletchEm31/BLACKHOLE-NETWORK/main/scripts/bhn-node-bootstrap.sh
+chmod +x bhn-node-bootstrap.sh
 
-# Standard exit node
-bash eh-node-bootstrap.sh EH-NYC-US2 123.456.789.0 wg2
+# Standard exit node (new node — uses BHN| convention)
+bash bhn-node-bootstrap.sh BHN-VPS-NYC-US2 123.456.789.0 wg2
 
-# Hub node (with encrypted storage + PostgreSQL)
+# Hub node (with encrypted storage + PostgreSQL) — legacy hostname kept
 ATTACH_NVME=/dev/vdb \
 ATTACH_HDD=/dev/vdc \
 INSTALL_POSTGRES=1 \
-bash eh-node-bootstrap.sh EH-VPS-LOSANGELES-US1 149.28.91.100 wg0
+bash bhn-node-bootstrap.sh EH-VPS-LOSANGELES-US1 149.28.91.100 wg0
 ```
 
 After deployment, the script outputs the node's WireGuard public key and the command to register it on the LA hub.
@@ -116,9 +117,13 @@ After deployment, the script outputs the node's WireGuard public key and the com
 ## Naming conventions
 
 ```
-Standalone resources (VPS):
-  EH|VPS-LOCATION-COUNTRY+SEQINDEX
-  Example: EH|VPS-LOSANGELES-US1
+Standalone resources (VPS) — NEW nodes:
+  BHN|VPS-LOCATION-COUNTRY+SEQINDEX
+  Example: BHN|VPS-NEWJERSEY-US2
+
+Legacy nodes (operator renames manually):
+  EH|VPS-LOSANGELES-US1   (LA hub, pre-rename)
+  EH|VPS-FRANKFURT-EU1    (Frankfurt exit, pre-rename)
 
 Attachments (block storage):
   DEVICE-LOCATION-COUNTRY+SEQINDEX
@@ -148,8 +153,9 @@ Vultr web console:             via Vultr panel (root + password)
 
 ### Frankfurt node
 ```
-SSH:                ssh root@192.248.187.208
-Vultr console:      via Vultr panel
+SSH (from LA only):    ssh frankfurt          # alias in /root/.ssh/config → root@10.9.0.2:2222
+                                              # via wg1 tunnel (Vultr blocks cross-region public TCP)
+Vultr console:         via Vultr panel        # emergency-only fallback when tunnel is down
 ```
 
 ## License

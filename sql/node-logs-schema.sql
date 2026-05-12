@@ -1,7 +1,7 @@
 -- node-logs-schema.sql
 -- Per-node security events shipped from non-hub nodes to the LA hub PostgreSQL.
--- Populated by scripts/eh-log-shipper.py (deployed to /usr/local/bin/eh-log-shipper.py
--- on each non-hub node, cron */5).
+-- Populated by scripts/bhn-log-shipper.py (deployed to /usr/local/bin/eh-log-shipper.py
+-- on each non-hub node, cron */5 — LA-side binary name kept until migration).
 --
 -- Apply once on the hub:
 --   sudo -u postgres psql -d eventhorizon -f sql/node-logs-schema.sql

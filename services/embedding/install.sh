@@ -1,7 +1,11 @@
 #!/bin/bash
-# Idempotent installer for the EH local embedding service.
+# Idempotent installer for the BHN local embedding service.
 # Sets up /opt/eh-embed with a Python venv, installs fastembed + fastapi + uvicorn,
 # writes the systemd unit, enables + starts it, and waits for /health.
+#
+# NOTE: LA-side install paths (/opt/eh-embed, systemd unit name `eh-embed`) keep
+# the eh- prefix until coordinated LA migration. Repo-side source filename is
+# bhn-embed.service. See project_blackhole_network_rename memory.
 #
 # Usage:
 #   bash install.sh
@@ -25,7 +29,9 @@ python3 -m venv /opt/eh-embed/venv
 /opt/eh-embed/venv/bin/pip install --quiet fastembed fastapi 'uvicorn[standard]'
 
 echo "[eh-embed] installing systemd unit..."
-cp "${SCRIPT_DIR}/eh-embed.service" /etc/systemd/system/eh-embed.service
+# Source filename in repo: bhn-embed.service (renamed 2026-05-11)
+# Target on LA: /etc/systemd/system/eh-embed.service (LA-side name kept until migration)
+cp "${SCRIPT_DIR}/bhn-embed.service" /etc/systemd/system/eh-embed.service
 systemctl daemon-reload
 systemctl enable --now eh-embed
 

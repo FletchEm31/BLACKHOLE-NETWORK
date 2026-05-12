@@ -1,7 +1,7 @@
 #!/bin/bash
 # infrastructure/bootstrap/modules/network-policy.sh
 #
-# Sourced by eh-node-bootstrap.sh. Provides:
+# Sourced by bhn-node-bootstrap.sh. Provides:
 #   apply_network_policy <policy_file>
 #
 # Parses a policy file (policies/<type>-network-policy.conf) and applies it

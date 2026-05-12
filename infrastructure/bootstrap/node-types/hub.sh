@@ -1,7 +1,7 @@
 #!/bin/bash
 # infrastructure/bootstrap/node-types/hub.sh
 #
-# Sourced by eh-node-bootstrap.sh after modules. Defines:
+# Sourced by bhn-node-bootstrap.sh after modules. Defines:
 #   node_type_install
 #
 # Hub composition: encrypted storage tiers, WG hub, dnscrypt-proxy, Shadowsocks,

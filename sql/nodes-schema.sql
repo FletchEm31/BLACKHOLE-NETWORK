@@ -1,7 +1,7 @@
 -- nodes-schema.sql
--- EventHorizon — registry of all bootstrapped nodes in the network.
--- Written by infrastructure/bootstrap/eh-node-bootstrap.sh phase 3 via psql
--- when EH_BOOTSTRAP_PG_DSN is set, otherwise staged at /root/eh-node-register.sql.
+-- Blackhole Network (BHN) — registry of all bootstrapped nodes in the network.
+-- Written by infrastructure/bootstrap/bhn-node-bootstrap.sh (formerly eh-node-bootstrap.sh) phase 3
+-- via psql when BHN_BOOTSTRAP_PG_DSN is set, otherwise staged at /root/bhn-node-register.sql.
 --
 -- Apply once on the hub:
 --   sudo -u postgres psql -d eventhorizon -f sql/nodes-schema.sql
@@ -60,5 +60,5 @@ GRANT INSERT, UPDATE, SELECT ON nodes TO bootstrap_writer;
 GRANT USAGE, SELECT ON SEQUENCE nodes_id_seq TO bootstrap_writer;
 
 -- Comment metadata
-COMMENT ON TABLE  nodes IS 'EventHorizon node registry — populated by eh-node-bootstrap.sh v4+';
+COMMENT ON TABLE  nodes IS 'Blackhole Network (BHN) node registry — populated by bhn-node-bootstrap.sh (formerly eh-node-bootstrap.sh) v4+';
 COMMENT ON COLUMN nodes.status IS 'bootstrapping → online → (degraded|offline|decommissioned)';

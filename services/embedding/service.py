@@ -1,5 +1,5 @@
 """
-EH local embedding service.
+BHN local embedding service.
 
 Serves BAAI/bge-small-en-v1.5 (384-dim, English, BGE family) over localhost.
 Runs via fastembed (ONNX runtime, no pytorch) so the footprint stays small —
@@ -13,7 +13,8 @@ Endpoints:
   POST /embed            — body: {"text": "..."}, returns {"vector": [384 floats], "ms": int}
   POST /embed/batch      — body: {"texts": ["...", ...]}, returns {"vectors": [...], "ms": int}
 
-Deployed via /etc/systemd/system/eh-embed.service. See eh-embed.service in this folder.
+Deployed via /etc/systemd/system/eh-embed.service (LA-side unit name kept until migration).
+Repo-side source filename: bhn-embed.service (renamed 2026-05-11). See that file in this folder.
 """
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field

@@ -1,7 +1,7 @@
 #!/bin/bash
 # infrastructure/bootstrap/modules/wireguard.sh
 #
-# Sourced by eh-node-bootstrap.sh. Provides:
+# Sourced by bhn-node-bootstrap.sh. Provides:
 #   setup_wireguard_install                          (apt + key gen)
 #   setup_wireguard_hub <interface> <listen_port>    (server-side)
 #   setup_wireguard_peer <interface> <listen_port> <hub_ip> <hub_pubkey> \

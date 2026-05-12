@@ -1,4 +1,6 @@
-# EventHorizon — Backup & Restore
+# Blackhole Network (BHN) — Backup & Restore
+
+> **Note:** LA-deployed script and path references (e.g. `eh-backup`, `/root/.eh-backup.env`, `/etc/cron.d/eh-backup`) reflect current operational state. LA migration to `bhn-*` paths is deferred to a separate coordinated session — see `project_blackhole_network_rename` memory.
 
 ## What's backed up
 

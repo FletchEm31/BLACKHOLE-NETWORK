@@ -1,7 +1,7 @@
 #!/bin/bash
 # infrastructure/bootstrap/modules/suricata.sh
 #
-# Sourced by eh-node-bootstrap.sh. Provides:
+# Sourced by bhn-node-bootstrap.sh. Provides:
 #   setup_suricata
 #
 # Installs Suricata IDS. Heavyweight (~50k rules, ~100 Mbps inspected per vCPU

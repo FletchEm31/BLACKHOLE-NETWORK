@@ -1,7 +1,7 @@
 #!/bin/bash
 # infrastructure/bootstrap/node-types/proxy.sh
 #
-# Sourced by eh-node-bootstrap.sh after modules. Defines:
+# Sourced by bhn-node-bootstrap.sh after modules. Defines:
 #   node_type_install
 #
 # Proxy composition: minimal Shadowsocks-only DPI-resistant entry point.

@@ -1,7 +1,7 @@
 #!/bin/bash
 # infrastructure/bootstrap/modules/shadowsocks.sh
 #
-# Sourced by eh-node-bootstrap.sh. Provides:
+# Sourced by bhn-node-bootstrap.sh. Provides:
 #   setup_shadowsocks <port> <password>
 #
 # Installs shadowsocks-libev with chacha20-ietf-poly1305 + FastOpen + UDP relay.

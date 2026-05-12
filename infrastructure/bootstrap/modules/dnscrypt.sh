@@ -1,7 +1,7 @@
 #!/bin/bash
 # infrastructure/bootstrap/modules/dnscrypt.sh
 #
-# Sourced by eh-node-bootstrap.sh. Provides:
+# Sourced by bhn-node-bootstrap.sh. Provides:
 #   setup_dnscrypt
 #
 # Installs dnscrypt-proxy with multiple upstream resolvers (Cloudflare, Quad9,

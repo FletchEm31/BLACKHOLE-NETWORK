@@ -1,7 +1,7 @@
 #!/bin/bash
 # infrastructure/bootstrap/node-types/scan.sh
 #
-# Sourced by eh-node-bootstrap.sh after modules. Defines:
+# Sourced by bhn-node-bootstrap.sh after modules. Defines:
 #   node_type_install
 #
 # Scan composition: passive sensor — heavy Suricata IDS + node_exporter +

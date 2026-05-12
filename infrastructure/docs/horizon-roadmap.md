@@ -4,7 +4,7 @@ Consolidated design document for the HORIZON AI assistant. Source of truth for m
 
 Companion to the operator's freeform plan at `HORIZON PLAN.txt` (repo root). Where the two differ, decisions captured in this file are the latest and override the txt.
 
-> "Named after the Event Horizon Telescope (which photographed Sagittarius A* + M87*). Fits the EventHorizon brand, sounds natural spoken. Tone: professional, warm, concise — personal chief of staff."
+> "Named after the Event Horizon Telescope (which photographed Sagittarius A* + M87*). Fits the BHN brand (project renamed from EventHorizon 2026-05-11; the EventHorizon VPN name is reserved for a separate future commercial product). Sounds natural spoken. Tone: professional, warm, concise — personal chief of staff."
 
 ---
 
@@ -27,7 +27,7 @@ Companion to the operator's freeform plan at `HORIZON PLAN.txt` (repo root). Whe
 
 | Phase | Modules | Pre-reqs |
 |-------|---------|----------|
-| **Built** | EH Network Ops, pgvector memory layer (Pulse writes + HORIZON reads) | — |
+| **Built** | BHN Network Ops, pgvector memory layer (Pulse writes + HORIZON reads) | — |
 | **Done this session** | JARVIS → HORIZON rename (workflow + memories + repo) | — |
 | **Session 1 — voice foundation** | M1 Voice Pipeline, M2 Morning Briefing | All operator-action accounts provisioned (Twilio, ElevenLabs Creator, Google, OpenWeatherMap, NewsAPI, Alpaca) |
 | **Session 2 — daily rhythm** | M3 Evening Briefing, M4 Intraday Alerts | Session 1 |
@@ -67,7 +67,7 @@ Companion to the operator's freeform plan at `HORIZON PLAN.txt` (repo root). Whe
 "Good morning, Hayden."
 🌤  Weather — current + today's forecast (OpenWeatherMap)
 📅  Calendar — today's events (Google Calendar API)
-🔒  Security overnight — EH network status, blocked IPs, anomalies (PG queries against security_events, node_logs, anomalies)
+🔒  Security overnight — BHN network status, blocked IPs, anomalies (PG queries against security_events, node_logs, anomalies)
 📈  Markets overnight — SPY, BTC, watchlist movers (FMP + Alpaca)
 🃏  eBay — new messages, offers, actions needed (eBay API)
 🚨  Trading opportunities — anything overnight hitting M6 parameters
@@ -84,7 +84,7 @@ Companion to the operator's freeform plan at `HORIZON PLAN.txt` (repo root). Whe
 **Sequence:**
 - Market close summary (SPY/QQQ/BTC + watchlist)
 - eBay daily summary (new comps, listings, customer messages handled / pending)
-- EH security daily (counts by severity from `security_events` + `node_logs`, top blocked sources, any anomalies)
+- BHN security daily (counts by severity from `security_events` + `node_logs`, top blocked sources, any anomalies)
 - Tomorrow's calendar preview
 - Overnight opportunities to watch (anything HORIZON identified that's near M6 parameter thresholds but not yet fired)
 
@@ -421,7 +421,7 @@ Once 1-7 done and keys are in PM, Session 1 can build M1 (Voice Pipeline) and st
 
 ## Future considerations (not in current scope, captured for completeness)
 
-- **EU voice processing** — if EU-resident customers ever interact with HORIZON via voice, separate EU node with GDPR + § 201-aware design.
+- **EU voice processing** — N/A under personal-only direction. Voice infrastructure stays on LA. (Any future public VPN product is a separate concern on different infrastructure under a different entity — out of scope here.)
 - **Multi-region failover** — HORIZON depends on LA single-host today. Future: replication of `memories` + `call_transcripts` to a secondary node for DR.
 - **Voice biometric authentication** — operator-voice match could gate sensitive actions (live trades, large eBay purchases). Not yet planned.
 - **Other LLM providers** — current architecture is Sonnet 4.6-locked via n8n credential. Multi-provider fallback (Gemini, GPT-4) is possible but not designed.

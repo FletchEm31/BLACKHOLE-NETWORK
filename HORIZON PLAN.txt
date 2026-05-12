@@ -48,7 +48,7 @@ Briefing structure:
   "Good Morning Hayden"
   🌤️  Weather — current + today's forecast (OpenWeatherMap)
   📅  Calendar — today's events (Google Calendar API)
-  🔒  Security overnight — EH network status, blocked IPs, anomalies (PostgreSQL)
+  🔒  Security overnight — BHN network status, blocked IPs, anomalies (PostgreSQL)
   📈  Markets overnight — SPY, BTC, watchlist movers (FMP + Alpaca)
   🃏  eBay — new messages, offers, actions needed (eBay API)
   🚨  Trading opportunities — anything hitting defined parameters overnight
@@ -60,7 +60,7 @@ MODULE 3 — EVENING BRIEFING (Session 2)
 Triggered: Daily at operator-defined time (e.g. 6:00pm)
   📈  Market close summary
   🃏  eBay daily summary
-  🔒  EH security daily summary
+  🔒  BHN security daily summary
   📅  Tomorrow's schedule preview
   💡  Overnight opportunities to watch
 
@@ -226,7 +226,7 @@ HORIZON IDENTITY
 
 Name: HORIZON
 Named after: Event Horizon Telescope (photographed Sagittarius A* + M87*)
-Fits: EventHorizon brand, space theme, sounds natural spoken
+Fits: BHN brand (project renamed from EventHorizon 2026-05-11; commercial-VPN name reserved separately), space theme, sounds natural spoken
 Voice: ElevenLabs custom persona (to be designed)
 Email: horizon@eventhorizonvpn.com
 Google: horizon@gmail.com (calendar management)
@@ -237,7 +237,7 @@ STATUS
 ================================================================================
 
   | Module                    | Status        |
-  | EH Network Ops            | ✅ Built      |
+  | BHN Network Ops           | ✅ Built      |
   | pgvector Memory           | ✅ Built      |
   | JARVIS → HORIZON rename   | 🔨 Next       |
   | ElevenLabs Voice          | 🔨 Next       |

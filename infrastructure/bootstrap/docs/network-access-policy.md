@@ -1,4 +1,4 @@
-# EventHorizon — Network Access Policy
+# Blackhole Network (BHN) — Network Access Policy
 
 The bootstrap toolchain treats firewall posture as **declarative data**, not procedural code. Each node type has a policy file under `policies/` that lists exactly which ports the node accepts inbound, what egress it's allowed to make, and which interfaces it forwards traffic between.
 

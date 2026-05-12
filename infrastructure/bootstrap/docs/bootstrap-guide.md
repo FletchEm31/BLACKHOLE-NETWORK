@@ -1,4 +1,6 @@
-# EventHorizon — Bootstrap v4 Guide
+# Blackhole Network (BHN) — Bootstrap v4 Guide
+
+> **Note:** Project renamed 2026-05-11 from EventHorizon → Blackhole Network. Script paths shown as `bhn-*` reflect the repo state. Legacy hostnames `EH-VPS-LOSANGELES-US1` and `EH-VPS-FRANKFURT-EU1` in examples below are the actual deployed nodes (kept until operator renames manually); new nodes use the `BHN|VPS-*` convention. See `project_blackhole_network_rename` memory.
 
 Three-phase node provisioning: **open window → install by type → auto lockdown.**
 
@@ -6,7 +8,7 @@ Three-phase node provisioning: **open window → install by type → auto lockdo
 
 ```
 infrastructure/bootstrap/
-├── eh-node-bootstrap.sh         master orchestrator
+├── bhn-node-bootstrap.sh        master orchestrator
 ├── node-types/
 │   ├── hub.sh                   storage + WG hub + PG + Grafana + n8n + backup
 │   ├── exit.sh                  WG peer + Shadowsocks
@@ -21,10 +23,10 @@ infrastructure/bootstrap/
 
 ```bash
 # On a fresh Ubuntu 22.04 VPS in any region
-git clone https://github.com/[your-org]/event-horizon-vpn-dashboard.git
-cd event-horizon-vpn-dashboard
+git clone https://github.com/FletchEm31/BLACKHOLE-NETWORK.git
+cd BLACKHOLE-NETWORK
 
-bash infrastructure/bootstrap/eh-node-bootstrap.sh \
+bash infrastructure/bootstrap/bhn-node-bootstrap.sh \
     <NAME> <PUBLIC_IP> <WG_INTERFACE> <TYPE> <REGION>
 ```
 
@@ -34,19 +36,19 @@ bash infrastructure/bootstrap/eh-node-bootstrap.sh \
 # Hub node — full stack with encrypted block storage
 ATTACH_NVME=/dev/vdb \
 ATTACH_HDD=/dev/vdc \
-bash infrastructure/bootstrap/eh-node-bootstrap.sh \
+bash infrastructure/bootstrap/bhn-node-bootstrap.sh \
     EH-VPS-LOSANGELES-US1 149.28.91.100 wg0 hub US-WEST
 
 # Exit node
-bash infrastructure/bootstrap/eh-node-bootstrap.sh \
+bash infrastructure/bootstrap/bhn-node-bootstrap.sh \
     EH-VPS-FRANKFURT-EU1 192.248.187.208 wg1 exit EU-CENTRAL
 
 # Scan node — passive sensor with Suricata + node_exporter
-bash infrastructure/bootstrap/eh-node-bootstrap.sh \
+bash infrastructure/bootstrap/bhn-node-bootstrap.sh \
     EH-VPS-NYC-US2 1.2.3.4 wg2 scan US-EAST
 
 # Proxy node — Shadowsocks-only DPI-resistant entry
-bash infrastructure/bootstrap/eh-node-bootstrap.sh \
+bash infrastructure/bootstrap/bhn-node-bootstrap.sh \
     EH-VPS-SGP-SG1 5.6.7.8 wg3 proxy APAC-SE
 ```
 

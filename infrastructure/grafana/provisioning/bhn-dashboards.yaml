@@ -1,0 +1,24 @@
+# /etc/grafana/provisioning/dashboards/bhn-dashboards.yaml
+#
+# Provisions BHN dashboards from JSON files under /var/lib/grafana/dashboards.
+# Dashboards under that path are auto-loaded on Grafana start and re-scanned
+# every `updateIntervalSeconds`. To version them, copy the canonical JSON from
+# infrastructure/grafana/dashboards/ (this repo) to that directory.
+#
+# Note: folderUid stays 'eh' to preserve continuity with already-provisioned
+# dashboards on the live Grafana instance. Change UID only when willing to
+# re-provision dashboards from scratch.
+apiVersion: 1
+
+providers:
+  - name: 'bhn-dashboards'
+    orgId: 1
+    folder: 'Blackhole Network'
+    folderUid: 'eh'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

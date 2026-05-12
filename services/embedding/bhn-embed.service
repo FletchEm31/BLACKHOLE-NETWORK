@@ -1,0 +1,16 @@
+[Unit]
+Description=EH local embedding service (bge-small-en-v1.5 via fastembed)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/eh-embed
+Environment=HF_HOME=/opt/eh-embed/cache
+ExecStart=/opt/eh-embed/venv/bin/python -m uvicorn service:app --host 127.0.0.1 --port 8001
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=120
+
+[Install]
+WantedBy=multi-user.target
