@@ -26,6 +26,10 @@
 #                                  If unset, notification is skipped.
 #   HUB_IP=<ip>                    Override hub IP (default: LA hub)
 #   HUB_PUBKEY=<key>               Override hub WG pubkey
+#   TUNNEL_IP_OVERRIDE=<ip>        Override derived TUNNEL_IP. Use when joining
+#                                  the hub's flat /24 instead of getting your own
+#                                  (e.g. NJ at 10.8.0.5, Hillsboro at 10.8.0.6
+#                                  both on LA's wg0 alongside personal peers).
 #
 # Exit codes:
 #   0  bootstrap completed (lockdown applied)
@@ -86,6 +90,7 @@ if [[ "$NODE_TYPE" == "hub" ]]; then
 else
   TUNNEL_IP="10.$((8 + WG_NUM)).0.2"
 fi
+TUNNEL_IP="${TUNNEL_IP_OVERRIDE:-$TUNNEL_IP}"
 BOOTSTRAP_TS="$(date -u +%FT%TZ)"
 
 # Hub identity (defaults — overridable for new hubs / migrations)
