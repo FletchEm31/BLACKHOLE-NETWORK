@@ -172,6 +172,14 @@ SSH (from LA only):    ssh frankfurt          # alias in /root/.ssh/config → r
 Vultr console:         via Vultr panel        # emergency-only fallback when tunnel is down
 ```
 
+### NJ trading node
+```
+SSH (from LA):         ssh nj                 # alias in /root/.ssh/config → root@10.8.0.5:2222
+                                              # via wg0 tunnel (NJ joined LA's wg0 hub as peer 10.8.0.5)
+SSH (from operator PC): ssh -p 2222 root@140.82.4.35   # direct to public IP also works
+Vultr console:         via Vultr panel        # emergency-only fallback
+```
+
 ## License
 
 Private — all rights reserved.

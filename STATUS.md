@@ -61,14 +61,21 @@ Phase 3: AI INTEGRATION       ████░░░░░░  ~40%   (pgvector m
 | Tor bridge/relay (non-exit; privacy routing) | 🔨 Planned 2026-05-11 |
 | LibreSpeed (EU speed test endpoint) | 🔨 Planned 2026-05-11 |
 
-### New Jersey — `BHN|VPS-NEWJERSEY-US2` ⏸ Provisioning blocked (WG tunnel issue, parked 2026-05-11)
+### New Jersey — `BHN|VPS-NEWJERSEY-US2` ✅ Operational (trading node)
 
 | Component | Status |
 |-----------|--------|
-| Provisioning | ⏸ Vultr cross-region WG block suspected (parallel to early Frankfurt UDP issue); SSH over tunnel failing despite UFW allow on wg0 |
-| Trading workloads (FMP, Congress.gov, Polymarket, Kalshi, Alpaca paper) | 🔨 Blocked on tunnel |
-| LibreSpeed (US-East speed test endpoint) | 🔨 Planned 2026-05-11 |
-| Tor bridge/relay (non-exit middle relay, BHNNewJersey, 512 KB/s + 750 GB/month cap; pairs with Frankfurt relay via MyFamily) | 🔨 Planned 2026-05-11 — can deploy independently of tunnel since ORPort is on public IP |
+| IP (public) | `140.82.4.35` |
+| Tunnel IP | `10.8.0.5` (on LA's `wg0` hub as peer — NOT separate wg2) |
+| SSH from LA | ✅ `ssh nj` alias → `root@10.8.0.5:2222` (orchestrator key `/root/.ssh/eh_frankfurt`) |
+| WireGuard tunnel | ✅ Operational 2026-05-12 — 58 ms LA↔NJ RTT, 0% loss |
+| WG resolution | Required two LA-side UFW egress rules: `allow out to 140.82.4.35 port 51820 proto udp` (underlay) + `allow out to 10.8.0.5` (inner tunnel). Symptom before fix: handshake worked, NJ→LA traffic worked, LA→NJ dropped at LA's `ufw-after-output` default-DROP. |
+| Hardening | ✅ SSH key-only, UFW + iptables, fail2ban, CrowdSec, Suricata, dnscrypt-proxy |
+| Nightly diagnostic enrollment | ✅ Added to `bhn-nightly-diagnostic.sh` REMOTE_NODES |
+| Trading workloads (FMP, Congress.gov, Polymarket, Kalshi, Alpaca paper) | 🔨 Ready to build (tunnel unblocks all of these) |
+| LibreSpeed (US-East speed test endpoint) | 🔨 Planned (Phase 4 deploy) |
+| Tor bridge/relay (non-exit middle relay, BHNNewJersey, 512 KB/s + 750 GB/month cap; pairs with Frankfurt relay via MyFamily) | 🔨 Planned (Phase 4 deploy) |
+| LUKS2 storage | ⚠️ Not yet — NJ has no persistent sensitive data yet; revisit when trading rules / fill history lands |
 
 ## Data pipeline
 
