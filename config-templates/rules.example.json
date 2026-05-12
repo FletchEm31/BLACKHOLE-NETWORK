@@ -1,0 +1,148 @@
+{
+  "version": "1.0",
+  "updated_at": "2026-05-12T00:00:00Z",
+  "operator_note": "Initial conservative defaults. All strategies enabled but live_mode_approved=false until per-strategy operator sign-off. Generated from rules_schema.EXAMPLE_RULES — regenerate via `python3 scripts/trading/rules_schema.py example > config-templates/rules.example.json`.",
+  "system": {
+    "halted": false,
+    "circuit_breakers": {
+      "daily_loss_limit_pct": 0.05,
+      "weekly_loss_limit_pct": 0.10,
+      "drawdown_limit_pct": 0.15,
+      "daily_turnover_multiple": 2.0
+    },
+    "reconciliation": {
+      "interval_seconds": 300,
+      "price_tolerance_dollars": 0.005,
+      "halt_on_mismatch": true
+    },
+    "twilio": {
+      "rate_limit_per_hour": 20
+    }
+  },
+  "strat_1_congress": {
+    "enabled": true,
+    "live_mode_approved": false,
+    "poll_interval_seconds": 900,
+    "min_transaction_usd": 10000,
+    "max_days_after_disclosure": 2,
+    "max_position_pct": 0.10,
+    "stop_loss_pct": 0.15,
+    "hold_days": 30
+  },
+  "strat_2_value": {
+    "enabled": true,
+    "live_mode_approved": false,
+    "screener_filters": {
+      "pe_max": 15,
+      "pb_max": 1.5,
+      "de_max": 0.5,
+      "roe_min": 15,
+      "decline_52w_min_pct": 0.10
+    },
+    "exit": {
+      "hold_days": 90,
+      "stop_loss_pct": 0.20,
+      "pe_target_max": 25
+    },
+    "position": {
+      "max_position_pct": 0.10,
+      "max_positions": 6
+    },
+    "earnings_blackout_days": 7
+  },
+  "strat_3_scalp": {
+    "enabled": true,
+    "live_mode_approved": false,
+    "bollinger": {
+      "period": 20,
+      "stddev": 2.0,
+      "timeframe": "5Min",
+      "lookback_bars": 40
+    },
+    "entry_filters": {
+      "min_price": 10.0,
+      "min_avg_volume": 1000000,
+      "volume_confirm_mult": 1.2,
+      "min_z_score": 2.0
+    },
+    "position_limits": {
+      "size_per_signal": 2000,
+      "max_positions": 5,
+      "max_hold_minutes": 240,
+      "stop_loss_pct": 0.02,
+      "eod_flatten_minutes_before_close": 15
+    }
+  },
+  "strat_4_momentum": {
+    "enabled": true,
+    "live_mode_approved": false,
+    "crossover": {
+      "short_period": 50,
+      "long_period": 200,
+      "volume_confirm_mult": 1.5,
+      "lookback_days": 230
+    },
+    "entry_filters": {
+      "min_price": 20.0,
+      "min_avg_volume": 500000
+    },
+    "position_limits": {
+      "size_per_signal": 2000,
+      "max_positions": 10,
+      "stop_loss_pct": 0.10,
+      "trailing_stop_pct": 0.08
+    }
+  },
+  "strat_5_pred_mkt": {
+    "enabled": true,
+    "live_mode_approved": false,
+    "live_execution_enabled": false,
+    "macro_events": {
+      "odds_move_pct_min": 10.0,
+      "odds_move_window_min": 60,
+      "sector_mapping": {
+        "fed_rates": "XLF",
+        "energy_policy": "XLE",
+        "tech_regulation": "XLK",
+        "healthcare_policy": "XLV",
+        "defense": "ITA",
+        "climate": "ICLN",
+        "banking_regulation": "KBE",
+        "china_trade": "FXI"
+      },
+      "keyword_categories": {
+        "fed_rates": ["fed rate", "interest rate", "fomc", "powell"],
+        "energy_policy": ["oil", "opec", "energy policy", "gas price"],
+        "tech_regulation": ["antitrust", "tech regulation", "section 230"],
+        "healthcare_policy": ["healthcare", "medicare", "medicaid", "drug pricing"],
+        "defense": ["ukraine", "defense spending", "nato"],
+        "climate": ["climate", "carbon tax", "ev tax credit"],
+        "banking_regulation": ["bank regulation", "basel", "sec rule"],
+        "china_trade": ["china tariff", "taiwan", "chip export"]
+      },
+      "position_limits": {
+        "size_per_signal": 2000,
+        "max_positions": 3,
+        "hold_hours": 48,
+        "take_profit_pct": 0.05,
+        "stop_loss_pct": 0.03
+      }
+    },
+    "weather": {
+      "tiers": {
+        "tier_1_min_edge": 0.10,
+        "tier_1_size": 2000,
+        "tier_2_min_edge": 0.25,
+        "tier_2_size": 3000,
+        "tier_3_min_edge": 0.35,
+        "tier_3_size": 5000
+      },
+      "position_limits": {
+        "max_positions": 3,
+        "stop_loss_pct": 0.50
+      },
+      "regions_supported": ["operator-home"],
+      "variables_supported": ["precipitation"]
+    }
+  }
+}
