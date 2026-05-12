@@ -1,0 +1,56 @@
+# BHN — Tor non-exit middle relay configuration.
+# Hillsboro US-WEST exit/egress-proxy node (BHN-HILLSBORO-US3), 2026-05-12.
+#
+# Role: middle relay. Bandwidth halved vs Frankfurt's relay to leave
+# headroom for the tinyproxy egress workload (all LA outbound API calls)
+# and the Shadowsocks endpoint on the same host.
+
+## ─── Identity ──────────────────────────────────────────────────────────
+Nickname BHNHelios-US3
+ContactInfo admin@eventhorizonvpn.com
+
+## ─── Ports ─────────────────────────────────────────────────────────────
+ORPort 9001
+SocksPort 0.0.0.0:9050
+# DirPort 9030      # optional; commented to reduce surface
+
+## ─── Relay type (explicit non-exit) ────────────────────────────────────
+ExitRelay 0
+ExitPolicy reject *:*       # belt + suspenders — refuse all exit traffic
+BridgeRelay 0               # middle relay, not bridge
+
+## ─── Bandwidth limits — REDUCED for egress-proxy + SS coexistence ──────
+# Hetzner Hillsboro allowance: 20 TB/month standard.
+# Frankfurt relay uses 1 MB/s + 1500 GB cap. Hillsboro is halved to leave
+# room for LA's full outbound HTTPS workload (Anthropic, Twilio outbound,
+# ElevenLabs TTS, all market-data polling, etc.) flowing through tinyproxy.
+# Adjust upward later if proxy bandwidth stays low.
+RelayBandwidthRate 512 KB
+RelayBandwidthBurst 1 MB
+AccountingMax 750 GB
+AccountingStart month 1 00:00
+
+## ─── Data + logging ────────────────────────────────────────────────────
+DataDirectory /var/lib/tor
+Log notice file /var/log/tor/notices.log
+Log notice stdout
+
+## ─── Hardening ─────────────────────────────────────────────────────────
+AssumeReachable 0
+ControlSocket 0
+
+## ─── MyFamily ──────────────────────────────────────────────────────────
+# BHN runs (or plans) five relays — Fornax (Frankfurt EU1), Nebula (NJ US2),
+# Helios (Hillsboro US3, this one), Aurora (Sweden EU2, future), Eridanus
+# (Iceland EU3, future). After each relay bootstraps and produces a
+# fingerprint, update MyFamily here AND in every other deployed torrc so
+# Tor consensus refuses circuits passing through any two of them.
+# See infrastructure/docs/tor-relay-naming.md for the full roster.
+#
+# Get fingerprints:
+#   ssh frankfurt 'docker exec bhn-tor-relay cat /var/lib/tor/fingerprint'
+#   ssh nj        'docker exec bhn-tor-relay cat /var/lib/tor/fingerprint'
+#   docker exec bhn-tor-relay cat /var/lib/tor/fingerprint   # local (Helios)
+#
+# Then uncomment and edit ALL deployed torrc files identically:
+# MyFamily $FORNAX_FP,$NEBULA_FP,$HELIOS_FP[,$AURORA_FP,$ERIDANUS_FP]

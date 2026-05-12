@@ -1,0 +1,31 @@
+# BHN — Tor non-exit middle relay on Hillsboro egress-proxy node.
+#
+# Bandwidth halved vs Frankfurt's relay (512 KB/s rate, 750 GB/month cap)
+# to leave headroom for the tinyproxy egress workload + Shadowsocks endpoint
+# on the same host.
+#
+# ORPort 9001/tcp MUST be publicly reachable. Operator: BEFORE first start,
+# run on Hillsboro:
+#   ufw allow 9001/tcp comment 'Tor relay ORPort'
+#
+# SocksPort 9050 is bound to Hillsboro's WG tunnel IP (10.8.0.6 on LA's wg0).
+# That binding lets BHN-internal services (e.g. HORIZON, SearXNG) route
+# privacy-sensitive lookups through Hillsboro's relay over the tunnel.
+
+services:
+  tor:
+    build: .
+    container_name: bhn-tor-relay
+    restart: unless-stopped
+    ports:
+      # ORPort — PUBLIC, required for Tor consensus reachability
+      - "9001:9001/tcp"
+      # SocksPort — bound to tunnel IP (10.8.0.6 on LA's wg0)
+      - "${BIND_IP}:9050:9050/tcp"
+    volumes:
+      - tor-data:/var/lib/tor
+      - tor-logs:/var/log/tor
+
+volumes:
+  tor-data:
+  tor-logs:
