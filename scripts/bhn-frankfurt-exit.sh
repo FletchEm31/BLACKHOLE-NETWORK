@@ -25,10 +25,15 @@
 set -uo pipefail
 
 # ─── Constants ──────────────────────────────────────────────────────────
+# Frankfurt is a peer ON wg0 at 10.9.0.2/32 — there is no separate wg1
+# interface. Exit routing hairpins traffic back out wg0 with 10.9.0.2 as
+# the next hop. `onlink` on the default route tells the kernel to treat
+# 10.9.0.2 as directly reachable via wg0 (WireGuard handles delivery
+# internally via AllowedIPs = 10.9.0.2/32, no ARP needed).
 FRA_TUNNEL_IP="10.9.0.2"
+FRA_PEER_ALLOWED="10.9.0.2/32"
 LA_PUBLIC_IP="149.28.91.100"
 WG_HUB_SUBNET="10.8.0.0/24"
-WG_FRA_SUBNET="10.9.0.0/24"
 FWMARK="0x100"
 TABLE_ID=100
 RULE_PRIO=100
@@ -58,11 +63,8 @@ have_route() {
   local route="$1"
   ip route show table "$TABLE_ID" | grep -q "$route"
 }
-have_forward_wg0_wg1() {
-  iptables -C FORWARD -i wg0 -o wg1 -j ACCEPT 2>/dev/null
-}
-have_forward_wg1_wg0() {
-  iptables -C FORWARD -i wg1 -o wg0 -j ACCEPT 2>/dev/null
+have_forward_wg0_wg0() {
+  iptables -C FORWARD -i wg0 -o wg0 -j ACCEPT 2>/dev/null
 }
 
 apply_changes() {
@@ -87,11 +89,13 @@ apply_changes() {
   fi
 
   # 3. Routes in table 100
+  # Frankfurt is a wg0 peer (AllowedIPs = 10.9.0.2/32), so the default
+  # gateway is reachable via wg0 with onlink (no separate next-hop route
+  # needed — WireGuard handles delivery via its AllowedIPs mapping).
   declare -a routes=(
     "$WG_HUB_SUBNET dev wg0"
-    "$WG_FRA_SUBNET dev wg1"
     "${LA_PUBLIC_IP}/32 dev enp1s0"
-    "default via $FRA_TUNNEL_IP dev wg1"
+    "default via $FRA_TUNNEL_IP dev wg0 onlink"
   )
   for r in "${routes[@]}"; do
     if have_route "$r" && [[ "$dry" != "dry-run" ]]; then
@@ -102,18 +106,12 @@ apply_changes() {
     fi
   done
 
-  # 4. FORWARD chain allow for wg0↔wg1
-  if have_forward_wg0_wg1 && [[ "$dry" != "dry-run" ]]; then
-    log "FORWARD wg0→wg1 already present — skipping"
+  # 4. FORWARD chain allow for wg0↔wg0 (hairpin between hub clients and FRA peer)
+  if have_forward_wg0_wg0 && [[ "$dry" != "dry-run" ]]; then
+    log "FORWARD wg0→wg0 already present — skipping"
   else
-    $exec iptables -I FORWARD 1 -i wg0 -o wg1 -j ACCEPT
-    [[ "$dry" != "dry-run" ]] && ok "FORWARD: wg0 → wg1 ACCEPT (top of chain)"
-  fi
-  if have_forward_wg1_wg0 && [[ "$dry" != "dry-run" ]]; then
-    log "FORWARD wg1→wg0 already present — skipping"
-  else
-    $exec iptables -I FORWARD 2 -i wg1 -o wg0 -j ACCEPT
-    [[ "$dry" != "dry-run" ]] && ok "FORWARD: wg1 → wg0 ACCEPT (for return path)"
+    $exec iptables -I FORWARD 1 -i wg0 -o wg0 -j ACCEPT
+    [[ "$dry" != "dry-run" ]] && ok "FORWARD: wg0 → wg0 ACCEPT (hub ↔ FRA peer)"
   fi
 }
 
@@ -122,31 +120,39 @@ revert_changes() {
   iptables -t mangle -D PREROUTING -i wg0 -j MARK --set-mark "$FWMARK" 2>/dev/null && ok "mangle rule removed"
   ip rule del fwmark "$FWMARK" lookup "$TABLE_ID" 2>/dev/null && ok "ip rule removed"
   ip route flush table "$TABLE_ID" 2>/dev/null && ok "routing table $TABLE_ID flushed"
-  iptables -D FORWARD -i wg0 -o wg1 -j ACCEPT 2>/dev/null && ok "FORWARD wg0→wg1 removed"
-  iptables -D FORWARD -i wg1 -o wg0 -j ACCEPT 2>/dev/null && ok "FORWARD wg1→wg0 removed"
+  iptables -D FORWARD -i wg0 -o wg0 -j ACCEPT 2>/dev/null && ok "FORWARD wg0→wg0 removed"
+  # Legacy cleanup: prior versions of this script created wg0↔wg1 rules
+  # before Frankfurt was collapsed into wg0. Drop them if they still linger.
+  iptables -D FORWARD -i wg0 -o wg1 -j ACCEPT 2>/dev/null && ok "legacy FORWARD wg0→wg1 removed"
+  iptables -D FORWARD -i wg1 -o wg0 -j ACCEPT 2>/dev/null && ok "legacy FORWARD wg1→wg0 removed"
 }
 
 preflight() {
-  # Verify we're on LA + wg0/wg1 are up + FRA reachable
+  # Verify we're on LA + wg0 is up + the Frankfurt peer (10.9.0.2/32) is reachable
   log "Pre-flight checks..."
 
   ip link show wg0 >/dev/null 2>&1 || err "wg0 interface not present"
-  ip link show wg1 >/dev/null 2>&1 || err "wg1 interface not present"
 
-  # Quick FRA handshake check (last 5 min)
+  # Verify a wg0 peer with AllowedIPs = 10.9.0.2/32 exists and has a fresh
+  # handshake. `wg show wg0 dump` outputs tab-separated columns:
+  # pubkey \t psk \t endpoint \t allowed-ips \t latest-handshake \t rx \t tx \t keepalive
   local last_hs
-  last_hs=$(wg show wg1 latest-handshakes 2>/dev/null | awk 'NR==1 {print $2}')
-  local now=$(date +%s)
-  if [[ -z "$last_hs" || $((now - last_hs)) -gt 300 ]]; then
-    err "Frankfurt wg1 handshake stale (>5 min). Refusing to apply — fix tunnel first."
+  last_hs=$(wg show wg0 dump 2>/dev/null \
+    | awk -F'\t' -v ip="$FRA_PEER_ALLOWED" '$4 ~ ip {print $5; exit}')
+  if [[ -z "$last_hs" ]]; then
+    err "No wg0 peer found with AllowedIPs containing $FRA_PEER_ALLOWED — fix peer config first."
   fi
-  ok "wg1 handshake fresh ($(( (now - last_hs) ))s ago)"
+  local now=$(date +%s)
+  if [[ "$last_hs" == "0" || $((now - last_hs)) -gt 300 ]]; then
+    err "Frankfurt peer handshake stale (>5 min). Refusing to apply — fix tunnel first."
+  fi
+  ok "Frankfurt peer handshake fresh ($(( (now - last_hs) ))s ago)"
 
   # Verify FRA reachable on the tunnel
-  if ! timeout 3 ping -I wg1 -c 2 "$FRA_TUNNEL_IP" >/dev/null 2>&1; then
-    err "Cannot ping $FRA_TUNNEL_IP via wg1 — tunnel up but unhealthy"
+  if ! timeout 3 ping -I wg0 -c 2 "$FRA_TUNNEL_IP" >/dev/null 2>&1; then
+    err "Cannot ping $FRA_TUNNEL_IP via wg0 — peer up but unhealthy"
   fi
-  ok "FRA reachable via tunnel"
+  ok "FRA reachable via wg0"
 
   # Reminder about FRA-side MASQUERADE
   warn "Reminder: confirm Frankfurt has MASQUERADE rule for ${WG_HUB_SUBNET} source."
@@ -169,12 +175,20 @@ show_status() {
   ip route show table "$TABLE_ID" 2>/dev/null || echo "(table empty or doesn't exist)"
 
   echo
-  echo "=== iptables FORWARD (wg0/wg1) ==="
-  iptables -nvL FORWARD --line-numbers | grep -E "wg0|wg1|^Chain|^num" | head -10
+  echo "=== iptables FORWARD (wg0) ==="
+  iptables -nvL FORWARD --line-numbers | grep -E "wg0|^Chain|^num" | head -10
 
   echo
-  echo "=== wg1 handshake ==="
-  wg show wg1 | grep -E "latest handshake|transfer" | head -2
+  echo "=== Frankfurt peer handshake (wg0, AllowedIPs ${FRA_PEER_ALLOWED}) ==="
+  wg show wg0 dump 2>/dev/null \
+    | awk -F'\t' -v ip="$FRA_PEER_ALLOWED" '$4 ~ ip {
+        ts = $5
+        if (ts == "0") { print "  never" } else {
+          cmd = "date -d @" ts " -u +\"%Y-%m-%d %H:%M:%S UTC\""
+          cmd | getline when; close(cmd)
+          print "  last handshake: " when "  (rx=" $6 " tx=" $7 ")"
+        }
+      }'
 
   echo
   echo "=== rollback state ==="
