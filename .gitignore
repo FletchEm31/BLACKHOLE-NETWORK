@@ -59,3 +59,7 @@ desktop.ini
 # Local-only ops artifacts
 *.local.*
 *.private.*
+
+# Backup archives (off-host drops live in D:\EH Backups\, never the repo)
+n8n-backup.tar.gz
+*.tar.gz
