@@ -1,0 +1,119 @@
+# Grafana unified-alerting provisioning for BHN.
+#
+# Two v1 rules: node down + PostgreSQL unreachable.
+# Three v2 rules (NVMe %, HDD %, n8n failure rate %) added when the
+# host_metrics + n8n_execution_stats tables exist.
+#
+# Deploy path on LA:
+#   /etc/grafana/provisioning/alerting/bhn-alerts.yaml
+# After dropping the file:
+#   - Edit `<BHN_ALERT_WEBHOOK_TOKEN>` placeholder to the real n8n webhook
+#     token (32-hex string generated at workflow creation time; lives in
+#     /root/.bhn-alert-webhook-token, mode 0600, NOT in repo)
+#   - systemctl restart grafana-server  OR  grafana-server reload via SIGHUP
+#
+# Grafana picks up the file + materializes the rules, contact point, and
+# notification policy on next start.
+
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: bhn-critical
+    folder: BHN
+    interval: 1m
+    rules:
+
+      # ─── v1 rule 1: any BHN node hasn't heartbeat in >15 min ───────────────
+      - uid: bhn-node-down
+        title: BHN node down (no heartbeat > 15 min)
+        condition: B
+        for: 5m
+        noDataState: NoData
+        execErrState: Error
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: cflc7izgwm7lsc
+            model:
+              format: table
+              rawSql: |
+                SELECT COUNT(*)::int AS down_count
+                FROM nodes
+                WHERE status NOT IN ('decommissioned')
+                  AND (last_seen IS NULL OR last_seen < NOW() - INTERVAL '15 minutes');
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+        annotations:
+          summary: "One or more BHN nodes have not heartbeat in >15 min"
+          description: "{{ $values.A.Value }} node(s) appear offline. Check nodes table for last_seen older than NOW() - 15m. Could be: node crash, network split, heartbeat cron stopped, bhn-heartbeat.sh failed."
+        labels:
+          severity: warning
+          dedup_key: bhn-node-down
+
+      # ─── v1 rule 2: PostgreSQL data source unreachable ─────────────────────
+      # If the SQL query errors, execErrState: Alerting fires. This is how
+      # we detect PG being unreachable — the query itself fails.
+      - uid: bhn-pg-unreachable
+        title: BHN PostgreSQL unreachable
+        condition: B
+        for: 2m
+        noDataState: Alerting
+        execErrState: Alerting
+        data:
+          - refId: A
+            relativeTimeRange: { from: 60, to: 0 }
+            datasourceUid: cflc7izgwm7lsc
+            model:
+              format: table
+              rawSql: |
+                SELECT 1 AS heartbeat;
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: lt, params: [1] }
+        annotations:
+          summary: "PostgreSQL is unreachable from Grafana"
+          description: "Grafana's PG data source heartbeat query failed or returned no rows. PG service likely down, listening socket unreachable, or grafana_reader credentials revoked. Check: systemctl status postgresql; ss -lntp | grep 5432; pg_isready -h 10.8.0.1."
+        labels:
+          severity: critical
+          dedup_key: bhn-pg-unreachable
+
+contactPoints:
+  - orgId: 1
+    name: bhn-webhook
+    receivers:
+      - uid: bhn-n8n-alert-webhook
+        type: webhook
+        disableResolveMessage: false
+        settings:
+          # Webhook URL — token portion is a 32-hex random secret generated
+          # at n8n workflow creation time. Token = bearer auth (anyone who
+          # knows the URL can fire alerts).
+          # Bind via the tunnel address 10.8.0.1 so externally-routable
+          # 5678 stays VPN-only.
+          url: "http://10.8.0.1:5678/webhook/<BHN_ALERT_WEBHOOK_TOKEN>/grafana-alert"
+          httpMethod: POST
+          maxAlerts: 10
+
+policies:
+  - orgId: 1
+    receiver: bhn-webhook
+    group_by: [alertname, dedup_key]
+    group_wait: 30s
+    group_interval: 5m
+    repeat_interval: 4h           # if alert keeps firing, re-notify every 4h
+    routes:
+      # Critical alerts (PG down) — faster repeat, shorter group_wait
+      - object_matchers:
+          - [severity, =, critical]
+        group_wait: 10s
+        repeat_interval: 1h
