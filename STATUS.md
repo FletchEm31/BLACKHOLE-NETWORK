@@ -36,6 +36,8 @@ Phase 3: AI INTEGRATION       ████░░░░░░  ~40%   (pgvector m
 | SSH hardening | ✅ Key-only root, passwords disabled |
 | iptables ACCEPT for VPN→SSH | ✅ Persisted |
 | Reboot survival | ✅ Verified |
+| Kernel | `5.15.0-177-generic` (last apt-upgrade pass 2026-05-12 — crowdsec 1.7.7→1.7.8, no kernel update available) |
+| CVE-2026-31431 (algif_aead "Copy Fail") | ✅ Mitigated — module blacklisted in `/etc/modprobe.d/disable-algif_aead.conf` + `/etc/modprobe.d/blacklist.conf`; persistent across reboot; revisit when Canonical ships kernel backport |
 | Wallos (subscription tracker, Docker, VPN-only, PG-connected) | 🔨 Planned 2026-05-11 |
 | LibreSpeed (US-West speed test endpoint) | 🔨 Planned 2026-05-11 |
 
@@ -57,6 +59,8 @@ Phase 3: AI INTEGRATION       ████░░░░░░  ~40%   (pgvector m
 | Root password rotated away from `EventHorizon2026` | ✅ 2026-05-08 |
 | UFW + iptables | ✅ Pruned 2026-05-08 — removed `51820/udp Anywhere` (wrong port, FRA uses 51821), `51821/udp Anywhere` (redundant with LA-scoped rule), `8443/tcp Anywhere` (nothing listening), `Anywhere from 149.28.91.100` (over-grant). Final rule set: 22/tcp anywhere, 51821/udp from LA, 8388 from LA, wg1→enp1s0 FWD. Note: sshd still listens on 80+443 with no UFW allow → those alt-ports unreachable. SSH-config cleanup deferred (operator confirmation required). |
 | **Vultr support ticket** | ✅ Resolved 2026-05-07. UDP path restored. Required two follow-up fixes after handshake landed: (a) Frankfurt's `wg1.conf` had stale `AllowedIPs = 10.9.0.0/30` from a prior install — the latest bootstrap wrote correct config but didn't down/up wg1, so kernel kept the old mapping. Bootstrap script patched to `wg-quick down && up` after writing config. (b) UFW route-allow added on `wg1 → enp1s0` so peer traffic can egress to internet (same FORWARD-chain default-deny gap LA had earlier today) |
+| Kernel | `5.15.0-177-generic` (last apt-upgrade pass 2026-05-12 — crowdsec 1.7.7→1.7.8, no kernel update available) |
+| CVE-2026-31431 (algif_aead "Copy Fail") | ✅ Mitigated — module blacklisted in 3 `/etc/modprobe.d/` files; persistent across reboot |
 | SearXNG (private meta-search, Docker, VPN-only) | 🔨 Planned 2026-05-11 |
 | Tor bridge/relay (non-exit; privacy routing) | 🔨 Planned 2026-05-11 |
 | LibreSpeed (EU speed test endpoint) | 🔨 Planned 2026-05-11 |
