@@ -12,26 +12,40 @@ Any future public VPN product is a separate concern (different servers, differen
 
 ## Architecture
 
-### Three-phase build plan
+### Five-phase build plan
 
 ```
-Phase 1: NETWORK
-├─ LA hub (operational)
-├─ Frankfurt exit (operational; reachable only via WG tunnel — Vultr blocks cross-region public TCP)
-├─ Bootstrap script v3 (codifies all hardening)
+Phase 1: NETWORK                        ✅ operational
+├─ LA hub
+├─ Frankfurt exit + privacy node (WG tunnel only — Vultr blocks cross-region public TCP)
+├─ NJ trading node (provisioning — WG tunnel issue pending)
+├─ Bootstrap script v4 (declarative node types + modular install)
 └─ Future nodes via snapshot deployment
 
-Phase 2: DASHBOARD
+Phase 2: DASHBOARD                      ✅ operational
 ├─ PostgreSQL on encrypted NVMe
-├─ Grafana (VPN-only access)
+├─ Grafana (VPN-only access) + BHN Data Ingest Monitor dashboard
 ├─ n8n for action automation
 └─ Single pane of glass for all nodes
 
-Phase 3: AI INTEGRATION
-├─ pgvector memory layer
-├─ Claude API for analysis
-├─ Voice ops interface (Vapi/Retell)
+Phase 3: AI INTEGRATION                 🔨 in progress
+├─ pgvector memory layer (operational)
+├─ HORIZON workflow (operational; chat-trigger live)
+├─ Voice ops interface (Twilio + ElevenLabs — modules M1-M9 staged)
 └─ Proactive alerting + auto-response
+
+Phase 4: PER-NODE SERVICES              🔨 scaffolded, deploy pending
+├─ LibreSpeed (LA + Frankfurt + NJ — speedtest endpoints + latency telemetry)
+├─ Wallos (LA — subscription / cost tracking, HORIZON reads via PG sync)
+├─ SearXNG (Frankfurt — private meta-search)
+└─ Tor non-exit middle relays (Frankfurt + NJ; MyFamily-linked)
+
+Phase 5: RESILIENCE                     📋 designed
+├─ Sweden cold standby + dark replication node (Bahnhof hosting, outside Vultr)
+├─ Tor hidden-service replication LA → Sweden (no Vultr cross-region correlation)
+├─ Single-command failover (bhn-failover-activate.sh)
+├─ Sweden Tor middle relay (joins MyFamily with FRA + NJ)
+└─ See infrastructure/docs/sweden-failover-architecture.md
 ```
 
 ### Storage tiering

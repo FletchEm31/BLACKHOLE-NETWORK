@@ -245,6 +245,30 @@ Build order: LibreSpeed baseline first (gives latency telemetry on day one), the
 
 ---
 
+## Phase 5: Resilience — Sweden cold standby (planned 2026-05-11)
+
+A dark replica of LA hosted on **Bahnhof Sweden** (deliberately non-Vultr — different provider, different jurisdiction, survives Vultr-wide compromise). Receives encrypted replication continuously via Tor hidden service so Vultr's edge never sees LA↔Sweden correlation. Sits dark during normal operation. Single operator-triggered command failover via `bhn-failover-activate.sh` brings up WireGuard hub, PostgreSQL primary, n8n, HORIZON on Sweden in minutes.
+
+Sweden also runs a Tor non-exit middle relay (`BHNSweden`, joins MyFamily with Frankfurt + NJ) — adds capacity to BHN's privacy stack from a Tor-friendly jurisdiction (strong free-expression law, no mandatory data retention, active Tor operator community).
+
+**Why this is its own phase:** every prior phase increases functionality (more nodes, more services, more capability). Resilience is the first phase that addresses the failure modes the rest of the build has now accumulated — single-region (US) hub, single-provider (Vultr) for active compute, single point of failure (LA) for HORIZON + PG state. Sweden is the answer.
+
+**Implementation phases:**
+- 5.1 — Provision Bahnhof, bootstrap, Tor relay live, MyFamily declared with FRA + NJ
+- 5.2 — Replication plumbing: LA's restic-via-Tor pushes to Sweden's hidden-service SFTP
+- 5.3 — Initial PG + n8n sync; replica goes into hot_standby
+- 5.4 — `bhn-failover-activate.sh` written + DRY-RUN tested
+- 5.5 — Quarterly failover drills (fail to Sweden, verify, fail back to LA)
+- 5.6 — Future: optional streaming PG replication; dual-endpoint WG client configs
+
+**Cost addition:** ~$20/mo (Bahnhof VPS).
+
+**Full design:** `infrastructure/docs/sweden-failover-architecture.md`. Threat model, replication flow, dark-mode component table, failover sequence, MyFamily-vs-isolation tradeoff, risks + open questions.
+
+**Broader expansion menu:** `infrastructure/docs/bhn-node-candidates.md` — Iceland (1984, Flokinet), Switzerland (Infomaniak), Romania (M247, FlaxyHost), Sweden (Bahnhof, Njalla), Germany (Hetzner), Netherlands (Worldstream, NFOrce). No commitments beyond Sweden Phase 5; the list exists so Phase 6+ has a sourced shortlist when expansion need arises.
+
+---
+
 ## Voice stack architecture
 
 ```
