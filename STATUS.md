@@ -1,20 +1,26 @@
 # Blackhole Network (BHN) — Network Status
 
-Last updated: **2026-05-11**
+Last updated: **2026-05-12**
 
-> **Note:** Project renamed 2026-05-11 from EventHorizon → Blackhole Network. Legacy hostnames (`EH|VPS-LOSANGELES-US1`, `EH|VPS-FRANKFURT-EU1`), n8n credential names (`EH-Twilio`, `EH-NewsAPI`, etc.), Proton Pass entries (`EH-*`), LA-deployed script paths (`/usr/local/sbin/eh-purge`, `/opt/eh-diagnostics/eh-*`), the PostgreSQL database name `eventhorizon`, and the email domain `eventhorizonvpn.com` are intentionally preserved per the operator's immutable list. LA-side script renames are deferred to a coordinated migration session. The "EventHorizon VPN" name is reserved for the future separate commercial product.
+> **Note:** Project renamed 2026-05-11 from EventHorizon → Blackhole Network. Vultr-side server display names updated to `BHN|VPS-LOSANGELES-US1`, `BHN|VPS-FRANKFURT-EU1`, `BHN|VPS-NEWJERSEY-US2`. Intentionally preserved as live-system identifiers (NOT renamed): n8n credential names (`Postgres EventHorizon`, `EventHorizonVPN-Claude`), Proton Pass entries (`EH-*`), LA-deployed script paths (`/usr/local/sbin/eh-purge`, `/opt/eh-diagnostics/eh-*`), the PostgreSQL database name `eventhorizon`, and the email domain `eventhorizonvpn.com`. LA-side script renames are deferred to a coordinated migration session. The "EventHorizon VPN" name is reserved for the future separate commercial product.
 
 ## Phase progress
 
 ```
-Phase 1: NETWORK              ████████░░  ~85%
-Phase 2: DASHBOARD            ███████░░░  ~75%
-Phase 3: AI INTEGRATION       ████░░░░░░  ~40%   (pgvector memory live, JARVIS→HORIZON rename done, voice/SMS/calling pending)
+Phase 1: NETWORK              ████████░░  ~85%   (LA + FRA + NJ all live; Frankfurt exit routing applied but BROKEN — FRA MASQUERADE missing, deferred to next session)
+Phase 2: DASHBOARD            ████████░░  ~80%
+Phase 3: AI INTEGRATION       ████░░░░░░  ~40%   (pgvector memory live, JARVIS→HORIZON rename done, voice/SMS/calling pending A2P 10DLC)
+Phase 4: PER-NODE SERVICES    ███████░░░  ~70%   (Wallos + SearXNG + LibreSpeed FRA deployed; LibreSpeed LA + Tor relays pending)
+Phase 5: RESILIENCE           ░░░░░░░░░░   designed (Sweden cold standby — Bahnhof hosting, deferred)
+
+Trading framework (NJ workstream, separate from 5-phase plan)  ████████░░  ~75%
+  → All 5 strategies + trading_core + killswitch + daily_summary + reconciliation_daemon
+    committed to repo. Pending: rules schema/validator, systemd units, NJ deployment, runbooks.
 ```
 
 ## Nodes
 
-### LA Hub — `EH|VPS-LOSANGELES-US1` ✅ Operational
+### LA Hub — `BHN|VPS-LOSANGELES-US1` ✅ Operational
 
 | Component | Status |
 |-----------|--------|
@@ -38,10 +44,10 @@ Phase 3: AI INTEGRATION       ████░░░░░░  ~40%   (pgvector m
 | Reboot survival | ✅ Verified |
 | Kernel | `5.15.0-177-generic` (last apt-upgrade pass 2026-05-12 — crowdsec 1.7.7→1.7.8, no kernel update available) |
 | CVE-2026-31431 (algif_aead "Copy Fail") | ✅ Mitigated — module blacklisted in `/etc/modprobe.d/disable-algif_aead.conf` + `/etc/modprobe.d/blacklist.conf`; persistent across reboot; revisit when Canonical ships kernel backport |
-| Wallos (subscription tracker, Docker, VPN-only, PG-connected) | 🔨 Planned 2026-05-11 |
-| LibreSpeed (US-West speed test endpoint) | 🔨 Planned 2026-05-11 |
+| Wallos (subscription tracker, Docker, VPN-only, PG-connected) | ✅ Deployed 2026-05-12 at `http://10.8.0.1:8090` |
+| LibreSpeed (US-West speed test endpoint) | 🔨 Not yet deployed — port `:8088` planned at `http://10.8.0.1:8088` |
 
-### Frankfurt — `EH|VPS-FRANKFURT-EU1` ✅ Operational *(exit + privacy node)*
+### Frankfurt — `BHN|VPS-FRANKFURT-EU1` ✅ Operational *(exit + privacy node)*
 
 | Component | Status |
 |-----------|--------|
@@ -61,10 +67,10 @@ Phase 3: AI INTEGRATION       ████░░░░░░  ~40%   (pgvector m
 | **Vultr support ticket** | ✅ Resolved 2026-05-07. UDP path restored. Required two follow-up fixes after handshake landed: (a) Frankfurt's `wg1.conf` had stale `AllowedIPs = 10.9.0.0/30` from a prior install — the latest bootstrap wrote correct config but didn't down/up wg1, so kernel kept the old mapping. Bootstrap script patched to `wg-quick down && up` after writing config. (b) UFW route-allow added on `wg1 → enp1s0` so peer traffic can egress to internet (same FORWARD-chain default-deny gap LA had earlier today) |
 | Kernel | `5.15.0-177-generic` (last apt-upgrade pass 2026-05-12 — crowdsec 1.7.7→1.7.8, no kernel update available) |
 | CVE-2026-31431 (algif_aead "Copy Fail") | 🆗 Mitigated — module blacklisted in 3 `/etc/modprobe.d/` files; persistent across reboot |
-| Exit-routing for operator "full" profile | 🔨 Phase 1 designed 2026-05-12 (`bhn-frankfurt-exit.sh` + `bhn-frankfurt-exit-routing.md`); operator deploy pending. Routes wg0 client traffic via wg1 → Frankfurt → exits as DE IP. Phase 2 DNS-via-Frankfurt is separate. |
-| SearXNG (private meta-search, Docker, VPN-only) | 🔨 Planned 2026-05-11 |
-| Tor bridge/relay (non-exit; privacy routing) | 🔨 Planned 2026-05-11 |
-| LibreSpeed (EU speed test endpoint) | 🔨 Planned 2026-05-11 |
+| Exit-routing for operator "full" profile | ⚠️ Applied 2026-05-12 but **BROKEN** — internet dies on full profile after apply. LA-side routing fixed (wg0 with `10.9.0.2 onlink` next-hop, not wg1) but **Frankfurt is missing MASQUERADE rule for `10.8.0.0/24` source** so return path fails. Hub clients reach Frankfurt over the tunnel but Frankfurt's NAT can't rewrite the source IP to its own public IP. Script: `/etc/wireguard/bhn-frankfurt-exit.sh` rollback works; apply re-tested only after FRA-side fix. **Deferred to next session.** |
+| SearXNG (private meta-search, Docker, VPN-only) | ✅ Deployed 2026-05-12 at `http://10.9.0.2:8089` |
+| Tor bridge/relay (non-exit; privacy routing) | 🔨 Planned (Phase 4 backlog) |
+| LibreSpeed (EU speed test endpoint) | ✅ Deployed 2026-05-12 at `http://10.9.0.2:8088` |
 
 ### New Jersey — `BHN|VPS-NEWJERSEY-US2` ✅ Operational (trading node)
 
@@ -77,9 +83,9 @@ Phase 3: AI INTEGRATION       ████░░░░░░  ~40%   (pgvector m
 | WG resolution | Required two LA-side UFW egress rules: `allow out to 140.82.4.35 port 51820 proto udp` (underlay) + `allow out to 10.8.0.5` (inner tunnel). Symptom before fix: handshake worked, NJ→LA traffic worked, LA→NJ dropped at LA's `ufw-after-output` default-DROP. |
 | Hardening | ✅ SSH key-only, UFW + iptables, fail2ban, CrowdSec, Suricata, dnscrypt-proxy |
 | Nightly diagnostic enrollment | ✅ Added to `bhn-nightly-diagnostic.sh` REMOTE_NODES |
-| Trading workloads (FMP, Congress.gov, Polymarket, Kalshi, Alpaca paper) | 🔨 Ready to build (tunnel unblocks all of these) |
-| LibreSpeed (US-East speed test endpoint) | 🔨 Planned (Phase 4 deploy) |
-| Tor bridge/relay (non-exit middle relay, BHNNewJersey, 512 KB/s + 750 GB/month cap; pairs with Frankfurt relay via MyFamily) | 🔨 Planned (Phase 4 deploy) |
+| Trading workloads (FMP, Congress.gov, Polymarket, Kalshi, Alpaca paper) | 🔨 Framework committed to repo 2026-05-12 (`scripts/trading/`): 5 strategy files + trading_core + master_killswitch + daily_summary + reconciliation_daemon. NJ deployment pending — rules schema/validator + systemd units + runbooks still to ship before strategies can run. |
+| LibreSpeed (US-East speed test endpoint) | 🔨 Planned (Phase 4 backlog) |
+| Tor bridge/relay (non-exit middle relay, BHNNewJersey, 512 KB/s + 750 GB/month cap; pairs with Frankfurt relay via MyFamily) | 🔨 Planned (Phase 4 backlog) |
 | LUKS2 storage | ⚠️ Not yet — NJ has no persistent sensitive data yet; revisit when trading rules / fill history lands |
 
 ## Data pipeline
@@ -109,7 +115,7 @@ Hub `wg0` on LA listens on UDP `51820`. Peers identified below by pubkey (public
 
 | Label | Device | Pubkey | Tunnel IP | Endpoint (last seen) | Client profile(s) |
 |-------|--------|--------|-----------|---------------------|--------------------|
-| **FRA exit** | `EH-VPS-FRANKFURT-EU1` | `zkfJNbdL9Ptdxv+fxwV2e1q0mbCR5Z/9T80QanSxKA8=` | `10.9.0.2/32` | `192.248.187.208:51821` | server peer, persistent keepalive 25s |
+| **FRA exit** | `BHN-VPS-FRANKFURT-EU1` | `zkfJNbdL9Ptdxv+fxwV2e1q0mbCR5Z/9T80QanSxKA8=` | `10.9.0.2/32` | `192.248.187.208:51821` | server peer, persistent keepalive 25s |
 | **FLETCH-DESKTOP** | operator workstation (Windows) | `y+ekkxKZsCn9LERiQ3unZxn2zDjsS1yqbz12limv1kA=` | `10.8.0.4/32` | `68.96.70.83:<dynamic>` | `EH-admin` (split: `10.8.0.0/24, 10.9.0.0/24`) + `EH-full` (full: `0.0.0.0/0, ::/0` + `DNS=10.8.0.1`) |
 | **FLETCH-PHONE** | operator phone (iOS) | `N9Tg0dOEE7GQgE7lG1FgfI+pGSQoIo9+EmSUucnEAVA=` | `10.8.0.2/32` | `68.96.70.83:<dynamic>` | `FLETCH-PHONE-SPLIT` + `FLETCH-PHONE-FULL` (same PSK + privkey across both, only `AllowedIPs` differs) |
 
@@ -244,7 +250,9 @@ The "BHN Network Overview" Grafana dashboard currently includes:
 
 In rough order:
 
-1. Tokyo or other 3rd region node
+1. **Frankfurt exit routing — finish MASQUERADE fix** (next session) — FRA-side `iptables -t nat -A POSTROUTING -s 10.8.0.0/24 -o enp1s0 -j MASQUERADE` + persist via `iptables-save > /etc/iptables/rules.v4`, then re-run `bhn-frankfurt-exit.sh apply` on LA, then verify `curl https://api.ipify.org` from full-tunnel profile returns 192.248.187.208.
+2. **BHN trading framework — remaining support work** — rules JSON schema + validator (`rules_schema.py`, `validate_rules.py`), `config-templates/rules.example.json`, systemd units (per-strategy timers + reconciliation service + daily_summary timer), three runbook docs (`bhn-trading-strategies.md`, `bhn-rules-propagation.md`, `bhn-reconciliation.md`), then NJ deployment.
+3. Tokyo or other 3rd region node
 2. tmpfs migration for ephemeral content per external-observer principle (Suricata payload audit, /var/log/suricata logrotate tuning)
 3. **HORIZON Phase 3 modules** — see `infrastructure/docs/horizon-roadmap.md` for the full 10-module spec, build phasing, voice stack architecture, jurisdictional posture, and decisions log. Operator pre-session-1 actions: provision Twilio + ElevenLabs Creator + Google `horizon@gmail.com` + OpenWeatherMap + NewsAPI + Alpaca paper, plus record a 30s voice sample for operator-voice cloning. Session 1 build target: M1 Voice Pipeline + start on M2 Morning Briefing.
 4. Hourly stats snapshots + Weekly analysis (long-pending from Phase 2 data pipeline; can be a HORIZON M3/M4 by-product)
@@ -265,6 +273,10 @@ In rough order:
 
 ## Operational notes
 
+- **2026-05-12 documentation + Vultr rename pass** — Vultr-side server display names renamed `EH|VPS-*` → `BHN|VPS-*`. Repo docs (README.md, STATUS.md, peer registry) updated to match. `BHN-INFRASTRUCTURE.txt` created at repo root as the canonical access-methods quick reference (every node + service + port + tunnel path). Intentional preservations (PG database name `eventhorizon`, email `eventhorizonvpn.com`, n8n credential names `Postgres EventHorizon` / `EventHorizonVPN-Claude`, LA `eh-*` script paths, Proton Pass `EH-*` entries) explicitly NOT renamed — these are live-system identifiers, not branding.
+- **2026-05-12 Frankfurt exit routing applied but BROKEN — deferred to next session** — Phase 1 policy-routing for "full" tunnel profile applied to LA. Routes wg0 client traffic via fwmark 0x100 → table 100 → `default via 10.9.0.2 dev wg0 onlink` (Frankfurt is a wg0 peer at AllowedIPs=10.9.0.2/32, NOT a separate wg1 interface — script `scripts/bhn-frankfurt-exit.sh` corrected from stale wg1 references). The wg0→wg0 hairpin FORWARD rule replaces the prior wg0↔wg1 dual rules. **Observed**: internet dies on the operator's full-tunnel profile after apply. Root cause: **Frankfurt is missing the MASQUERADE rule on `10.8.0.0/24` source** — hub-client packets reach FRA over the tunnel but FRA cannot rewrite the source IP to its public IP for the return path, so external traffic is black-holed. **Next session work**: (1) on FRA: `iptables -t nat -A POSTROUTING -s 10.8.0.0/24 -o enp1s0 -j MASQUERADE` then `iptables-save > /etc/iptables/rules.v4` for persistence; (2) re-run `bhn-frankfurt-exit.sh apply` on LA; (3) verify `curl https://api.ipify.org` from full-tunnel profile returns 192.248.187.208. Until fixed, LA exit routing is reverted via `bhn-frankfurt-exit.sh rollback`.
+- **2026-05-12 Phase 4 services deployed** — Wallos (LA, http://10.8.0.1:8090), SearXNG (Frankfurt, http://10.9.0.2:8089), LibreSpeed Frankfurt (http://10.9.0.2:8088). LibreSpeed LA + Tor relays remain in Phase 4 backlog.
+- **2026-05-12 BHN trading framework committed** — 5 paper-trading strategies + 3 support scripts (master_killswitch, daily_summary, reconciliation_daemon) + trading_core + foundation SQL schema + Strategy 5 weather-arbitrage tables committed to `scripts/trading/` and `sql/`. Alpaca paper account `PA39LSUT2NW8` provisioned with $100k virtual capital. Runs on NJ (`BHN|VPS-NEWJERSEY-US2`). Pending before strategies can fire: rules schema + validator, systemd units, NJ deployment + runbook docs.
 - **2026-05-08 rotation pass** — Frankfurt root password, Shadowsocks password (both nodes, shared), and n8n admin password all rotated. New values stored in operator's password manager only; no plaintext on disk or in repo. Old defaults (`EventHorizon2026` family) are dead.
 - **2026-05-08 Frankfurt security delta** — fail2ban removed (was inactive on a clean v3 bootstrap — silent gap), CrowdSec + cs-firewall-bouncer-iptables installed, Suricata 6.0.4 with 49,968 rules listening on enp1s0
 - **2026-05-08 LA cleanup** — `eh-honeypot.service` (custom python listener on 2222/3306/6379/8081) removed along with its UFW rules. fail2ban stripped to a lean 4-jail config: sshd, grafana, postgresql, n8n. VPN whitelist (`10.8.0.0/24`, `10.9.0.0/24`) added back; was missing on the prior config

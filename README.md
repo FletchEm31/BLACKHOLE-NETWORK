@@ -2,7 +2,7 @@
 
 A privacy-focused personal VPN built on WireGuard with deep defense-in-depth security and AI-powered operations. **Single-operator network — no customers, no public service offering. Personal infrastructure only.**
 
-> **Note:** Repo renamed 2026-05-11 from EventHorizon VPN → Blackhole Network. LA-deployed script paths and many legacy hostnames (`EH|VPS-LOSANGELES-US1`, `EH|VPS-FRANKFURT-EU1`, `eh-*` script names, `/opt/eh-diagnostics/*`) still use `eh-*` until a coordinated LA migration session. The "EventHorizon VPN" name is reserved for the future separate commercial product. See `project_blackhole_network_rename` memory for full scope.
+> **Note:** Repo renamed 2026-05-11 from EventHorizon VPN → Blackhole Network. Vultr-side server display names updated to `BHN|VPS-LOSANGELES-US1`, `BHN|VPS-FRANKFURT-EU1`, `BHN|VPS-NEWJERSEY-US2`. LA-deployed script paths (`/usr/local/sbin/eh-*`, `/opt/eh-diagnostics/*`), PostgreSQL database name `eventhorizon`, email domain `eventhorizonvpn.com`, and n8n credential names (`Postgres EventHorizon`, `EventHorizonVPN-Claude`) are intentionally preserved as live-system identifiers until a coordinated migration session. The "EventHorizon VPN" name is reserved for the future separate commercial product. See `project_blackhole_network_rename` memory for full scope.
 
 ## Overview
 
@@ -16,9 +16,10 @@ Any future public VPN product is a separate concern (different servers, differen
 
 ```
 Phase 1: NETWORK                        ✅ operational
-├─ LA hub
-├─ Frankfurt exit + privacy node (WG tunnel only — Vultr blocks cross-region public TCP)
-├─ NJ trading node (provisioning — WG tunnel issue pending)
+├─ LA hub (BHN|VPS-LOSANGELES-US1)
+├─ Frankfurt exit + privacy node (BHN|VPS-FRANKFURT-EU1, WG tunnel only — Vultr blocks cross-region public TCP)
+├─ NJ trading node (BHN|VPS-NEWJERSEY-US2, joined LA's wg0 at 10.8.0.5, operational 2026-05-12)
+├─ Frankfurt exit routing (LA-side applied 2026-05-12, BROKEN — FRA MASQUERADE missing for 10.8.0.0/24, deferred to next session)
 ├─ Bootstrap script v4 (declarative node types + modular install)
 └─ Future nodes via snapshot deployment
 
@@ -31,14 +32,15 @@ Phase 2: DASHBOARD                      ✅ operational
 Phase 3: AI INTEGRATION                 🔨 in progress
 ├─ pgvector memory layer (operational)
 ├─ HORIZON workflow (operational; chat-trigger live)
-├─ Voice ops interface (Twilio + ElevenLabs — modules M1-M9 staged)
+├─ Voice ops interface (Twilio + ElevenLabs — modules M1-M9 staged; A2P 10DLC in review)
 └─ Proactive alerting + auto-response
 
-Phase 4: PER-NODE SERVICES              🔨 scaffolded, deploy pending
-├─ LibreSpeed (LA + Frankfurt + NJ — speedtest endpoints + latency telemetry)
-├─ Wallos (LA — subscription / cost tracking, HORIZON reads via PG sync)
-├─ SearXNG (Frankfurt — private meta-search)
-└─ Tor non-exit middle relays (Frankfurt + NJ; MyFamily-linked)
+Phase 4: PER-NODE SERVICES              🔨 mostly operational
+├─ Wallos (LA — subscription / cost tracking) ✅ deployed at http://10.8.0.1:8090
+├─ SearXNG (Frankfurt — private meta-search) ✅ deployed at http://10.9.0.2:8089
+├─ LibreSpeed Frankfurt (EU speedtest endpoint) ✅ deployed at http://10.9.0.2:8088
+├─ LibreSpeed LA (US-West speedtest endpoint) 🔨 not yet deployed
+└─ Tor non-exit middle relays (Frankfurt + NJ, MyFamily-linked) 🔨 planned
 
 Phase 5: RESILIENCE                     📋 designed
 ├─ Sweden cold standby + dark replication node (Bahnhof hosting, outside Vultr)
@@ -46,6 +48,12 @@ Phase 5: RESILIENCE                     📋 designed
 ├─ Single-command failover (bhn-failover-activate.sh)
 ├─ Sweden Tor middle relay (joins MyFamily with FRA + NJ)
 └─ See infrastructure/docs/sweden-failover-architecture.md
+
+Trading framework (separate workstream, runs on NJ)  🔨 in progress
+├─ scripts/trading/ — Python framework, $100k Alpaca paper account
+├─ 5 strategies committed: Congress / Buffett / Bollinger scalp / SMA momentum / Pred-market arb
+├─ Support scripts committed: trading_core, master_killswitch, daily_summary, reconciliation_daemon
+└─ Pending: rules_schema/validator, systemd units, deployment to NJ + runbooks
 ```
 
 ### Storage tiering
@@ -116,14 +124,14 @@ Both bootstrap paths exist intentionally during the v3→v4 transition. v3 (`scr
 curl -O https://raw.githubusercontent.com/FletchEm31/BLACKHOLE-NETWORK/main/scripts/bhn-node-bootstrap.sh
 chmod +x bhn-node-bootstrap.sh
 
-# Standard exit node (new node — uses BHN| convention)
+# Standard exit node
 bash bhn-node-bootstrap.sh BHN-VPS-NYC-US2 123.456.789.0 wg2
 
-# Hub node (with encrypted storage + PostgreSQL) — legacy hostname kept
+# Hub node (with encrypted storage + PostgreSQL)
 ATTACH_NVME=/dev/vdb \
 ATTACH_HDD=/dev/vdc \
 INSTALL_POSTGRES=1 \
-bash bhn-node-bootstrap.sh EH-VPS-LOSANGELES-US1 149.28.91.100 wg0
+bash bhn-node-bootstrap.sh BHN-VPS-LOSANGELES-US1 149.28.91.100 wg0
 ```
 
 After deployment, the script outputs the node's WireGuard public key and the command to register it on the LA hub.
@@ -131,13 +139,9 @@ After deployment, the script outputs the node's WireGuard public key and the com
 ## Naming conventions
 
 ```
-Standalone resources (VPS) — NEW nodes:
+Standalone resources (VPS):
   BHN|VPS-LOCATION-COUNTRY+SEQINDEX
-  Example: BHN|VPS-NEWJERSEY-US2
-
-Legacy nodes (operator renames manually):
-  EH|VPS-LOSANGELES-US1   (LA hub, pre-rename)
-  EH|VPS-FRANKFURT-EU1    (Frankfurt exit, pre-rename)
+  Examples: BHN|VPS-LOSANGELES-US1, BHN|VPS-FRANKFURT-EU1, BHN|VPS-NEWJERSEY-US2
 
 Attachments (block storage):
   DEVICE-LOCATION-COUNTRY+SEQINDEX
@@ -150,34 +154,41 @@ Attachments (block storage):
 
 | Term | Definition |
 |------|------------|
-| **REMOTE BROWSER WINDOW** | noVNC web console (Vultr, in-browser terminal) |
-| **PC LA CONSOLE** | SSH session from operator's PC to LA hub |
-| **PC GE CONSOLE** | SSH session from operator's PC to Frankfurt node |
+| **REMOTE BROWSER WINDOW** | noVNC web console (Vultr, in-browser terminal) — emergency-only fallback when tunnel/SSH is down |
+| **PC LA CONSOLE** | SSH session from operator's PC to LA hub (`ssh root@149.28.91.100`) |
+| **PC GE CONSOLE** | SSH session from operator's PC to Frankfurt node (`ssh root@192.248.187.208`) |
+| **PC NJ CONSOLE** | SSH session from operator's PC to NJ trading node (`ssh -p 2222 root@140.82.4.35`) |
 
 ## Access methods
+
+For the canonical comprehensive access-methods sheet (every node, every service, every port), see [`BHN-INFRASTRUCTURE.txt`](BHN-INFRASTRUCTURE.txt) at repo root.
 
 ### LA hub
 ```
 Direct SSH (from anywhere):    ssh root@149.28.91.100
 SSH via VPN tunnel:            ssh root@10.8.0.1
 Grafana dashboard (VPN only):  http://10.8.0.1:3000
+n8n (VPN only):                http://10.8.0.1:5678
+HORIZON chat (VPN only):       http://10.8.0.1:5678/webhook/ec1592c6-8715-4b0f-8ee8-5bc02f551a27/chat
+Wallos (VPN only):             http://10.8.0.1:8090
 PostgreSQL (VPN only):         psql -h 10.8.0.1 -U <user> -d eventhorizon
 Vultr web console:             via Vultr panel (root + password)
 ```
 
 ### Frankfurt node
 ```
-SSH (from LA only):    ssh frankfurt          # alias in /root/.ssh/config → root@10.9.0.2:2222
-                                              # via wg1 tunnel (Vultr blocks cross-region public TCP)
-Vultr console:         via Vultr panel        # emergency-only fallback when tunnel is down
+SSH (from LA only):       ssh frankfurt       # alias → root@10.9.0.2:2222 via wg0 tunnel
+                                              # (Vultr blocks cross-region public TCP)
+SearXNG (private search): http://10.9.0.2:8089
+LibreSpeed (EU):          http://10.9.0.2:8088
+Vultr console:            via Vultr panel     # emergency-only fallback when tunnel is down
 ```
 
 ### NJ trading node
 ```
-SSH (from LA):         ssh nj                 # alias in /root/.ssh/config → root@10.8.0.5:2222
-                                              # via wg0 tunnel (NJ joined LA's wg0 hub as peer 10.8.0.5)
+SSH (from LA):          ssh nj                # alias → root@10.8.0.5:2222 via wg0 tunnel
 SSH (from operator PC): ssh -p 2222 root@140.82.4.35   # direct to public IP also works
-Vultr console:         via Vultr panel        # emergency-only fallback
+Vultr console:          via Vultr panel       # emergency-only fallback
 ```
 
 ## License

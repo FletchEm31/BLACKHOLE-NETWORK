@@ -1,5 +1,7 @@
 #!/bin/bash
-# eh-backup — daily encrypted offsite backup for EventHorizon LA hub
+# bhn-backup — daily encrypted offsite backup for BHN LA hub
+# (Deployed on LA as /usr/local/sbin/eh-backup — script path preserved as
+#  legacy identifier; logical role is BHN.)
 #
 # Backs up:
 #   - PostgreSQL globals (roles, passwords) via pg_dumpall --globals-only

@@ -1,6 +1,6 @@
 # Blackhole Network (BHN) — Bootstrap v4 Guide
 
-> **Note:** Project renamed 2026-05-11 from EventHorizon → Blackhole Network. Script paths shown as `bhn-*` reflect the repo state. Legacy hostnames `EH-VPS-LOSANGELES-US1` and `EH-VPS-FRANKFURT-EU1` in examples below are the actual deployed nodes (kept until operator renames manually); new nodes use the `BHN|VPS-*` convention. See `project_blackhole_network_rename` memory.
+> **Note:** Project renamed 2026-05-11 from EventHorizon → Blackhole Network. Vultr-side server display names updated to `BHN|VPS-*` 2026-05-12 (LA, FRA, NJ). Script paths shown as `bhn-*` reflect the repo state; LA's deployed `/usr/local/sbin/eh-*` paths and the `eventhorizon` PG database name are intentional preservations. See `project_blackhole_network_rename` memory.
 
 Three-phase node provisioning: **open window → install by type → auto lockdown.**
 
@@ -37,19 +37,19 @@ bash infrastructure/bootstrap/bhn-node-bootstrap.sh \
 ATTACH_NVME=/dev/vdb \
 ATTACH_HDD=/dev/vdc \
 bash infrastructure/bootstrap/bhn-node-bootstrap.sh \
-    EH-VPS-LOSANGELES-US1 149.28.91.100 wg0 hub US-WEST
+    BHN-VPS-LOSANGELES-US1 149.28.91.100 wg0 hub US-WEST
 
 # Exit node
 bash infrastructure/bootstrap/bhn-node-bootstrap.sh \
-    EH-VPS-FRANKFURT-EU1 192.248.187.208 wg1 exit EU-CENTRAL
+    BHN-VPS-FRANKFURT-EU1 192.248.187.208 wg1 exit EU-CENTRAL
 
 # Scan node — passive sensor with Suricata + node_exporter
 bash infrastructure/bootstrap/bhn-node-bootstrap.sh \
-    EH-VPS-NYC-US2 1.2.3.4 wg2 scan US-EAST
+    BHN-VPS-NYC-US2 1.2.3.4 wg2 scan US-EAST
 
 # Proxy node — Shadowsocks-only DPI-resistant entry
 bash infrastructure/bootstrap/bhn-node-bootstrap.sh \
-    EH-VPS-SGP-SG1 5.6.7.8 wg3 proxy APAC-SE
+    BHN-VPS-SGP-SG1 5.6.7.8 wg3 proxy APAC-SE
 ```
 
 ## Three phases
