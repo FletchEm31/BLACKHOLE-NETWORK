@@ -36,8 +36,10 @@ Phase 3: AI INTEGRATION       ████░░░░░░  ~40%   (pgvector m
 | SSH hardening | ✅ Key-only root, passwords disabled |
 | iptables ACCEPT for VPN→SSH | ✅ Persisted |
 | Reboot survival | ✅ Verified |
+| Wallos (subscription tracker, Docker, VPN-only, PG-connected) | 🔨 Planned 2026-05-11 |
+| LibreSpeed (US-West speed test endpoint) | 🔨 Planned 2026-05-11 |
 
-### Frankfurt — `EH|VPS-FRANKFURT-EU1` ✅ Operational
+### Frankfurt — `EH|VPS-FRANKFURT-EU1` ✅ Operational *(exit + privacy node)*
 
 | Component | Status |
 |-----------|--------|
@@ -55,6 +57,17 @@ Phase 3: AI INTEGRATION       ████░░░░░░  ~40%   (pgvector m
 | Root password rotated away from `EventHorizon2026` | ✅ 2026-05-08 |
 | UFW + iptables | ✅ Pruned 2026-05-08 — removed `51820/udp Anywhere` (wrong port, FRA uses 51821), `51821/udp Anywhere` (redundant with LA-scoped rule), `8443/tcp Anywhere` (nothing listening), `Anywhere from 149.28.91.100` (over-grant). Final rule set: 22/tcp anywhere, 51821/udp from LA, 8388 from LA, wg1→enp1s0 FWD. Note: sshd still listens on 80+443 with no UFW allow → those alt-ports unreachable. SSH-config cleanup deferred (operator confirmation required). |
 | **Vultr support ticket** | ✅ Resolved 2026-05-07. UDP path restored. Required two follow-up fixes after handshake landed: (a) Frankfurt's `wg1.conf` had stale `AllowedIPs = 10.9.0.0/30` from a prior install — the latest bootstrap wrote correct config but didn't down/up wg1, so kernel kept the old mapping. Bootstrap script patched to `wg-quick down && up` after writing config. (b) UFW route-allow added on `wg1 → enp1s0` so peer traffic can egress to internet (same FORWARD-chain default-deny gap LA had earlier today) |
+| SearXNG (private meta-search, Docker, VPN-only) | 🔨 Planned 2026-05-11 |
+| Tor bridge/relay (non-exit; privacy routing) | 🔨 Planned 2026-05-11 |
+| LibreSpeed (EU speed test endpoint) | 🔨 Planned 2026-05-11 |
+
+### New Jersey — `BHN|VPS-NEWJERSEY-US2` ⏸ Provisioning blocked (WG tunnel issue, parked 2026-05-11)
+
+| Component | Status |
+|-----------|--------|
+| Provisioning | ⏸ Vultr cross-region WG block suspected (parallel to early Frankfurt UDP issue); SSH over tunnel failing despite UFW allow on wg0 |
+| Trading workloads (FMP, Congress.gov, Polymarket, Kalshi, Alpaca paper) | 🔨 Blocked on tunnel |
+| LibreSpeed (US-East speed test endpoint) | 🔨 Planned 2026-05-11 |
 
 ## Data pipeline
 

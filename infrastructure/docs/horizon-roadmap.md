@@ -212,6 +212,36 @@ Outcome SMS to operator
 
 ---
 
+## Per-node service deployment (planned 2026-05-11)
+
+Each BHN node hosts a small set of self-hosted services beyond its core network role. All Docker, all VPN-only by default, all monitored by HORIZON.
+
+### LA Hub
+- **Wallos** — subscription tracker. Reads from PostgreSQL (new `subscriptions` table, or its own SQLite + a HORIZON sync workflow — TBD at build time) so HORIZON can surface BHN service-cost state in the morning briefing and flag upcoming renewals. Light footprint (~50 MB), fits inside LA's remaining 2 GB headroom. VPN-only access.
+
+### Frankfurt — exit node + privacy node
+Frankfurt's formal role broadens from pure WG exit to **exit + privacy routing**:
+- **SearXNG** — self-hosted meta-search. Queries multiple search engines, strips tracking, returns aggregated results. VPN-only access from operator's devices.
+- **Tor bridge/relay** — non-exit Tor node (bridge or middle relay, NOT exit — keeps legal exposure low). Formalizes Frankfurt as a privacy-routing layer; SearXNG can optionally route upstream via this Tor circuit for unlinkable search.
+- **LibreSpeed** — EU-region speed-test endpoint. Per-node instance.
+
+### NJ (trading node — currently blocked on tunnel issue)
+- **LibreSpeed** — US-East speed-test endpoint. Per-node instance.
+
+### All nodes (baseline)
+- **LibreSpeed** is a baseline module: every node hosts an instance. Results land in PostgreSQL (new `speedtest_results` table) via a per-node cron probing both its own endpoint and peer endpoints. HORIZON consumes the table for latency-trend monitoring — surfaces in pulse cycles and morning briefing when a node's RTT degrades beyond a rolling-baseline threshold.
+
+### Deployment shape
+
+These services slot into `bhn-node-bootstrap.sh` v4's module/node-type structure:
+- `modules/librespeed.sh` — baseline, sourced on every node-type
+- `modules/wallos.sh` — sourced only on hub.sh
+- `modules/searxng.sh` + `modules/tor-relay.sh` — sourced only on a new `privacy.sh` node-type (or appended to `exit.sh` since Frankfurt is dual-role)
+
+Build order: LibreSpeed baseline first (gives latency telemetry on day one), then Wallos (closes the cost-monitoring gap before HORIZON's morning briefing comes online), then SearXNG + Tor on Frankfurt (privacy stack — biggest scope, lowest urgency).
+
+---
+
 ## Voice stack architecture
 
 ```
