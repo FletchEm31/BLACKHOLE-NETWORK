@@ -5,7 +5,7 @@
 # Forwards traffic between Tor nodes. NOT an exit. NOT a bridge.
 
 ## ─── Identity ──────────────────────────────────────────────────────────
-Nickname BHNFrankfurt
+Nickname BHNFornax-EU1
 ContactInfo admin@eventhorizonvpn.com
 
 ## ─── Ports ─────────────────────────────────────────────────────────────
@@ -53,19 +53,20 @@ AssumeReachable 0
 ControlSocket 0
 
 ## ─── MyFamily — LOAD-BEARING POST-DEPLOY STEP ─────────────────────────
-# A second BHN relay exists on NJ (see ../tor-relay-nj/). After BOTH
-# relays bootstrap and produce fingerprints, MyFamily MUST be set on
-# BOTH torrc files (this one + ../tor-relay-nj/torrc) so Tor consensus
-# refuses to build circuits that pass through both. Without MyFamily,
-# the privacy benefit of running multiple relays is partially defeated.
+# BHN runs (or plans) five relays — Fornax (Frankfurt EU1), Nebula (NJ US2),
+# Helios (Hillsboro US3), Aurora (Sweden EU2, future), Eridanus (Iceland EU3,
+# future). After EACH relay bootstraps and produces a fingerprint, MyFamily
+# MUST be updated on ALL deployed torrc files so Tor consensus refuses to
+# build circuits that pass through any two of them. Without MyFamily, the
+# privacy benefit of running multiple relays is partially defeated.
+# See infrastructure/docs/tor-relay-naming.md for the full roster.
 #
-# Get fingerprints:
-#   ssh frankfurt 'docker exec bhn-tor-relay cat /var/lib/tor/fingerprint'
-#   ssh root@<nj-public-ip> 'docker exec bhn-tor-relay cat /var/lib/tor/fingerprint'
+# Get a fingerprint:
+#   ssh <node> 'docker exec bhn-tor-relay cat /var/lib/tor/fingerprint'
 #
-# Then uncomment and edit BOTH torrc files identically:
-# MyFamily $FRANKFURT_FINGERPRINT,$NJ_FINGERPRINT
+# Then uncomment and edit ALL deployed torrc files identically:
+# MyFamily $FORNAX_FP,$NEBULA_FP,$HELIOS_FP[,$AURORA_FP,$ERIDANUS_FP]
 #
 # Commit the updated torrc files to the repo with the actual fingerprints
-# baked in — they're public information, not secrets. Restart both
-# containers after editing.
+# baked in — they're public information, not secrets. Restart every relay
+# container after editing.

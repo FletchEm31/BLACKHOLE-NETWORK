@@ -66,10 +66,10 @@ curl --socks5h 10.9.0.2:9050 https://check.torproject.org/api/ip
 
 ## Verify it's listed on Tor metrics (12-48h after first start)
 
-Visit https://metrics.torproject.org/rs.html and search for `BHNFrankfurt`. Or use the API:
+Visit https://metrics.torproject.org/rs.html and search for `BHNFornax-EU1`. Or use the API:
 
 ```bash
-curl -fsS "https://onionoo.torproject.org/details?search=BHNFrankfurt" | python3 -m json.tool
+curl -fsS "https://onionoo.torproject.org/details?search=BHNFornax-EU1" | python3 -m json.tool
 ```
 
 You should see a JSON entry with your fingerprint, observed bandwidth, etc.
@@ -111,51 +111,55 @@ A hard stop is fine for short-running relays; only matters once you've been list
 - RAM: ~40 MB idle, up to ~150 MB when actively relaying
 - Disk: ~50 MB descriptors + state in tor-data volume; ~1 GB/month log rotation in tor-logs
 
-## MyFamily — REQUIRED post-deploy step (NJ relay exists)
+## MyFamily — REQUIRED post-deploy step (multi-relay family)
 
-The BHN privacy stack now has TWO non-exit relays: this one (Frankfurt) and one on the NJ trading node (`../tor-relay-nj/`). **After both bootstrap, MyFamily MUST be set on both torrc files** — without it, Tor consensus might build a circuit that passes through both BHN relays, partially defeating the privacy benefit.
+The BHN relay family currently has Fornax-EU1 (this one), with Nebula-US2 (NJ, planned) and Helios-US3 (Hillsboro, deploying) joining shortly. Aurora-EU2 (Sweden) and Eridanus-EU3 (Iceland) will follow. **After EACH relay bootstraps, MyFamily MUST be updated on EVERY deployed torrc** — without it, Tor consensus may build a circuit that passes through any two BHN relays, partially defeating the privacy benefit. See `infrastructure/docs/tor-relay-naming.md` for the full roster.
 
-### Process (run once after both relays are bootstrapped, ~24-48h after first start)
+### Process (run after every new relay reaches consensus, ~24-48h after first start)
 
 ```bash
-# 1. Get Frankfurt's fingerprint
+# Collect every running relay's fingerprint
 ssh frankfurt 'docker exec bhn-tor-relay cat /var/lib/tor/fingerprint'
-# Example output: BHNFrankfurt ABCDEF0123456789ABCDEF0123456789ABCDEF01
+# Example output: BHNFornax-EU1 ABCDEF0123456789ABCDEF0123456789ABCDEF01
 
-# 2. Get NJ's fingerprint (SSH to NJ's public IP — tunnel not required for SSH if you have the key)
 ssh root@<nj-public-ip> 'docker exec bhn-tor-relay cat /var/lib/tor/fingerprint'
-# Example output: BHNNewJersey 0123456789ABCDEF0123456789ABCDEF01234567
+# Example output: BHNNebula-US2 0123456789ABCDEF0123456789ABCDEF01234567
 
-# 3. Build the MyFamily line — same on both torrcs
-# MyFamily $ABCDEF0123456789ABCDEF0123456789ABCDEF01,$0123456789ABCDEF0123456789ABCDEF01234567
+ssh hillsboro 'docker exec bhn-tor-relay cat /var/lib/tor/fingerprint'
+# Example output: BHNHelios-US3 76543210FEDCBA9876543210FEDCBA9876543210
+
+# Build the MyFamily line — same on every torrc
+# MyFamily $FORNAX_FP,$NEBULA_FP,$HELIOS_FP
 ```
 
-### Update both torrc files (in repo, then deploy)
+### Update every torrc file in repo, then deploy
 
-Edit `infrastructure/services/tor-relay/torrc` (Frankfurt) AND `infrastructure/services/tor-relay-nj/torrc` (NJ) — uncomment and populate the `MyFamily` line at the bottom of each. Fingerprints are public info; safe to commit.
+Edit `infrastructure/services/tor-relay*/torrc` for every relay — uncomment and populate the `MyFamily` line at the bottom of each. Fingerprints are public info; safe to commit.
 
 ```bash
-# In the repo (after editing both torrc files):
-git add infrastructure/services/tor-relay/torrc infrastructure/services/tor-relay-nj/torrc
-git commit -m "tor: declare MyFamily across Frankfurt + NJ relays"
+# In the repo (after editing every relay's torrc):
+git add infrastructure/services/tor-relay*/torrc
+git commit -m "tor: declare MyFamily across Fornax + Nebula + Helios relays"
 git push
 
-# Then deploy on both nodes:
+# Then deploy on every node running a relay:
 ssh frankfurt 'cd /opt/bhn-tor-relay && git pull && docker compose restart'
 ssh root@<nj-public-ip> 'cd /opt/bhn-tor-relay && git pull && docker compose restart'
+ssh hillsboro 'cd /opt/bhn-tor-relay && git pull && docker compose restart'
 ```
 
 ### Verify
 
-Within a few hours both relays will republish descriptors. Check on Tor metrics:
+Within a few hours every relay republishes its descriptor. Check on Tor metrics:
 
 ```bash
-curl -fsS "https://onionoo.torproject.org/details?search=BHNFrankfurt" | grep -i family
-curl -fsS "https://onionoo.torproject.org/details?search=BHNNewJersey" | grep -i family
+curl -fsS "https://onionoo.torproject.org/details?search=BHNFornax-EU1" | grep -i family
+curl -fsS "https://onionoo.torproject.org/details?search=BHNNebula-US2" | grep -i family
+curl -fsS "https://onionoo.torproject.org/details?search=BHNHelios-US3" | grep -i family
 ```
 
-Both should show the OTHER's fingerprint in their `family` field.
+Each should show the OTHER fingerprints in its `family` field.
 
-### Future relays (LA, EU non-5-eyes, etc.)
+### Adding a future relay (Aurora-EU2, Eridanus-EU3, etc.)
 
-When a third BHN relay joins, repeat the same process — get its fingerprint and append to the MyFamily line in ALL three torrcs. MyFamily is N-way (each relay declares all others in the family).
+When the next BHN relay joins, repeat: collect its fingerprint, append to the MyFamily line in ALL torrcs, commit, redeploy each. MyFamily is N-way — every relay declares every other relay in the family.

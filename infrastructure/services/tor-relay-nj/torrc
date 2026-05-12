@@ -5,7 +5,7 @@
 # headroom for trading-API workloads sharing the same host.
 
 ## ─── Identity ──────────────────────────────────────────────────────────
-Nickname BHNNewJersey
+Nickname BHNNebula-US2
 ContactInfo admin@eventhorizonvpn.com
 
 ## ─── Ports ─────────────────────────────────────────────────────────────
@@ -38,14 +38,15 @@ AssumeReachable 0
 ControlSocket 0
 
 ## ─── MyFamily ──────────────────────────────────────────────────────────
-# After Frankfurt's relay is also running and both have produced
-# fingerprints, fill in BOTH fingerprints here (and in Frankfurt's
-# torrc — see ../tor-relay/torrc). Tor consensus then knows these
-# relays are operated by the same entity and refuses to build a
-# circuit that traverses both.
+# BHN runs (or plans) five relays — Fornax (Frankfurt EU1), Nebula (NJ US2,
+# this one), Helios (Hillsboro US3), Aurora (Sweden EU2, future), Eridanus
+# (Iceland EU3, future). After each relay bootstraps and produces a
+# fingerprint, update MyFamily here AND in every other deployed torrc so
+# Tor consensus refuses circuits passing through any two of them.
+# See infrastructure/docs/tor-relay-naming.md for the full roster.
 #
-# Get fingerprints:
-#   docker exec bhn-tor-relay cat /var/lib/tor/fingerprint
+# Get a fingerprint:
+#   ssh <node> 'docker exec bhn-tor-relay cat /var/lib/tor/fingerprint'
 #
-# Then uncomment and edit:
-# MyFamily $FRANKFURT_FINGERPRINT,$NJ_FINGERPRINT
+# Then uncomment and edit ALL deployed torrc files identically:
+# MyFamily $FORNAX_FP,$NEBULA_FP,$HELIOS_FP[,$AURORA_FP,$ERIDANUS_FP]
