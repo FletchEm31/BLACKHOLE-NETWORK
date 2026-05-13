@@ -87,6 +87,41 @@ groups:
           severity: critical
           dedup_key: bhn-pg-unreachable
 
+      # ─── v1 rule 1b: Node offline >10 min (tighter than rule 1) ────────────
+      # Rule 1 fires on >15 min + for:5m (~20 min total). This variant fires
+      # immediately on the 10-min threshold for faster SMS via the same
+      # bhn-webhook contact point. Both can coexist.
+      - uid: bhn-node-offline-10min
+        title: BHN node offline (>10 min, immediate)
+        condition: B
+        for: 0m
+        noDataState: NoData
+        execErrState: Error
+        data:
+          - refId: A
+            relativeTimeRange: { from: 900, to: 0 }
+            datasourceUid: cflc7izgwm7lsc
+            model:
+              format: table
+              rawSql: |
+                SELECT COUNT(*)::int AS down_count
+                FROM nodes
+                WHERE status NOT IN ('decommissioned')
+                  AND (last_seen IS NULL OR last_seen < NOW() - INTERVAL '10 minutes');
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+        annotations:
+          summary: "BHN node offline >10 min (immediate alert)"
+          description: "{{ $values.A.Value }} node(s) last_seen older than 10 min. Run /usr/local/sbin/bhn-node-offline-recover.sh on LA for a non-destructive recovery probe (SSH ping, WG handshake, service status) before intervening."
+        labels:
+          severity: critical
+          dedup_key: bhn-node-offline-10min
+
       # ─── v1 rule 3: WireGuard server-peer egress spike ────────────────────
       # Any server peer (FRA / NJ / Hillsboro) where hub-to-peer cumulative
       # bytes_sent grew by more than 1 GB over the trailing hour. Phone/PC
