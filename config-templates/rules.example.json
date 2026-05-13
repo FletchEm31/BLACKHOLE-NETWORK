@@ -239,5 +239,86 @@
       "regions_supported": ["operator-home"],
       "variables_supported": ["precipitation"]
     }
+  },
+  "strat_6_nasdaq_long": {
+    "enabled": false,
+    "live_mode_approved": false,
+    "execution_limits": {
+      "max_position_size": 5000,
+      "daily_loss_limit": 400,
+      "max_trades_per_day": 1,
+      "overnight_hold": true,
+      "weekend_hold": true,
+      "hold_through_earnings": true,
+      "max_hold_days": 60,
+      "stop_loss_pct": 0.05,
+      "profit_target_pct": 0.1325
+    },
+    "broker": {
+      "alpaca_key_id": "STRAT6_ALPACA_KEY_ID",
+      "alpaca_secret": "STRAT6_ALPACA_SECRET",
+      "alpaca_base_url": "https://paper-api.alpaca.markets/v2",
+      "account_alias": "BHN-Paper-Strat6"
+    },
+    "lookback_days": 18,
+    "target_holding_fraction": 0.99
+  },
+  "strat_7_nasdaq_short": {
+    "enabled": false,
+    "live_mode_approved": false,
+    "execution_limits": {
+      "max_position_size": 5000,
+      "daily_loss_limit": 400,
+      "max_trades_per_day": 1,
+      "overnight_hold": true,
+      "weekend_hold": true,
+      "hold_through_earnings": true,
+      "max_hold_days": 60,
+      "stop_loss_pct": 0.05,
+      "profit_target_pct": 0.15
+    },
+    "broker": {
+      "alpaca_key_id": "STRAT7_ALPACA_KEY_ID",
+      "alpaca_secret": "STRAT7_ALPACA_SECRET",
+      "alpaca_base_url": "https://paper-api.alpaca.markets/v2",
+      "account_alias": "BHN-Paper-Strat7"
+    },
+    "lookback_days": 18,
+    "spy_below_ma_days_required": 5,
+    "spy_no_break_lookback_days": 20,
+    "spy_no_break_streak_max": 3,
+    "position_split": {
+      "short_qqq_pct": 0.30,
+      "short_spy_pct": 0.20,
+      "jpst_pct": 0.50
+    },
+    "requires_margin": true
+  },
+  "strat_8_sector_rotation": {
+    "enabled": false,
+    "live_mode_approved": false,
+    "execution_limits": {
+      "max_position_size": 5000,
+      "daily_loss_limit": 400,
+      "max_trades_per_day": 1,
+      "overnight_hold": true,
+      "weekend_hold": true,
+      "hold_through_earnings": true,
+      "stop_loss_pct": 0.05,
+      "profit_target_pct": 0.1325
+    },
+    "broker": {
+      "alpaca_key_id": "STRAT8_ALPACA_KEY_ID",
+      "alpaca_secret": "STRAT8_ALPACA_SECRET",
+      "alpaca_base_url": "https://paper-api.alpaca.markets/v2",
+      "account_alias": "BHN-Paper-Strat8"
+    },
+    "universe": ["SOXL", "TECL", "TQQQ", "FAS", "ERX", "UUP", "TMF", "BIL"],
+    "roc_periods": {"fast": 9, "med": 21, "slow": 63},
+    "score_weights": {"fast": 0.50, "med": 0.30, "slow": 0.20},
+    "target_vol": 0.80,
+    "confidence_threshold": 0.10,
+    "drift_rebalance_threshold": 0.05,
+    "remainder_fill_threshold": 0.10
   }
 }
