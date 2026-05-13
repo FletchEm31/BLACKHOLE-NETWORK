@@ -71,7 +71,7 @@ SYSTEM_STRATEGY_ID = "system"
 class StrategyId(str, Enum):
     CONGRESS = "strat_1_congress"
     VALUE = "strat_2_value"
-    SCALP = "strat_3_scalp"
+    MEAN_REVERSION = "strat_3_mean_reversion"
     MOMENTUM = "strat_4_momentum"
     PRED_MKT = "strat_5_pred_mkt"
     SYSTEM = SYSTEM_STRATEGY_ID
@@ -355,7 +355,7 @@ def get_strategy_rules(strategy_id: str) -> dict:
 STRAT_NUMBER: dict[str, int] = {
     "strat_1_congress": 1,
     "strat_2_value":    2,
-    "strat_3_scalp":    3,
+    "strat_3_mean_reversion": 3,
     "strat_4_momentum": 4,
     "strat_5_pred_mkt": 5,
 }
@@ -364,7 +364,7 @@ STRAT_NUMBER: dict[str, int] = {
 SMS_NAME_MAP: dict[str, str] = {
     "STRAT1": "strat_1_congress",
     "STRAT2": "strat_2_value",
-    "STRAT3": "strat_3_scalp",
+    "STRAT3": "strat_3_mean_reversion",
     "STRAT4": "strat_4_momentum",
     "STRAT5": "strat_5_pred_mkt",
 }
