@@ -1,0 +1,31 @@
+# BHN trading — Alpaca WebSocket streaming daemon.
+# Type=simple, always-on. Restart=always with short backoff so a crash
+# (or kernel-OOM) re-launches within ~5s.
+
+[Unit]
+Description=BHN market_stream (always-on Alpaca WebSocket daemon)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/bhn/trading
+EnvironmentFile=/etc/bhn-trading/env
+ExecStart=/usr/bin/python3 /opt/bhn/trading/market_stream.py
+
+# Auto-restart on crash. RestartSec=5 matches the operator's "reconnect within
+# 5 seconds" requirement at the systemd-restart level too.
+Restart=always
+RestartSec=5
+
+# Resource caps — sanity bounds, not optimization
+LimitNOFILE=8192
+MemoryMax=512M
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=bhn-market-stream
+
+[Install]
+WantedBy=multi-user.target
