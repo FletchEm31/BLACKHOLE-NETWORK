@@ -1,0 +1,107 @@
+{
+  "uid": "bhn-tor-relay-stats",
+  "title": "BHN Tor Relay Stats",
+  "description": "Per-relay accounting + uptime from tor_relay_stats. v1 covers monthly bandwidth vs AccountingMax (1500GB Frankfurt / 750GB NJ + Hillsboro), uptime, and consensus presence (fingerprint). circuits_built deferred to a follow-up that enables Tor ControlSocket.",
+  "tags": ["bhn", "tor", "relay"],
+  "timezone": "utc",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "1m",
+  "time": { "from": "now-30d", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "table",
+      "title": "Current relay state (latest sample per relay)",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 0 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT DISTINCT ON (node) node, fingerprint, (bytes_read + bytes_written) / 1024 / 1024 / 1024 AS total_gb_month, uptime_seconds / 86400 AS uptime_days, relay_bandwidth_rate / 1024 AS rate_kbps, measured_at FROM tor_relay_stats WHERE measured_at > NOW() - INTERVAL '15 minutes' ORDER BY node, measured_at DESC"
+        }
+      ],
+      "options": { "showHeader": true, "footer": { "show": false } },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto" } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "total_gb_month" },
+            "properties": [
+              { "id": "unit", "value": "decgbytes" },
+              { "id": "decimals", "value": 2 },
+              { "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "gradient" } },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [
+                { "color": "green",  "value": null },
+                { "color": "yellow", "value": 600 },
+                { "color": "orange", "value": 1200 },
+                { "color": "red",    "value": 1400 }
+              ]}}
+            ]
+          },
+          { "matcher": { "id": "byName", "options": "uptime_days" },
+            "properties": [ { "id": "unit", "value": "d" }, { "id": "decimals", "value": 2 } ] },
+          { "matcher": { "id": "byName", "options": "rate_kbps" },
+            "properties": [ { "id": "unit", "value": "KBs" } ] }
+        ]
+      }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Monthly bandwidth used per relay (GB)",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 8 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawSql": "SELECT $__timeGroupAlias(measured_at, '1h') AS time, node AS metric, MAX((bytes_read + bytes_written))::float / 1024 / 1024 / 1024 AS gb_used FROM tor_relay_stats WHERE $__timeFilter(measured_at) GROUP BY 1, node ORDER BY 1"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "decgbytes",
+          "custom": { "lineWidth": 2, "fillOpacity": 15, "spanNulls": true }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "BHNFornaxEU1" },
+            "properties": [ { "id": "thresholds", "value": { "mode": "absolute", "steps": [
+              { "color": "green",  "value": null },
+              { "color": "red",    "value": 1500 }
+            ]}} ] }
+        ]
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["max"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Relay uptime (days)",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 18 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawSql": "SELECT $__timeGroupAlias(measured_at, '1h') AS time, node AS metric, MAX(uptime_seconds)::float / 86400 AS uptime_days FROM tor_relay_stats WHERE $__timeFilter(measured_at) GROUP BY 1, node ORDER BY 1"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "d",
+          "decimals": 2,
+          "custom": { "lineWidth": 2, "fillOpacity": 5, "spanNulls": true }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    }
+  ]
+}

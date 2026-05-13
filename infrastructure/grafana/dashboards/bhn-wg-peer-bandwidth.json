@@ -1,0 +1,99 @@
+{
+  "uid": "bhn-wg-peer-bandwidth",
+  "title": "BHN WireGuard Peer Bandwidth",
+  "description": "Per-peer bandwidth derived from cumulative wg_peer_stats samples. The hub's view: 'sent to peer' = bytes_sent, 'received from peer' = bytes_received. Spike alert fires on server peers (Frankfurt/NJ/Hillsboro) for >1GB sent in 1h; personal peers (Phone/PC) excluded.",
+  "tags": ["bhn", "wireguard", "bandwidth"],
+  "timezone": "utc",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "1m",
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Per-peer egress rate (hub → peer, bytes/sec)",
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 0 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawSql": "SELECT $__timeGroupAlias(measured_at, '5m') AS time, peer_label AS metric, COALESCE((MAX(bytes_sent) - MIN(bytes_sent))::float / NULLIF(EXTRACT(EPOCH FROM (MAX(measured_at) - MIN(measured_at))), 0), 0) AS rate_bps FROM wg_peer_stats WHERE $__timeFilter(measured_at) AND peer_label NOT LIKE 'Unknown-%' GROUP BY 1, peer_label HAVING (MAX(bytes_sent) - MIN(bytes_sent)) >= 0 ORDER BY 1"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps",
+          "custom": { "lineWidth": 2, "fillOpacity": 10, "spanNulls": true }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Per-peer ingress rate (peer → hub, bytes/sec)",
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 9 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawSql": "SELECT $__timeGroupAlias(measured_at, '5m') AS time, peer_label AS metric, COALESCE((MAX(bytes_received) - MIN(bytes_received))::float / NULLIF(EXTRACT(EPOCH FROM (MAX(measured_at) - MIN(measured_at))), 0), 0) AS rate_bps FROM wg_peer_stats WHERE $__timeFilter(measured_at) AND peer_label NOT LIKE 'Unknown-%' GROUP BY 1, peer_label HAVING (MAX(bytes_received) - MIN(bytes_received)) >= 0 ORDER BY 1"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps",
+          "custom": { "lineWidth": 2, "fillOpacity": 10, "spanNulls": true }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    },
+    {
+      "id": 3,
+      "type": "table",
+      "title": "Current session totals (latest sample per peer)",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 18 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT DISTINCT ON (peer_ip) peer_label, peer_ip, bytes_sent, bytes_received, latest_handshake, EXTRACT(EPOCH FROM (NOW() - latest_handshake))/60 AS handshake_age_min, endpoint FROM wg_peer_stats ORDER BY peer_ip, measured_at DESC"
+        }
+      ],
+      "options": { "showHeader": true, "footer": { "show": false } },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto" } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "bytes_sent" },
+            "properties": [ { "id": "unit", "value": "bytes" } ] },
+          { "matcher": { "id": "byName", "options": "bytes_received" },
+            "properties": [ { "id": "unit", "value": "bytes" } ] },
+          { "matcher": { "id": "byName", "options": "handshake_age_min" },
+            "properties": [
+              { "id": "unit", "value": "m" },
+              { "id": "decimals", "value": 1 },
+              { "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "gradient" } },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [
+                { "color": "green",  "value": null },
+                { "color": "yellow", "value": 3 },
+                { "color": "red",    "value": 10 }
+              ]}}
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
