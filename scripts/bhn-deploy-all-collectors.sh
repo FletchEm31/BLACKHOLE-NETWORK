@@ -111,7 +111,7 @@ node_send_file() {
     if [[ -z "$target" ]]; then
         install -m "$mode" "$src" "$dst"
     else
-        scp -q "$src" "$target:$dst" \
+        scp -q -o BatchMode=yes -o ConnectTimeout=10 "$src" "$target:$dst" \
           && ssh -o BatchMode=yes -o ConnectTimeout=10 "$target" "chmod $mode '$dst'"
     fi
 }
