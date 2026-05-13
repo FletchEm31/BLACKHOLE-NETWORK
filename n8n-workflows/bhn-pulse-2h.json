@@ -28,7 +28,7 @@
         "path": "WEBHOOK_PATH_PLACEHOLDER",
         "responseMode": "onReceived",
         "responseCode": 202,
-        "responseData": "{\"status\":\"triggered\",\"workflow\":\"EH Network Pulse - 2h\"}",
+        "responseData": "{\"status\":\"triggered\",\"workflow\":\"BHN Network Pulse - 2h\"}",
         "options": {}
       },
       "id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
@@ -255,7 +255,7 @@
           "parameters": [
             {
               "name": "Title",
-              "value": "EH Network Pulse - Attention Needed"
+              "value": "BHN Network Pulse - Attention Needed"
             },
             {
               "name": "Priority",

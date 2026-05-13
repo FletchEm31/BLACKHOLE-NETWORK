@@ -2,7 +2,7 @@
 -- Stores semantic memories (incidents, deployments, operator preferences, etc.)
 -- keyed by 384-dim vector embeddings produced by /opt/eh-embed (bge-small-en-v1.5).
 --
--- Used by the EH Network Pulse workflow (Phase C — retrieval injection) and by any
+-- Used by the BHN Network Pulse workflow (Phase C — retrieval injection) and by any
 -- future AI workflow that needs long-term context. Every memory survives across
 -- pulse cycles and persists in the encrypted NVMe-backed PostgreSQL.
 --
