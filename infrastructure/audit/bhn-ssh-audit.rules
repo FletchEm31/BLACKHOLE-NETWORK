@@ -1,0 +1,19 @@
+# BHN auditd rules for SSH command logging.
+# Deploy: /etc/audit/rules.d/bhn-ssh-audit.rules + augenrules --load
+#
+# Logs every execve event with:
+#   - auid (audit-uid — preserved across su/sudo so we know WHO ran the command)
+#   - ses (audit session id — matches what sshd assigns at login)
+#   - uid/euid + executable + args
+# Key 'bhn_ssh_cmd' tags the events for easy ausearch filtering.
+
+# Track all execve syscalls for human users + root (auid != unset = 4294967295)
+-a always,exit -F arch=b64 -S execve -F auid!=4294967295 -k bhn_ssh_cmd
+-a always,exit -F arch=b32 -S execve -F auid!=4294967295 -k bhn_ssh_cmd
+
+# Track sshd auth events (login attempts, key-based auth) via PAM file watches
+-w /var/log/auth.log -p wa -k bhn_ssh_auth
+
+# Make the rules immutable until next reboot (prevents in-flight tampering)
+# Comment out during initial testing; uncomment for hardened deploy.
+# -e 2
