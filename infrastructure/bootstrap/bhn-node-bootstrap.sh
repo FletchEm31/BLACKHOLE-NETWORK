@@ -115,7 +115,7 @@ esac
 cat <<EOF
 
 ╔══════════════════════════════════════════════╗
-║     EVENTHORIZON NODE BOOTSTRAP v${BOOTSTRAP_VERSION}            ║
+║  BLACKHOLE NETWORK NODE BOOTSTRAP v${BOOTSTRAP_VERSION}     ║
 ╠══════════════════════════════════════════════╣
 ║  Node:    ${NODE_NAME}
 ║  Type:    ${NODE_TYPE}

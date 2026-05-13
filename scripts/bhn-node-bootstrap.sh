@@ -68,7 +68,7 @@ TUNNEL_NETWORK="10.$((8 + WG_NUM)).0.0/24"
 
 echo ""
 echo "╔══════════════════════════════════════════════╗"
-echo "║       EVENTHORIZON NODE BOOTSTRAP v3         ║"
+echo "║    BLACKHOLE NETWORK NODE BOOTSTRAP v3       ║"
 echo "║  Node:    $NODE_NAME"
 echo "║  IP:      $NODE_IP"
 echo "║  WG:      $WG_INTERFACE"
