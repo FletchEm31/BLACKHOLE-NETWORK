@@ -1,0 +1,26 @@
+# BHN trading — SECTOR-ROTATION strategy schedule (Strat 8).
+# QC source TheOmniscientParadox rebalances daily, 5 minutes before market
+# close (per Schedule.On(every_day, before_market_close(5))). NYSE closes at
+# 16:00 ET → fire at 15:55 ET Mon-Fri.
+#
+# Risk-check (5% trailing stop, 13.25% profit target) runs every fire too —
+# but Strat 8's design only fires once per day so per-cycle exits are
+# coincident with the rebalance check. If operator wants intraday risk
+# monitoring, add a second timer at 5-min cadence later (the script handles
+# both — only the rebalance branch will skip on non-Strat-8 cadences, but
+# Strat 8 has no separate signal-vs-risk split).
+#
+# Strategy starts with enabled=false in rules.json — script self-gates until
+# operator flips the flag.
+
+[Unit]
+Description=BHN SECTOR-ROTATION strategy (daily 15:55 ET, 5min before close)
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 15:55:00 America/New_York
+Unit=bhn-strategy@sector-rotation.service
+Persistent=true
+RandomizedDelaySec=30
+
+[Install]
+WantedBy=timers.target

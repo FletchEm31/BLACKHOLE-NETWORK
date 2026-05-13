@@ -1,0 +1,21 @@
+# BHN trading — NASDAQ-SHORT strategy schedule (Strat 7).
+# Operator-spec hedge complement to Strat 6. Same daily cadence — script
+# self-gates the signal-recompute logic + entry decision to Mondays via
+# _is_signal_day(); risk-check on the short legs (5% trailing stop, 15%
+# profit target, 60d max-hold) runs every day.
+#
+# Strategy requires a margin-enabled Alpaca account and starts with
+# enabled=false in rules.json. Operator activates only AFTER Strat 6
+# (NASDAQ-LONG) has been validated in paper trading.
+
+[Unit]
+Description=BHN NASDAQ-SHORT strategy (daily 09:40 ET; Monday signal recompute)
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 09:40:00 America/New_York
+Unit=bhn-strategy@nasdaq-short.service
+Persistent=true
+RandomizedDelaySec=60
+
+[Install]
+WantedBy=timers.target

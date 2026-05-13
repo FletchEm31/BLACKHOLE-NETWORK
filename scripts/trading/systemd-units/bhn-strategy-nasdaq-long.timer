@@ -1,0 +1,21 @@
+# BHN trading — NASDAQ-LONG strategy schedule (Strat 6).
+# QC source Two_2Algorithm rebalances weekly on Monday, 10 min after market open.
+# We run DAILY at 09:40 ET so the per-cycle risk check (trailing stop / profit
+# target / max-hold) catches exits Tue-Fri too; the script self-gates the
+# signal-recompute logic to Mondays via _is_signal_day() — matches the QC
+# WeekStart(SPY) + AfterMarketOpen(SPY, 10) schedule.
+#
+# Strategy starts with enabled=false in rules.json — script will exit on the
+# should_run() gate until operator flips the flag.
+
+[Unit]
+Description=BHN NASDAQ-LONG strategy (daily 09:40 ET; Monday signal recompute)
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 09:40:00 America/New_York
+Unit=bhn-strategy@nasdaq-long.service
+Persistent=true
+RandomizedDelaySec=60
+
+[Install]
+WantedBy=timers.target
