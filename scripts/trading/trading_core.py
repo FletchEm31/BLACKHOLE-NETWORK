@@ -74,6 +74,9 @@ class StrategyId(str, Enum):
     MEAN_REVERSION = "strat_3_mean_reversion"
     MOMENTUM = "strat_4_momentum"
     PRED_MKT = "strat_5_pred_mkt"
+    NASDAQ_LONG = "strat_6_nasdaq_long"
+    NASDAQ_SHORT = "strat_7_nasdaq_short"
+    SECTOR_ROTATION = "strat_8_sector_rotation"
     SYSTEM = SYSTEM_STRATEGY_ID
 
 
@@ -353,11 +356,14 @@ def get_strategy_rules(strategy_id: str) -> dict:
 # ─────────────────────────────────────────────────────────────────────────
 
 STRAT_NUMBER: dict[str, int] = {
-    "strat_1_congress": 1,
-    "strat_2_value":    2,
-    "strat_3_mean_reversion": 3,
-    "strat_4_momentum": 4,
-    "strat_5_pred_mkt": 5,
+    "strat_1_congress":        1,
+    "strat_2_value":           2,
+    "strat_3_mean_reversion":  3,
+    "strat_4_momentum":        4,
+    "strat_5_pred_mkt":        5,
+    "strat_6_nasdaq_long":     6,
+    "strat_7_nasdaq_short":    7,
+    "strat_8_sector_rotation": 8,
 }
 
 # Maps short SMS names to full strategy ids.
@@ -367,6 +373,9 @@ SMS_NAME_MAP: dict[str, str] = {
     "STRAT3": "strat_3_mean_reversion",
     "STRAT4": "strat_4_momentum",
     "STRAT5": "strat_5_pred_mkt",
+    "STRAT6": "strat_6_nasdaq_long",
+    "STRAT7": "strat_7_nasdaq_short",
+    "STRAT8": "strat_8_sector_rotation",
 }
 
 
