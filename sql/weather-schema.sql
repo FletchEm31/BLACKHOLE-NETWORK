@@ -248,6 +248,65 @@ CREATE TABLE IF NOT EXISTS enso_index (
 
 
 -- ────────────────────────────────────────────────────────────────────────
+-- 5b. weather_bets — GFS-window capture audit columns
+--     Added 2026-05-13 to support the aggressive post-GFS-update polling
+--     loop. Records which poll # captured each opportunity + which polling
+--     phase + actual API round-trip latency.
+-- ────────────────────────────────────────────────────────────────────────
+ALTER TABLE weather_bets ADD COLUMN IF NOT EXISTS gfs_window_poll_number INTEGER;
+ALTER TABLE weather_bets ADD COLUMN IF NOT EXISTS gfs_window_phase       TEXT;
+ALTER TABLE weather_bets ADD COLUMN IF NOT EXISTS kalshi_api_latency_ms  INTEGER;
+
+COMMENT ON COLUMN weather_bets.gfs_window_poll_number IS
+    'Which poll # within the GFS update window captured this opportunity. '
+    'Low numbers = caught lag early; high numbers = caught a slow-to-reprice contract.';
+COMMENT ON COLUMN weather_bets.gfs_window_phase IS
+    'burst (0-5min) | active (5-15min) | wind_down (15-30min) | idle | manual';
+COMMENT ON COLUMN weather_bets.kalshi_api_latency_ms IS
+    'Round-trip latency to Kalshi at the moment we observed the lagging price. '
+    'Used to calibrate poll intervals: high latency = increase intervals.';
+
+
+-- ────────────────────────────────────────────────────────────────────────
+-- 10. gfs_window_stats — one row per GFS-update polling cycle
+--     The most important addition for tuning the polling strategy. After
+--     ~30 days of windows we can read this table to determine:
+--       - which cities reprice slowest (target them harder)
+--       - how often we hit rate limits (calibrate aggression)
+--       - average lag (minutes after GFS update) at which we catch edge
+--       - whether polling frequency is optimal vs over- or under-aggressive
+-- ────────────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS gfs_window_stats (
+    id                       BIGSERIAL PRIMARY KEY,
+    gfs_run_at               TIMESTAMPTZ NOT NULL,        -- which GFS cycle triggered this
+    gfs_run_hour             INTEGER NOT NULL CHECK (gfs_run_hour IN (0, 6, 12, 18)),
+    window_start             TIMESTAMPTZ NOT NULL,
+    window_end               TIMESTAMPTZ NOT NULL,
+    total_polls              INTEGER NOT NULL DEFAULT 0,
+    rate_limit_hits          INTEGER NOT NULL DEFAULT 0,
+    opportunities_found      INTEGER NOT NULL DEFAULT 0,
+    bets_placed              INTEGER NOT NULL DEFAULT 0,
+    total_edge_captured      NUMERIC,                     -- sum of (model_prob - entry_price) × stake, in dollars
+    avg_lag_minutes          NUMERIC,                     -- avg minutes after GFS we captured edge
+    fastest_capture_minutes  NUMERIC,
+    slowest_capture_minutes  NUMERIC,
+    notes                    TEXT,
+    created_at               TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS gfs_window_stats_run_idx
+    ON gfs_window_stats (gfs_run_at DESC);
+CREATE INDEX IF NOT EXISTS gfs_window_stats_hour_idx
+    ON gfs_window_stats (gfs_run_hour, gfs_run_at DESC);
+
+COMMENT ON TABLE gfs_window_stats IS
+    'One row per GFS-update polling window. Phase 1: written by '
+    'kalshi_client.poll_weather_prices_aggressive() at window completion. '
+    'After ~30 days, query for slowest-reprice cities / optimal poll cadence / '
+    'rate-limit calibration. Each GFS cycle (0/6/12/18 UTC) gets its own row.';
+
+
+-- ────────────────────────────────────────────────────────────────────────
 -- 9. crop_conditions — USDA NASS weekly crop progress + conditions
 -- ────────────────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS crop_conditions (
@@ -277,7 +336,7 @@ DO $$ BEGIN
         GRANT SELECT, INSERT, UPDATE ON
             weather_forecasts, weather_observations, model_calibration,
             prediction_contracts, weather_bets, weather_commodity_signals,
-            degree_days, enso_index, crop_conditions
+            degree_days, enso_index, crop_conditions, gfs_window_stats
             TO bhn_trader;
         GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO bhn_trader;
     END IF;
@@ -300,7 +359,7 @@ DO $$ BEGIN
         GRANT SELECT ON
             weather_forecasts, weather_observations, model_calibration,
             prediction_contracts, weather_bets, weather_commodity_signals,
-            degree_days, enso_index, crop_conditions
+            degree_days, enso_index, crop_conditions, gfs_window_stats
             TO agent_reader;
     END IF;
 END $$;
