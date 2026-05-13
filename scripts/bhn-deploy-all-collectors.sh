@@ -101,7 +101,7 @@ node_exec() {
     if [[ -z "$target" ]]; then
         bash -c "$*"
     else
-        ssh -o BatchMode=yes -o ConnectTimeout=10 "$target" "$*"
+        ssh -o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=10 -o ServerAliveCountMax=3 "$target" "$*"
     fi
 }
 
@@ -111,8 +111,8 @@ node_send_file() {
     if [[ -z "$target" ]]; then
         install -m "$mode" "$src" "$dst"
     else
-        scp -q -o BatchMode=yes -o ConnectTimeout=10 "$src" "$target:$dst" \
-          && ssh -o BatchMode=yes -o ConnectTimeout=10 "$target" "chmod $mode '$dst'"
+        scp -q -o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=10 -o ServerAliveCountMax=3 "$src" "$target:$dst" \
+          && ssh -o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=10 -o ServerAliveCountMax=3 "$target" "chmod $mode '$dst'"
     fi
 }
 
@@ -124,7 +124,7 @@ node_write_file() {
     if [[ -z "$target" ]]; then
         ( umask 077 && printf '%s' "$content" > "$dst" ) && chmod "$mode" "$dst"
     else
-        printf '%s' "$content" | ssh -o BatchMode=yes -o ConnectTimeout=10 "$target" \
+        printf '%s' "$content" | ssh -o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=10 -o ServerAliveCountMax=3 "$target" \
             "umask 077 && cat > '$dst' && chmod $mode '$dst'"
     fi
 }
@@ -242,7 +242,7 @@ for node in "${NODE_ORDER[@]}"; do
     if [[ -z "$target" ]]; then
         echo "  $node: localhost ok"
     else
-        if ssh -o BatchMode=yes -o ConnectTimeout=10 "$target" "echo ok" >/dev/null 2>&1; then
+        if ssh -o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=10 -o ServerAliveCountMax=3 "$target" "echo ok" >/dev/null 2>&1; then
             echo "  $node: ssh $target ok"
         else
             echo "  $node: ssh $target FAILED — will be marked unreachable"
