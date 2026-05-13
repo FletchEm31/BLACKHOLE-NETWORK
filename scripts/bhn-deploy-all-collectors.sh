@@ -31,8 +31,11 @@
 #                                conntrack resource-stats tor-stats
 #   Hillsboro   ssh hillsboro    vnstat iptables fail2ban dns-log
 #                                conntrack resource-stats tor-stats proxy-log
-#   NJ          ssh nj  (-p2222) vnstat iptables fail2ban dns-log
-#                                conntrack resource-stats
+#   NJ          ssh -p 2222 root@10.8.0.5  vnstat iptables fail2ban dns-log
+#                                          conntrack resource-stats
+#               (NJ runs sshd on port 2222 — alias `nj` is not used, the script
+#                dials the WG tunnel IP + explicit port directly so it works
+#                regardless of operator ~/.ssh/config state.)
 #
 # Note on DSN: spec forces every collector to use log_shipper for simplicity.
 # tor-stats and wg-stats schemas were originally provisioned around n8n_user;
@@ -75,10 +78,16 @@ LA_PG_DSN="postgresql://log_shipper:BHN-LogShipper-2026@10.8.0.1/eventhorizon"
 
 # ----- node + collector topology --------------------------------------------
 declare -A NODE_SSH=(
-    [LA]=""                # empty target = run locally
-    [Frankfurt]="frankfurt"
-    [Hillsboro]="hillsboro"
-    [NJ]="nj"
+    [LA]=""                  # empty target = run locally
+    [Frankfurt]="frankfurt"  # SSH config alias on LA (~/.ssh/config)
+    [Hillsboro]="hillsboro"  # SSH config alias on LA
+    [NJ]="root@10.8.0.5"     # explicit user@tunnel-IP — port set in NODE_SSH_PORT
+)
+# Per-node SSH/SCP port override. Unset/empty = default 22.
+# NJ runs sshd on 2222 (Vultr template hardening); we set it here so the
+# script works even without an ~/.ssh/config entry for nj.
+declare -A NODE_SSH_PORT=(
+    [NJ]="2222"
 )
 NODE_ORDER=(LA Frankfurt Hillsboro NJ)
 
@@ -166,6 +175,33 @@ split_meta() {
     IFS='|' read -r SCRIPT_FILE ENV_FILE ENV_VAR TABLE NODE_COL CRON <<<"${COLLECTOR_META[$1]}"
 }
 
+# Cross-check COLLECTOR_META env-var names against the actual collector source.
+# Each collector reads its OWN env var (BHN_RESOURCE_PG_DSN, BHN_IPTABLES_PG_DSN,
+# etc.) — writing the wrong name silently breaks the cron because the script
+# can't find its DSN. This guard catches drift where a collector was renamed or
+# its env-var changed without updating the meta table here.
+verify_collector_env_vars() {
+    local mismatches=() short
+    for short in "${!COLLECTOR_META[@]}"; do
+        local script_file env_file env_var rest
+        IFS='|' read -r script_file env_file env_var rest <<<"${COLLECTOR_META[$short]}"
+        local src="$SCRIPTS_DIR/$script_file"
+        if [[ ! -f "$src" ]]; then
+            mismatches+=("$short: source $script_file missing in $SCRIPTS_DIR")
+            continue
+        fi
+        if ! grep -wq "$env_var" "$src"; then
+            mismatches+=("$short: meta declares $env_var but $script_file never references it")
+        fi
+    done
+    if (( ${#mismatches[@]} > 0 )); then
+        echo "ERROR: COLLECTOR_META / collector-source env-var drift:" >&2
+        printf '  - %s\n' "${mismatches[@]}" >&2
+        echo "Fix the meta table or the collector script before re-running." >&2
+        exit 3
+    fi
+}
+
 # ----- node helpers ---------------------------------------------------------
 node_exec() {
     local node="$1"; shift
@@ -173,7 +209,10 @@ node_exec() {
     if [[ -z "$target" ]]; then
         bash -c "$*"
     else
-        ssh -o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=10 -o ServerAliveCountMax=3 "$target" "$*"
+        local -a args=(-o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=10 -o ServerAliveCountMax=3)
+        local port="${NODE_SSH_PORT[$node]:-}"
+        [[ -n "$port" ]] && args+=(-p "$port")
+        ssh "${args[@]}" "$target" "$*"
     fi
 }
 
@@ -183,8 +222,15 @@ node_send_file() {
     if [[ -z "$target" ]]; then
         install -m "$mode" "$src" "$dst"
     else
-        scp -q -o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=10 -o ServerAliveCountMax=3 "$src" "$target:$dst" \
-          && ssh -o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=10 -o ServerAliveCountMax=3 "$target" "chmod $mode '$dst'"
+        local -a scp_args=(-q -o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=10 -o ServerAliveCountMax=3)
+        local -a ssh_args=(-o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=10 -o ServerAliveCountMax=3)
+        local port="${NODE_SSH_PORT[$node]:-}"
+        if [[ -n "$port" ]]; then
+            scp_args+=(-P "$port")
+            ssh_args+=(-p "$port")
+        fi
+        scp "${scp_args[@]}" "$src" "$target:$dst" \
+          && ssh "${ssh_args[@]}" "$target" "chmod $mode '$dst'"
     fi
 }
 
@@ -196,7 +242,10 @@ node_write_file() {
     if [[ -z "$target" ]]; then
         ( umask 077 && printf '%s' "$content" > "$dst" ) && chmod "$mode" "$dst"
     else
-        printf '%s' "$content" | ssh -o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=10 -o ServerAliveCountMax=3 "$target" \
+        local -a args=(-o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=10 -o ServerAliveCountMax=3)
+        local port="${NODE_SSH_PORT[$node]:-}"
+        [[ -n "$port" ]] && args+=(-p "$port")
+        printf '%s' "$content" | ssh "${args[@]}" "$target" \
             "umask 077 && cat > '$dst' && chmod $mode '$dst'"
     fi
 }
@@ -219,8 +268,12 @@ deploy_one() {
         return 1
     fi
 
+    # Per-collector env var — NOT shared. Each collector script sources its
+    # own /root/.bhn-<name>.env and reads its specific var name. We write the
+    # var name straight from COLLECTOR_META so the cron will find its DSN.
     local env_content
     env_content="$(printf "%s='%s'\n" "$ENV_VAR" "$LA_PG_DSN")"
+    echo "    [$node/$short] $ENV_FILE  ←  $ENV_VAR=<log_shipper DSN>"
     if ! node_write_file "$node" "$ENV_FILE" 0600 "$env_content"; then
         record "$node" "$short" "FAIL" "env write failed"
         return 1
@@ -309,15 +362,21 @@ echo "BHN deploy-all-collectors — mode=$MODE"
 echo "Source: $SCRIPTS_DIR"
 echo
 
+verify_collector_env_vars
+
 for node in "${NODE_ORDER[@]}"; do
     target="${NODE_SSH[$node]}"
     if [[ -z "$target" ]]; then
         echo "  $node: localhost ok"
     else
-        if ssh -o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=10 -o ServerAliveCountMax=3 "$target" "echo ok" >/dev/null 2>&1; then
-            echo "  $node: ssh $target ok"
+        probe_args=(-o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=10 -o ServerAliveCountMax=3)
+        probe_port="${NODE_SSH_PORT[$node]:-}"
+        [[ -n "$probe_port" ]] && probe_args+=(-p "$probe_port")
+        probe_label="$target${probe_port:+ (port $probe_port)}"
+        if ssh "${probe_args[@]}" "$target" "echo ok" >/dev/null 2>&1; then
+            echo "  $node: ssh $probe_label ok"
         else
-            echo "  $node: ssh $target FAILED — will be marked unreachable"
+            echo "  $node: ssh $probe_label FAILED — will be marked unreachable"
             NODE_SSH[$node]="__SKIP__"
         fi
     fi
