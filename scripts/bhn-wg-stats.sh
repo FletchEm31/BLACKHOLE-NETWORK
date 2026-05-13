@@ -59,10 +59,17 @@ while IFS=$'\t' read -r f1 f2 f3 f4 f5 f6 f7 f8; do
     label=$(label_for_ip "$peer_ip")
 
     # Handshake: 0 = never; otherwise unix epoch.
+    now_epoch=$(date +%s)
     if [[ "$handshake" == "0" ]]; then
         handshake_lit="NULL"
+        age_lit="NULL"
+        stale_lit="NULL"
     else
         handshake_lit="to_timestamp($handshake)"
+        age=$(( now_epoch - handshake ))
+        age_lit="$age"
+        # Per wg-peer-stats-health-extension: 180s = stale threshold (3 min).
+        if [[ $age -gt 180 ]]; then stale_lit="TRUE"; else stale_lit="FALSE"; fi
     fi
 
     # Endpoint may be "(none)" pre-handshake.
@@ -73,7 +80,7 @@ while IFS=$'\t' read -r f1 f2 f3 f4 f5 f6 f7 f8; do
     fi
 
     # pubkey, peer_ip, label are all from controlled output — single-quote escape just in case.
-    sql_values+="('${peer_ip//\'/\'\'}', '${label//\'/\'\'}', '${pubkey//\'/\'\'}', $rx, $tx, $handshake_lit, $endpoint_lit),"
+    sql_values+="('${peer_ip//\'/\'\'}', '${label//\'/\'\'}', '${pubkey//\'/\'\'}', $rx, $tx, $handshake_lit, $endpoint_lit, $age_lit, $stale_lit),"
     peer_count=$((peer_count + 1))
 done <<< "$wg_output"
 
@@ -84,6 +91,6 @@ sql_values="${sql_values%,}"
 
 psql "$BHN_WG_STATS_PG_DSN" -v ON_ERROR_STOP=1 >/dev/null <<SQL \
   || { echo "bhn-wg-stats: PG insert failed" >&2; exit 2; }
-INSERT INTO wg_peer_stats (peer_ip, peer_label, peer_pubkey, bytes_received, bytes_sent, latest_handshake, endpoint)
+INSERT INTO wg_peer_stats (peer_ip, peer_label, peer_pubkey, bytes_received, bytes_sent, latest_handshake, endpoint, handshake_age_seconds, is_stale)
 VALUES $sql_values;
 SQL

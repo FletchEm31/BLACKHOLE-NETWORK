@@ -170,6 +170,45 @@ groups:
           severity: warning
           dedup_key: bhn-tor-relay-stale
 
+      # ─── v1 rule 5a: WG peer stale handshake (>3 min) ─────────────────────
+      # Per wg-peer-stats-health-extension: bhn-wg-stats.sh writes is_stale
+      # based on handshake_age_seconds > 180. Alert when any peer is stale
+      # in the latest snapshot.
+      - uid: bhn-wg-peer-stale-handshake
+        title: BHN WG peer stale handshake (>3 min)
+        condition: B
+        for: 5m
+        noDataState: NoData
+        execErrState: Error
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: cflc7izgwm7lsc
+            model:
+              format: table
+              rawSql: |
+                WITH latest AS (
+                  SELECT peer_ip, peer_label, handshake_age_seconds, is_stale, measured_at,
+                         ROW_NUMBER() OVER (PARTITION BY peer_ip ORDER BY measured_at DESC) AS rn
+                  FROM wg_peer_stats
+                )
+                SELECT COUNT(*)::int AS stale_count
+                FROM latest
+                WHERE rn = 1 AND is_stale = TRUE;
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+        annotations:
+          summary: "One or more WG peers have not handshook in >3 minutes"
+          description: "{{ $values.A.Value }} peer(s) currently stale. Check: SELECT DISTINCT ON (peer_ip) peer_ip, peer_label, handshake_age_seconds FROM wg_peer_stats WHERE is_stale=TRUE ORDER BY peer_ip, measured_at DESC; — investigate per-peer (FRA/NJ/Hillsboro = server peer down; Phone/PC = expected if device asleep)."
+        labels:
+          severity: warning
+          dedup_key: bhn-wg-peer-stale-handshake
+
       # ─── v1 rule 5: Tor relay AccountingMax — approaching cap (>80%) ──────
       # Per-relay caps from torrc AccountingMax:
       #   BHNFornaxEU1   1500 GB (Frankfurt)
