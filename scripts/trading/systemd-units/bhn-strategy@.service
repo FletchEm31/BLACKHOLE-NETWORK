@@ -1,0 +1,50 @@
+# BHN trading — templated strategy runner. %i = strategy name (matches the
+# strategy_<name>.py filename suffix). Started by the matching
+# bhn-strategy-<name>.timer. Type=oneshot so the unit exits when the
+# strategy completes its cycle; the timer fires it again on next interval.
+#
+# Deploy:
+#   sudo cp bhn-strategy@.service /etc/systemd/system/
+#   sudo cp bhn-strategy-*.timer  /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   for s in momentum value mean-reversion congress prediction-market; do
+#     sudo systemctl enable --now bhn-strategy-${s}.timer
+#   done
+
+[Unit]
+Description=BHN trading strategy %i (oneshot — schedule via bhn-strategy-%i.timer)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/bhn/trading
+
+# Strategy filename uses underscores; timer/template uses hyphens. systemd
+# template parameter substitutes %i literally — strip the hyphen→underscore
+# transform via a wrapper or pass the filename directly. We pass via env so
+# the strategy_<name>.py path is constructed cleanly.
+Environment=STRATEGY_NAME=%i
+ExecStart=/usr/bin/python3 -c "import os, sys, runpy; name = os.environ['STRATEGY_NAME'].replace('-', '_'); runpy.run_path(f'/opt/bhn/trading/strategy_{name}.py', run_name='__main__')"
+
+EnvironmentFile=/etc/bhn-trading/env
+
+# Per-strategy log file under /var/log/bhn-trading/. Pre-create the dir
+# during deployment (deploy runbook covers this).
+StandardOutput=append:/var/log/bhn-trading/strategy-%i.log
+StandardError=append:/var/log/bhn-trading/strategy-%i.log
+
+# Hard timeout — if a strategy hangs longer than 10 min, kill it. Strategies
+# should never block on Alpaca for that long; if they do, something is wrong
+# and we'd rather the next timer cycle reattempt cleanly than have stacked
+# processes.
+TimeoutStartSec=600
+TimeoutStopSec=30
+
+# Failure surfaces as a non-zero exit. systemd timer doesn't auto-retry on
+# failure — that's intentional. Strategy failures should trip the circuit
+# breaker, not be silently retried.
+
+[Install]
+# Templates aren't directly enabled; the per-strategy timers WantedBy=timers.target.

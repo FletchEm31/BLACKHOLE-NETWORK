@@ -1,0 +1,16 @@
+# BHN trading — value strategy schedule.
+# FMP-fundamental-screen + Alpaca exec. Runs daily post-market.
+# Per strategy_value.py docstring: "daily post-market (17:00 ET)".
+# Staggered +15 min after momentum to avoid simultaneous Alpaca API spikes.
+
+[Unit]
+Description=BHN value strategy (daily 17:15 ET, post-market)
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 17:15:00 America/New_York
+Unit=bhn-strategy@value.service
+Persistent=true
+RandomizedDelaySec=60
+
+[Install]
+WantedBy=timers.target

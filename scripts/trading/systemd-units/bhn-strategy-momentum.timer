@@ -1,0 +1,15 @@
+# BHN trading — momentum strategy schedule.
+# 50/200 SMA crossover on S&P 500 names. Runs daily post-market.
+# Per strategy_momentum.py docstring: "daily post-market (17:00 ET)".
+
+[Unit]
+Description=BHN momentum strategy (daily 17:00 ET, post-market)
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 17:00:00 America/New_York
+Unit=bhn-strategy@momentum.service
+Persistent=true
+RandomizedDelaySec=60
+
+[Install]
+WantedBy=timers.target

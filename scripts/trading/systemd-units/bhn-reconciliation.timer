@@ -1,0 +1,16 @@
+# BHN trading — reconciliation schedule.
+# Every 5 min, 24/7. Reconciliation runs even when no strategies are active
+# (catches drift from manual broker actions, paper-account resets, etc.).
+
+[Unit]
+Description=BHN trading reconciliation (every 5 min)
+
+[Timer]
+OnCalendar=*-*-* *:0/5:00
+Unit=bhn-reconciliation.service
+Persistent=true
+# No randomized delay — we want predictable cadence so missed-cycle alerts
+# (in tor_relay_stats's `bhn-tor-relay-stale` style) work without noise.
+
+[Install]
+WantedBy=timers.target

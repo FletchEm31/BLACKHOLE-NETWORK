@@ -1,0 +1,21 @@
+# BHN trading — mean-reversion strategy schedule.
+# Every 5 min during regular market hours (Mon-Fri 09:30-16:00 ET).
+# Per strategy_mean_reversion.py docstring: "every 5 min during regular market hours".
+#
+# systemd OnCalendar with /0:05 step inside the time range:
+#   `09,10,11,12,13,14,15 *:0/5` covers 09:00..15:55, with extras 09:00-09:25
+#   that the strategy will no-op on (script self-gates on market open at 09:30).
+# Add 16:00:00 as a final tick (otherwise the last fire would be 15:55).
+
+[Unit]
+Description=BHN mean-reversion strategy (every 5 min during market hours)
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 09..15:00/5:00 America/New_York
+OnCalendar=Mon..Fri *-*-* 16:00:00 America/New_York
+Unit=bhn-strategy@mean-reversion.service
+Persistent=false
+RandomizedDelaySec=15
+
+[Install]
+WantedBy=timers.target

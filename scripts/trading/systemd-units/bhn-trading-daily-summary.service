@@ -1,0 +1,26 @@
+# BHN trading — end-of-day digest service.
+# Fired by bhn-trading-daily-summary.timer at 13:15 PT-equivalent
+# (post-market ET, after Alpaca settles trades). Aggregates per-strategy
+# performance, writes strategy_performance rows, SMS-es the digest.
+
+[Unit]
+Description=BHN trading daily summary (post-market digest + SMS)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/bhn/trading
+ExecStart=/usr/bin/python3 /opt/bhn/trading/daily_summary.py
+EnvironmentFile=/etc/bhn-trading/env
+
+StandardOutput=append:/var/log/bhn-trading/daily-summary.log
+StandardError=append:/var/log/bhn-trading/daily-summary.log
+
+# Aggregation queries can take a minute on a busy trading day.
+TimeoutStartSec=300
+TimeoutStopSec=30
+
+[Install]
+# Enabled via the timer.

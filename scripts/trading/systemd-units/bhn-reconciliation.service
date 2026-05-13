@@ -1,0 +1,32 @@
+# BHN trading — 3-way reconciliation runner.
+# Type=oneshot — fired by bhn-reconciliation.timer every 5 min. Each invocation
+# does ONE reconciliation cycle (--once flag), then exits. This keeps cycles
+# independent — if reconciliation hangs or crashes mid-cycle, the next timer
+# fire is a clean restart instead of recovery from undefined state.
+#
+# A non-zero exit from this service means reconciliation detected a mismatch
+# AND tripped the killswitch. The script itself sends the SMS; this unit's
+# failure is just additional surface for monitoring.
+
+[Unit]
+Description=BHN trading reconciliation (oneshot, --once)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/bhn/trading
+ExecStart=/usr/bin/python3 /opt/bhn/trading/reconciliation_daemon.py --once
+EnvironmentFile=/etc/bhn-trading/env
+
+StandardOutput=append:/var/log/bhn-trading/reconciliation.log
+StandardError=append:/var/log/bhn-trading/reconciliation.log
+
+# Reconciliation queries Alpaca + PG + local SQLite — should finish in <30s.
+# 90s ceiling lets a sluggish API call complete without killing the unit.
+TimeoutStartSec=90
+TimeoutStopSec=15
+
+[Install]
+# Enabled via the timer.

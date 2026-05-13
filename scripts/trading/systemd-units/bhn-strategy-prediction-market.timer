@@ -1,0 +1,17 @@
+# BHN trading — prediction-market (Polymarket / Kalshi) strategy schedule.
+# Per strategy_prediction_market.py docstring: "every 10 min during market hours,
+# hourly otherwise (cadence_seconds=600)". Strategy self-gates on its own
+# market-hours / off-hours logic; we just fire it every 10 min around the clock
+# and let it decide whether to scan deeply or do a light pass.
+
+[Unit]
+Description=BHN prediction-market strategy (every 10 min, 24/7 — strategy self-gates)
+
+[Timer]
+OnCalendar=*-*-* *:0/10:00
+Unit=bhn-strategy@prediction-market.service
+Persistent=true
+RandomizedDelaySec=60
+
+[Install]
+WantedBy=timers.target

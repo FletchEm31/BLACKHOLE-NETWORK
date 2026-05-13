@@ -1,0 +1,16 @@
+# BHN trading — congress (Congress.gov financial-disclosure tracker) schedule.
+# Every 15 min, 24/7. The Congress.gov API publishes disclosures asynchronously
+# and the strategy_congress.py loop ingests new disclosures + reacts.
+# Per strategy_congress.py DEFAULTS: poll_interval_seconds = 900 (15 min).
+
+[Unit]
+Description=BHN congress strategy (every 15 min, 24/7)
+
+[Timer]
+OnCalendar=*-*-* *:0/15:00
+Unit=bhn-strategy@congress.service
+Persistent=true
+RandomizedDelaySec=120
+
+[Install]
+WantedBy=timers.target

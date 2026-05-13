@@ -1,0 +1,17 @@
+# BHN trading — daily summary schedule.
+# 16:15 ET (just after US market close at 16:00). Per daily_summary.py
+# docstring cron suggestion "15 13 * * 1-5" — that's 13:15 PT = 16:15 ET.
+# We use ET directly via OnCalendar's timezone field so daylight savings
+# stays transparent.
+
+[Unit]
+Description=BHN trading daily summary (weekdays 16:15 ET)
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 16:15:00 America/New_York
+Unit=bhn-trading-daily-summary.service
+Persistent=true
+RandomizedDelaySec=120
+
+[Install]
+WantedBy=timers.target
