@@ -1,36 +1,88 @@
 #!/usr/bin/env python3
 """
-weather_data_collector.py — BHN Strategy 9 (BHN-WEATHER-ALPHA) Phase 1 collector.
+weather_data_collector.py — BHN Strategy 9 (BHN-PREDICTION-ALPHA) Phase 1 collector.
 
-Polls six free data sources every 6 hours (via bhn-weather-collector.timer) and
-writes to the weather-schema tables:
+Polls free weather data sources every 6 hours (via bhn-weather-collector.timer)
+and writes to the weather-schema tables.
 
-  Source                  → Table(s)                     Phase 1 status
+Model hierarchy (post-research-findings update, 2026-05-13):
+  PRIMARY      NWS gridpoints API  — Kalshi settles weather contracts on
+                                     NWS Daily Climate Report (CLI). Same
+                                     office's gridpoints forecast is the
+                                     authoritative model input.
+  SECONDARY    ECMWF 51-member     — Ensemble model via the ecmwf-opendata
+               ensemble             package (ECMWF went fully open Oct 2025,
+                                     CC-BY 4.0). Provides probabilistic
+                                     uncertainty quantification.
+  CONFIRMATION HRRR                — High-Resolution Rapid Refresh (3km,
+                                     hourly updates). Short-range
+                                     (0-48h) cross-check before contract
+                                     settlement.
+  REDUNDANCY   Open-Meteo          — Free aggregator; multi-model output
+                                     kept as a sanity cross-check against
+                                     NWS in case NWS endpoint fails.
+
+  Source                  → Table(s)                     Status
   ──────────────────────────────────────────────────────────────────────
-  Open-Meteo API          → weather_forecasts            ✅ implemented
+  NWS gridpoints forecast → weather_forecasts            ✅ implemented (primary)
+  NWS CLI climate report  → weather_observations         ✅ implemented (settlement)
+  ECMWF open-data         → weather_forecasts (51-mem)   ⚠  scaffold (GRIB parsing)
+  HRRR                    → weather_forecasts            ⚠  scaffold (GRIB parsing)
+  Open-Meteo API          → weather_forecasts            ✅ implemented (redundancy)
   Iowa State ASOS         → weather_observations         ✅ implemented
   NOAA CPC ENSO           → enso_index                   ✅ implemented
-  USDA NASS crops         → crop_conditions              ⚠  scaffold (needs NASS API key)
-  NWS API                 → weather_forecasts            ⚠  scaffold (per-point forecasts)
-  NOAA NOMADS GFS ensemble→ weather_forecasts (50-mem)   ⚠  scaffold (GRIB parsing, pygrib dep)
+  USDA NASS crops         → crop_conditions              ⚠  scaffold (needs key)
+
+Cities — 4 Kalshi-aligned (per research findings, Kalshi weather contracts
+only cover NYC, Chicago, Miami, Austin). NWS office mapping per operator:
+  NYC      → NWS office OKX, ASOS station KNYC
+  Chicago  → NWS office LOT, ASOS station KORD
+  Miami    → NWS office MFL, ASOS station KMIA
+  Austin   → NWS office EWX, ASOS station KAUS
 
 After fetch, computes degree_days from the day's observations + tmax/tmin
 forecasts for each station.
 
-All data is paper / informational only at Phase 1. No betting, no execution,
+All data is paper / informational at Phase 1. No betting, no execution,
 no rules.json registration — that comes in Phase 3+.
 
-Env config (no API keys needed for Phase 1 implemented sources; future
-sources will pull from /etc/bhn-trading/strat9.env):
+Cross-platform arb deferred to Phase 3 — same event has resolved differently
+on Kalshi vs Polymarket in 2024, so it's NOT zero-risk. Polymarket US access
+is invite-only + legally uncertain; Phase 1 is Kalshi-only.
+
+Env config (no API keys needed for the implemented sources at Phase 1):
   PG_HOST, PG_PORT, PG_DB, PG_USER, PG_PASSWORD  (via trading_core._load_env)
-  USDA_NASS_API_KEY                              (Phase 1 scaffold; needed for crops)
+  USDA_NASS_API_KEY                              (scaffold source)
+  KALSHI_KEY_ID                                  (Phase 3 betting — not yet used)
+
+Phase 3 Kalshi setup (NOT in Phase 1, documenting the contract):
+  - Kalshi auth = RSA-PSS, NOT simple API key
+  - Generate RSA key pair; store private key at /etc/bhn-trading/kalshi_private.pem (0600)
+  - Store key id in /etc/bhn-trading/strat9.env as KALSHI_KEY_ID=<id>
+  - SDK: pip install kalshi-python==2.1.4
+  - Demo environment: demo-api.kalshi.co (use for all paper trading)
+  - Production: trading-api.kalshi.com
+
+Phase 2 economics markets pipeline (NOT in this file — separate collector
+when it lands):
+  - FRED API (free key at fred.stlouisfed.org) — GDPNow, treasury yields
+  - BLS API (free key)                          — CPI, NFP, unemployment
+  - Cleveland Fed scraping                      — daily inflation nowcast
+  - pyfedwatch package                          — Fed decision probabilities from SOFR futures
+
+Dependencies (one-time on LA when promoting scaffolds to full):
+  pip install ecmwf-opendata    # ECMWF 51-member open-data client
+  pip install cfgrib eccodes    # GRIB2 parsing (used by both ECMWF and HRRR)
+  pip install herbie-data       # HRRR retrieval wrapper
 
 CLI:
   python3 weather_data_collector.py              # full cycle (all sources)
+  python3 weather_data_collector.py --source nws_forecast
+  python3 weather_data_collector.py --source nws_cli
   python3 weather_data_collector.py --source open_meteo
   python3 weather_data_collector.py --source asos
   python3 weather_data_collector.py --source enso
-  python3 weather_data_collector.py --source degree_days   # local computation only
+  python3 weather_data_collector.py --source degree_days
   python3 weather_data_collector.py --dry-run    # log only, no PG writes
 """
 from __future__ import annotations
@@ -57,24 +109,22 @@ logger = tc.get_logger("strat_9_weather_alpha_collector")
 
 @dataclass(frozen=True)
 class City:
-    icao:    str
-    name:    str
-    state:   str
-    lat:     float
-    lon:     float
+    icao:        str       # ASOS station code (e.g. 'KNYC')
+    nws_office:  str       # NWS WFO office code (e.g. 'OKX')
+    name:        str
+    state:       str
+    lat:         float
+    lon:         float
 
 
+# Kalshi-aligned 4-city set with explicit NWS office mapping per operator
+# (research findings: Kalshi weather contracts only cover these 4 markets,
+# and they settle on the matching NWS office's Daily Climate Report).
 CITIES: tuple[City, ...] = (
-    City("KNYC", "New York City",   "NY", 40.7831, -73.9712),  # Central Park
-    City("KLAX", "Los Angeles",     "CA", 33.9416, -118.4085),
-    City("KORD", "Chicago O'Hare",  "IL", 41.9742, -87.9073),
-    City("KMIA", "Miami",           "FL", 25.7959, -80.2870),
-    City("KIAH", "Houston",         "TX", 29.9844, -95.3414),
-    City("KPHX", "Phoenix",         "AZ", 33.4342, -112.0116),
-    City("KBOS", "Boston",          "MA", 42.3656, -71.0096),
-    City("KDCA", "Washington DC",   "DC", 38.8521, -77.0377),
-    City("KATL", "Atlanta",         "GA", 33.6407, -84.4277),
-    City("KDEN", "Denver",          "CO", 39.8561, -104.6737),
+    City("KNYC", "OKX", "New York City",   "NY", 40.7831, -73.9712),  # Central Park
+    City("KORD", "LOT", "Chicago O'Hare",  "IL", 41.9742, -87.9073),
+    City("KMIA", "MFL", "Miami",           "FL", 25.7959, -80.2870),
+    City("KAUS", "EWX", "Austin",          "TX", 30.1944, -97.6700),  # Austin-Bergstrom
 )
 
 VARIABLES = ("tmax_f", "tmin_f", "precip_in", "snow_in")
