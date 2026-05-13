@@ -2,7 +2,17 @@
 """
 bhn-usda-poller — poll USDA NASS commodity prices.
 
-Cron (LA, weekly Mon 08:00): 0 8 * * 1 root /usr/local/sbin/bhn-usda-poller.py
+Cron (LA, aligned to USDA release times in ET; safety-poll +1min after each):
+  CRON_TZ=America/New_York
+  30,31 8 * * 1-5  root  /usr/local/sbin/bhn-usda-poller.py   # 08:30 ET daily releases + safety
+  0,1  15 * * 5    root  /usr/local/sbin/bhn-usda-poller.py   # 15:00 ET Fri crop progress + safety
+
+The +1min safety poll catches data that posts 1-2 minutes after the
+official release time. UPSERT semantics (UNIQUE(commodity, short_desc,
+period_start, state_alpha) → ON CONFLICT DO NOTHING) make the safety
+poll idempotent.
+
+Deploy via /etc/cron.d/bhn-usda-poller with CRON_TZ at top.
 
 Config /root/.bhn-usda.env (mode 0600):
   BHN_USDA_PG_DSN='postgresql://log_shipper:<PW>@10.8.0.1/eventhorizon'
