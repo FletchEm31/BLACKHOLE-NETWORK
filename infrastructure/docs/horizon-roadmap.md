@@ -34,6 +34,7 @@ Companion to the operator's freeform plan at `HORIZON PLAN.txt` (repo root). Whe
 | **Session 3 — eBay + trading** | M5 eBay Integration, M6 Trading Integration | Session 1; eBay API approved (already done); Alpaca paper |
 | **Session 4 — outbound + email** | M7 Outbound Calling, M8 Email Management | Session 1; Whisper deployed on LA |
 | **Session 5 — calendar polish** | M9 Calendar Management | Session 4 |
+| **Session 5.5 — memory plumbing** | Redis hot-memory layer (working memory in front of pgvector) | Session 5; HORIZON workflow Format-Memory + token-logging fixes landed |
 | **Later (Phase 6)** | M10 Job Search | Conversation memory mature enough for tone-matched cover letters |
 
 ---
@@ -365,6 +366,60 @@ If/when EU-resident voice processing is needed (Phase 4+), separate node with pr
 
 Existing `memories` table's `memory_type` enum already supports the abstractions; will add or remap as needed during M1/M5/M6 builds.
 
+### Hot-memory layer (Redis) — Phase 5.5, designed 2026-05-13
+
+**Problem:** pgvector retrieval is ~50 ms per turn and doesn't intrinsically know what "this conversation so far" is. n8n's session window helps but is opaque, lives inside the workflow, and isn't queryable. The result is HORIZON occasionally losing track of details mentioned 2-3 turns earlier in the same chat — a working-memory failure that pgvector can't fix because it's a long-term semantic store, not a turn buffer.
+
+**Shape:** add Redis as a hot working-memory tier in front of pgvector. Redis holds the last N turns + running summary keyed by `session_id`; pgvector stays the long-term semantic store; PostgreSQL `conversation_sessions` is the durable system of record for session metadata.
+
+```
+turn arrives ─► n8n loads working memory (Redis GET, ~1 ms)
+                  │
+                  ├─► HORIZON synthesis (Sonnet) ◄── pgvector RAG for semantic recall only
+                  │
+                  ▼
+              n8n writes turn to Redis (LPUSH + LTRIM to N) + summary upsert every K
+                  │
+                  ▼
+            session close (TTL expiry or explicit end)
+                  │
+                  ▼
+        summarize → embed → INSERT into memories (pgvector)
+        + UPSERT conversation_sessions (closed_at, summary, turn_count)
+        + DEL Redis keys
+```
+
+**Components:**
+
+- **Redis service** — Docker container on LA, VPN-only on `10.8.0.1:6379`, `requirepass` from new Proton Pass entry `EH-Redis-Password`. AOF + RDB persistence **off** (Redis is a cache; durable state lives in PG + pgvector). Deploy doc lives at `infrastructure/services/redis/docker-run.md`.
+- **PG schema** — new file `sql/redis-memory-schema.sql` containing one table: `conversation_sessions(id uuid PK, channel text, started_at timestamptz, closed_at timestamptz NULL, turn_count int, summary text, summary_embedding vector(384))`. One row per session, `closed_at` NULL while live; the summary embedding lets pgvector search across past sessions by topic. Granted to `n8n_user` write + `agent_reader` read.
+- **Redis key shape:**
+  - `horizon:sess:<session_id>:turns` — list, LPUSH new turn JSON, LTRIM to last 20
+  - `horizon:sess:<session_id>:summary` — string, rewritten every K turns (K=5)
+  - `horizon:sess:<session_id>:meta` — hash (channel, started_at, last_seen)
+  - TTL on all three: 12 h sliding window, refreshed on every read/write
+- **n8n wiring** — two new nodes added to the HORIZON workflow plus one new sub-workflow:
+  - *Load working memory* (before Sonnet): GET turns + summary, inject into system prompt as `{{recent_turns}}` + `{{running_summary}}`.
+  - *Write working memory* (after Sonnet response): LPUSH the new (user, assistant) turn pair, decide whether to re-summarize (every 5 turns) via a cheap Haiku call, bump TTL.
+  - *Session-close sweep* (new sub-workflow, cron every 15 min): find Redis sessions whose `meta.last_seen` is older than 30 min → Sonnet summary → embedding → `memories` INSERT + `conversation_sessions` UPSERT (`closed_at = NOW()`) → Redis DEL keys.
+
+**Why Phase 5.5 (between M9 and M10), not now:**
+
+1. The existing HORIZON workflow has known disconnects (Format Memory Block, token logging) — fix those *before* layering new memory plumbing on top, or the new nodes inherit the same wiring fragility.
+2. M10 Job Search wants tone-matched cover letters; that quality comes from long-term semantic recall (pgvector) maturing on accumulated transcripts, **not** from the Redis hot layer. Redis improves in-conversation coherence, which is a separate axis — useful, but not what unblocks M10.
+3. New service on LA (Redis ≈ 30 MB) is cheap, but operationalizing it (no backup needed, monitoring via existing `bhn-docker-stats-collector`, password rotation, firewall) is worth a dedicated session rather than a side-quest during voice/trading rollout.
+
+**Build order when activated:**
+
+1. Deploy Redis Docker on LA per `docker-run.md`, password set, UFW restricted to `10.8.0.0/24` only.
+2. Apply `sql/redis-memory-schema.sql` (only `conversation_sessions`).
+3. Wire the two in-conversation nodes; test on the chat channel first (lowest blast radius — no voice cost).
+4. Add the session-close sweep sub-workflow; verify pgvector inserts land cleanly.
+5. Confirm Sonnet's effective context window stays bounded (Redis summary should keep it flat, not balloon it as turn count grows).
+6. Once stable for one week, add `redis_hit_ratio` + `conversation_sessions` open-count to the morning briefing (M2) health block.
+
+**Out of scope for this layer:** Redis-as-pubsub, Redis-as-job-queue, Redis-Streams. Single use case: short-term working memory for HORIZON. If those other use cases appear, justify and add separately; do not silently expand this service.
+
 ### Retention policy
 
 | Data type | Hot (NVMe) | Cold (HDD) | Purge |
@@ -470,6 +525,7 @@ Once 1-7 done and keys are in PM, Session 1 can build M1 (Voice Pipeline) and st
 | Alpaca | Paper first, live behind gate | ✅ |
 | ElevenLabs tier | Creator ($22/mo) | ✅ |
 | Robinhood | Excluded (unofficial API, TOS risk) | ✅ |
+| Working-memory tier | Redis (Docker on LA, cache only — PG + pgvector remain source of truth) | ✅ Designed (Phase 5.5, build deferred) |
 | Twilio number country | US local (assumed default) | Pending operator confirmation |
 | Calendar OAuth scope | read+write+freebusy on horizon@'s primary | Pending operator confirmation |
 | Caller-ID display name | "HORIZON" | Pending operator confirmation |
