@@ -294,6 +294,14 @@ EOF
 ║    persistent-keepalive 25
 ║  wg-quick save wg0
 ╠══════════════════════════════════════════════════════════╣
+║  RUN ON HUB to allow LA-initiated traffic to this peer:
+║  (Hub's outbound default is deny — without these rules,
+║   ping/SSH/proxy calls from hub to ${TUNNEL_IP} silently drop
+║   at the OUTPUT chain. The WG handshake still works via
+║   conntrack from the peer's keepalive, which masks the issue.)
+║  ufw allow out to ${NODE_IP} port 51821 proto udp comment 'wg0 hub->${NODE_NAME} underlay'
+║  ufw allow out to ${TUNNEL_IP} comment 'egress-${NODE_NAME}-via-tunnel'
+╠══════════════════════════════════════════════════════════╣
 EOF
 cat <<EOF
 ║  SHADOWSOCKS PASSWORD (save to password manager):
