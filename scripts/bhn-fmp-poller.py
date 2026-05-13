@@ -60,12 +60,16 @@ def union_watchlist(rules_path: Path) -> list[str]:
 
 def main() -> int:
     env_path = os.environ.get('BHN_FMP_ENV', '/root/.bhn-fmp.env')
-    if not Path(env_path).is_file(): die(f"missing {env_path}")
+    if not Path(env_path).is_file():
+        print(f"bhn-fmp-poller: missing {env_path} — skipping", file=sys.stderr); return 0
     env = load_env(env_path)
     dsn = env.get('BHN_FMP_PG_DSN', '')
     api_key = env.get('BHN_FMP_API_KEY', '')
     rules_path = Path(env.get('BHN_FMP_RULES_PATH', '/opt/bhn/trading/rules.json'))
-    if not dsn or not api_key: die("BHN_FMP_PG_DSN and/or BHN_FMP_API_KEY missing")
+    if not dsn:
+        print("bhn-fmp-poller: BHN_FMP_PG_DSN missing — skipping", file=sys.stderr); return 0
+    if not api_key:
+        print("bhn-fmp-poller: BHN_FMP_API_KEY not configured (PM: BHN-FMP-APIKey) — skipping", file=sys.stderr); return 0
 
     syms = union_watchlist(rules_path)
     if not syms:

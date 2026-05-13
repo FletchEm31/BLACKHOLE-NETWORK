@@ -35,12 +35,16 @@ def load_env(p):
 
 def main():
     env_path = os.environ.get('BHN_QUIVER_ENV', '/root/.bhn-quiver.env')
-    if not Path(env_path).is_file(): die(f"missing {env_path}")
+    if not Path(env_path).is_file():
+        print(f"bhn-quiver-poller: missing {env_path} — skipping", file=sys.stderr); return 0
     env = load_env(env_path)
     dsn = env.get('BHN_QUIVER_PG_DSN', '')
     api_key = env.get('BHN_QUIVER_API_KEY', '')
     endpoint = env.get('BHN_QUIVER_ENDPOINT', 'https://api.quiverquant.com/beta/live/congresstrading')
-    if not dsn or not api_key: die("BHN_QUIVER_PG_DSN and/or BHN_QUIVER_API_KEY missing")
+    if not dsn:
+        print("bhn-quiver-poller: BHN_QUIVER_PG_DSN missing — skipping", file=sys.stderr); return 0
+    if not api_key:
+        print("bhn-quiver-poller: BHN_QUIVER_API_KEY not configured (PM: BHN-Quiver-APIKey) — paid tier; skipping", file=sys.stderr); return 0
 
     try:
         r = requests.get(endpoint, headers={'Authorization': f'Token {api_key}'}, timeout=30)

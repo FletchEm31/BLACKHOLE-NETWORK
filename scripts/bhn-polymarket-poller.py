@@ -33,11 +33,14 @@ def load_env(p):
 
 def main():
     env_path = os.environ.get('BHN_POLYMARKET_ENV', '/root/.bhn-polymarket.env')
-    if not Path(env_path).is_file(): die(f"missing {env_path}")
+    if not Path(env_path).is_file():
+        print(f"bhn-polymarket-poller: missing {env_path} — skipping", file=sys.stderr); return 0
     env = load_env(env_path)
     dsn = env.get('BHN_POLYMARKET_PG_DSN', '')
     top_n = int(env.get('BHN_POLYMARKET_TOP_N', '50'))
-    if not dsn: die("BHN_POLYMARKET_PG_DSN missing")
+    if not dsn:
+        print("bhn-polymarket-poller: BHN_POLYMARKET_PG_DSN missing — skipping", file=sys.stderr); return 0
+    # No API key required — Polymarket gamma-api is public.
 
     url = 'https://gamma-api.polymarket.com/markets'
     params = {'active': 'true', 'closed': 'false', 'limit': str(top_n), 'order': 'volume', 'ascending': 'false'}

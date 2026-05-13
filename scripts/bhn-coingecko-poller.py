@@ -34,12 +34,15 @@ def load_env(p):
 
 def main():
     env_path = os.environ.get('BHN_COINGECKO_ENV', '/root/.bhn-coingecko.env')
-    if not Path(env_path).is_file(): die(f"missing {env_path}")
+    if not Path(env_path).is_file():
+        print(f"bhn-coingecko-poller: missing {env_path} — skipping", file=sys.stderr); return 0
     env = load_env(env_path)
     dsn = env.get('BHN_COINGECKO_PG_DSN', '')
     top_n = int(env.get('BHN_COINGECKO_TOP_N', '10'))
     api_key = env.get('BHN_COINGECKO_API_KEY', '')
-    if not dsn: die("BHN_COINGECKO_PG_DSN missing")
+    if not dsn:
+        print("bhn-coingecko-poller: BHN_COINGECKO_PG_DSN missing — skipping", file=sys.stderr); return 0
+    # API key optional — free tier works without; pro tier uses x-cg-pro-api-key.
 
     url = "https://api.coingecko.com/api/v3/coins/markets"
     params = {'vs_currency': 'usd', 'order': 'market_cap_desc',

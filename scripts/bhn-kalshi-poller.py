@@ -45,13 +45,17 @@ def sign(priv_key_pem: str, msg: str) -> str:
 
 def main():
     env_path = os.environ.get('BHN_KALSHI_ENV', '/root/.bhn-kalshi.env')
-    if not Path(env_path).is_file(): die(f"missing {env_path}")
+    if not Path(env_path).is_file():
+        print(f"bhn-kalshi-poller: missing {env_path} — skipping", file=sys.stderr); return 0
     env = load_env(env_path)
     dsn = env.get('BHN_KALSHI_PG_DSN', '')
     key_id = env.get('BHN_KALSHI_API_KEY_ID', '')
     priv = env.get('BHN_KALSHI_API_PRIVATE_KEY', '').replace('\\n', '\n')
     top_n = int(env.get('BHN_KALSHI_TOP_N', '50'))
-    if not all([dsn, key_id, priv]): die("BHN_KALSHI_PG_DSN/API_KEY_ID/API_PRIVATE_KEY missing")
+    if not dsn:
+        print("bhn-kalshi-poller: BHN_KALSHI_PG_DSN missing — skipping", file=sys.stderr); return 0
+    if not key_id or not priv:
+        print("bhn-kalshi-poller: BHN_KALSHI_API_KEY_ID and/or BHN_KALSHI_API_PRIVATE_KEY not configured (PM: BHN-Kalshi-APIKey + BHN-Kalshi-PrivKey) — paid tier; skipping", file=sys.stderr); return 0
 
     ts = str(int(time.time() * 1000))
     method = 'GET'
