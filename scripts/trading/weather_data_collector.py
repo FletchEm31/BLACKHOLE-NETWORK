@@ -1,0 +1,649 @@
+#!/usr/bin/env python3
+"""
+weather_data_collector.py — BHN Strategy 9 (BHN-WEATHER-ALPHA) Phase 1 collector.
+
+Polls six free data sources every 6 hours (via bhn-weather-collector.timer) and
+writes to the weather-schema tables:
+
+  Source                  → Table(s)                     Phase 1 status
+  ──────────────────────────────────────────────────────────────────────
+  Open-Meteo API          → weather_forecasts            ✅ implemented
+  Iowa State ASOS         → weather_observations         ✅ implemented
+  NOAA CPC ENSO           → enso_index                   ✅ implemented
+  USDA NASS crops         → crop_conditions              ⚠  scaffold (needs NASS API key)
+  NWS API                 → weather_forecasts            ⚠  scaffold (per-point forecasts)
+  NOAA NOMADS GFS ensemble→ weather_forecasts (50-mem)   ⚠  scaffold (GRIB parsing, pygrib dep)
+
+After fetch, computes degree_days from the day's observations + tmax/tmin
+forecasts for each station.
+
+All data is paper / informational only at Phase 1. No betting, no execution,
+no rules.json registration — that comes in Phase 3+.
+
+Env config (no API keys needed for Phase 1 implemented sources; future
+sources will pull from /etc/bhn-trading/strat9.env):
+  PG_HOST, PG_PORT, PG_DB, PG_USER, PG_PASSWORD  (via trading_core._load_env)
+  USDA_NASS_API_KEY                              (Phase 1 scaffold; needed for crops)
+
+CLI:
+  python3 weather_data_collector.py              # full cycle (all sources)
+  python3 weather_data_collector.py --source open_meteo
+  python3 weather_data_collector.py --source asos
+  python3 weather_data_collector.py --source enso
+  python3 weather_data_collector.py --source degree_days   # local computation only
+  python3 weather_data_collector.py --dry-run    # log only, no PG writes
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+import time
+from dataclasses import dataclass
+from datetime import datetime, date, timedelta, timezone
+from typing import Any, Iterable, Optional
+
+import requests
+
+import trading_core as tc
+
+
+logger = tc.get_logger("strat_9_weather_alpha_collector")
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# 10 Phase-1 target cities (Kalshi-aligned ICAO codes)
+# ─────────────────────────────────────────────────────────────────────────
+
+@dataclass(frozen=True)
+class City:
+    icao:    str
+    name:    str
+    state:   str
+    lat:     float
+    lon:     float
+
+
+CITIES: tuple[City, ...] = (
+    City("KNYC", "New York City",   "NY", 40.7831, -73.9712),  # Central Park
+    City("KLAX", "Los Angeles",     "CA", 33.9416, -118.4085),
+    City("KORD", "Chicago O'Hare",  "IL", 41.9742, -87.9073),
+    City("KMIA", "Miami",           "FL", 25.7959, -80.2870),
+    City("KIAH", "Houston",         "TX", 29.9844, -95.3414),
+    City("KPHX", "Phoenix",         "AZ", 33.4342, -112.0116),
+    City("KBOS", "Boston",          "MA", 42.3656, -71.0096),
+    City("KDCA", "Washington DC",   "DC", 38.8521, -77.0377),
+    City("KATL", "Atlanta",         "GA", 33.6407, -84.4277),
+    City("KDEN", "Denver",          "CO", 39.8561, -104.6737),
+)
+
+VARIABLES = ("tmax_f", "tmin_f", "precip_in", "snow_in")
+
+
+def _season_for(d: date) -> str:
+    """Northern hemisphere meteorological seasons. Matches NOAA convention."""
+    m = d.month
+    if m in (12, 1, 2):
+        return "winter"
+    if m in (3, 4, 5):
+        return "spring"
+    if m in (6, 7, 8):
+        return "summer"
+    return "fall"
+
+
+def _http_get_json(url: str, params: Optional[dict] = None, timeout: int = 30,
+                    attempts: int = 3) -> Optional[Any]:
+    """GET with retries + 429 backoff. Returns parsed JSON or None."""
+    for attempt in range(attempts):
+        try:
+            resp = requests.get(url, params=params, timeout=timeout,
+                                headers={"User-Agent": "BHN-Weather-Collector/1.0 "
+                                         "(operator@eventhorizonvpn.com)"})
+            if resp.status_code == 429:
+                wait = 2 ** attempt + 5
+                logger.warning(f"429 rate-limit on {url}; sleeping {wait}s")
+                time.sleep(wait)
+                continue
+            resp.raise_for_status()
+            return resp.json()
+        except requests.RequestException as e:
+            logger.warning(f"fetch attempt {attempt+1}/{attempts} failed: {url} — {e}")
+            time.sleep(2 ** attempt)
+    logger.error(f"GET failed after {attempts} attempts: {url}")
+    return None
+
+
+def _http_get_text(url: str, params: Optional[dict] = None,
+                    timeout: int = 30, attempts: int = 3) -> Optional[str]:
+    """GET with retries returning text body (for CSV / TSV / plain text endpoints)."""
+    for attempt in range(attempts):
+        try:
+            resp = requests.get(url, params=params, timeout=timeout,
+                                headers={"User-Agent": "BHN-Weather-Collector/1.0 "
+                                         "(operator@eventhorizonvpn.com)"})
+            if resp.status_code == 429:
+                wait = 2 ** attempt + 5
+                logger.warning(f"429 rate-limit on {url}; sleeping {wait}s")
+                time.sleep(wait)
+                continue
+            resp.raise_for_status()
+            return resp.text
+        except requests.RequestException as e:
+            logger.warning(f"fetch attempt {attempt+1}/{attempts} failed: {url} — {e}")
+            time.sleep(2 ** attempt)
+    logger.error(f"GET failed after {attempts} attempts: {url}")
+    return None
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Source 1: Open-Meteo API (GFS + ECMWF, free, no key needed)
+# ─────────────────────────────────────────────────────────────────────────
+
+OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
+# Open-Meteo "models" parameter — comma-separated. We pull both GFS and ECMWF.
+OPEN_METEO_MODELS = ("gfs_seamless", "ecmwf_ifs04")
+OPEN_METEO_VARS_DAILY = (
+    "temperature_2m_max", "temperature_2m_min",
+    "precipitation_sum",   "snowfall_sum",
+)
+# Lead times we tag forecasts with (hours from forecast-issue time, approximate)
+LEAD_TIME_DAYS = (0, 1, 2, 3, 5, 7, 10, 14)
+
+
+def _c_to_f(c: Optional[float]) -> Optional[float]:
+    return None if c is None else (c * 9.0 / 5.0 + 32.0)
+
+
+def _mm_to_in(mm: Optional[float]) -> Optional[float]:
+    return None if mm is None else (mm / 25.4)
+
+
+def _cm_to_in(cm: Optional[float]) -> Optional[float]:
+    return None if cm is None else (cm / 2.54)
+
+
+def fetch_open_meteo(dry_run: bool = False) -> int:
+    """For each city, pull GFS + ECMWF daily forecasts up to 16 days out.
+    Writes one weather_forecasts row per (city, variable, lead_day, model).
+    Returns total rows inserted."""
+    rows_inserted = 0
+    for city in CITIES:
+        params = {
+            "latitude":  city.lat,
+            "longitude": city.lon,
+            "daily":     ",".join(OPEN_METEO_VARS_DAILY),
+            "models":    ",".join(OPEN_METEO_MODELS),
+            "temperature_unit": "celsius",     # convert to F ourselves
+            "precipitation_unit": "mm",
+            "timezone": "America/New_York",
+            "forecast_days": 16,
+        }
+        data = _http_get_json(OPEN_METEO_URL, params=params)
+        if not data or "daily" not in data:
+            logger.warning(f"{city.icao}: no Open-Meteo daily data")
+            continue
+
+        # Open-Meteo returns aligned arrays per model. With multi-model the
+        # response keys get suffixed: e.g. "temperature_2m_max_gfs_seamless".
+        daily = data["daily"]
+        time_array = daily.get("time") or []
+        if not time_array:
+            continue
+
+        # Each requested model is suffixed in the response keys
+        for model_key in OPEN_METEO_MODELS:
+            # variable_name + "_" + model_key — but Open-Meteo strips
+            # underscores oddly; try the suffixed key first, then bare.
+            for idx, day_str in enumerate(time_array):
+                try:
+                    target_date = date.fromisoformat(day_str)
+                except ValueError:
+                    continue
+                lead_days = (target_date - datetime.now(timezone.utc).date()).days
+                if lead_days < 0:
+                    continue
+                if lead_days not in LEAD_TIME_DAYS:
+                    continue
+                lead_hours = lead_days * 24
+
+                def _val(var_base: str) -> Optional[float]:
+                    """Pull arr[idx] for var with model-suffix, fall back to bare."""
+                    for k in (f"{var_base}_{model_key}", var_base):
+                        if k in daily and isinstance(daily[k], list) and idx < len(daily[k]):
+                            return daily[k][idx]
+                    return None
+
+                tmax_c = _val("temperature_2m_max")
+                tmin_c = _val("temperature_2m_min")
+                prcp_mm = _val("precipitation_sum")
+                snow_cm = _val("snowfall_sum")
+
+                samples = (
+                    ("tmax_f",    _c_to_f(tmax_c)),
+                    ("tmin_f",    _c_to_f(tmin_c)),
+                    ("precip_in", _mm_to_in(prcp_mm)),
+                    ("snow_in",   _cm_to_in(snow_cm)),
+                )
+                for var, value in samples:
+                    if value is None:
+                        continue
+                    if not dry_run:
+                        _insert_forecast(
+                            station_code=city.icao,
+                            variable=var,
+                            value=float(value),
+                            target_date=target_date,
+                            lead_time_hours=lead_hours,
+                            source_model=f"open-meteo:{model_key}",
+                            season=_season_for(target_date),
+                            raw_payload=None,  # full payload not stored per-row
+                        )
+                    rows_inserted += 1
+    logger.info(f"open_meteo: {rows_inserted} forecast rows {'(dry-run)' if dry_run else 'inserted'}")
+    return rows_inserted
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Source 2: Iowa State ASOS — daily observations
+# ─────────────────────────────────────────────────────────────────────────
+
+ASOS_URL = "https://mesonet.agron.iastate.edu/cgi-bin/request/daily.py"
+
+
+def fetch_asos(days_lookback: int = 3, dry_run: bool = False) -> int:
+    """Pull daily ASOS observations for each city, last `days_lookback` days.
+    Default 3 days catches yesterday + recent re-runs idempotently (UNIQUE
+    constraint dedups). Returns rows inserted."""
+    end = datetime.now(timezone.utc).date()
+    start = end - timedelta(days=days_lookback)
+
+    rows_inserted = 0
+    for city in CITIES:
+        # Strip leading K — ASOS uses 3-letter codes ('NYC', 'LAX', etc.) for
+        # most stations; Iowa State accepts the K-prefixed form too.
+        station = city.icao[1:] if city.icao.startswith("K") else city.icao
+        params = {
+            "network": "US_ASOS",     # any US ASOS station
+            "stations": station,
+            "year1": start.year, "month1": start.month, "day1": start.day,
+            "year2": end.year,   "month2": end.month,   "day2": end.day,
+            "var": "max_temp_f,min_temp_f,precip_in,snow_in",
+            "format": "comma",
+            "missing": "M",
+        }
+        csv_text = _http_get_text(ASOS_URL, params=params)
+        if not csv_text:
+            logger.warning(f"{city.icao}: no ASOS data")
+            continue
+
+        # CSV header: station,day,max_temp_f,min_temp_f,precip_in,snow_in
+        lines = [ln for ln in csv_text.splitlines() if ln and not ln.startswith("#")]
+        if len(lines) < 2:
+            continue
+        header = lines[0].split(",")
+        try:
+            col_day  = header.index("day")
+            col_tmax = header.index("max_temp_f") if "max_temp_f" in header else None
+            col_tmin = header.index("min_temp_f") if "min_temp_f" in header else None
+            col_pcp  = header.index("precip_in")  if "precip_in"  in header else None
+            col_snow = header.index("snow_in")    if "snow_in"    in header else None
+        except ValueError:
+            logger.warning(f"{city.icao}: ASOS header unrecognized: {header}")
+            continue
+
+        for line in lines[1:]:
+            parts = line.split(",")
+            if len(parts) < len(header):
+                continue
+            try:
+                obs_date = date.fromisoformat(parts[col_day].strip())
+            except (ValueError, IndexError):
+                continue
+
+            def _parse(idx: Optional[int]) -> Optional[float]:
+                if idx is None:
+                    return None
+                raw = parts[idx].strip() if idx < len(parts) else "M"
+                if raw in ("M", "", "None"):
+                    return None
+                try:
+                    return float(raw)
+                except ValueError:
+                    return None
+
+            samples = (
+                ("tmax_f",    _parse(col_tmax)),
+                ("tmin_f",    _parse(col_tmin)),
+                ("precip_in", _parse(col_pcp)),
+                ("snow_in",   _parse(col_snow)),
+            )
+            # ASOS reports a single daily summary — bin observation time at
+            # 23:59 UTC of the report day for the timestamp.
+            obs_ts = datetime.combine(obs_date, datetime.min.time(),
+                                       tzinfo=timezone.utc) + timedelta(hours=23, minutes=59)
+            for var, val in samples:
+                if val is None:
+                    continue
+                if not dry_run:
+                    _insert_observation(
+                        station_code=city.icao, variable=var,
+                        observed_value=float(val), observed_at=obs_ts,
+                        source="asos", raw_payload=None,
+                    )
+                rows_inserted += 1
+    logger.info(f"asos: {rows_inserted} observation rows {'(dry-run)' if dry_run else 'upserted'}")
+    return rows_inserted
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Source 3: NOAA CPC ENSO (Niño 3.4 weekly index)
+# ─────────────────────────────────────────────────────────────────────────
+
+NOAA_CPC_NINO_URL = "https://www.cpc.ncep.noaa.gov/data/indices/wksst9120.for"
+
+
+def _enso_phase(oni: Optional[float]) -> Optional[str]:
+    """Threshold mapping. NOAA convention: ONI ≥ 0.5 = El Niño, ≤ -0.5 = La Niña.
+    Strong: |ONI| ≥ 1.5."""
+    if oni is None:
+        return None
+    if oni >= 1.5:
+        return "el_nino_strong"
+    if oni >= 0.5:
+        return "el_nino"
+    if oni <= -1.5:
+        return "la_nina_strong"
+    if oni <= -0.5:
+        return "la_nina"
+    return "neutral"
+
+
+def fetch_enso(dry_run: bool = False) -> int:
+    """Parse CPC's fixed-width weekly text file. One row per week_ending.
+    File format:
+        Week         Nino1+2      Nino3        Nino34        Nino4
+                  SST   SSTA    SST  SSTA    SST  SSTA    SST  SSTA
+        02JAN1990  23.4  -0.4  25.4  -0.3  26.4  -0.2  28.7  -0.4
+        ...
+    We extract week-ending date + Niño 3.4 SST anomaly (column index 5).
+    """
+    text = _http_get_text(NOAA_CPC_NINO_URL)
+    if not text:
+        logger.warning("ENSO: no CPC data")
+        return 0
+
+    rows_inserted = 0
+    for line in text.splitlines():
+        line = line.rstrip()
+        if not line or line.startswith("Week") or line.startswith(" "):
+            continue
+        if len(line) < 50:  # data lines are wide
+            continue
+        # First token is the date in DDMMMYYYY format, e.g. "02JAN1990"
+        date_token = line[:9].strip()
+        try:
+            week_ending = datetime.strptime(date_token, "%d%b%Y").date()
+        except ValueError:
+            continue
+        # Parse remaining whitespace-delimited floats
+        rest = line[9:].split()
+        floats: list[float] = []
+        for tok in rest:
+            try:
+                floats.append(float(tok))
+            except ValueError:
+                pass
+        # Expect 8 floats (4 regions × {SST, SSTA}). Niño 3.4 SSTA = index 5.
+        if len(floats) < 6:
+            continue
+        nino34_anom = floats[5]
+        # ONI is a 3-month rolling mean of Niño 3.4 SSTA — we don't compute it
+        # here; we record the weekly anomaly and let the Phase 2 calibration
+        # job derive ONI from rolling windows. Use the weekly anomaly as a
+        # proxy for the phase signal in the meantime.
+        phase = _enso_phase(nino34_anom)
+
+        if not dry_run:
+            _insert_enso(
+                week_ending=week_ending,
+                nino34_sst_anomaly=nino34_anom,
+                oni_value=None,  # populated by Phase 2 rolling-mean job
+                phase=phase,
+            )
+        rows_inserted += 1
+    logger.info(f"enso: {rows_inserted} weekly rows {'(dry-run)' if dry_run else 'upserted'}")
+    return rows_inserted
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Source 4: USDA NASS crop conditions — scaffold
+# ─────────────────────────────────────────────────────────────────────────
+
+USDA_NASS_API_URL = "https://quickstats.nass.usda.gov/api/api_GET/"
+
+
+def fetch_usda_crops(dry_run: bool = False) -> int:
+    """Pull weekly crop progress + conditions from USDA NASS Quick Stats API.
+    Requires USDA_NASS_API_KEY env var (free signup at quickstats.nass.usda.gov).
+
+    SCAFFOLD: query shape known but not yet wired to PG insert. Next session
+    fills in:
+      params = {
+          "key": api_key,
+          "source_desc": "SURVEY",
+          "sector_desc": "CROPS",
+          "group_desc": "FIELD CROPS",
+          "commodity_desc": "CORN",   # or SOYBEANS, WHEAT, etc.
+          "statisticcat_desc": "CONDITION",
+          "year": str(date.today().year),
+          "format": "JSON",
+      }
+    Response yields 5-bucket condition % (VERY POOR / POOR / FAIR / GOOD /
+    EXCELLENT) per state per week. Insert one row per category.
+    """
+    import os
+    api_key = os.environ.get("USDA_NASS_API_KEY")
+    if not api_key:
+        logger.info("usda_crops: USDA_NASS_API_KEY not set — skipping (Phase 1 scaffold)")
+        return 0
+    logger.info("usda_crops: SCAFFOLD — endpoint reachable but PG insert not yet wired. "
+                "Operator: paste actual NASS API query parameters next session.")
+    return 0
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Source 5: NWS API — scaffold
+# ─────────────────────────────────────────────────────────────────────────
+
+NWS_API_BASE = "https://api.weather.gov"
+
+
+def fetch_nws(dry_run: bool = False) -> int:
+    """NWS point forecasts per city. Each city has a grid point that's
+    discovered via /points/{lat},{lon} then forecasts at /gridpoints/{office}/{x},{y}/forecast.
+
+    SCAFFOLD: two-step API discovery + parse not yet implemented. Free,
+    no key, but rate-limited; needs User-Agent header (already set).
+    """
+    logger.info("nws: SCAFFOLD — two-step (/points → /gridpoints) discovery not "
+                "yet implemented. Phase 1.5 work.")
+    return 0
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Source 6: NOAA NOMADS GFS ensemble — scaffold
+# ─────────────────────────────────────────────────────────────────────────
+
+def fetch_nomads_gfs_ensemble(dry_run: bool = False) -> int:
+    """NOAA NOMADS GFS 50-member ensemble (GEFS). GRIB2 file format — needs
+    pygrib or eccodes for parsing. Each cycle is ~50 GRIB files per forecast
+    hour, lat/lon grids — expensive to fetch + decode.
+
+    SCAFFOLD: deferred to Phase 1.5. Open-Meteo gives ensemble mean+spread
+    via the gfs_seamless model output for now — covers the highest-signal
+    use case without the GRIB plumbing.
+    """
+    logger.info("nomads_gfs_ensemble: SCAFFOLD — GRIB2 parsing not yet implemented. "
+                "Open-Meteo seamless model approximates the ensemble mean.")
+    return 0
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Local computation: degree_days from observations
+# ─────────────────────────────────────────────────────────────────────────
+
+def compute_degree_days_from_observations(dry_run: bool = False) -> int:
+    """For every (station, date) with both tmin_f and tmax_f observations,
+    compute HDD + CDD and upsert into degree_days (is_forecast=false)."""
+    rows_inserted = 0
+    with tc.get_pg_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT
+                    station_code,
+                    observed_at::date AS d,
+                    MAX(CASE WHEN variable='tmax_f' THEN observed_value END) AS tmax,
+                    MIN(CASE WHEN variable='tmin_f' THEN observed_value END) AS tmin
+                FROM weather_observations
+                WHERE source = 'asos'
+                  AND variable IN ('tmax_f','tmin_f')
+                  AND observed_at >= NOW() - INTERVAL '14 days'
+                GROUP BY station_code, observed_at::date
+                HAVING MAX(CASE WHEN variable='tmax_f' THEN observed_value END) IS NOT NULL
+                   AND MIN(CASE WHEN variable='tmin_f' THEN observed_value END) IS NOT NULL
+            """)
+            rows = cur.fetchall()
+    for station, d, tmax, tmin in rows:
+        mean_t = (float(tmax) + float(tmin)) / 2.0
+        hdd = max(0.0, 65.0 - mean_t)
+        cdd = max(0.0, mean_t - 65.0)
+        if not dry_run:
+            _upsert_degree_days(
+                station_code=station, target_date=d,
+                tmin_f=float(tmin), tmax_f=float(tmax),
+                mean_temp_f=mean_t, hdd=hdd, cdd=cdd,
+                is_forecast=False,
+            )
+        rows_inserted += 1
+    logger.info(f"degree_days: {rows_inserted} (station, date) rows "
+                f"{'(dry-run)' if dry_run else 'upserted'}")
+    return rows_inserted
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# PG insert helpers
+# ─────────────────────────────────────────────────────────────────────────
+
+def _insert_forecast(*, station_code: str, variable: str, value: float,
+                      target_date: date, lead_time_hours: int,
+                      source_model: str, season: str,
+                      raw_payload: Optional[dict]) -> None:
+    with tc.get_pg_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO weather_forecasts
+                    (region, variable, predicted_value, source_model,
+                     station_code, lead_time_hours, season, target_date,
+                     raw_payload)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+            """, (station_code, variable, value, source_model,
+                  station_code, lead_time_hours, season, target_date,
+                  json.dumps(raw_payload) if raw_payload else None))
+
+
+def _insert_observation(*, station_code: str, variable: str,
+                         observed_value: float, observed_at: datetime,
+                         source: str, raw_payload: Optional[dict]) -> None:
+    with tc.get_pg_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO weather_observations
+                    (station_code, variable, observed_value, observed_at,
+                     source, raw_payload)
+                VALUES (%s, %s, %s, %s, %s, %s::jsonb)
+                ON CONFLICT (station_code, observed_at, variable, source)
+                DO NOTHING
+            """, (station_code, variable, observed_value, observed_at, source,
+                  json.dumps(raw_payload) if raw_payload else None))
+
+
+def _insert_enso(*, week_ending: date, nino34_sst_anomaly: float,
+                  oni_value: Optional[float], phase: Optional[str]) -> None:
+    with tc.get_pg_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO enso_index
+                    (week_ending, nino34_sst_anomaly, oni_value, phase, source)
+                VALUES (%s, %s, %s, %s, 'noaa_cpc')
+                ON CONFLICT (week_ending) DO UPDATE
+                  SET nino34_sst_anomaly = EXCLUDED.nino34_sst_anomaly,
+                      phase              = EXCLUDED.phase,
+                      fetched_at         = NOW()
+            """, (week_ending, nino34_sst_anomaly, oni_value, phase))
+
+
+def _upsert_degree_days(*, station_code: str, target_date: date,
+                         tmin_f: float, tmax_f: float, mean_temp_f: float,
+                         hdd: float, cdd: float, is_forecast: bool) -> None:
+    with tc.get_pg_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO degree_days
+                    (station_code, target_date, tmin_f, tmax_f, mean_temp_f,
+                     hdd, cdd, is_forecast)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (station_code, target_date, is_forecast) DO UPDATE
+                  SET tmin_f      = EXCLUDED.tmin_f,
+                      tmax_f      = EXCLUDED.tmax_f,
+                      mean_temp_f = EXCLUDED.mean_temp_f,
+                      hdd         = EXCLUDED.hdd,
+                      cdd         = EXCLUDED.cdd,
+                      computed_at = NOW()
+            """, (station_code, target_date, tmin_f, tmax_f, mean_temp_f,
+                  hdd, cdd, is_forecast))
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Main + CLI
+# ─────────────────────────────────────────────────────────────────────────
+
+SOURCES = {
+    "open_meteo":  fetch_open_meteo,
+    "asos":        fetch_asos,
+    "enso":        fetch_enso,
+    "usda_crops":  fetch_usda_crops,
+    "nws":         fetch_nws,
+    "nomads":      fetch_nomads_gfs_ensemble,
+    "degree_days": compute_degree_days_from_observations,
+}
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="BHN Strat 9 weather data collector")
+    parser.add_argument("--source", choices=list(SOURCES.keys()) + ["all"],
+                        default="all", help="Single source to run; default all")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="Log only, no PG writes")
+    args = parser.parse_args()
+
+    logger.info(f"=== weather-collector cycle start "
+                f"(source={args.source}, dry_run={args.dry_run}) ===")
+
+    total = 0
+    targets: Iterable[str] = (
+        SOURCES.keys() if args.source == "all" else (args.source,)
+    )
+    for src in targets:
+        fn = SOURCES[src]
+        try:
+            n = fn(dry_run=args.dry_run)
+            total += n
+        except Exception:
+            logger.exception(f"source '{src}' failed")
+    logger.info(f"=== weather-collector cycle end (total={total} rows) ===")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
