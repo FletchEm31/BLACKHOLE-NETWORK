@@ -1,0 +1,11 @@
+# BHN — LA egress proxy through Hillsboro (tinyproxy at 10.8.0.6:8888)
+# Append to /etc/environment. Login shells + cron jobs read this at start.
+# systemd services do NOT — they use the drop-ins under systemd/*.service.d/.
+#
+# Both lower and upper case set because some tools read one or the other.
+http_proxy=http://10.8.0.6:8888
+https_proxy=http://10.8.0.6:8888
+HTTP_PROXY=http://10.8.0.6:8888
+HTTPS_PROXY=http://10.8.0.6:8888
+no_proxy=localhost,127.0.0.1,10.8.0.0/24,10.9.0.0/24
+NO_PROXY=localhost,127.0.0.1,10.8.0.0/24,10.9.0.0/24
