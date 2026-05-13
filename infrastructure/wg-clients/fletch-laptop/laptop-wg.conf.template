@@ -1,0 +1,36 @@
+# FLETCH-LAPTOP — WireGuard client config template
+#
+# Replace the three <PLACEHOLDER> values below:
+#   <LAPTOP_PRIVKEY>      from Step 1 of README.md (your laptop's WG private key)
+#   <PSK>                 from Step 2's banner output (paste from password manager)
+#   <LAPTOP_TUNNEL_IP>    10.8.0.7  (or your chosen IP — must match what was set on LA)
+#
+# Save TWO copies of this file — one for each profile — with the AllowedIPs
+# (+ DNS on full) edited per the comments below.
+
+[Interface]
+PrivateKey = <LAPTOP_PRIVKEY>
+Address    = <LAPTOP_TUNNEL_IP>/32
+
+# === Uncomment ONE of the following two lines per profile ===
+
+# --- FLETCH-LAPTOP-SPLIT (daily-use profile) ---
+# (no DNS line — laptop keeps its local DNS for non-mesh traffic)
+
+# --- FLETCH-LAPTOP-FULL (full-tunnel-through-Frankfurt profile) ---
+# DNS = 10.8.0.1
+
+[Peer]
+# LA hub
+PublicKey           = TOYnFt18v4NynEN91o6zkmV5hsvHBLJTb8qL7GG/KAo=
+PresharedKey        = <PSK>
+Endpoint            = 149.28.91.100:51820
+PersistentKeepalive = 25
+
+# === Uncomment ONE of the following two AllowedIPs lines per profile ===
+
+# --- FLETCH-LAPTOP-SPLIT (mesh-only) ---
+# AllowedIPs = 10.8.0.0/24, 10.9.0.0/24
+
+# --- FLETCH-LAPTOP-FULL (everything-through-FRA) ---
+# AllowedIPs = 0.0.0.0/0, ::/0
