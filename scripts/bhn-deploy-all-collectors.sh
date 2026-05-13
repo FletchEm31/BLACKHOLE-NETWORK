@@ -14,6 +14,15 @@
 #   test     test-run + verify (assumes already deployed)
 #   status   probe script/env/cron presence per (node, collector)
 #
+# Node selection flags (mutually exclusive — pick one or neither):
+#   --nodes A,B,C        only operate on the listed nodes
+#   --skip-nodes A,B     operate on every node EXCEPT the listed ones
+# Examples:
+#   ./bhn-deploy-all-collectors.sh deploy --nodes LA,Frankfurt,NJ
+#   ./bhn-deploy-all-collectors.sh deploy --skip-nodes Hillsboro
+#   ./bhn-deploy-all-collectors.sh status
+# Valid node names: LA Frankfurt Hillsboro NJ (case-sensitive).
+#
 # Topology (set by operator, kept in sync with infrastructure/docs/):
 #   LA          local            vnstat iptables docker-stats pg-stats
 #                                n8n-stats fail2ban dns-log wg-stats
@@ -32,11 +41,34 @@
 
 set -uo pipefail
 
+usage() {
+    echo "Usage: $0 {deploy|test|status} [--nodes A,B,C | --skip-nodes A,B]" >&2
+    echo "  Valid node names: LA Frankfurt Hillsboro NJ" >&2
+}
+
 MODE="${1:-}"
 case "$MODE" in
-    deploy|test|status) ;;
-    *) echo "Usage: $0 {deploy|test|status}" >&2; exit 1 ;;
+    deploy|test|status) shift ;;
+    *) usage; exit 1 ;;
 esac
+
+INCLUDE_NODES=""
+SKIP_NODES=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --nodes)        INCLUDE_NODES="${2:-}"; shift 2 || { usage; exit 1; } ;;
+        --nodes=*)      INCLUDE_NODES="${1#--nodes=}"; shift ;;
+        --skip-nodes)   SKIP_NODES="${2:-}"; shift 2 || { usage; exit 1; } ;;
+        --skip-nodes=*) SKIP_NODES="${1#--skip-nodes=}"; shift ;;
+        -h|--help)      usage; exit 0 ;;
+        *)              echo "Unknown argument: $1" >&2; usage; exit 1 ;;
+    esac
+done
+
+if [[ -n "$INCLUDE_NODES" && -n "$SKIP_NODES" ]]; then
+    echo "Error: --nodes and --skip-nodes are mutually exclusive." >&2
+    exit 1
+fi
 
 SCRIPTS_DIR="$(cd "$(dirname "$0")" && pwd)"
 LA_PG_DSN="postgresql://log_shipper:BHN-LogShipper-2026@10.8.0.1/eventhorizon"
@@ -49,6 +81,46 @@ declare -A NODE_SSH=(
     [NJ]="nj"
 )
 NODE_ORDER=(LA Frankfurt Hillsboro NJ)
+
+# Apply --nodes / --skip-nodes filtering. CSV input, case-sensitive,
+# unknown names abort before any work begins.
+apply_node_filter() {
+    local csv="$1" mode="$2"          # mode = include | skip
+    local -A wanted=()
+    local IFS_SAVE="$IFS"
+    IFS=',' read -ra parts <<<"$csv"
+    IFS="$IFS_SAVE"
+    local p
+    for p in "${parts[@]}"; do
+        p="${p#"${p%%[![:space:]]*}"}"
+        p="${p%"${p##*[![:space:]]}"}"
+        [[ -z "$p" ]] && continue
+        if [[ -z "${NODE_SSH[$p]+x}" ]]; then
+            echo "Error: unknown node '$p' (valid: ${NODE_ORDER[*]})" >&2
+            exit 1
+        fi
+        wanted["$p"]=1
+    done
+    local filtered=() n
+    for n in "${NODE_ORDER[@]}"; do
+        if [[ "$mode" == include ]]; then
+            [[ -n "${wanted[$n]:-}" ]] && filtered+=("$n")
+        else
+            [[ -z "${wanted[$n]:-}" ]] && filtered+=("$n")
+        fi
+    done
+    if [[ ${#filtered[@]} -eq 0 ]]; then
+        echo "Error: node filter selected zero nodes — nothing to do." >&2
+        exit 1
+    fi
+    NODE_ORDER=("${filtered[@]}")
+}
+
+if [[ -n "$INCLUDE_NODES" ]]; then
+    apply_node_filter "$INCLUDE_NODES" include
+elif [[ -n "$SKIP_NODES" ]]; then
+    apply_node_filter "$SKIP_NODES" skip
+fi
 
 declare -A NODE_COLLECTORS=(
     [LA]="vnstat iptables docker-stats pg-stats n8n-stats fail2ban dns-log wg-stats conntrack resource-stats"
