@@ -85,7 +85,7 @@ Trading framework (NJ workstream, separate from 5-phase plan)  █████�
 | Nightly diagnostic enrollment | ✅ Added to `bhn-nightly-diagnostic.sh` REMOTE_NODES |
 | Trading workloads (FMP, Congress.gov, Polymarket, Kalshi, Alpaca paper) | 🔨 Framework committed to repo 2026-05-12 (`scripts/trading/`): 5 strategy files + trading_core + master_killswitch + daily_summary + reconciliation_daemon. NJ deployment pending — rules schema/validator + systemd units + runbooks still to ship before strategies can run. |
 | LibreSpeed (US-East speed test endpoint) | 🔨 Planned (Phase 4 backlog) |
-| Tor bridge/relay (non-exit middle relay, BHNNebula-US2, 512 KB/s + 750 GB/month cap; pairs with Fornax-EU1 + Helios-US3 via MyFamily — see `infrastructure/docs/tor-relay-naming.md`) | 🔨 Planned (Phase 4 backlog) |
+| Tor bridge/relay (non-exit middle relay, BHNNebulaUS2, 512 KB/s + 750 GB/month cap; pairs with FornaxEU1 + HeliosUS3 via MyFamily — see `infrastructure/docs/tor-relay-naming.md`) | 🔨 Planned (Phase 4 backlog) |
 | LUKS2 storage | ⚠️ Not yet — NJ has no persistent sensitive data yet; revisit when trading rules / fill history lands |
 
 ## Data pipeline

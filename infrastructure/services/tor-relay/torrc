@@ -5,7 +5,7 @@
 # Forwards traffic between Tor nodes. NOT an exit. NOT a bridge.
 
 ## ─── Identity ──────────────────────────────────────────────────────────
-Nickname BHNFornax-EU1
+Nickname BHNFornaxEU1
 ContactInfo admin@eventhorizonvpn.com
 
 ## ─── Ports ─────────────────────────────────────────────────────────────

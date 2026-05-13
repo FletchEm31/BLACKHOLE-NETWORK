@@ -5,8 +5,10 @@ All BHN Tor relays use nicknames drawn from astronomy — fitting the **B**lack*
 ## Format
 
 ```
-BHN<AstroName>-<RegionCode><Sequence>
+BHN<AstroName><RegionCode><Sequence>
 ```
+
+**No hyphens, no underscores, no separators of any kind** — Tor enforces `[a-zA-Z0-9]` only on the `Nickname` directive and rejects any other character at config-validation time, killing the relay's startup with `Failed to parse/validate config: nicknames must contain only the characters [a-zA-Z0-9]`. Nicknames must also be 1–19 characters inclusive. All current and planned names fit (`BHNEridanusEU3` is the longest at 14 chars).
 
 - **AstroName** — single-word astronomical name (constellation, celestial body, phenomenon). First letter loosely matches the city/location when possible, but thematic fit (e.g. Aurora for Nordic) takes precedence over strict initial-letter matching.
 - **RegionCode** — `US` or `EU`. Matches the region used in the BHN node name (e.g. `BHN-VPS-FRANKFURT-EU1` → `EU1`).
@@ -17,11 +19,11 @@ BHN<AstroName>-<RegionCode><Sequence>
 | BHN node | Node name | Relay nickname | Astro reasoning |
 |---|---|---|---|
 | LA (hub) | `BHN-VPS-LA-US1` | *(no relay — hub stays dark)* | — |
-| New Jersey | `BHN-VPS-NEWJERSEY-US2` | `BHNNebula-US2` | Nebula = cosmic cloud; N matches New Jersey |
-| Hillsboro | `BHN-HILLSBORO-US3` | `BHNHelios-US3` | Helios = Greek sun god / star; H matches Hillsboro |
-| Frankfurt | `BHN-VPS-FRANKFURT-EU1` | `BHNFornax-EU1` | Fornax = real galaxy constellation; F matches Frankfurt |
-| Sweden (future) | `BHN-VPS-SWEDEN-EU2` | `BHNAurora-EU2` | Aurora = Northern Lights; thematic fit for Nordic location |
-| Iceland (future) | `BHN-VPS-ICELAND-EU3` | `BHNEridanus-EU3` | Eridanus = river constellation; E matches Europe/Iceland |
+| New Jersey | `BHN-VPS-NEWJERSEY-US2` | `BHNNebulaUS2` | Nebula = cosmic cloud; N matches New Jersey |
+| Hillsboro | `BHN-HILLSBORO-US3` | `BHNHeliosUS3` | Helios = Greek sun god / star; H matches Hillsboro |
+| Frankfurt | `BHN-VPS-FRANKFURT-EU1` | `BHNFornaxEU1` | Fornax = real galaxy constellation; F matches Frankfurt |
+| Sweden (future) | `BHN-VPS-SWEDEN-EU2` | `BHNAuroraEU2` | Aurora = Northern Lights; thematic fit for Nordic location |
+| Iceland (future) | `BHN-VPS-ICELAND-EU3` | `BHNEridanusEU3` | Eridanus = river constellation; E matches Europe/Iceland |
 
 ## ContactInfo
 
@@ -65,3 +67,13 @@ Original nicknames were the bare city name (`BHNFrankfurt`, `BHNNewJersey`). Two
 2. **Doesn't pattern-match** the BHN brand. Astronomy / black-hole-network theme is more on-brand.
 
 The rename was applied in repo and on the live Frankfurt relay on 2026-05-12.
+
+### Why no hyphens (correction landed 2026-05-12 same day)
+
+The first revision of this convention used `BHN<Astro>-<Region><Seq>` with a hyphen separator (`BHNFornax-EU1`, etc.). On the first deploy of `Nickname BHNFornax-EU1` to the live Frankfurt container, Tor crashed in a loop with:
+
+> `[warn] Failed to parse/validate config: Nickname 'BHNFornax-EU1', nicknames must be between 1 and 19 characters inclusive, and must contain only the characters [a-zA-Z0-9].`
+
+Tor allows letters and digits only. The hyphen-separated names were correct in spirit (encoding region+sequence as a suffix) but unimplementable. Dropped the hyphen across all 5 names + this doc. Frankfurt was restored to `BHNFornaxEU1` within ~2 minutes; fingerprint stayed identical so no reputation loss.
+
+**Lesson for future relays:** when adding a new relay, validate the proposed nickname by checking it matches `^[a-zA-Z0-9]{1,19}$` before staging the torrc. A pre-commit hook would be overkill for a five-relay roster but is the right answer if BHN ever scales to a dozen.

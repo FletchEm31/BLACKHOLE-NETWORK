@@ -66,11 +66,11 @@ After both Frankfurt and NJ relays have completed bootstrapping (24-48h for each
 ```bash
 # Get Frankfurt's fingerprint
 ssh frankfurt 'docker exec bhn-tor-relay cat /var/lib/tor/fingerprint'
-# Returns something like: BHNFornax-EU1 ABCDEF1234567890...
+# Returns something like: BHNFornaxEU1 ABCDEF1234567890...
 
 # Get NJ's fingerprint (SSH to NJ public IP)
 ssh root@<nj-public-ip> 'docker exec bhn-tor-relay cat /var/lib/tor/fingerprint'
-# Returns something like: BHNNebula-US2 9876543210FEDCBA...
+# Returns something like: BHNNebulaUS2 9876543210FEDCBA...
 ```
 
 Then update BOTH torrc files with the same MyFamily line:
@@ -103,7 +103,7 @@ Also commit the torrc updates to the repo with a follow-up commit. Don't let the
 docker logs bhn-tor-relay 2>&1 | grep -E 'Bootstrapped|Self-testing|Now checking|published descriptor'
 
 # From outside, after consensus publication
-curl -fsS "https://onionoo.torproject.org/details?search=BHNNebula-US2" | head -50
+curl -fsS "https://onionoo.torproject.org/details?search=BHNNebulaUS2" | head -50
 ```
 
 ## Bandwidth comparison

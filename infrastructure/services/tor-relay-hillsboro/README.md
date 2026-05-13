@@ -96,7 +96,7 @@ This is a real risk specific to running a Tor relay on an egress proxy. If in do
 
 ```bash
 docker logs bhn-tor-relay 2>&1 | grep -E 'Bootstrapped|Self-testing|Now checking|published descriptor'
-curl -fsS "https://onionoo.torproject.org/details?search=BHNHelios-US3" | head -50
+curl -fsS "https://onionoo.torproject.org/details?search=BHNHeliosUS3" | head -50
 ```
 
 ## Bandwidth comparison
