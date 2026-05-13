@@ -357,7 +357,7 @@ VALUES
      25000.00, 'active', false, NULL,
      'Daily post-close (17:00 ET) via cron. Equal weight, max 10 positions. Exit: P/E>25 OR 20% stop OR 90-day hold. FMP API key required. FMP free tier 250 req/day — use bulk screener endpoint where possible.'),
 
-    ('strat_3_scalp',     'Mean Reversion Limit Order Scalping',
+    ('strat_3_mean_reversion', 'Mean Reversion Limit Order Scalping',
      'Bollinger Band touches on liquid ETFs. Buy at lower band via LIMIT order, exit at 20-period MA or 1.5% stop.',
      20000.00, 'active', false, 300,
      'Intraday only — closed by 15:45 ET. Universe: SPY/QQQ/XLK/XLF/XLE/XLV. 20-period MA on intraday bars. 2-sigma bands. $3k per trade, max 6 positions (one per instrument). LIMIT orders only — never market.'),

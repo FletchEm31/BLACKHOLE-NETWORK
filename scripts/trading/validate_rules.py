@@ -143,10 +143,10 @@ def validate_cross_field(rules: dict) -> ValidationResult:
         )
 
     # Strategy 3 (scalp): max_hold_minutes vs trading session
-    s3_hold = _g(rules, "strat_3_scalp", "position_limits", "max_hold_minutes")
+    s3_hold = _g(rules, "strat_3_mean_reversion", "position_limits", "max_hold_minutes")
     if s3_hold is not None and s3_hold > 390:
         result.error(
-            f"strat_3_scalp.position_limits.max_hold_minutes ({s3_hold}) > 390 — "
+            f"strat_3_mean_reversion.position_limits.max_hold_minutes ({s3_hold}) > 390 — "
             f"a single RTH session is ~390min; longer makes EOD flatten redundant"
         )
 
@@ -424,21 +424,21 @@ def validate_business(rules: dict) -> ValidationResult:
                    "strat_2_value.exit.stop_loss_pct", "[10%, 30%]")
 
     # Strategy 3: Scalp
-    s3 = rules.get("strat_3_scalp", {}) or {}
+    s3 = rules.get("strat_3_mean_reversion", {}) or {}
     bb = s3.get("bollinger", {}) or {}
     _warn_in_range(result, bb.get("period"), 10, 50,
-                   "strat_3_scalp.bollinger.period", "[10, 50] bars")
+                   "strat_3_mean_reversion.bollinger.period", "[10, 50] bars")
     _warn_in_range(result, bb.get("stddev"), 1.5, 3.0,
-                   "strat_3_scalp.bollinger.stddev", "[1.5, 3.0] σ")
+                   "strat_3_mean_reversion.bollinger.stddev", "[1.5, 3.0] σ")
     pl3 = s3.get("position_limits", {}) or {}
     sl3 = pl3.get("stop_loss_pct")
     if sl3 is not None and sl3 > 0.05:
         result.warn(
-            f"strat_3_scalp.position_limits.stop_loss_pct={sl3} > 5% — wider "
+            f"strat_3_mean_reversion.position_limits.stop_loss_pct={sl3} > 5% — wider "
             f"than typical scalp stops; tail risk per trade may exceed reversion edge"
         )
     _warn_in_range(result, pl3.get("max_hold_minutes"), 30, 390,
-                   "strat_3_scalp.position_limits.max_hold_minutes",
+                   "strat_3_mean_reversion.position_limits.max_hold_minutes",
                    "[30, 390] minutes")
 
     # Strategy 4: Momentum

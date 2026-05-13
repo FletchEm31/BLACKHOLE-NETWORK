@@ -34,7 +34,7 @@ CLI:
     python3 daily_summary.py --date 2026-05-12
     python3 daily_summary.py --no-sms         # print only
     python3 daily_summary.py --format json    # machine-readable
-    python3 daily_summary.py --strategy strat_3_scalp  # single strategy only
+    python3 daily_summary.py --strategy strat_3_mean_reversion  # single strategy only
 
 Cron suggestion:
     15 13 * * 1-5  python3 /opt/bhn/trading/daily_summary.py

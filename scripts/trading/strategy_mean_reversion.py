@@ -39,11 +39,11 @@ from typing import Optional
 import trading_core as tc
 
 
-STRATEGY_ID = tc.StrategyId.SCALP.value
+STRATEGY_ID = tc.StrategyId.MEAN_REVERSION.value
 logger = tc.get_logger(STRATEGY_ID)
 
 
-# ─── Hardcoded defaults (overridden by rules.json strat_3_scalp block) ────
+# ─── Hardcoded defaults (overridden by rules.json strat_3_mean_reversion block) ────
 DEFAULTS = {
     "bollinger": {
         "period":      20,          # 5-min bars in lookback window
