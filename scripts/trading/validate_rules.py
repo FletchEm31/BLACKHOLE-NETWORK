@@ -215,6 +215,58 @@ def validate_cross_field(rules: dict) -> ValidationResult:
                 f"{sorted(SUPPORTED_VARS)})"
             )
 
+    # Strategy 7: position_split fractions must sum to 1.0 (±0.001 tolerance for fp)
+    ps = _g(rules, "strat_7_nasdaq_short", "position_split")
+    if isinstance(ps, dict) and ps:
+        parts = [ps.get("short_qqq_pct"), ps.get("short_spy_pct"), ps.get("jpst_pct")]
+        if all(isinstance(p, (int, float)) for p in parts):
+            total = sum(parts)
+            if abs(total - 1.0) > 0.001:
+                result.error(
+                    f"strat_7_nasdaq_short.position_split: short_qqq + short_spy + "
+                    f"jpst = {total:.4f} but must equal 1.0 (currently "
+                    f"{parts[0]}+{parts[1]}+{parts[2]})"
+                )
+    # Strat 7 must have requires_margin=true if enabled (operator spec)
+    s7 = rules.get("strat_7_nasdaq_short") or {}
+    if isinstance(s7, dict) and s7.get("enabled") is True:
+        if s7.get("requires_margin") is not True:
+            result.error(
+                "strat_7_nasdaq_short.enabled=true but requires_margin is not true. "
+                "Short positions require a margin-enabled Alpaca account; flip "
+                "requires_margin=true and confirm the broker account supports it."
+            )
+
+    # Strategy 8: score_weights must sum to 1.0
+    sw = _g(rules, "strat_8_sector_rotation", "score_weights")
+    if isinstance(sw, dict) and sw:
+        parts = [sw.get("fast"), sw.get("med"), sw.get("slow")]
+        if all(isinstance(p, (int, float)) for p in parts):
+            total = sum(parts)
+            if abs(total - 1.0) > 0.001:
+                result.error(
+                    f"strat_8_sector_rotation.score_weights: fast+med+slow = "
+                    f"{total:.4f} but must equal 1.0 (currently "
+                    f"{parts[0]}+{parts[1]}+{parts[2]})"
+                )
+    # Strat 8: roc_periods must be strictly ascending (fast < med < slow)
+    rp = _g(rules, "strat_8_sector_rotation", "roc_periods")
+    if isinstance(rp, dict):
+        f, m, s = rp.get("fast"), rp.get("med"), rp.get("slow")
+        if all(isinstance(x, int) for x in (f, m, s)):
+            if not (f < m < s):
+                result.error(
+                    f"strat_8_sector_rotation.roc_periods: must be strictly "
+                    f"ascending (fast<med<slow); got {f}/{m}/{s}"
+                )
+    # Strat 8: universe last ticker is the safe asset — must be at least 2 names
+    universe_8 = _g(rules, "strat_8_sector_rotation", "universe")
+    if isinstance(universe_8, list) and len(universe_8) < 2:
+        result.error(
+            f"strat_8_sector_rotation.universe needs ≥2 tickers (got {len(universe_8)}); "
+            f"the last entry is the safe/cash asset"
+        )
+
     # Strategy 5: macro keyword_categories must align with sector_mapping keys
     sector_map = _g(rules, "strat_5_pred_mkt", "macro_events", "sector_mapping") or {}
     kw_map = _g(rules, "strat_5_pred_mkt", "macro_events", "keyword_categories") or {}
