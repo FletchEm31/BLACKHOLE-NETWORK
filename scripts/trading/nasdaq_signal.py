@@ -65,6 +65,11 @@ TARGET_HOLDING_FRACTION = 0.99            # QC: SetHoldings(symbol, 0.99)
 # Strat 7 short-side parameters (operator summary only — no QC source)
 SPY_MA_PERIOD = 200
 SPY_BELOW_MA_DAYS_REQUIRED_FOR_SHORT = 5
+# "No 3 consecutive closes above 200MA recently" — operator-specified third entry
+# filter. "Recently" interpreted as the last 20 trading days (~1 calendar month).
+# Adjustable via rules.json if the operator wants a different window.
+SPY_NO_BREAK_LOOKBACK_DAYS = 20
+SPY_NO_BREAK_STREAK_MAX = 3
 
 
 @dataclass
@@ -227,27 +232,52 @@ def compute_scores(universe: tuple[str, ...] = UNIVERSE_RANKED,
 # ─────────────────────────────────────────────────────────────────────────
 
 def spy_200ma_state() -> Optional[dict]:
-    """Return SPY close + 200-day MA + above/below + consecutive days below.
-    Used only by the Strat 7 short-side filter (operator-specified, not in QC)."""
-    series = fetch_daily_opens(BENCHMARK_TICKER, SPY_MA_PERIOD + 30)
+    """Return SPY's 200MA state: today's close + MA, above/below flag,
+    consecutive-days-below streak ending today, and max-consecutive-days-above
+    streak observed within the last SPY_NO_BREAK_LOOKBACK_DAYS trading days.
+
+    The last field implements the operator's third short-side entry filter:
+    "SPY has NOT had 3 consecutive closes above 200MA recently." We interpret
+    'recently' as the last 20 trading days (configurable via the module
+    constant SPY_NO_BREAK_LOOKBACK_DAYS).
+    """
+    series = fetch_daily_opens(BENCHMARK_TICKER, SPY_MA_PERIOD + SPY_NO_BREAK_LOOKBACK_DAYS + 10)
     if not series or len(series) < SPY_MA_PERIOD + 1:
         return None
     closes = [p for _, p in series]
     ma_today = sum(closes[-SPY_MA_PERIOD:]) / SPY_MA_PERIOD
     close_today = closes[-1]
-    streak = 0
+
+    # Consecutive days below 200MA, ending today
+    below_streak = 0
     for i in range(len(closes) - 1, SPY_MA_PERIOD - 1, -1):
         window = closes[i - SPY_MA_PERIOD + 1:i + 1]
         ma_i = sum(window) / SPY_MA_PERIOD
         if closes[i] < ma_i:
-            streak += 1
+            below_streak += 1
         else:
             break
+
+    # Max consecutive ABOVE-MA streak within the last N trading days
+    max_above_streak_recent = 0
+    current_above_run = 0
+    lookback_start = max(SPY_MA_PERIOD, len(closes) - SPY_NO_BREAK_LOOKBACK_DAYS)
+    for i in range(lookback_start, len(closes)):
+        window = closes[i - SPY_MA_PERIOD + 1:i + 1]
+        ma_i = sum(window) / SPY_MA_PERIOD
+        if closes[i] > ma_i:
+            current_above_run += 1
+            if current_above_run > max_above_streak_recent:
+                max_above_streak_recent = current_above_run
+        else:
+            current_above_run = 0
+
     return {
         "close": close_today,
         "ma_200": ma_today,
         "above_ma": close_today > ma_today,
-        "days_below_streak": streak,
+        "days_below_streak": below_streak,
+        "max_above_streak_recent": max_above_streak_recent,
     }
 
 
@@ -342,22 +372,31 @@ def evaluate_short_signal(scores: Optional[list[RegressionScore]] = None,
     leader = scores[0]
     runner_up = scores[1] if len(scores) > 1 else None
     streak = spy["days_below_streak"]
+    max_above_recent = spy.get("max_above_streak_recent", 0)
+    no_recent_break = max_above_recent < SPY_NO_BREAK_STREAK_MAX
     fires = (
         leader.ticker in SHORT_LEADERS
         and not spy["above_ma"]
         and streak >= SPY_BELOW_MA_DAYS_REQUIRED_FOR_SHORT
+        and no_recent_break
     )
     if fires:
         reason = (f"{leader.ticker} #1 (intercept {leader.intercept:+.6f}); "
                   f"SPY below 200MA {streak}d ≥ "
-                  f"{SPY_BELOW_MA_DAYS_REQUIRED_FOR_SHORT}d required")
+                  f"{SPY_BELOW_MA_DAYS_REQUIRED_FOR_SHORT}d; max above-streak "
+                  f"in last {SPY_NO_BREAK_LOOKBACK_DAYS}d = {max_above_recent} "
+                  f"< {SPY_NO_BREAK_STREAK_MAX} required")
     elif leader.ticker not in SHORT_LEADERS:
         reason = f"leader is {leader.ticker} (intercept {leader.intercept:+.6f}), not PSQ/QID"
     elif spy["above_ma"]:
         reason = f"SPY {spy['close']:.2f} > 200MA {spy['ma_200']:.2f} — bear filter blocks"
-    else:
+    elif streak < SPY_BELOW_MA_DAYS_REQUIRED_FOR_SHORT:
         reason = (f"SPY below 200MA only {streak}d < "
                   f"{SPY_BELOW_MA_DAYS_REQUIRED_FOR_SHORT}d required")
+    else:
+        reason = (f"SPY had {max_above_recent} consecutive closes above 200MA in "
+                  f"last {SPY_NO_BREAK_LOOKBACK_DAYS}d ≥ {SPY_NO_BREAK_STREAK_MAX} "
+                  f"forbidden — bear regime not yet committed")
 
     return NasdaqSignal(
         fires=fires,
