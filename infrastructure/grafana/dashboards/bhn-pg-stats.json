@@ -1,0 +1,49 @@
+{
+  "uid": "bhn-pg-stats",
+  "title": "BHN PostgreSQL Stats",
+  "description": "LA PG workload telemetry — activity, top queries, table sizes.",
+  "tags": ["bhn", "postgresql", "database"],
+  "timezone": "utc",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5m",
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    {
+      "id": 1, "type": "timeseries", "title": "Active backends",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "targets": [{ "refId": "A", "format": "time_series",
+        "rawSql": "SELECT measured_at AS time, numbackends FROM pg_activity_snapshots WHERE $__timeFilter(measured_at) ORDER BY 1" }]
+    },
+    {
+      "id": 2, "type": "timeseries", "title": "Cache hit ratio %",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "targets": [{ "refId": "A", "format": "time_series",
+        "rawSql": "SELECT measured_at AS time, (blks_hit::float / NULLIF(blks_hit + blks_read, 0)) * 100 AS hit_pct FROM pg_activity_snapshots WHERE $__timeFilter(measured_at) ORDER BY 1" }],
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100 }, "overrides": [] }
+    },
+    {
+      "id": 3, "type": "table", "title": "Top 25 queries by total_exec_ms (latest snapshot)",
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 8 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "targets": [{ "refId": "A", "format": "table",
+        "rawSql": "WITH latest AS (SELECT MAX(measured_at) AS m FROM pg_query_stats) SELECT q.role_name, q.calls, q.total_exec_ms, q.mean_exec_ms, q.rows_returned, LEFT(q.query_text, 100) AS query_excerpt FROM pg_query_stats q, latest WHERE q.measured_at = latest.m ORDER BY q.total_exec_ms DESC LIMIT 25" }],
+      "options": { "showHeader": true }
+    },
+    {
+      "id": 4, "type": "table", "title": "Top 25 tables by size (latest snapshot)",
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 20 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "targets": [{ "refId": "A", "format": "table",
+        "rawSql": "WITH latest AS (SELECT MAX(measured_at) AS m FROM pg_table_stats) SELECT t.schema_name, t.table_name, t.n_live_tup, t.n_dead_tup, t.total_bytes, t.last_autovacuum FROM pg_table_stats t, latest WHERE t.measured_at = latest.m ORDER BY t.total_bytes DESC LIMIT 25" }],
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto" } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "total_bytes" }, "properties": [ { "id": "unit", "value": "bytes" } ] }
+        ]
+      }
+    }
+  ]
+}
