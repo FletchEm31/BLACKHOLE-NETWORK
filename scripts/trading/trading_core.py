@@ -25,10 +25,13 @@ Paper-only enforcement (defense in depth):
   2. trading_strategies.live_mode_approved must be true per-strategy
   3. trading_strategies.status='halted' for 'system' row halts everything
 
-CLI for ad-hoc inspection:
-  python3 trading_core.py status              # print all strategies + state
-  python3 trading_core.py reconcile           # one-shot reconcile, no daemon
-  python3 trading_core.py health              # check Alpaca + PG connectivity
+CLI for ad-hoc inspection + operator toggles:
+  python3 trading_core.py status                 # print all strategies + state
+  python3 trading_core.py reconcile              # one-shot reconcile, no daemon
+  python3 trading_core.py health                 # check Alpaca + PG connectivity
+  python3 trading_core.py enable STRAT2 [reason] # flip rules.json enabled=true
+  python3 trading_core.py disable STRAT3 [reason]
+  python3 trading_core.py sms 'ENABLE STRAT2'    # parse HORIZON SMS body
 """
 from __future__ import annotations
 
@@ -331,9 +334,202 @@ def load_rules() -> dict:
 
 
 def get_strategy_rules(strategy_id: str) -> dict:
-    """Returns the per-strategy rules block from rules.json. Empty if absent."""
+    """Returns the per-strategy rules block from rules.json. Empty if absent.
+    Strategy blocks live at the top level of rules.json (per rules_schema.py),
+    not under a 'strategies' key."""
     rules = load_rules()
-    return rules.get("strategies", {}).get(strategy_id, {})
+    block = rules.get(strategy_id)
+    return block if isinstance(block, dict) else {}
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Per-strategy enable/disable + HORIZON SMS toggle
+#
+# Each strategy carries its own `enabled` boolean in rules.json. Operator
+# toggles via SMS to HORIZON ("ENABLE STRAT2" / "DISABLE STRAT3"). HORIZON
+# resolves the command to a `trading_core.py sms ...` invocation on LA,
+# which atomically rewrites rules.json. LA then rsyncs to NJ; strategies
+# on NJ pick up the new flag via the mtime-based reload in load_rules().
+# ─────────────────────────────────────────────────────────────────────────
+
+STRAT_NUMBER: dict[str, int] = {
+    "strat_1_congress": 1,
+    "strat_2_value":    2,
+    "strat_3_scalp":    3,
+    "strat_4_momentum": 4,
+    "strat_5_pred_mkt": 5,
+}
+
+# Maps short SMS names to full strategy ids.
+SMS_NAME_MAP: dict[str, str] = {
+    "STRAT1": "strat_1_congress",
+    "STRAT2": "strat_2_value",
+    "STRAT3": "strat_3_scalp",
+    "STRAT4": "strat_4_momentum",
+    "STRAT5": "strat_5_pred_mkt",
+}
+
+
+def is_strategy_enabled(strategy_id: str) -> bool:
+    """Read rules.json[<sid>].enabled. Returns False if the block is missing
+    entirely; True is the schema-level default when the block exists but the
+    field is absent. Source of truth for runtime enable/disable — operator
+    toggles this from HORIZON SMS without touching PG."""
+    block = get_strategy_rules(strategy_id)
+    if not block:
+        return False
+    return bool(block.get("enabled", True))
+
+
+def set_strategy_enabled(strategy_id: str, enabled: bool, reason: str = "") -> None:
+    """Atomically toggle rules.json[<sid>].enabled. Writes a sibling .tmp,
+    fsyncs implicitly via os.replace, then renames over the target. Bust the
+    mtime cache so the next load_rules() picks it up immediately.
+
+    Caller (HORIZON workflow) is responsible for re-validating the file with
+    validate_rules.py and re-rsync'ing to NJ. This function does the local
+    write only."""
+    if strategy_id not in STRAT_NUMBER:
+        raise ValueError(f"Unknown strategy_id: {strategy_id}")
+    if not RULES_PATH.exists():
+        raise RuntimeError(f"rules.json missing at {RULES_PATH}")
+
+    rules = json.loads(RULES_PATH.read_text())
+    block = rules.get(strategy_id)
+    if not isinstance(block, dict):
+        raise RuntimeError(f"rules.json has no '{strategy_id}' block — cannot toggle")
+
+    block["enabled"] = bool(enabled)
+    rules[strategy_id] = block
+    rules["updated_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    tmp = RULES_PATH.with_suffix(RULES_PATH.suffix + ".tmp")
+    tmp.write_text(json.dumps(rules, indent=2) + "\n")
+    os.replace(tmp, RULES_PATH)
+
+    # Bust the in-process cache so subsequent load_rules() re-reads.
+    global _RULES, _RULES_MTIME
+    _RULES = None
+    _RULES_MTIME = 0.0
+
+    get_logger("system").info(
+        f"set_strategy_enabled({strategy_id!r}, {enabled!r}) reason={reason!r}"
+    )
+
+
+def parse_sms_toggle_command(text: str) -> Optional[tuple[bool, str]]:
+    """Parse 'ENABLE STRAT2' / 'DISABLE STRAT3' style SMS body.
+    Returns (enabled, strategy_id) on match, None otherwise.
+    Case-insensitive, tolerates surrounding whitespace, rejects anything
+    that isn't exactly two tokens with a recognized action + name."""
+    if not text:
+        return None
+    parts = text.strip().upper().split()
+    if len(parts) != 2:
+        return None
+    action, name = parts
+    if action == "ENABLE":
+        enabled = True
+    elif action == "DISABLE":
+        enabled = False
+    else:
+        return None
+    sid = SMS_NAME_MAP.get(name)
+    if not sid:
+        return None
+    return (enabled, sid)
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Per-strategy Alpaca client
+#
+# Each strategy has its OWN dedicated Alpaca paper account — blast-radius
+# isolation, so a leaked or compromised strat2 key cannot drain strat4's
+# balance. Credentials live as env-var NAMES in rules.json[<sid>].broker:
+#   alpaca_key_id:   "STRAT2_ALPACA_KEY_ID"   ← env var name, not the key
+#   alpaca_secret:   "STRAT2_ALPACA_SECRET"
+#   alpaca_base_url: "https://paper-api.alpaca.markets/v2"
+# Env vars are sourced from /etc/bhn-trading/strat<N>.env on first use.
+# ─────────────────────────────────────────────────────────────────────────
+
+_STRATEGY_ENV_LOADED: set[str] = set()
+_STRATEGY_ALPACA: dict[str, tradeapi.REST] = {}
+
+
+def _load_strategy_env(strategy_id: str) -> None:
+    """Source /etc/bhn-trading/strat<N>.env into os.environ on first use.
+    Idempotent within a process. Skips lines that are blank/commented or
+    don't contain '='. Existing os.environ values win (setdefault)."""
+    if strategy_id in _STRATEGY_ENV_LOADED:
+        return
+    n = STRAT_NUMBER.get(strategy_id)
+    if n is None:
+        return
+    env_file = Path(f"/etc/bhn-trading/strat{n}.env")
+    if env_file.exists():
+        for line in env_file.read_text().splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, v = line.split("=", 1)
+            os.environ.setdefault(k.strip(), v.strip().strip("'\""))
+    _STRATEGY_ENV_LOADED.add(strategy_id)
+
+
+def get_strategy_alpaca(strategy_id: str) -> tradeapi.REST:
+    """Return the Alpaca client for this strategy's dedicated paper account.
+    Cached per (process, strategy_id). Resolves credentials via the
+    rules.json broker subblock + /etc/bhn-trading/strat<N>.env + os.environ."""
+    if strategy_id in _STRATEGY_ALPACA:
+        return _STRATEGY_ALPACA[strategy_id]
+
+    block = get_strategy_rules(strategy_id)
+    sb = (block or {}).get("broker") or {}
+    if not sb:
+        raise RuntimeError(
+            f"{strategy_id}: rules.json has no broker subblock — cannot resolve "
+            f"per-strategy Alpaca credentials"
+        )
+    key_env    = sb.get("alpaca_key_id")
+    secret_env = sb.get("alpaca_secret")
+    base_url   = sb.get("alpaca_base_url")
+    if not (key_env and secret_env and base_url):
+        raise RuntimeError(
+            f"{strategy_id}.broker incomplete: "
+            f"alpaca_key_id={key_env!r}, alpaca_secret={secret_env!r}, "
+            f"alpaca_base_url={base_url!r}"
+        )
+
+    _load_strategy_env(strategy_id)
+    key    = os.environ.get(key_env)
+    secret = os.environ.get(secret_env)
+    if not (key and secret):
+        n = STRAT_NUMBER.get(strategy_id)
+        raise RuntimeError(
+            f"{strategy_id}: env vars {key_env}/{secret_env} not set — checked "
+            f"os.environ + /etc/bhn-trading/strat{n}.env"
+        )
+
+    # Paper-only safety net: refuse live URL unless TRADING_LIVE_MODE=true
+    live_mode = os.environ.get("TRADING_LIVE_MODE", "false").lower() == "true"
+    if "paper-api" not in base_url and not live_mode:
+        raise RuntimeError(
+            f"{strategy_id}.broker.alpaca_base_url={base_url!r} points at the live "
+            f"endpoint and TRADING_LIVE_MODE != true — refusing to construct a live client"
+        )
+
+    client = tradeapi.REST(
+        key_id=key, secret_key=secret, base_url=base_url, api_version="v2",
+    )
+    acct = client.get_account()
+    if acct.account_blocked or acct.trading_blocked:
+        raise RuntimeError(
+            f"{strategy_id} Alpaca account blocked: "
+            f"account_blocked={acct.account_blocked}, "
+            f"trading_blocked={acct.trading_blocked}"
+        )
+    _STRATEGY_ALPACA[strategy_id] = client
+    return client
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -363,12 +559,19 @@ def is_system_halted() -> bool:
 
 def should_run(strategy_id: str, requires_market_open: bool = False) -> tuple[bool, str]:
     """
-    Composite gate: system not halted AND strategy active AND breaker clear AND
-    (market open OR strategy is non-intraday).
+    Composite gate: system not halted AND strategy enabled in rules.json AND
+    PG status=active AND breaker clear AND (market open OR strategy is non-intraday).
     Returns (allowed, reason_if_blocked).
+
+    Note: rules.json `enabled` is the operator-facing toggle (HORIZON SMS
+    flips this). PG `status` is the framework-internal lifecycle (paused,
+    halted by breakers, etc.). Both must be true to run.
     """
     if is_system_halted():
         return False, "system halted (killswitch)"
+
+    if not is_strategy_enabled(strategy_id):
+        return False, "disabled in rules.json"
 
     meta = get_strategy_meta(strategy_id)
     if meta["status"] != "active":
@@ -1099,16 +1302,65 @@ def _cli_health() -> int:
         return 1
     if RULES_PATH.exists():
         rules = load_rules()
-        n = len(rules.get("strategies", {}))
-        print(f"✓ rules.json: loaded, {n} strategies configured, version={rules.get('version')}")
+        strat_ids = [k for k in rules if k.startswith("strat_")]
+        n_enabled = sum(1 for k in strat_ids if rules[k].get("enabled") is True)
+        print(f"✓ rules.json: loaded, {len(strat_ids)} strategy blocks "
+              f"({n_enabled} enabled), version={rules.get('version')}")
     else:
         print(f"✗ rules.json: missing at {RULES_PATH}")
     return 0
 
 
+def _cli_set_enabled(enabled: bool, args: list[str]) -> int:
+    """Handle `enable STRAT2 [reason]` / `disable STRAT2 [reason]`."""
+    if not args:
+        verb = "enable" if enabled else "disable"
+        print(f"Usage: trading_core.py {verb} {{STRAT1..STRAT5|strat_<n>_<name>}} [reason]")
+        return 2
+    name = args[0]
+    sid = SMS_NAME_MAP.get(name.upper())
+    if not sid and name in STRAT_NUMBER:
+        sid = name
+    if not sid:
+        print(f"Unknown strategy: {name!r}. Use STRAT1..STRAT5 or the full strat_<n>_<...> id.")
+        return 2
+    reason = " ".join(args[1:]) if len(args) > 1 else "via trading_core CLI"
+    try:
+        set_strategy_enabled(sid, enabled, reason)
+    except Exception as e:
+        print(f"Failed: {e}")
+        return 1
+    print(f"OK: {sid}.enabled={enabled} ({reason})")
+    return 0
+
+
+def _cli_sms(args: list[str]) -> int:
+    """Handle a raw HORIZON SMS body: `sms 'ENABLE STRAT2'`."""
+    if not args:
+        print("Usage: trading_core.py sms '<ENABLE|DISABLE> STRAT<N>'")
+        return 2
+    text = " ".join(args)
+    parsed = parse_sms_toggle_command(text)
+    if not parsed:
+        print(f"Not a recognized toggle command: {text!r}")
+        return 2
+    enabled, sid = parsed
+    try:
+        set_strategy_enabled(sid, enabled, f"HORIZON SMS: {text!r}")
+    except Exception as e:
+        print(f"Failed: {e}")
+        return 1
+    print(f"OK: {sid}.enabled={enabled} (via SMS: {text!r})")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="BHN trading_core CLI")
-    parser.add_argument("command", choices=["status", "reconcile", "health"])
+    parser.add_argument(
+        "command",
+        choices=["status", "reconcile", "health", "enable", "disable", "sms"],
+    )
+    parser.add_argument("args", nargs="*", help="Arguments for enable/disable/sms")
     args = parser.parse_args()
     if args.command == "status":
         return _cli_status()
@@ -1116,6 +1368,12 @@ def main() -> int:
         return _cli_reconcile()
     if args.command == "health":
         return _cli_health()
+    if args.command == "enable":
+        return _cli_set_enabled(True, args.args)
+    if args.command == "disable":
+        return _cli_set_enabled(False, args.args)
+    if args.command == "sms":
+        return _cli_sms(args.args)
     return 0
 
 
