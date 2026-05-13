@@ -87,6 +87,139 @@ groups:
           severity: critical
           dedup_key: bhn-pg-unreachable
 
+      # ─── v1 rule 3: WireGuard server-peer egress spike ────────────────────
+      # Any server peer (FRA / NJ / Hillsboro) where hub-to-peer cumulative
+      # bytes_sent grew by more than 1 GB over the trailing hour. Phone/PC
+      # explicitly excluded — they legitimately spike (video calls, backups).
+      # A counter reset (wg restart) shows as a negative delta — HAVING
+      # filter discards those.
+      - uid: bhn-wg-peer-egress-spike
+        title: BHN WG server peer egress >1GB/hr
+        condition: B
+        for: 0m
+        noDataState: OK
+        execErrState: Error
+        data:
+          - refId: A
+            relativeTimeRange: { from: 3900, to: 0 }   # ~65 min — give room for 5-min sampling
+            datasourceUid: cflc7izgwm7lsc
+            model:
+              format: table
+              rawSql: |
+                SELECT COUNT(*)::int AS spike_count
+                FROM (
+                  SELECT peer_label,
+                         MAX(bytes_sent) - MIN(bytes_sent) AS delta_bytes
+                  FROM wg_peer_stats
+                  WHERE peer_label IN ('Frankfurt', 'NJ', 'Hillsboro')
+                    AND measured_at > NOW() - INTERVAL '1 hour'
+                  GROUP BY peer_label
+                  HAVING MAX(bytes_sent) - MIN(bytes_sent) > 1073741824
+                ) spiking;
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+        annotations:
+          summary: "BHN WG server peer egressed >1 GB in the trailing hour"
+          description: "One or more server peers (Frankfurt / NJ / Hillsboro) hit a >1 GB hub→peer transfer in the last 60 min. Personal peers (Phone/PC) are excluded. Investigate: SELECT peer_label, (MAX(bytes_sent) - MIN(bytes_sent))/1024/1024 AS mb FROM wg_peer_stats WHERE peer_label IN ('Frankfurt','NJ','Hillsboro') AND measured_at > NOW() - INTERVAL '1 hour' GROUP BY peer_label;"
+        labels:
+          severity: warning
+          dedup_key: bhn-wg-peer-egress-spike
+
+      # ─── v1 rule 4: Tor relay collector stalled (relay offline proxy) ─────
+      # A relay whose last tor_relay_stats row is older than 15 min likely
+      # means: container died, host down, or collector cron stopped. Also
+      # surfaces "WG tunnel to LA PG dropped" for the relay node since the
+      # collector pushes over WG.
+      - uid: bhn-tor-relay-stale
+        title: BHN Tor relay collector stalled (>15 min)
+        condition: B
+        for: 5m
+        noDataState: NoData
+        execErrState: Error
+        data:
+          - refId: A
+            relativeTimeRange: { from: 86400, to: 0 }   # 24h — find relays that reported recently but not in the last 15m
+            datasourceUid: cflc7izgwm7lsc
+            model:
+              format: table
+              rawSql: |
+                SELECT COUNT(*)::int AS stale_count
+                FROM (
+                  SELECT node
+                  FROM tor_relay_stats
+                  WHERE measured_at > NOW() - INTERVAL '24 hours'
+                  GROUP BY node
+                  HAVING MAX(measured_at) < NOW() - INTERVAL '15 minutes'
+                ) stale_relays;
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+        annotations:
+          summary: "One or more Tor relays have not reported stats in >15 min"
+          description: "{{ $values.A.Value }} relay(s) reporting recently (last 24h) but not in the last 15 min. Could be: container died, host down, collector cron stopped, WG tunnel to LA PG dropped. Check: SELECT node, MAX(measured_at) FROM tor_relay_stats GROUP BY node; — then SSH to the affected node and check `docker ps`, `systemctl status cron`, `wg show`."
+        labels:
+          severity: warning
+          dedup_key: bhn-tor-relay-stale
+
+      # ─── v1 rule 5: Tor relay AccountingMax — approaching cap (>80%) ──────
+      # Per-relay caps from torrc AccountingMax:
+      #   BHNFornaxEU1   1500 GB (Frankfurt)
+      #   BHNNebulaUS2    750 GB (NJ)
+      #   BHNHeliosUS3    750 GB (Hillsboro)
+      # 80% thresholds: 1200 GB / 600 GB / 600 GB respectively.
+      # Tor hibernates the relay at 100% — alerting at 80% gives runway to
+      # bump caps or reduce other workloads on the node before hibernation.
+      - uid: bhn-tor-relay-accounting-80pct
+        title: BHN Tor relay approaching AccountingMax (>80%)
+        condition: B
+        for: 10m
+        noDataState: OK
+        execErrState: Error
+        data:
+          - refId: A
+            relativeTimeRange: { from: 900, to: 0 }
+            datasourceUid: cflc7izgwm7lsc
+            model:
+              format: table
+              rawSql: |
+                SELECT COUNT(*)::int AS over_threshold_count
+                FROM (
+                  SELECT DISTINCT ON (node)
+                         node,
+                         (bytes_read + bytes_written) AS total_bytes,
+                         CASE
+                           WHEN node = 'BHNFornaxEU1'                   THEN 1500::bigint * 1024 * 1024 * 1024
+                           WHEN node IN ('BHNNebulaUS2','BHNHeliosUS3') THEN  750::bigint * 1024 * 1024 * 1024
+                         END AS cap_bytes
+                  FROM tor_relay_stats
+                  WHERE measured_at > NOW() - INTERVAL '15 minutes'
+                  ORDER BY node, measured_at DESC
+                ) latest
+                WHERE cap_bytes IS NOT NULL
+                  AND total_bytes > (cap_bytes * 0.8);
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+        annotations:
+          summary: "Tor relay monthly bandwidth >80% of AccountingMax"
+          description: "{{ $values.A.Value }} relay(s) above 80% of their AccountingMax (Fornax 1500GB / Nebula+Helios 750GB). Tor hibernates the relay at 100% — review now to either bump the cap in torrc + redeploy, reduce other workloads sharing the node, or accept hibernation until next month-start. Check: SELECT node, (bytes_read+bytes_written)/1024/1024/1024 AS gb FROM tor_relay_stats WHERE measured_at > NOW() - INTERVAL '15 minutes';"
+        labels:
+          severity: warning
+          dedup_key: bhn-tor-relay-accounting-80pct
+
 contactPoints:
   - orgId: 1
     name: bhn-webhook
