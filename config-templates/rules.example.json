@@ -1,7 +1,7 @@
 {
   "version": "1.0",
-  "updated_at": "2026-05-12T00:00:00Z",
-  "operator_note": "Initial conservative defaults. All strategies enabled but live_mode_approved=false until per-strategy operator sign-off. Generated from rules_schema.EXAMPLE_RULES — regenerate via `python3 scripts/trading/rules_schema.py example > config-templates/rules.example.json`.",
+  "updated_at": "2026-05-13T00:00:00Z",
+  "operator_note": "Operator-controlled execution_limits + per-strategy broker isolation. Each strategy has its OWN Alpaca paper account (keys in /etc/bhn-trading/strat<N>.env on NJ). Initial state: Strats 2/3/4 enabled, Strats 1 (Congress) and 5 (Pred-mkt) disabled until their API keys land. Strats 1+5 carry PLACEHOLDER execution_limits — review before flipping enabled=true. system.broker holds portfolio-wide caps; alpaca_base_url is per-strategy (NOT system-wide) so paper/live can diverge by strategy if needed.",
   "system": {
     "halted": false,
     "circuit_breakers": {
@@ -17,11 +17,39 @@
     },
     "twilio": {
       "rate_limit_per_hour": 20
+    },
+    "broker": {
+      "total_allocation": 65000,
+      "paper_mode": true,
+      "max_portfolio_daily_loss": 2000,
+      "max_portfolio_drawdown": 0.10,
+      "max_overnight_positions": 3,
+      "premarket_trading": false,
+      "afterhours_trading": false,
+      "force_close_if_down_pct": 0.05,
+      "killswitch_on_drawdown": true,
+      "killswitch_drawdown_pct": 0.10
     }
   },
   "strat_1_congress": {
-    "enabled": true,
+    "enabled": false,
     "live_mode_approved": false,
+    "execution_limits": {
+      "max_position_size": 2000,
+      "daily_loss_limit": 800,
+      "max_trades_per_day": 5,
+      "overnight_hold": true,
+      "weekend_hold": true,
+      "hold_through_earnings": true,
+      "max_hold_days": 30,
+      "stop_loss_pct": 0.15,
+      "profit_target_pct": 0.25
+    },
+    "broker": {
+      "alpaca_key_id": "STRAT1_ALPACA_KEY_ID",
+      "alpaca_secret": "STRAT1_ALPACA_SECRET",
+      "alpaca_base_url": "https://paper-api.alpaca.markets/v2"
+    },
     "poll_interval_seconds": 900,
     "min_transaction_usd": 10000,
     "max_days_after_disclosure": 2,
@@ -32,6 +60,22 @@
   "strat_2_value": {
     "enabled": true,
     "live_mode_approved": false,
+    "execution_limits": {
+      "max_position_size": 5000,
+      "daily_loss_limit": 1000,
+      "max_trades_per_day": 3,
+      "overnight_hold": true,
+      "weekend_hold": true,
+      "hold_through_earnings": true,
+      "max_hold_days": 90,
+      "stop_loss_pct": 0.08,
+      "profit_target_pct": 0.15
+    },
+    "broker": {
+      "alpaca_key_id": "STRAT2_ALPACA_KEY_ID",
+      "alpaca_secret": "STRAT2_ALPACA_SECRET",
+      "alpaca_base_url": "https://paper-api.alpaca.markets/v2"
+    },
     "screener_filters": {
       "pe_max": 15,
       "pb_max": 1.5,
@@ -53,6 +97,22 @@
   "strat_3_scalp": {
     "enabled": true,
     "live_mode_approved": false,
+    "execution_limits": {
+      "max_position_size": 2000,
+      "daily_loss_limit": 500,
+      "max_trades_per_day": 20,
+      "overnight_hold": false,
+      "weekend_hold": false,
+      "hold_through_earnings": false,
+      "force_close_time": "15:45 ET",
+      "stop_loss_pct": 0.01,
+      "profit_target_pct": 0.02
+    },
+    "broker": {
+      "alpaca_key_id": "STRAT3_ALPACA_KEY_ID",
+      "alpaca_secret": "STRAT3_ALPACA_SECRET",
+      "alpaca_base_url": "https://paper-api.alpaca.markets/v2"
+    },
     "bollinger": {
       "period": 20,
       "stddev": 2.0,
@@ -76,6 +136,23 @@
   "strat_4_momentum": {
     "enabled": true,
     "live_mode_approved": false,
+    "execution_limits": {
+      "max_position_size": 4000,
+      "daily_loss_limit": 1000,
+      "max_trades_per_day": 5,
+      "overnight_hold": true,
+      "weekend_hold": true,
+      "hold_through_earnings": false,
+      "close_before_earnings_days": 2,
+      "max_hold_days": 60,
+      "stop_loss_pct": 0.10,
+      "profit_target_pct": 0.20
+    },
+    "broker": {
+      "alpaca_key_id": "STRAT4_ALPACA_KEY_ID",
+      "alpaca_secret": "STRAT4_ALPACA_SECRET",
+      "alpaca_base_url": "https://paper-api.alpaca.markets/v2"
+    },
     "crossover": {
       "short_period": 50,
       "long_period": 200,
@@ -94,8 +171,24 @@
     }
   },
   "strat_5_pred_mkt": {
-    "enabled": true,
+    "enabled": false,
     "live_mode_approved": false,
+    "execution_limits": {
+      "max_position_size": 2000,
+      "daily_loss_limit": 500,
+      "max_trades_per_day": 5,
+      "overnight_hold": true,
+      "weekend_hold": true,
+      "hold_through_earnings": false,
+      "max_hold_days": 7,
+      "stop_loss_pct": 0.05,
+      "profit_target_pct": 0.05
+    },
+    "broker": {
+      "alpaca_key_id": "STRAT5_ALPACA_KEY_ID",
+      "alpaca_secret": "STRAT5_ALPACA_SECRET",
+      "alpaca_base_url": "https://paper-api.alpaca.markets/v2"
+    },
     "live_execution_enabled": false,
     "macro_events": {
       "odds_move_pct_min": 10.0,
