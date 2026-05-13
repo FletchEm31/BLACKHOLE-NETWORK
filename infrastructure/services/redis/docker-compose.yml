@@ -1,0 +1,51 @@
+# BHN — HORIZON working-memory Redis. LA hub only.
+# VPN-only access via LA's WG tunnel. Cache role only — durable state lives
+# in PostgreSQL (memories table + conversation_sessions). AOF/RDB are
+# intentionally OFF; losing the Redis state means losing the in-progress
+# working memory of any live session, which is recoverable from PG.
+#
+# Deploy:
+#   cd /opt/bhn-horizon-redis
+#   cp .env.example .env
+#   # Paste REDIS_PASSWORD value from Proton Pass entry "EH-Redis-Password"
+#   docker compose up -d
+#
+# Verify (from LA shell):
+#   docker exec bhn-horizon-redis redis-cli -a "$REDIS_PASSWORD" PING
+#   # Expect: PONG
+#
+# Verify VPN-only:
+#   ss -tlnp | grep 6379
+#   # Expect: LISTEN on 10.8.0.1:6379, NOT 0.0.0.0:6379
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: bhn-horizon-redis
+    restart: unless-stopped
+    environment:
+      - TZ=America/Los_Angeles
+    command:
+      - redis-server
+      - --requirepass
+      - ${REDIS_PASSWORD}
+      - --save
+      - ""
+      - --appendonly
+      - "no"
+      - --maxmemory
+      - 128mb
+      - --maxmemory-policy
+      - allkeys-lru
+      - --bind
+      - 0.0.0.0       # safe: container is only reachable on the host's WG bind below
+      - --protected-mode
+      - "yes"
+    ports:
+      # VPN-only; bound to LA's WG tunnel (wg0). Public eth0 never exposes 6379.
+      - "${BIND_IP}:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "PING"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
