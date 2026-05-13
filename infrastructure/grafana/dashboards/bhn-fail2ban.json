@@ -1,0 +1,28 @@
+{
+  "uid": "bhn-fail2ban",
+  "title": "BHN fail2ban Bans",
+  "description": "Per-node fail2ban activity. Snapshot every 5 min by bhn-fail2ban-collector.sh.",
+  "tags": ["bhn", "security", "fail2ban"],
+  "timezone": "utc",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5m",
+  "time": { "from": "now-24h", "to": "now" },
+  "panels": [
+    {
+      "id": 1, "type": "timeseries", "title": "Bans per node × jail (latest count)",
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 0 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "targets": [{ "refId": "A", "format": "time_series",
+        "rawSql": "SELECT $__timeGroupAlias(measured_at, '5m') AS time, node_name || '/' || jail AS metric, MAX(banned_count_in_jail) AS bans FROM fail2ban_events WHERE $__timeFilter(measured_at) GROUP BY 1, node_name, jail ORDER BY 1" }]
+    },
+    {
+      "id": 2, "type": "table", "title": "Newly observed bans (last 24h)",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 9 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "targets": [{ "refId": "A", "format": "table",
+        "rawSql": "SELECT MIN(measured_at) AS first_seen, node_name, jail, banned_ip FROM fail2ban_events WHERE measured_at > NOW() - INTERVAL '24 hours' GROUP BY node_name, jail, banned_ip ORDER BY first_seen DESC LIMIT 100" }],
+      "options": { "showHeader": true, "footer": { "show": false } }
+    }
+  ]
+}
