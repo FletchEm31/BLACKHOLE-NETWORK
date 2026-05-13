@@ -1,7 +1,7 @@
 {
   "version": "1.0",
   "updated_at": "2026-05-13T00:00:00Z",
-  "operator_note": "Operator-controlled execution_limits + per-strategy broker isolation. Each strategy has its OWN Alpaca paper account (keys in /etc/bhn-trading/strat<N>.env on NJ). Initial state: Strats 2/3/4 enabled, Strats 1 (Congress) and 5 (Pred-mkt) disabled until their API keys land. Strats 1+5 carry PLACEHOLDER execution_limits — review before flipping enabled=true. system.broker holds portfolio-wide caps; alpaca_base_url is per-strategy (NOT system-wide) so paper/live can diverge by strategy if needed.",
+  "operator_note": "Each strategy is fully self-contained: its own Alpaca paper account (keys in /etc/bhn-trading/strat<N>.env on NJ), its own execution_limits, its own broker subblock with account_alias. system.broker removed — portfolio aggregates are computed at runtime from per-strategy state. Initial state: Strats 2/3/4 enabled, Strats 1 (Congress) and 5 (Pred-mkt) disabled until their API keys land. Strats 1+5 carry PLACEHOLDER execution_limits — review before flipping enabled=true. Strategy 3 renamed strat_3_scalp → strat_3_mean_reversion to align with strategy_mean_reversion.py.",
   "system": {
     "halted": false,
     "circuit_breakers": {
@@ -17,18 +17,6 @@
     },
     "twilio": {
       "rate_limit_per_hour": 20
-    },
-    "broker": {
-      "total_allocation": 65000,
-      "paper_mode": true,
-      "max_portfolio_daily_loss": 2000,
-      "max_portfolio_drawdown": 0.10,
-      "max_overnight_positions": 3,
-      "premarket_trading": false,
-      "afterhours_trading": false,
-      "force_close_if_down_pct": 0.05,
-      "killswitch_on_drawdown": true,
-      "killswitch_drawdown_pct": 0.10
     }
   },
   "strat_1_congress": {
@@ -48,7 +36,8 @@
     "broker": {
       "alpaca_key_id": "STRAT1_ALPACA_KEY_ID",
       "alpaca_secret": "STRAT1_ALPACA_SECRET",
-      "alpaca_base_url": "https://paper-api.alpaca.markets/v2"
+      "alpaca_base_url": "https://paper-api.alpaca.markets/v2",
+      "account_alias": "BHN-Paper-Strat1"
     },
     "poll_interval_seconds": 900,
     "min_transaction_usd": 10000,
@@ -74,8 +63,18 @@
     "broker": {
       "alpaca_key_id": "STRAT2_ALPACA_KEY_ID",
       "alpaca_secret": "STRAT2_ALPACA_SECRET",
-      "alpaca_base_url": "https://paper-api.alpaca.markets/v2"
+      "alpaca_base_url": "https://paper-api.alpaca.markets/v2",
+      "account_alias": "BHN-Paper-Strat2"
     },
+    "universe": [
+      "JPM", "BAC", "WFC", "C",
+      "JNJ", "PFE", "MRK",
+      "KO", "PG", "WMT", "MO",
+      "T", "VZ",
+      "XOM", "CVX",
+      "INTC", "IBM", "CSCO",
+      "MMM", "GE"
+    ],
     "screener_filters": {
       "pe_max": 15,
       "pb_max": 1.5,
@@ -94,7 +93,7 @@
     },
     "earnings_blackout_days": 7
   },
-  "strat_3_scalp": {
+  "strat_3_mean_reversion": {
     "enabled": true,
     "live_mode_approved": false,
     "execution_limits": {
@@ -111,7 +110,8 @@
     "broker": {
       "alpaca_key_id": "STRAT3_ALPACA_KEY_ID",
       "alpaca_secret": "STRAT3_ALPACA_SECRET",
-      "alpaca_base_url": "https://paper-api.alpaca.markets/v2"
+      "alpaca_base_url": "https://paper-api.alpaca.markets/v2",
+      "account_alias": "BHN-Paper-Strat3"
     },
     "bollinger": {
       "period": 20,
@@ -151,7 +151,8 @@
     "broker": {
       "alpaca_key_id": "STRAT4_ALPACA_KEY_ID",
       "alpaca_secret": "STRAT4_ALPACA_SECRET",
-      "alpaca_base_url": "https://paper-api.alpaca.markets/v2"
+      "alpaca_base_url": "https://paper-api.alpaca.markets/v2",
+      "account_alias": "BHN-Paper-Strat4"
     },
     "crossover": {
       "short_period": 50,
@@ -187,7 +188,8 @@
     "broker": {
       "alpaca_key_id": "STRAT5_ALPACA_KEY_ID",
       "alpaca_secret": "STRAT5_ALPACA_SECRET",
-      "alpaca_base_url": "https://paper-api.alpaca.markets/v2"
+      "alpaca_base_url": "https://paper-api.alpaca.markets/v2",
+      "account_alias": "BHN-Paper-Strat5"
     },
     "live_execution_enabled": false,
     "macro_events": {
