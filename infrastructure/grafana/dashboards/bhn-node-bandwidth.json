@@ -1,0 +1,48 @@
+{
+  "uid": "bhn-node-bandwidth",
+  "title": "BHN Node Bandwidth (vnstat)",
+  "description": "Per-node bandwidth totals from vnstat — hourly, daily, monthly per interface. Populated by bhn-vnstat-collector.sh on each node.",
+  "tags": ["bhn", "bandwidth", "vnstat"],
+  "timezone": "utc",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5m",
+  "time": { "from": "now-7d", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Hourly egress (tx) per node — sum over all interfaces",
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 0 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "targets": [{
+        "refId": "A", "format": "time_series",
+        "rawSql": "SELECT period_start AS time, node_name AS metric, SUM(tx_bytes) AS tx FROM node_bandwidth_stats WHERE period_type='hour' AND $__timeFilter(period_start) GROUP BY 1, node_name ORDER BY 1"
+      }],
+      "fieldConfig": {
+        "defaults": { "unit": "bytes", "custom": { "lineWidth": 2, "fillOpacity": 10, "spanNulls": true } },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["sum", "max"] }, "tooltip": { "mode": "multi", "sort": "desc" } }
+    },
+    {
+      "id": 2,
+      "type": "table",
+      "title": "Current month totals per node × interface",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 9 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "targets": [{
+        "refId": "A", "format": "table",
+        "rawSql": "SELECT node_name, interface, rx_bytes, tx_bytes, (rx_bytes + tx_bytes) AS total_bytes FROM node_bandwidth_stats WHERE period_type='month' AND period_start = date_trunc('month', NOW()) ORDER BY total_bytes DESC"
+      }],
+      "options": { "showHeader": true, "footer": { "show": false } },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto" } },
+        "overrides": [
+          { "matcher": { "id": "byRegexp", "options": "rx_bytes|tx_bytes|total_bytes" },
+            "properties": [ { "id": "unit", "value": "bytes" }, { "id": "decimals", "value": 2 } ] }
+        ]
+      }
+    }
+  ]
+}
