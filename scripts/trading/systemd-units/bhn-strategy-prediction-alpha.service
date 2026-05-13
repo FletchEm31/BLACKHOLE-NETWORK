@@ -1,0 +1,40 @@
+# BHN trading — Strat 9 (BHN-PREDICTION-ALPHA) cycle runner.
+# One invocation = one GFS-window cycle: sleep-to-window → poll → settle.
+# Scheduled by bhn-strategy-prediction-alpha.timer (4×/day, aligned to
+# the GFS publish times +3.5h after each cycle start).
+#
+# Deploy:
+#   sudo cp bhn-strategy-prediction-alpha.{service,timer} /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now bhn-strategy-prediction-alpha.timer
+#
+# Phase 1 behavior: rules.json strat_9_prediction_alpha.enabled=false
+# means the polling runs but place_order is suppressed (dry-run audit
+# rows still land in weather_bets). Operator flips enabled=true to
+# activate live paper trading on demo-api.kalshi.co.
+
+[Unit]
+Description=BHN Strat 9 prediction-alpha GFS-window cycle
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/bhn/trading
+
+EnvironmentFile=/etc/bhn-trading/env
+EnvironmentFile=-/etc/bhn-trading/strat9.env
+# strat9.env carries KALSHI_KEY_ID + KALSHI_ENV=demo (Phase 1)
+
+ExecStart=/usr/bin/python3 /opt/bhn/trading/strategy_prediction_alpha.py
+
+StandardOutput=append:/var/log/bhn-trading/strategy-prediction-alpha.log
+StandardError=append:/var/log/bhn-trading/strategy-prediction-alpha.log
+
+# Window is 1800s + ~3-4h pre-window sleep when triggered just-before-cycle.
+# Cap total runtime at 5h so a wedged sleep doesn't block the next timer.
+TimeoutStartSec=18000
+TimeoutStopSec=60
+
+[Install]

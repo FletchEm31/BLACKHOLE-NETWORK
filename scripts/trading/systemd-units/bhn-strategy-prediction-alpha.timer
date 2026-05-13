@@ -1,0 +1,28 @@
+# BHN trading — Strat 9 prediction-alpha timer.
+# Fires 4×/day, 5 minutes BEFORE each GFS publish window opens
+# (publish ≈ cycle hour + 3.5h):
+#
+#   GFS 00z cycle → publish ~03:30 UTC → timer 03:25 UTC
+#   GFS 06z cycle → publish ~09:30 UTC → timer 09:25 UTC
+#   GFS 12z cycle → publish ~15:30 UTC → timer 15:25 UTC
+#   GFS 18z cycle → publish ~21:30 UTC → timer 21:25 UTC
+#
+# The script's own sleep loop handles the final few minutes to the
+# precise window start, so a small RandomizedDelay is safe. The
+# service script also runs ONE settlement pass after each window
+# closes, so resolved bets get reconciled within minutes.
+
+[Unit]
+Description=BHN Strat 9 prediction-alpha (4×/day, aligned to GFS publish)
+
+[Timer]
+OnCalendar=*-*-* 03:25:00 UTC
+OnCalendar=*-*-* 09:25:00 UTC
+OnCalendar=*-*-* 15:25:00 UTC
+OnCalendar=*-*-* 21:25:00 UTC
+Unit=bhn-strategy-prediction-alpha.service
+Persistent=true
+RandomizedDelaySec=60
+
+[Install]
+WantedBy=timers.target

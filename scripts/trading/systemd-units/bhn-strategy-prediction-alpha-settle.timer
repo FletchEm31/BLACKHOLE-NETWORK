@@ -1,0 +1,15 @@
+# BHN trading — daily catch-all settlement timer.
+# 06:00 UTC = 02:00 ET / 23:00 PT — well after Kalshi's overnight
+# settlement publishes have flushed.
+
+[Unit]
+Description=BHN Strat 9 daily settlement pass (06:00 UTC)
+
+[Timer]
+OnCalendar=*-*-* 06:00:00 UTC
+Unit=bhn-strategy-prediction-alpha-settle.service
+Persistent=true
+RandomizedDelaySec=120
+
+[Install]
+WantedBy=timers.target

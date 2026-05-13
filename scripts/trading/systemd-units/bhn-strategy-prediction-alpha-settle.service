@@ -1,0 +1,31 @@
+# BHN trading — Strat 9 settlement-only pass.
+# Runs once daily at 06:00 UTC to catch any Kalshi settlements published
+# overnight that the post-window settle missed (e.g. settlements that
+# don't land within the 30-min window after our last GFS poll).
+#
+# Distinct from the main cycle service so a hung polling loop doesn't
+# block settlement, and so the daily reconciliation runs even if the
+# main timer was disabled.
+
+[Unit]
+Description=BHN Strat 9 prediction-alpha daily settlement pass
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/bhn/trading
+
+EnvironmentFile=/etc/bhn-trading/env
+EnvironmentFile=-/etc/bhn-trading/strat9.env
+
+ExecStart=/usr/bin/python3 /opt/bhn/trading/strategy_prediction_alpha.py --settle-only
+
+StandardOutput=append:/var/log/bhn-trading/strategy-prediction-alpha.log
+StandardError=append:/var/log/bhn-trading/strategy-prediction-alpha.log
+
+TimeoutStartSec=600
+TimeoutStopSec=30
+
+[Install]
