@@ -1,0 +1,473 @@
+==================================================================
+BLACKHOLE NETWORK (BHN) — DATA FLOW BLUEPRINT
+Last Updated: May 13, 2026
+==================================================================
+
+PURPOSE
+-------
+This document defines how all data moves through the Blackhole
+Network — what servers communicate with each other, how traffic
+is encrypted, what's hidden from external observers, what's
+internal vs external, and how each data type flows end-to-end.
+
+==================================================================
+SECTION 1 — NETWORK TOPOLOGY
+==================================================================
+
+INTERNAL NODES (BHN-controlled)
+---------------------------------
+  BHN|VPS-LOSANGELES-US1    149.28.91.100 / 10.8.0.1   LA Hub (Vultr)
+  BHN|VPS-FRANKFURT-EU1     192.248.187.208 / 10.9.0.2  Frankfurt (Vultr)
+  BHN|VPS-NEWJERSEY-US2     140.82.4.35 / 10.8.0.5      NJ Trading (Vultr)
+  BHN-HILLSBORO-US3         5.78.94.237 / 10.8.0.6      Hillsboro (Hetzner)
+
+OPERATOR DEVICES (BHN-connected)
+----------------------------------
+  FLETCH-DESKTOP            10.8.0.4   Operator PC (WireGuard client)
+  FLETCH-PHONE              10.8.0.2   Operator phone (WireGuard client)
+  FLETCH-LAPTOP             10.8.0.7   Laptop (pending)
+
+EXTERNAL SERVICES (not BHN-controlled)
+----------------------------------------
+  Anthropic API             api.anthropic.com
+  Twilio                    api.twilio.com
+  ElevenLabs                api.elevenlabs.io
+  NewsAPI                   newsapi.org
+  OpenWeatherMap            api.openweathermap.org
+  Alpaca Markets            paper-api.alpaca.markets
+  FMP (Financial Data)      financialmodelingprep.com
+  Quiver Quantitative       api.quiverquant.com (pending)
+  Kalshi                    trading.kalshi.com (pending)
+  Polymarket                polymarket.com
+  Tor Network               distributed (global relays)
+  Vultr Provider            control plane only
+  Hetzner Provider          control plane only
+
+FUTURE NODES (planned)
+------------------------
+  BHN-SWEDEN-EU2            Bahnhof (cold standby hub)
+  BHN-ICELAND-EU3           1984 Hosting (EU exit #2)
+
+==================================================================
+SECTION 2 — WIREGUARD MESH (THE BACKBONE)
+==================================================================
+
+ALL inter-server and server-to-device communication runs over
+WireGuard. This is the encrypted backbone of the entire network.
+
+ENCRYPTION STANDARD:
+  Protocol:      WireGuard (UDP)
+  Cipher:        ChaCha20-Poly1305
+  Key exchange:  Curve25519
+  Hashing:       BLAKE2s
+  PSK:           Additional 32-byte pre-shared key (quantum protection)
+  Result:        Military-grade encryption, unreadable to any observer
+
+MESH STRUCTURE:
+  LA Hub (wg0) is the central WireGuard server.
+  All other nodes/devices connect TO LA as peers.
+  No peer connects directly to another peer (hub-and-spoke).
+
+  ┌─────────────────────────────────────────────┐
+  │              LA HUB (10.8.0.1)              │
+  │              WireGuard Hub (wg0)            │
+  └──┬──────────┬──────────┬──────────┬─────────┘
+     │          │          │          │
+  Frankfurt  Hillsboro    NJ      Devices
+  10.9.0.2   10.8.0.6  10.8.0.5  (PC/Phone)
+
+PEER REGISTRY:
+  Peer              Public IP         Tunnel IP   PSK      Port
+  ─────────────────────────────────────────────────────────────
+  Frankfurt EU1     192.248.187.208   10.9.0.2    ✅       51821
+  NJ US2            140.82.4.35       10.8.0.5    ❌ pend  51820
+  Hillsboro US3     5.78.94.237       10.8.0.6    ✅       51821
+  FLETCH-DESKTOP    dynamic           10.8.0.4    ✅       dynamic
+  FLETCH-PHONE      dynamic           10.8.0.2    ✅       dynamic
+  FLETCH-LAPTOP     dynamic           10.8.0.7    ❌ pend  dynamic
+
+WHAT AN OBSERVER SEES ON THE WIRE:
+  - Random UDP packets between known server IPs
+  - No packet content (fully encrypted)
+  - No metadata about what's being transferred
+  - Packet size and timing only (minimal leakage)
+  - Cannot distinguish WireGuard from random UDP
+
+==================================================================
+SECTION 3 — TRAFFIC FLOWS
+==================================================================
+
+─────────────────────────────────────────────────────────────
+3A. OPERATOR VPN TRAFFIC (browsing/privacy)
+─────────────────────────────────────────────────────────────
+FULL TUNNEL PROFILE (privacy mode):
+  Your PC/Phone
+    → WireGuard (encrypted) → LA Hub (10.8.0.1)
+    → Policy routing (fwmark 0x100) → Frankfurt (10.9.0.2)
+    → MASQUERADE → internet
+  External sites see: Frankfurt IP (192.248.187.208) [DE]
+  Your ISP sees: encrypted WireGuard UDP only
+  LA sees: decrypted traffic (your hub, trusted)
+  Frankfurt sees: plaintext requests (exit node)
+  STATUS: Partially working — MASQUERADE fix pending on Frankfurt
+
+SPLIT TUNNEL PROFILE (gaming/streaming):
+  BHN traffic only → WireGuard → LA Hub
+  All other traffic → your ISP directly
+  Use for: gaming, streaming (low latency required)
+  External sites see: your real home IP
+
+─────────────────────────────────────────────────────────────
+3B. LA OUTBOUND API TRAFFIC (server calling external APIs)
+─────────────────────────────────────────────────────────────
+TARGET STATE (LA egress lockdown — PENDING):
+  LA Hub
+    → WireGuard tunnel → Hillsboro (10.8.0.6)
+    → tinyproxy (port 8888) → internet
+  External APIs see: Hillsboro IP (5.78.94.237) [US-West/Hetzner]
+  LA's real IP (149.28.91.100) NEVER appears in API logs
+
+CURRENT STATE:
+  tinyproxy deployed and verified on Hillsboro
+  LA not yet wired to use it (/etc/environment pending)
+  LA still reaches internet directly for API calls
+
+WHAT ROUTES THROUGH HILLSBORO (target):
+  - Claude API (api.anthropic.com)
+  - Twilio outbound SMS/calls
+  - ElevenLabs TTS requests
+  - NewsAPI polling
+  - OpenWeatherMap polling
+  - FMP/Alpaca/Quiver market data polling
+  - apt package updates
+  - All other HTTP/HTTPS from LA
+
+WHAT STAYS DIRECT TO LA (inbound — always):
+  - Twilio voice/SMS callbacks (Twilio POSTs to LA)
+  - n8n webhook triggers from external services
+  - WireGuard peer connections (all nodes/devices)
+  - NJ → LA PostgreSQL (already on WireGuard tunnel)
+
+─────────────────────────────────────────────────────────────
+3C. SERVER-TO-SERVER TRAFFIC (internal orchestration)
+─────────────────────────────────────────────────────────────
+All server-to-server traffic travels over WireGuard tunnel.
+No server-to-server traffic ever touches the public internet.
+
+  LA → Frankfurt:   ssh frankfurt (tunnel 10.9.0.2)
+                    Purpose: deploy scripts, collect stats,
+                    manage Tor relay, manage services
+  
+  LA → NJ:          ssh nj (tunnel 10.8.0.5)
+                    Purpose: deploy trading stack, push rules.json,
+                    collect trading results, orchestration
+  
+  LA → Hillsboro:   ssh hillsboro (tunnel 10.8.0.6)
+                    Purpose: manage tinyproxy, manage Tor relay,
+                    collect stats, deploy updates
+  
+  NJ → LA:          PostgreSQL (10.8.0.1:5432)
+                    Purpose: log trading results, push stats,
+                    read trading rules, heartbeat
+  
+  Frankfurt → LA:   PostgreSQL (10.8.0.1:5432)
+                    Purpose: push security events, Tor stats,
+                    node health data
+  
+  Hillsboro → LA:   PostgreSQL (10.8.0.1:5432)
+                    Purpose: push proxy stats, Tor stats,
+                    node health data
+
+DIRECTION PRINCIPLE:
+  LA initiates SSH TO other nodes (orchestrator)
+  Other nodes initiate PostgreSQL TO LA (data reporting)
+  No node SSHs into LA (LA never accepts inbound SSH from nodes)
+
+─────────────────────────────────────────────────────────────
+3D. TRADING DATA FLOW (NJ)
+─────────────────────────────────────────────────────────────
+  Market APIs (Alpaca, FMP, Quiver, Kalshi)
+    → HTTPS → NJ (via internet directly — NJ is trading node)
+    → Strategy scripts process data
+    → Paper trades executed via Alpaca API
+    → Results logged locally (SQLite cache)
+    → Results pushed → LA PostgreSQL (via WireGuard tunnel)
+    → LA stores in: paper_trades, strategy_performance tables
+    → Grafana reads from LA PostgreSQL → displays dashboard
+    → Daily summary → HORIZON → SMS to operator via Twilio
+
+RULES PROPAGATION (LA → NJ):
+  Operator updates trading rules via HORIZON
+    → HORIZON writes rules.json on LA
+    → LA rsync → NJ (via SSH tunnel)
+    → NJ trading engine reloads rules
+    → Confirmation SMS to operator
+
+KILLSWITCH FLOW:
+  Operator SMS "HALT" → Twilio → LA → HORIZON
+    → killswitch.py triggered
+    → Sets halted=true in PostgreSQL
+    → SSH to NJ → kill all strategy processes
+    → Cancel all open Alpaca orders
+    → Flatten all positions
+    → Confirmation SMS to operator
+
+─────────────────────────────────────────────────────────────
+3E. AI AGENT (HORIZON) DATA FLOW
+─────────────────────────────────────────────────────────────
+INBOUND (operator to HORIZON):
+  SMS/Voice → Twilio → LA (direct inbound, port 443)
+    → n8n webhook → HORIZON workflow
+    → Claude API call → via Hillsboro (target) → Anthropic
+    → Response processed → ElevenLabs TTS (if voice)
+    → Reply via Twilio back to operator
+
+CHAT INTERFACE:
+  Browser (on VPN) → http://10.8.0.1:5678/webhook/...
+    → n8n HORIZON workflow
+    → Claude API → Anthropic
+    → Response returned to browser
+
+HORIZON DATA ACCESS (read-only via agent_reader role):
+  HORIZON reads from PostgreSQL:
+    - sessions (VPN session data)
+    - security_events (threat alerts)
+    - anomalies (detected anomalies)
+    - pulse_reports (system health)
+    - memories (pgvector, conversation memory)
+    - node_logs (per-node events)
+    - paper_trades (trading performance)
+    - market_signals (market data)
+
+─────────────────────────────────────────────────────────────
+3F. DNS RESOLUTION FLOW
+─────────────────────────────────────────────────────────────
+ALL nodes use dnscrypt-proxy for encrypted DNS.
+No plaintext DNS queries ever leave any BHN node.
+
+DNS RESOLVER ROTATION (all nodes — same config):
+  dnscrypt-proxy rotates between 6 encrypted resolvers:
+  1. Cloudflare      (US)           DoH/DNSCrypt
+  2. Quad9           (Global)       DNSCrypt + malware filter
+  3. Mullvad         (Sweden)       DNSCrypt — privacy-first
+  4. AdGuard         (Cyprus)       DoH — ad blocking
+  5. NextDNS         (US)           DoH — customizable
+  6. Digitale Gesellschaft (Swiss)  DoH — privacy org
+
+  Selection: fastest responding at query time
+  Fallback: automatic if any resolver goes down
+  External observer sees: encrypted DNS-over-HTTPS/DNSCrypt
+  No observer can see what domains are being resolved
+
+TARGET STATE — Frankfurt DNS Phase 2 (PENDING):
+  VPN clients will use Frankfurt as DNS resolver
+  Frankfurt dnscrypt-proxy bound to 10.9.0.2:53
+  Full tunnel WireGuard profile DNS = 10.9.0.2
+  Result: DNS queries appear to originate from Frankfurt (DE)
+
+─────────────────────────────────────────────────────────────
+3G. TOR RELAY TRAFFIC FLOW
+─────────────────────────────────────────────────────────────
+BHN nodes run Tor middle/guard relays (never exit).
+Tor relay traffic is independent of VPN client traffic.
+
+  Global Tor network
+    → encrypted Tor cells → BHN relay node (ORPort 9001)
+    → relay forwards to next Tor hop
+    → encrypted Tor cells → out
+
+  BHN sees: encrypted Tor cells only
+  Cannot see: origin, destination, or content
+  Purpose: contributes bandwidth to Tor network,
+           adds cover traffic to nodes,
+           supports privacy ecosystem
+
+RELAY ROSTER:
+  BHNFornaxEU1  Frankfurt  192.248.187.208:9001  LIVE
+  BHNHeliosUS3  Hillsboro  5.78.94.237:9001      Bootstrapping
+  BHNNebulaUS2  NJ         140.82.4.35:9001      Deployed, not live
+  LA            —          No relay (hub stays dark)
+
+==================================================================
+SECTION 4 — ENCRYPTION LAYERS BY TRAFFIC TYPE
+==================================================================
+
+  Traffic Type                Encryption Stack
+  ─────────────────────────────────────────────────────────────
+  VPN client browsing         WireGuard (ChaCha20) + PSK
+  Server-to-server SSH        WireGuard tunnel + SSH (Ed25519)
+  Server-to-server DB         WireGuard tunnel + PostgreSQL wire
+  LA API calls (target)       WireGuard + tinyproxy HTTPS TLS
+  DNS queries (all nodes)     DNSCrypt / DNS-over-HTTPS
+  Tor relay traffic           Tor onion encryption (3 layers)
+  HORIZON SMS/voice           TLS (Twilio) + WireGuard (inbound)
+  Trading API calls (NJ)      HTTPS TLS (direct)
+  Operator SSH to servers     SSH Ed25519 key auth
+  Storage at rest (LA)        LUKS2 (AES-256-XTS)
+
+==================================================================
+SECTION 5 — WHAT EACH PROVIDER SEES
+==================================================================
+
+VULTR (LA, Frankfurt, NJ provider):
+  Sees: servers exist, bandwidth consumed, public IPs
+  Cannot see: WireGuard content, what's inside tunnels
+  Knows: you're a customer with 3 VPS
+
+HETZNER (Hillsboro provider):
+  Sees: server exists, bandwidth consumed, public IP
+  Cannot see: WireGuard content, proxy traffic content
+  Knows: you're a customer with 1 VPS
+
+YOUR ISP:
+  Full tunnel: encrypted WireGuard UDP to 149.28.91.100 only
+  Split tunnel: normal traffic + WireGuard UDP to LA
+  Cannot see: any BHN traffic content
+
+ANTHROPIC (Claude API):
+  Current: sees LA IP (149.28.91.100) in API logs
+  Target: sees Hillsboro IP (5.78.94.237) after egress lockdown
+  Cannot see: your infrastructure or network topology
+
+TWILIO:
+  Inbound callbacks: sees LA IP (correct — needs real IP)
+  Outbound calls: sees Hillsboro IP (target, after egress lockdown)
+
+ALPACA MARKETS:
+  Sees: NJ IP (140.82.4.35) — trading node connects directly
+  Note: monitor for flag risk if NJ Tor relay goes live
+
+TOR DIRECTORY AUTHORITIES:
+  Sees: relay public IPs, bandwidth, uptime stats
+  This is intentional — relays must be publicly listed
+
+==================================================================
+SECTION 6 — SECURITY LAYERS (ALL NODES)
+==================================================================
+
+EVERY BHN NODE HAS:
+  Layer 1: UFW (default deny in/out — whitelist only)
+  Layer 2: fail2ban (auto-ban brute force attempts)
+  Layer 3: CrowdSec (AI-driven threat detection, shared intel)
+  Layer 4: Suricata (deep packet IDS/IPS)
+  Layer 5: dnscrypt-proxy (encrypted DNS — no plaintext leakage)
+  Layer 6: SSH key-only auth (no password auth)
+  Layer 7: WireGuard (all inter-node traffic encrypted)
+
+LA HUB ADDITIONAL:
+  Layer 8: LUKS2 storage encryption (NVMe + HDD)
+  Layer 9: PostgreSQL access controls (role-based)
+  Layer 10: WireGuard PSK (quantum-resistant key exchange)
+
+OBFUSCATION LAYERS (exit nodes — Frankfurt, Hillsboro):
+  Shadowsocks: disguises VPN traffic as HTTPS
+  dnscrypt: disguises DNS queries as HTTPS
+  Tor relay: cover traffic blends with relay traffic
+  tinyproxy: LA API calls appear from Hillsboro IP
+
+CVE STATUS:
+  CVE-2026-31431 "Copy Fail": MITIGATED (algif_aead blacklisted)
+  Full kernel patch: pending (apt upgrade + reboot all nodes)
+
+==================================================================
+SECTION 7 — DATA STORED ON EACH NODE
+==================================================================
+
+LA HUB (brain — stores everything):
+  PostgreSQL eventhorizon DB:
+    - sessions, security_events, anomalies
+    - pulse_reports, agent_token_log
+    - nodes (registry of all BHN nodes)
+    - memories (pgvector 384-dim — HORIZON memory)
+    - call_transcripts, market_signals
+    - paper_trades, strategy_performance
+    - trading_signals, trading_rules
+    - node_logs, qa_cache
+
+  NVMe HOT (/mnt/eh-nvme-hot):
+    - Live PostgreSQL data
+    - Active packet capture logs
+    - Real-time write buffer
+
+  HDD COLD (/mnt/eh-hdd-cold):
+    - Nightly compressed archives
+    - Historical data
+    - FIFO rotation when full
+
+FRANKFURT EU1:
+  - Tor relay identity keys (/var/lib/tor/)
+  - LibreSpeed server files
+  - SearXNG search engine + Redis cache
+  - No user data stored
+
+NJ US2:
+  - Trading strategy scripts
+  - Local SQLite state cache (NJ-side mirror of open positions)
+  - Systemd service configs
+  - No persistent user data
+
+HILLSBORO US3:
+  - tinyproxy (stateless — no logging of proxied content)
+  - Tor relay identity keys
+  - No user data stored
+
+==================================================================
+SECTION 8 — INFORMATION FLOW SUMMARY TABLE
+==================================================================
+
+  From          To            Method          Encrypted   Notes
+  ──────────────────────────────────────────────────────────────
+  PC/Phone      LA            WireGuard+PSK   ✅ Yes      VPN tunnel
+  LA            Frankfurt     WireGuard       ✅ Yes      SSH + tunnel
+  LA            NJ            WireGuard       ✅ Yes      SSH + tunnel
+  LA            Hillsboro     WireGuard+PSK   ✅ Yes      SSH + tunnel
+  NJ            LA            WireGuard       ✅ Yes      PostgreSQL
+  Frankfurt     LA            WireGuard+PSK   ✅ Yes      PostgreSQL
+  Hillsboro     LA            WireGuard+PSK   ✅ Yes      PostgreSQL
+  LA            Internet      tinyproxy→HIL   ✅ HTTPS    Target state
+  LA            Internet      Direct          ✅ HTTPS    Current state
+  NJ            Alpaca API    Direct HTTPS    ✅ TLS      Trading only
+  Frankfurt     Tor network   Tor cells       ✅ Onion    Relay
+  Hillsboro     Tor network   Tor cells       ✅ Onion    Relay
+  Twilio        LA            Direct HTTPS    ✅ TLS      Inbound only
+  Any node      DNS           DNSCrypt/DoH    ✅ Yes      6 resolvers
+
+==================================================================
+SECTION 9 — PLANNED ARCHITECTURE ADDITIONS
+==================================================================
+
+PHASE 1 (immediate):
+  - Frankfurt MASQUERADE fix (exit routing)
+  - LA egress lockdown via Hillsboro tinyproxy
+  - Frankfurt DNS Phase 2 (DNS exits via Frankfurt)
+  - Laptop WireGuard peer (10.8.0.7)
+
+PHASE 2 (next sessions):
+  - Sweden node (Bahnhof) — cold standby hub
+  - Iceland node — EU exit #2
+  - NJ PSK (quantum protection)
+  - Shadowsocks on Frankfurt
+
+PHASE 3 (longer term):
+  - Symmetric ingress: Hillsboro handles inbound too
+    (nginx reverse proxy → LA via WireGuard)
+    Result: LA completely dark, no public inbound
+  - SDR (Software Defined Radio) data pipeline
+    RTL-SDR → ADS-B/AIS/weather → PostgreSQL
+  - Matrix Synapse (EH Chat) on LA — VPN-only messaging
+  - pgvector memory expansion for HORIZON
+
+==================================================================
+DOCUMENT CONTROL
+==================================================================
+
+This document should be updated at the end of every session.
+Read at the start of every Claude session and Claude Code session.
+Stored in: Claude Project files + repo infrastructure/docs/
+
+Related documents:
+  - BHN-INFRASTRUCTURE-REFERENCE.txt  (server configs, credentials)
+  - COMPLETE_BOOTSTRAP_ARCHITECTURE.txt (bootstrap procedures)
+  - EH-Command-Reference.txt (quick command lookup)
+
+==================================================================
