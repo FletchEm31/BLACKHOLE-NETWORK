@@ -2,7 +2,16 @@
 """
 bhn-eia-poller — poll EIA (Energy Information Administration) commodity series.
 
-Cron (LA, daily): 0 7 * * * root /usr/local/sbin/bhn-eia-poller.py
+Cron (LA, aligned to EIA release times in ET; safety-poll +1min after each):
+  CRON_TZ=America/New_York
+  30,31 10 * * 1-5  root  /usr/local/sbin/bhn-eia-poller.py   # 10:30 ET daily releases + safety
+  35,36 10 * * 3    root  /usr/local/sbin/bhn-eia-poller.py   # 10:35 ET Wed weekly inventory + safety
+
+The +1min safety poll catches data that posts 1-2 minutes after the
+official release time. UPSERT semantics (ON CONFLICT (series_id,
+period_start) DO NOTHING) make the safety poll idempotent.
+
+Deploy via /etc/cron.d/bhn-eia-poller with CRON_TZ at top.
 
 Config /root/.bhn-eia.env (mode 0600):
   BHN_EIA_PG_DSN='postgresql://log_shipper:<PW>@10.8.0.1/eventhorizon'
