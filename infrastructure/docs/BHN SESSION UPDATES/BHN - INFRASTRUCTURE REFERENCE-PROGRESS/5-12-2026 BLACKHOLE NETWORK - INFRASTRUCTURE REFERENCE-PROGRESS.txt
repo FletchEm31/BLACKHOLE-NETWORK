@@ -308,8 +308,7 @@ GITHUB
 ==================================================================
  
 Repo: FletchEm31/BLACKHOLE-NETWORK (PRIVATE — main branch)
-Local: D:\GITHUB REPOSITORY\EVENT HORIZON VPN\EVENT HORIZON VPN DASHBOARD\
-Rename pending: D:\GITHUB REPOSITORY\BLACKHOLE-NETWORK\
+Local: D:\GITHUB REPOSITORY\BLACKHOLE-NETWORK\ (renamed 2026-05-13)
  
 Structure:
   infrastructure/bootstrap/    v4 modular bootstrap
@@ -323,7 +322,7 @@ Structure:
  
 Bootstrap command (new node):
   # Copy files via scp (repo is private)
-  scp -r "D:\GITHUB REPOSITORY\...\infrastructure" root@<IP>:/opt/bhn/
+  scp -r "D:\GITHUB REPOSITORY\BLACKHOLE-NETWORK\infrastructure" root@<IP>:/opt/bhn/
   # Then on new node:
   export TUNNEL_IP_OVERRIDE=<IP>
   export EH_BOOTSTRAP_PG_DSN='postgresql://bootstrap_writer:BHN-Bootstrap-2026@10.8.0.1/eventhorizon'
@@ -408,7 +407,7 @@ NEXT SESSION:
   13. Shadowsocks on Frankfurt
   14. NJ + Laptop WireGuard PSK
   15. CVE full kernel patch (apt upgrade + reboot all nodes)
-  16. Repo folder rename to D:\GITHUB REPOSITORY\BLACKHOLE-NETWORK\
+  16. [DONE 2026-05-13] Repo folder rename to D:\GITHUB REPOSITORY\BLACKHOLE-NETWORK\
   17. A2P SMS campaign approval (~May 23-30)
   18. Quiver Quantitative signup ($25/mo)
   19. Kalshi API key setup
