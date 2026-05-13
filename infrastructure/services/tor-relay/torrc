@@ -48,9 +48,15 @@ Log notice stdout         # also stream to docker logs
 # of silently advertising an unreachable address.
 AssumeReachable 0
 
-# No control socket — we don't need stem/nyx access for now. Re-enable
-# in a follow-up if monitoring requires it.
-ControlSocket 0
+# ControlSocket exposed for the BHN monitoring collector
+# (scripts/bhn-tor-control-stats.py). CookieAuthentication keeps it password-
+# free for processes that can read the cookie file; host-side mount + perms
+# handled in docker-compose.yml. Socket path inside container is
+# /var/lib/tor/control; bind-mounted out to /opt/bhn-tor-relay/control on host.
+ControlSocket /var/lib/tor/control
+ControlSocketsGroupWritable 1
+CookieAuthentication 1
+CookieAuthFileGroupReadable 1
 
 ## ─── MyFamily — LOAD-BEARING POST-DEPLOY STEP ─────────────────────────
 # BHN runs (or plans) five relays — Fornax (Frankfurt EU1), Nebula (NJ US2),

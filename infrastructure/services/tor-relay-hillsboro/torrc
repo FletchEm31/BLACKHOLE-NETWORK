@@ -37,7 +37,12 @@ Log notice stdout
 
 ## ─── Hardening ─────────────────────────────────────────────────────────
 AssumeReachable 0
-ControlSocket 0
+
+# ControlSocket for the BHN monitoring collector (bhn-tor-control-stats.py).
+ControlSocket /var/lib/tor/control
+ControlSocketsGroupWritable 1
+CookieAuthentication 1
+CookieAuthFileGroupReadable 1
 
 ## ─── MyFamily ──────────────────────────────────────────────────────────
 # BHN runs (or plans) five relays — Fornax (Frankfurt EU1), Nebula (NJ US2),
