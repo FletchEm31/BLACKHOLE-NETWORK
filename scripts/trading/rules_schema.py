@@ -81,6 +81,166 @@ _STRATEGY_COMMON = {
 }
 
 
+# Per-strategy operator-controlled execution limits. Layered on top of the
+# strategy's signal-generation config. When a value here disagrees with an
+# equivalent legacy field (e.g. exit.stop_loss_pct), runtime resolution
+# treats execution_limits as authoritative. Schema is shared across all 5
+# strategies — strategy-specific optional fields (max_hold_days,
+# force_close_time, close_before_earnings_days) are allowed everywhere
+# but only meaningful where the strategy actually consumes them.
+_EXECUTION_LIMITS: dict[str, Any] = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "max_position_size": {
+            **_POS_NUM,
+            "description": "Dollar size cap per individual trade",
+        },
+        "daily_loss_limit": {
+            **_POS_NUM,
+            "description": "Dollar loss floor for this strategy per trading day",
+        },
+        "max_trades_per_day": {
+            **_POS_INT,
+            "description": "Strategy-level cap on number of fills per day",
+        },
+        "overnight_hold": {
+            "type": "boolean",
+            "description": "Allow positions to remain open past the regular session close",
+        },
+        "weekend_hold": {
+            "type": "boolean",
+            "description": "Allow positions to remain open across Sat/Sun",
+        },
+        "hold_through_earnings": {
+            "type": "boolean",
+            "description": "Allow positions to remain open through a scheduled earnings release",
+        },
+        "stop_loss_pct": {
+            **_PCT_POS,
+            "description": "Stop loss per position (fractional, 0 < x ≤ 1)",
+        },
+        "profit_target_pct": {
+            **_PCT_POS,
+            "description": "Profit target per position (fractional)",
+        },
+        "max_hold_days": {
+            **_POS_INT,
+            "description": "Calendar-day cap on a single position's hold period. Optional.",
+        },
+        "close_before_earnings_days": {
+            **_POS_INT,
+            "description": ("Force-close positions N days before announced earnings. "
+                            "Optional, intended to pair with hold_through_earnings=false."),
+        },
+        "force_close_time": {
+            "type": "string",
+            "pattern": r"^\d{2}:\d{2}\s+ET$",
+            "description": ("Daily forced-flatten time, format 'HH:MM ET' "
+                            "(e.g. '15:45 ET'). Optional; intraday strategies only."),
+        },
+    },
+}
+
+
+# Per-strategy broker credentials. Each strategy has its OWN dedicated Alpaca
+# paper account (operator policy: blast-radius isolation — a bug in one
+# strategy can't drain another's balance). The string values here are env-var
+# NAMES, not literal keys; runtime resolves them via os.environ. Schema
+# enforces the env-var-name shape (upper-snake_case identifier).
+_STRATEGY_BROKER: dict[str, Any] = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["alpaca_key_id", "alpaca_secret", "alpaca_base_url"],
+    "properties": {
+        "alpaca_key_id": {
+            "type": "string",
+            "pattern": r"^[A-Z][A-Z0-9_]*$",
+            "description": ("Name of the env var that holds this strategy's "
+                            "Alpaca key id (e.g. 'STRAT2_ALPACA_KEY_ID'). "
+                            "NOT the key itself."),
+        },
+        "alpaca_secret": {
+            "type": "string",
+            "pattern": r"^[A-Z][A-Z0-9_]*$",
+            "description": ("Name of the env var that holds this strategy's "
+                            "Alpaca secret (e.g. 'STRAT2_ALPACA_SECRET'). "
+                            "NOT the secret itself."),
+        },
+        "alpaca_base_url": {
+            "type": "string",
+            "enum": [
+                "https://paper-api.alpaca.markets/v2",
+                "https://api.alpaca.markets/v2",
+            ],
+            "description": "Alpaca endpoint — must be the paper or live URL exactly",
+        },
+    },
+}
+# Convention: at runtime, trading_core resolves alpaca_key_id/alpaca_secret
+# by loading /etc/bhn-trading/strat<N>.env first, then reading os.environ.
+# Per-strategy env files isolate blast radius — a leaked key from strat2.env
+# cannot drain strat4's account.
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# System.broker — portfolio-wide controls (NO Alpaca credentials here;
+# those live per-strategy in each strat_N_*.broker subblock).
+# ─────────────────────────────────────────────────────────────────────────
+
+BROKER_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "total_allocation": {
+            **_POS_NUM,
+            "description": "Total dollar capital across all enabled strategies",
+        },
+        "paper_mode": {
+            "type": "boolean",
+            "description": ("Master paper/live gate. When true, runtime ignores any "
+                            "per-strategy live_mode_approved=true and forces paper "
+                            "endpoints. When false, BOTH this flag AND the strategy's "
+                            "live_mode_approved must be true for that strategy to go live."),
+        },
+        "max_portfolio_daily_loss": {
+            **_POS_NUM,
+            "description": "Portfolio-wide dollar floor for the trading day",
+        },
+        "max_portfolio_drawdown": {
+            **_PCT_FRAC,
+            "description": "Portfolio drawdown cap (fractional, 0-1)",
+        },
+        "max_overnight_positions": {
+            **_NON_NEG_INT,
+            "description": "Hard cap on number of positions held past session close",
+        },
+        "premarket_trading": {
+            "type": "boolean",
+            "description": "Allow order execution during pre-market hours",
+        },
+        "afterhours_trading": {
+            "type": "boolean",
+            "description": "Allow order execution during after-hours",
+        },
+        "force_close_if_down_pct": {
+            **_PCT_POS,
+            "description": ("Force-flatten the entire portfolio when intraday P&L "
+                            "drops below this fractional pct of capital"),
+        },
+        "killswitch_on_drawdown": {
+            "type": "boolean",
+            "description": "Auto-fire master_killswitch when killswitch_drawdown_pct breached",
+        },
+        "killswitch_drawdown_pct": {
+            **_PCT_POS,
+            "description": ("Drawdown threshold (fractional) that triggers killswitch "
+                            "when killswitch_on_drawdown=true"),
+        },
+    },
+}
+
+
 # ─────────────────────────────────────────────────────────────────────────
 # System-level schema (circuit breakers, cross-cutting flags)
 # ─────────────────────────────────────────────────────────────────────────
@@ -145,6 +305,7 @@ SYSTEM_SCHEMA: dict[str, Any] = {
                 },
             },
         },
+        "broker": BROKER_SCHEMA,
     },
 }
 
@@ -158,6 +319,8 @@ STRAT_1_CONGRESS_SCHEMA: dict[str, Any] = {
     "additionalProperties": False,
     "properties": {
         **_STRATEGY_COMMON,
+        "execution_limits": _EXECUTION_LIMITS,
+        "broker": _STRATEGY_BROKER,
         "poll_interval_seconds": {**_POS_INT, "description": "Default 900 (15min)"},
         "min_transaction_usd": {
             **_POS_NUM,
@@ -191,6 +354,8 @@ STRAT_2_VALUE_SCHEMA: dict[str, Any] = {
     "additionalProperties": False,
     "properties": {
         **_STRATEGY_COMMON,
+        "execution_limits": _EXECUTION_LIMITS,
+        "broker": _STRATEGY_BROKER,
         "screener_filters": {
             "type": "object",
             "additionalProperties": False,
@@ -236,6 +401,8 @@ STRAT_3_SCALP_SCHEMA: dict[str, Any] = {
     "additionalProperties": False,
     "properties": {
         **_STRATEGY_COMMON,
+        "execution_limits": _EXECUTION_LIMITS,
+        "broker": _STRATEGY_BROKER,
         "bollinger": {
             "type": "object",
             "additionalProperties": False,
@@ -281,6 +448,8 @@ STRAT_4_MOMENTUM_SCHEMA: dict[str, Any] = {
     "additionalProperties": False,
     "properties": {
         **_STRATEGY_COMMON,
+        "execution_limits": _EXECUTION_LIMITS,
+        "broker": _STRATEGY_BROKER,
         "crossover": {
             "type": "object",
             "additionalProperties": False,
@@ -333,6 +502,8 @@ STRAT_5_PRED_MKT_SCHEMA: dict[str, Any] = {
     "additionalProperties": False,
     "properties": {
         **_STRATEGY_COMMON,
+        "execution_limits": _EXECUTION_LIMITS,
+        "broker": _STRATEGY_BROKER,
         "live_execution_enabled": {
             "type": "boolean",
             "description": ("Master switch for the WEATHER side. When false (default), "
@@ -467,8 +638,17 @@ STRATEGY_SCHEMAS: dict[str, dict[str, Any]] = {
 
 EXAMPLE_RULES: dict[str, Any] = {
     "version":    "1.0",
-    "updated_at": "2026-05-12T00:00:00Z",
-    "operator_note": "Initial conservative defaults. All strategies enabled but live_mode_approved=false until per-strategy operator sign-off.",
+    "updated_at": "2026-05-13T00:00:00Z",
+    "operator_note": (
+        "Operator-controlled execution_limits + per-strategy broker isolation. "
+        "Each strategy has its OWN Alpaca paper account (keys in "
+        "/etc/bhn-trading/strat<N>.env on NJ). Initial state: Strats 2/3/4 "
+        "enabled, Strats 1 (Congress) and 5 (Pred-mkt) disabled until their "
+        "API keys land. Strats 1+5 carry PLACEHOLDER execution_limits — review "
+        "before flipping enabled=true. system.broker holds portfolio-wide caps; "
+        "alpaca_base_url is per-strategy (NOT system-wide) so paper/live can "
+        "diverge by strategy if needed."
+    ),
     "system": {
         "halted": False,
         "circuit_breakers": {
@@ -485,10 +665,39 @@ EXAMPLE_RULES: dict[str, Any] = {
         "twilio": {
             "rate_limit_per_hour": 20,
         },
+        "broker": {
+            "total_allocation":         65_000,
+            "paper_mode":               True,
+            "max_portfolio_daily_loss": 2_000,
+            "max_portfolio_drawdown":   0.10,
+            "max_overnight_positions":  3,
+            "premarket_trading":        False,
+            "afterhours_trading":       False,
+            "force_close_if_down_pct":  0.05,
+            "killswitch_on_drawdown":   True,
+            "killswitch_drawdown_pct":  0.10,
+        },
     },
     "strat_1_congress": {
-        "enabled": True,
+        "enabled": False,  # disabled until Quiver API key obtained
         "live_mode_approved": False,
+        "execution_limits": {
+            # PLACEHOLDER values — operator to review before enabling.
+            "max_position_size":     2_000,
+            "daily_loss_limit":      800,
+            "max_trades_per_day":    5,
+            "overnight_hold":        True,
+            "weekend_hold":          True,
+            "hold_through_earnings": True,
+            "max_hold_days":         30,
+            "stop_loss_pct":         0.15,
+            "profit_target_pct":     0.25,
+        },
+        "broker": {
+            "alpaca_key_id":   "STRAT1_ALPACA_KEY_ID",
+            "alpaca_secret":   "STRAT1_ALPACA_SECRET",
+            "alpaca_base_url": "https://paper-api.alpaca.markets/v2",
+        },
         "poll_interval_seconds":    900,
         "min_transaction_usd":      10_000,
         "max_days_after_disclosure": 2,
@@ -499,6 +708,22 @@ EXAMPLE_RULES: dict[str, Any] = {
     "strat_2_value": {
         "enabled": True,
         "live_mode_approved": False,
+        "execution_limits": {
+            "max_position_size":     5_000,
+            "daily_loss_limit":      1_000,
+            "max_trades_per_day":    3,
+            "overnight_hold":        True,
+            "weekend_hold":          True,
+            "hold_through_earnings": True,
+            "max_hold_days":         90,
+            "stop_loss_pct":         0.08,
+            "profit_target_pct":     0.15,
+        },
+        "broker": {
+            "alpaca_key_id":   "STRAT2_ALPACA_KEY_ID",
+            "alpaca_secret":   "STRAT2_ALPACA_SECRET",
+            "alpaca_base_url": "https://paper-api.alpaca.markets/v2",
+        },
         "screener_filters": {
             "pe_max":              15,
             "pb_max":              1.5,
@@ -520,6 +745,22 @@ EXAMPLE_RULES: dict[str, Any] = {
     "strat_3_scalp": {
         "enabled": True,
         "live_mode_approved": False,
+        "execution_limits": {
+            "max_position_size":     2_000,
+            "daily_loss_limit":      500,
+            "max_trades_per_day":    20,
+            "overnight_hold":        False,
+            "weekend_hold":          False,
+            "hold_through_earnings": False,
+            "force_close_time":      "15:45 ET",
+            "stop_loss_pct":         0.01,
+            "profit_target_pct":     0.02,
+        },
+        "broker": {
+            "alpaca_key_id":   "STRAT3_ALPACA_KEY_ID",
+            "alpaca_secret":   "STRAT3_ALPACA_SECRET",
+            "alpaca_base_url": "https://paper-api.alpaca.markets/v2",
+        },
         "bollinger": {
             "period":        20,
             "stddev":        2.0,
@@ -543,6 +784,23 @@ EXAMPLE_RULES: dict[str, Any] = {
     "strat_4_momentum": {
         "enabled": True,
         "live_mode_approved": False,
+        "execution_limits": {
+            "max_position_size":          4_000,
+            "daily_loss_limit":           1_000,
+            "max_trades_per_day":         5,
+            "overnight_hold":             True,
+            "weekend_hold":               True,
+            "hold_through_earnings":      False,
+            "close_before_earnings_days": 2,
+            "max_hold_days":              60,
+            "stop_loss_pct":              0.10,
+            "profit_target_pct":          0.20,
+        },
+        "broker": {
+            "alpaca_key_id":   "STRAT4_ALPACA_KEY_ID",
+            "alpaca_secret":   "STRAT4_ALPACA_SECRET",
+            "alpaca_base_url": "https://paper-api.alpaca.markets/v2",
+        },
         "crossover": {
             "short_period":         50,
             "long_period":          200,
@@ -561,8 +819,25 @@ EXAMPLE_RULES: dict[str, Any] = {
         },
     },
     "strat_5_pred_mkt": {
-        "enabled": True,
+        "enabled": False,  # disabled until Kalshi + Polymarket keys obtained
         "live_mode_approved": False,
+        "execution_limits": {
+            # PLACEHOLDER values — operator to review before enabling.
+            "max_position_size":     2_000,
+            "daily_loss_limit":      500,
+            "max_trades_per_day":    5,
+            "overnight_hold":        True,
+            "weekend_hold":          True,
+            "hold_through_earnings": False,
+            "max_hold_days":         7,
+            "stop_loss_pct":         0.05,
+            "profit_target_pct":     0.05,
+        },
+        "broker": {
+            "alpaca_key_id":   "STRAT5_ALPACA_KEY_ID",
+            "alpaca_secret":   "STRAT5_ALPACA_SECRET",
+            "alpaca_base_url": "https://paper-api.alpaca.markets/v2",
+        },
         "live_execution_enabled": False,
         "macro_events": {
             "odds_move_pct_min":    10.0,
