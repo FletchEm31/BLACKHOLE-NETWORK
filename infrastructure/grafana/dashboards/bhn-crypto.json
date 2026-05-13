@@ -1,0 +1,40 @@
+{
+  "uid": "bhn-crypto",
+  "title": "BHN Crypto Prices",
+  "description": "Top-N crypto by market cap from CoinGecko. 15-min cadence.",
+  "tags": ["bhn", "crypto", "coingecko"],
+  "timezone": "utc",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5m",
+  "time": { "from": "now-7d", "to": "now" },
+  "panels": [
+    {
+      "id": 1, "type": "timeseries", "title": "Price (USD) per symbol",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 0 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "targets": [{ "refId": "A", "format": "time_series",
+        "rawSql": "SELECT measured_at AS time, symbol AS metric, price_usd FROM crypto_market_data WHERE $__timeFilter(measured_at) ORDER BY 1" }],
+      "fieldConfig": { "defaults": { "unit": "currencyUSD" }, "overrides": [] }
+    },
+    {
+      "id": 2, "type": "table", "title": "Latest snapshot (top by market cap)",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 10 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "targets": [{ "refId": "A", "format": "table",
+        "rawSql": "SELECT DISTINCT ON (symbol) rank, symbol, name, price_usd, change_24h_pct, market_cap_usd, volume_24h_usd FROM crypto_market_data ORDER BY symbol, measured_at DESC" }],
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto" } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "price_usd" }, "properties": [ { "id": "unit", "value": "currencyUSD" } ] },
+          { "matcher": { "id": "byName", "options": "market_cap_usd" }, "properties": [ { "id": "unit", "value": "currencyUSD" } ] },
+          { "matcher": { "id": "byName", "options": "change_24h_pct" }, "properties": [
+            { "id": "unit", "value": "percent" },
+            { "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "gradient" } },
+            { "id": "thresholds", "value": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "yellow", "value": -2 }, { "color": "green", "value": 0 } ] } }
+          ]}
+        ]
+      }
+    }
+  ]
+}
