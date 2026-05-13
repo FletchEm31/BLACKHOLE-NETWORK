@@ -2,7 +2,19 @@
 """
 bhn-fred-poller — poll FRED (Federal Reserve Economic Data) series → macro_indicators.
 
-Cron (LA, daily): 0 6 * * * root /usr/local/sbin/bhn-fred-poller.py
+Cron (LA, aligned to FRED release times in ET; safety-poll +1min after each):
+  CRON_TZ=America/New_York
+  0,1  8 * * 1-5  root  /usr/local/sbin/bhn-fred-poller.py   # 08:00 ET release + safety poll
+  0,1 14 * * 1-5  root  /usr/local/sbin/bhn-fred-poller.py   # 14:00 ET release + safety poll
+
+The +1min safety poll catches data that posts 1-2 minutes after the
+official release time (FRED occasionally lags). UPSERT semantics
+(ON CONFLICT (series_id, period_start) DO NOTHING) make the safety
+poll idempotent — no duplicate rows if the 08:00 poll already caught
+the observation.
+
+Deploy via /etc/cron.d/bhn-fred-poller — the CRON_TZ directive at the
+top of the file is honored by Debian/Ubuntu cron (vixie cron 3.0pl1+).
 
 Config /root/.bhn-fred.env (mode 0600):
   BHN_FRED_PG_DSN='postgresql://log_shipper:<PW>@10.8.0.1/eventhorizon'
