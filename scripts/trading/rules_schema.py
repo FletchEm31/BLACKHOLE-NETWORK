@@ -563,6 +563,136 @@ STRAT_5_PRED_MKT_SCHEMA: dict[str, Any] = {
 
 
 # ─────────────────────────────────────────────────────────────────────────
+# Strategy 6: BHN-NASDAQ-LONG (QC Two_2Algorithm port)
+# ─────────────────────────────────────────────────────────────────────────
+
+STRAT_6_NASDAQ_LONG_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        **_STRATEGY_COMMON,
+        "execution_limits": _EXECUTION_LIMITS,
+        "broker": _STRATEGY_BROKER,
+        "lookback_days": {
+            **_POS_INT,
+            "description": "Regression window in trading days. QC default 18.",
+        },
+        "target_holding_fraction": {
+            **_PCT_POS,
+            "description": "Fraction of allocation to deploy per position. QC: 0.99",
+        },
+    },
+}
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Strategy 7: BHN-NASDAQ-SHORT (operator-spec, no QC source)
+# ─────────────────────────────────────────────────────────────────────────
+
+STRAT_7_NASDAQ_SHORT_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        **_STRATEGY_COMMON,
+        "execution_limits": _EXECUTION_LIMITS,
+        "broker": _STRATEGY_BROKER,
+        "lookback_days": {**_POS_INT, "description": "Regression window. Default 18."},
+        "spy_below_ma_days_required": {
+            **_POS_INT,
+            "description": "SPY must be below 200MA for N consecutive days. Default 5.",
+        },
+        "spy_no_break_lookback_days": {
+            **_POS_INT,
+            "description": ("Window for the 'no recent break above 200MA' filter. "
+                            "Default 20."),
+        },
+        "spy_no_break_streak_max": {
+            **_POS_INT,
+            "description": ("Maximum allowed consecutive above-200MA streak within "
+                            "the lookback window. Default 3."),
+        },
+        "position_split": {
+            "type": "object",
+            "additionalProperties": False,
+            "description": "When short fires, fraction of allocation per leg.",
+            "properties": {
+                "short_qqq_pct": {**_PCT_POS, "description": "Default 0.30"},
+                "short_spy_pct": {**_PCT_POS, "description": "Default 0.20"},
+                "jpst_pct":      {**_PCT_POS, "description": "Default 0.50"},
+            },
+        },
+        "requires_margin": {
+            "type": "boolean",
+            "description": "Must be true — short positions need a margin-enabled account",
+        },
+    },
+}
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Strategy 8: BHN-SECTOR-ROTATION (QC TheOmniscientParadox port)
+# ─────────────────────────────────────────────────────────────────────────
+
+STRAT_8_SECTOR_ROTATION_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        **_STRATEGY_COMMON,
+        "execution_limits": _EXECUTION_LIMITS,
+        "broker": _STRATEGY_BROKER,
+        "universe": {
+            "type": "array",
+            "items": _TICKER,
+            "minItems": 2,
+            "maxItems": 20,
+            "uniqueItems": True,
+            "description": ("Universe of ETFs to rotate among. Last ticker is "
+                            "treated as the 'safe' asset (cash equivalent)."),
+        },
+        "roc_periods": {
+            "type": "object",
+            "additionalProperties": False,
+            "description": "Rate-of-change periods. QC defaults: 9 / 21 / 63.",
+            "properties": {
+                "fast": {**_POS_INT, "description": "Default 9"},
+                "med":  {**_POS_INT, "description": "Default 21"},
+                "slow": {**_POS_INT, "description": "Default 63"},
+            },
+        },
+        "score_weights": {
+            "type": "object",
+            "additionalProperties": False,
+            "description": "Weights on fast/med/slow ROC. Must sum to 1.0.",
+            "properties": {
+                "fast": {**_PCT_POS, "description": "Default 0.50"},
+                "med":  {**_PCT_POS, "description": "Default 0.30"},
+                "slow": {**_PCT_POS, "description": "Default 0.20"},
+            },
+        },
+        "target_vol": {
+            **_PCT_POS,
+            "description": "Annualized vol target for sizing. Default 0.80 (80%).",
+        },
+        "confidence_threshold": {
+            **_PCT_FRAC,
+            "description": ("Relative gap required to rotate. Default 0.10 — "
+                            "best_score must exceed current_score × 1.10."),
+        },
+        "drift_rebalance_threshold": {
+            **_PCT_FRAC,
+            "description": ("Don't rebalance unless current weight drifts more "
+                            "than this from target. Default 0.05 (5%)."),
+        },
+        "remainder_fill_threshold": {
+            **_PCT_FRAC,
+            "description": ("Park remainder in safe only if 1 - target_weight "
+                            "exceeds this. Default 0.10 (10%)."),
+        },
+    },
+}
+
+
+# ─────────────────────────────────────────────────────────────────────────
 # Top-level schema
 # ─────────────────────────────────────────────────────────────────────────
 
@@ -580,23 +710,29 @@ SCHEMA: dict[str, Any] = {
             "maxLength": 500,
             "description": "Free-text note describing why this version exists",
         },
-        "system":                  SYSTEM_SCHEMA,
-        "strat_1_congress":        STRAT_1_CONGRESS_SCHEMA,
-        "strat_2_value":           STRAT_2_VALUE_SCHEMA,
-        "strat_3_mean_reversion":  STRAT_3_MEAN_REVERSION_SCHEMA,
-        "strat_4_momentum":        STRAT_4_MOMENTUM_SCHEMA,
-        "strat_5_pred_mkt":        STRAT_5_PRED_MKT_SCHEMA,
+        "system":                    SYSTEM_SCHEMA,
+        "strat_1_congress":          STRAT_1_CONGRESS_SCHEMA,
+        "strat_2_value":             STRAT_2_VALUE_SCHEMA,
+        "strat_3_mean_reversion":    STRAT_3_MEAN_REVERSION_SCHEMA,
+        "strat_4_momentum":          STRAT_4_MOMENTUM_SCHEMA,
+        "strat_5_pred_mkt":          STRAT_5_PRED_MKT_SCHEMA,
+        "strat_6_nasdaq_long":       STRAT_6_NASDAQ_LONG_SCHEMA,
+        "strat_7_nasdaq_short":      STRAT_7_NASDAQ_SHORT_SCHEMA,
+        "strat_8_sector_rotation":   STRAT_8_SECTOR_ROTATION_SCHEMA,
     },
 }
 
 
 # Map strategy id → its schema (for partial validation / mutator workflow)
 STRATEGY_SCHEMAS: dict[str, dict[str, Any]] = {
-    "strat_1_congress":        STRAT_1_CONGRESS_SCHEMA,
-    "strat_2_value":           STRAT_2_VALUE_SCHEMA,
-    "strat_3_mean_reversion":  STRAT_3_MEAN_REVERSION_SCHEMA,
-    "strat_4_momentum":        STRAT_4_MOMENTUM_SCHEMA,
-    "strat_5_pred_mkt":        STRAT_5_PRED_MKT_SCHEMA,
+    "strat_1_congress":          STRAT_1_CONGRESS_SCHEMA,
+    "strat_2_value":             STRAT_2_VALUE_SCHEMA,
+    "strat_3_mean_reversion":    STRAT_3_MEAN_REVERSION_SCHEMA,
+    "strat_4_momentum":          STRAT_4_MOMENTUM_SCHEMA,
+    "strat_5_pred_mkt":          STRAT_5_PRED_MKT_SCHEMA,
+    "strat_6_nasdaq_long":       STRAT_6_NASDAQ_LONG_SCHEMA,
+    "strat_7_nasdaq_short":      STRAT_7_NASDAQ_SHORT_SCHEMA,
+    "strat_8_sector_rotation":   STRAT_8_SECTOR_ROTATION_SCHEMA,
 }
 
 
@@ -855,6 +991,88 @@ EXAMPLE_RULES: dict[str, Any] = {
             "regions_supported":   ["operator-home"],
             "variables_supported": ["precipitation"],
         },
+    },
+    "strat_6_nasdaq_long": {
+        "enabled": False,  # operator: "all three start enabled: false until validated"
+        "live_mode_approved": False,
+        "execution_limits": {
+            "max_position_size":      5_000,   # 100% of $5k allocation; vol-target unused for Strat 6
+            "daily_loss_limit":       400,
+            "max_trades_per_day":     1,
+            "overnight_hold":         True,
+            "weekend_hold":           True,
+            "hold_through_earnings":  True,
+            "max_hold_days":          60,
+            "stop_loss_pct":          0.05,
+            "profit_target_pct":      0.1325,
+        },
+        "broker": {
+            "alpaca_key_id":   "STRAT6_ALPACA_KEY_ID",
+            "alpaca_secret":   "STRAT6_ALPACA_SECRET",
+            "alpaca_base_url": "https://paper-api.alpaca.markets/v2",
+            "account_alias":   "BHN-Paper-Strat6",
+        },
+        "lookback_days": 18,
+        "target_holding_fraction": 0.99,
+    },
+    "strat_7_nasdaq_short": {
+        "enabled": False,  # deploy AFTER long side validated; needs margin
+        "live_mode_approved": False,
+        "execution_limits": {
+            "max_position_size":      5_000,
+            "daily_loss_limit":       400,
+            "max_trades_per_day":     1,
+            "overnight_hold":         True,
+            "weekend_hold":           True,
+            "hold_through_earnings":  True,
+            "max_hold_days":          60,
+            "stop_loss_pct":          0.05,
+            "profit_target_pct":      0.15,
+        },
+        "broker": {
+            "alpaca_key_id":   "STRAT7_ALPACA_KEY_ID",
+            "alpaca_secret":   "STRAT7_ALPACA_SECRET",
+            "alpaca_base_url": "https://paper-api.alpaca.markets/v2",
+            "account_alias":   "BHN-Paper-Strat7",
+        },
+        "lookback_days": 18,
+        "spy_below_ma_days_required": 5,
+        "spy_no_break_lookback_days": 20,
+        "spy_no_break_streak_max": 3,
+        "position_split": {
+            "short_qqq_pct": 0.30,
+            "short_spy_pct": 0.20,
+            "jpst_pct":      0.50,
+        },
+        "requires_margin": True,
+    },
+    "strat_8_sector_rotation": {
+        "enabled": False,  # operator: "all three start enabled: false until validated"
+        "live_mode_approved": False,
+        "execution_limits": {
+            "max_position_size":      5_000,
+            "daily_loss_limit":       400,
+            "max_trades_per_day":     1,
+            "overnight_hold":         True,
+            "weekend_hold":           True,
+            "hold_through_earnings":  True,
+            # No max_hold_days — Strat 8 is signal-driven per operator spec
+            "stop_loss_pct":          0.05,
+            "profit_target_pct":      0.1325,
+        },
+        "broker": {
+            "alpaca_key_id":   "STRAT8_ALPACA_KEY_ID",
+            "alpaca_secret":   "STRAT8_ALPACA_SECRET",
+            "alpaca_base_url": "https://paper-api.alpaca.markets/v2",
+            "account_alias":   "BHN-Paper-Strat8",
+        },
+        "universe": ["SOXL", "TECL", "TQQQ", "FAS", "ERX", "UUP", "TMF", "BIL"],
+        "roc_periods": {"fast": 9, "med": 21, "slow": 63},
+        "score_weights": {"fast": 0.50, "med": 0.30, "slow": 0.20},
+        "target_vol": 0.80,
+        "confidence_threshold": 0.10,
+        "drift_rebalance_threshold": 0.05,
+        "remainder_fill_threshold": 0.10,
     },
 }
 
