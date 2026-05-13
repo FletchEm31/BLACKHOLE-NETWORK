@@ -1,0 +1,41 @@
+# BHN trading — Strat 9 (BHN-WEATHER-ALPHA) data collector.
+# Polls Open-Meteo + ASOS + NOAA CPC + (scaffolded) USDA NASS + NWS + NOMADS,
+# computes degree_days from observations, writes to weather-schema tables.
+#
+# Phase 1 — data collection only. No betting, no strategy logic.
+# Scheduled by bhn-weather-collector.timer (every 6 hours).
+#
+# Deploy:
+#   sudo cp bhn-weather-collector.service /etc/systemd/system/
+#   sudo cp bhn-weather-collector.timer   /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now bhn-weather-collector.timer
+
+[Unit]
+Description=BHN Strat 9 weather data collector (Open-Meteo + ASOS + ENSO + crops)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/bhn/trading
+
+# Trading framework env (PG_HOST/PG_PORT/PG_DB/PG_USER/PG_PASSWORD,
+# plus future USDA_NASS_API_KEY for the crops source when wired)
+EnvironmentFile=/etc/bhn-trading/env
+EnvironmentFile=-/etc/bhn-trading/strat9.env
+
+ExecStart=/usr/bin/python3 /opt/bhn/trading/weather_data_collector.py
+
+StandardOutput=append:/var/log/bhn-trading/weather-collector.log
+StandardError=append:/var/log/bhn-trading/weather-collector.log
+
+# Open-Meteo + ASOS fetch is bandwidth-light but does ~640 forecast inserts
+# per cycle across 10 cities. 5-minute timeout is plenty; if it runs over
+# something is wrong (API down, PG locked, etc.).
+TimeoutStartSec=300
+TimeoutStopSec=30
+
+[Install]
+# Started by the timer; not directly enabled.
