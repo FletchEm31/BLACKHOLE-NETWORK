@@ -2,17 +2,24 @@
 """
 validate_rules.py — Pre-rsync gate for rules.json.
 
-Three layers of validation, in order:
+Four layers of validation, in order:
 
 1. **JSON Schema** (via rules_schema.SCHEMA) — structural correctness.
    Catches typos, wrong types, out-of-physical-bound values. Failure here
-   is a hard error; business-layer checks are skipped because they assume
+   is a hard error; later layers are skipped because they assume
    schema-valid input.
 
 2. **Cross-field invariants** — things JSON Schema can't express within a
    single object. e.g. short_period < long_period, tier_1_edge < tier_2_edge.
    Failure here is a hard error — these are impossible configs that would
    break the strategy at runtime.
+
+2.5. **Operator safe bounds** — tighter than schema's physical bounds.
+   Hard-rejects any value outside the operator's stated risk tolerance
+   for the new execution_limits + system.broker fields, plus cross-strategy
+   invariants (sum of per-strat daily_loss_limit ≤ portfolio cap; paper_mode
+   vs per-strategy alpaca_base_url consistency; enabled strategies must
+   have a populated broker block). Failure here is a hard error.
 
 3. **Business-intent warnings** — "this is technically legal but probably
    not what you wanted." e.g. stop_loss_pct = 0.50 (too wide), bollinger
@@ -228,6 +235,162 @@ def validate_cross_field(rules: dict) -> ValidationResult:
 
 
 # ─────────────────────────────────────────────────────────────────────────
+# Layer 2.5: Operator safe-bound hard rejects
+#
+# These are tighter than the schema's physical bounds — they represent
+# the operator's stated risk tolerance and reject fat-finger config
+# inflation at deploy time. Failure here is a hard error.
+# ─────────────────────────────────────────────────────────────────────────
+
+_PAPER_URL = "https://paper-api.alpaca.markets/v2"
+_LIVE_URL  = "https://api.alpaca.markets/v2"
+
+
+def _error_in_range(result: ValidationResult, value, low, high, name: str, expected: str):
+    """Emit a HARD error if value falls outside [low, high]."""
+    if value is None:
+        return
+    if value < low or value > high:
+        result.error(f"operator-bounds: {name}={value} outside accept range {expected}")
+
+
+def validate_operator_bounds(rules: dict) -> ValidationResult:
+    """Hard-reject any value outside the operator-specified safe range."""
+    result = ValidationResult()
+
+    # ----- system.broker portfolio caps -----
+    broker = _g(rules, "system", "broker") or {}
+    _error_in_range(result, broker.get("total_allocation"),
+                    10_000, 200_000,
+                    "system.broker.total_allocation", "[$10,000, $200,000]")
+    _error_in_range(result, broker.get("max_portfolio_daily_loss"),
+                    100, 10_000,
+                    "system.broker.max_portfolio_daily_loss", "[$100, $10,000]")
+    _error_in_range(result, broker.get("max_portfolio_drawdown"),
+                    0.01, 0.25,
+                    "system.broker.max_portfolio_drawdown", "[0.01, 0.25] (1-25%)")
+    _error_in_range(result, broker.get("max_overnight_positions"),
+                    0, 20,
+                    "system.broker.max_overnight_positions", "[0, 20]")
+    _error_in_range(result, broker.get("force_close_if_down_pct"),
+                    0.01, 0.20,
+                    "system.broker.force_close_if_down_pct", "[0.01, 0.20] (1-20%)")
+    _error_in_range(result, broker.get("killswitch_drawdown_pct"),
+                    0.01, 0.25,
+                    "system.broker.killswitch_drawdown_pct", "[0.01, 0.25] (1-25%)")
+
+    # ----- per-strategy execution_limits bounds -----
+    for sid in rules_schema.STRATEGY_SCHEMAS:
+        block = rules.get(sid) or {}
+        if not isinstance(block, dict):
+            continue
+        el = block.get("execution_limits") or {}
+        if not el:
+            continue
+        prefix = f"{sid}.execution_limits"
+        _error_in_range(result, el.get("max_position_size"),
+                        100, 10_000,
+                        f"{prefix}.max_position_size", "[$100, $10,000]")
+        _error_in_range(result, el.get("daily_loss_limit"),
+                        100, 5_000,
+                        f"{prefix}.daily_loss_limit", "[$100, $5,000]")
+        _error_in_range(result, el.get("max_trades_per_day"),
+                        1, 100,
+                        f"{prefix}.max_trades_per_day", "[1, 100]")
+        _error_in_range(result, el.get("stop_loss_pct"),
+                        0.005, 0.30,
+                        f"{prefix}.stop_loss_pct", "[0.005, 0.30] (0.5-30%)")
+        _error_in_range(result, el.get("profit_target_pct"),
+                        0.005, 0.50,
+                        f"{prefix}.profit_target_pct", "[0.005, 0.50] (0.5-50%)")
+        _error_in_range(result, el.get("max_hold_days"),
+                        1, 365,
+                        f"{prefix}.max_hold_days", "[1, 365]")
+        _error_in_range(result, el.get("close_before_earnings_days"),
+                        1, 30,
+                        f"{prefix}.close_before_earnings_days", "[1, 30]")
+
+    # ----- cross-field: per-strategy daily-loss sum ≤ portfolio cap -----
+    portfolio_cap = broker.get("max_portfolio_daily_loss")
+    if portfolio_cap is not None:
+        strat_total = 0.0
+        for sid in rules_schema.STRATEGY_SCHEMAS:
+            block = rules.get(sid) or {}
+            if not isinstance(block, dict):
+                continue
+            # Only count enabled strategies — disabled ones can't lose money.
+            if block.get("enabled") is not True:
+                continue
+            v = (block.get("execution_limits") or {}).get("daily_loss_limit")
+            if isinstance(v, (int, float)):
+                strat_total += v
+        if strat_total > portfolio_cap:
+            result.error(
+                f"system.broker.max_portfolio_daily_loss=${portfolio_cap} but "
+                f"sum of enabled strategies' daily_loss_limit=${strat_total:g} — "
+                f"strategies can collectively breach the portfolio cap"
+            )
+
+    # ----- cross-field: paper_mode ↔ per-strategy broker URL consistency -----
+    paper_mode = broker.get("paper_mode")
+    if paper_mode is not None:
+        for sid in rules_schema.STRATEGY_SCHEMAS:
+            block = rules.get(sid) or {}
+            if not isinstance(block, dict):
+                continue
+            sb = block.get("broker") or {}
+            base_url = sb.get("alpaca_base_url")
+            if base_url is None:
+                continue
+            if paper_mode is True and base_url == _LIVE_URL:
+                result.error(
+                    f"system.broker.paper_mode=true but {sid}.broker.alpaca_base_url "
+                    f"= live endpoint — contradictory. Paper mode requires every "
+                    f"strategy on the paper endpoint."
+                )
+            if paper_mode is False and base_url == _PAPER_URL:
+                # Only flag enabled strategies — disabled paper URLs are harmless.
+                if block.get("enabled") is True:
+                    result.error(
+                        f"system.broker.paper_mode=false but {sid}.broker.alpaca_base_url "
+                        f"= paper endpoint AND {sid}.enabled=true — strategy is enabled "
+                        f"in live mode but still pointed at paper account."
+                    )
+
+    # ----- cross-field: enabled strategies must have a populated broker block -----
+    for sid in rules_schema.STRATEGY_SCHEMAS:
+        block = rules.get(sid) or {}
+        if not isinstance(block, dict):
+            continue
+        if block.get("enabled") is not True:
+            continue
+        sb = block.get("broker") or {}
+        missing = [k for k in ("alpaca_key_id", "alpaca_secret", "alpaca_base_url")
+                   if not sb.get(k)]
+        if missing:
+            result.error(
+                f"{sid}.enabled=true but broker subblock is missing/empty: {missing}. "
+                f"Enabled strategies must declare their dedicated Alpaca account."
+            )
+
+    # ----- cross-field: paper_mode=true should mean no live_mode_approved=true -----
+    if paper_mode is True:
+        approved = []
+        for sid in rules_schema.STRATEGY_SCHEMAS:
+            block = rules.get(sid) or {}
+            if isinstance(block, dict) and block.get("live_mode_approved") is True:
+                approved.append(sid)
+        if approved:
+            result.error(
+                f"system.broker.paper_mode=true but {len(approved)} strategy(ies) "
+                f"have live_mode_approved=true: {approved}. Either set paper_mode=false "
+                f"to actually go live, or revert the per-strategy approvals to false."
+            )
+
+    return result
+
+
+# ─────────────────────────────────────────────────────────────────────────
 # Layer 3: Business-intent warnings
 # ─────────────────────────────────────────────────────────────────────────
 
@@ -388,6 +551,7 @@ def validate(rules: dict, schema_only: bool = False) -> ValidationResult:
         return result
 
     result.merge(validate_cross_field(rules))
+    result.merge(validate_operator_bounds(rules))
     result.merge(validate_business(rules))
     return result
 
