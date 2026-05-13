@@ -1,6 +1,6 @@
 # Blackhole Network (BHN) — Network Status
 
-Last updated: **2026-05-12**
+Last updated: **2026-05-13**
 
 > **Note:** Project renamed 2026-05-11 from EventHorizon → Blackhole Network. Vultr-side server display names updated to `BHN|VPS-LOSANGELES-US1`, `BHN|VPS-FRANKFURT-EU1`, `BHN|VPS-NEWJERSEY-US2`. Intentionally preserved as live-system identifiers (NOT renamed): n8n credential names (`Postgres EventHorizon`, `EventHorizonVPN-Claude`), Proton Pass entries (`EH-*`), LA-deployed script paths (`/usr/local/sbin/eh-purge`, `/opt/eh-diagnostics/eh-*`), the PostgreSQL database name `eventhorizon`, and the email domain `eventhorizonvpn.com`. LA-side script renames are deferred to a coordinated migration session. The "EventHorizon VPN" name is reserved for the future separate commercial product.
 
@@ -34,7 +34,7 @@ Trading framework (NJ workstream, separate from 5-phase plan)  █████�
 | CrowdSec (linux + sshd + nginx + http-cve collections, cs-firewall-bouncer) | ✅ Active |
 | Suricata IDS | ✅ Active (49,955 rules) |
 | Honeypots | ⛔ Removed 2026-05-08 (low signal, ehuser PG creds in source) |
-| UFW firewall | ✅ Configured. **Outbound default-deny** since 2026-05-08, whitelist: 53/udp+tcp, 123/udp (NTP), 443/tcp (HTTPS — apt mirrors converted to HTTPS, certbot, dnscrypt-proxy DoH, n8n→Anthropic API, CrowdSec central), 587/tcp (SMTP submission), 51821/udp→192.248.187.208 (FRA wg underlay), 10.9.0.0/24 (LA→FRA via tunnel). ICMP egress and outbound SSH intentionally blocked — use `apt`/HTTPS git instead of git+ssh. |
+| UFW firewall | ✅ Configured. **Outbound default-deny** since 2026-05-08, whitelist: 53/udp+tcp, 123/udp (NTP), 443/tcp (HTTPS — apt mirrors converted to HTTPS, certbot, dnscrypt-proxy DoH, n8n→Anthropic API, CrowdSec central), 587/tcp (SMTP submission), per-peer pairs for each WG server peer: 51821/udp→`192.248.187.208` + `10.9.0.0/24` (FRA), 51820/udp→`140.82.4.35` + `10.8.0.5` (NJ, added 2026-05-12), 51821/udp→`5.78.94.237` + `10.8.0.6` (Hillsboro, added 2026-05-13). ICMP egress and outbound SSH intentionally blocked — use `apt`/HTTPS git instead of git+ssh. |
 | **NVMe block storage** (`SSD-LOSANGELES-US1`, 101 GB) | ✅ LUKS2 encrypted, XFS, mounted |
 | **HDD block storage** (`HDD-LOSANGELES-US1`, 399 GB) | ✅ LUKS2 encrypted, XFS, mounted |
 | PostgreSQL 14 | ✅ Running on encrypted NVMe |
@@ -69,7 +69,7 @@ Trading framework (NJ workstream, separate from 5-phase plan)  █████�
 | CVE-2026-31431 (algif_aead "Copy Fail") | 🆗 Mitigated — module blacklisted in 3 `/etc/modprobe.d/` files; persistent across reboot |
 | Exit-routing for operator "full" profile | ⚠️ Applied 2026-05-12 but **BROKEN** — internet dies on full profile after apply. LA-side routing fixed (wg0 with `10.9.0.2 onlink` next-hop, not wg1) but **Frankfurt is missing MASQUERADE rule for `10.8.0.0/24` source** so return path fails. Hub clients reach Frankfurt over the tunnel but Frankfurt's NAT can't rewrite the source IP to its own public IP. Script: `/etc/wireguard/bhn-frankfurt-exit.sh` rollback works; apply re-tested only after FRA-side fix. **Deferred to next session.** |
 | SearXNG (private meta-search, Docker, VPN-only) | ✅ Deployed 2026-05-12 at `http://10.9.0.2:8089` |
-| Tor bridge/relay (non-exit; privacy routing) | 🔨 Planned (Phase 4 backlog) |
+| Tor bridge/relay (non-exit middle relay, `BHNFornaxEU1`, 1 MB/s rate, 1500 GB/month cap) | ✅ Deployed 2026-05-11 at `/opt/bhn-tor-relay/`. Renamed from `BHNFrankfurt` → `BHNFornaxEU1` 2026-05-13 (fingerprint preserved, ~2-min outage during rebuild; original astro-with-hyphen format `BHNFornax-EU1` rejected by Tor — see commit `d47a5d6`). SocksPort `10.9.0.2:9050` available for local SearXNG. MyFamily empty until peer fingerprints exist. |
 | LibreSpeed (EU speed test endpoint) | ✅ Deployed 2026-05-12 at `http://10.9.0.2:8088` |
 
 ### New Jersey — `BHN|VPS-NEWJERSEY-US2` ✅ Operational (trading node)
@@ -87,6 +87,24 @@ Trading framework (NJ workstream, separate from 5-phase plan)  █████�
 | LibreSpeed (US-East speed test endpoint) | 🔨 Planned (Phase 4 backlog) |
 | Tor bridge/relay (non-exit middle relay, BHNNebulaUS2, 512 KB/s + 750 GB/month cap; pairs with FornaxEU1 + HeliosUS3 via MyFamily — see `infrastructure/docs/tor-relay-naming.md`) | 🔨 Planned (Phase 4 backlog) |
 | LUKS2 storage | ⚠️ Not yet — NJ has no persistent sensitive data yet; revisit when trading rules / fill history lands |
+
+### Hillsboro — `BHN-HILLSBORO-US3` ✅ Operational (LA egress proxy + planned Tor relay)
+
+| Component | Status |
+|-----------|--------|
+| IP (public) | `5.78.94.237` (Hetzner Cloud, US-WEST — provider diversity from Vultr) |
+| Tunnel IP | `10.8.0.6` (on LA's `wg0` hub as peer — flat /24, NJ-style, set via `TUNNEL_IP_OVERRIDE=10.8.0.6`) |
+| SSH from LA | ✅ `ssh hillsboro` alias → `root@10.8.0.6:22` (key `/root/.ssh/id_ed25519`, added 2026-05-13) |
+| WireGuard tunnel | ✅ Operational 2026-05-13 — ~27 ms LA↔Hillsboro RTT |
+| WG resolution | Same NJ-style gap (line 83): LA's `deny (outgoing)` default + no rule for Hillsboro = packets dropped at OUTPUT before reaching wg0. Two LA-side UFW egress rules added: `allow out to 5.78.94.237 port 51821 proto udp` + `allow out to 10.8.0.6`. Bootstrap script now emits these as paste-ready in its final summary (commit `27ac0db`) so future nodes don't need this manual fix. |
+| Hardening | ✅ SSH key-only on 22 (Hetzner default kept), UFW + iptables, fail2ban, CrowdSec, Suricata, dnscrypt-proxy (same 6 resolvers as LA: cloudflare, quad9-dnscrypt-ip4-filter-pri, mullvad, adguard, nextdns, digitale-gesellschaft) |
+| Bootstrap quirks | (a) `chattr +i /etc/resolv.conf` fails on Hetzner Cloud — fs doesn't support immutable flag. Made non-fatal in `dnscrypt.sh` (commit `f3cce93`); systemd-resolved + resolvconf disabled so drift shouldn't occur. (b) `TUNNEL_IP_OVERRIDE` env var added (commit `8ac85f4`) to join LA's flat /24 instead of getting a derived /24 — same pattern operator established with NJ. |
+| Nightly diagnostic enrollment | ✅ Added to `/opt/eh-diagnostics/eh-nightly-diagnostic.sh` REMOTE_NODES 2026-05-13 (correction: prior STATUS.md cited `/root/bhn-nightly-diagnostic.sh` but actual path is `eh-` prefix in `/opt/eh-diagnostics/`) |
+| LA pubkey authorized | ✅ LA's `/root/.ssh/id_ed25519.pub` (`root@vultr`) added to Hillsboro's `/root/.ssh/authorized_keys` 2026-05-13 — required for both the `ssh hillsboro` alias AND the nightly diagnostic to authenticate |
+| **tinyproxy (LA egress proxy)** | ✅ Deployed 2026-05-13 at `10.8.0.6:8888`. Binds to WG tunnel only, ACL'd to `10.8.0.0/24`, `DisableViaHeader`, `ConnectPort 443` only. UFW restricts to 10.8.0.0/24. Verified: `curl -x http://10.8.0.6:8888 https://api.ipify.org` from LA returns `5.78.94.237`. Service files at `infrastructure/services/tinyproxy/` (`install.sh` is idempotent). |
+| **Tor relay (BHNHeliosUS3, 512 KB/s, 750 GB cap)** | 🔨 **Blocked on Docker install**. Hetzner ToS for non-exit relays confirmed compatible. Configs staged at `/opt/bhn-tor-relay/`, UFW NOT yet opened on 9001. `docker compose up -d --build` requires Docker, but both install paths (official apt repo + `get.docker.com` convenience script) blocked by Claude Code's auto-classifier ("Code from External soft block"). **Needs operator to run Docker install manually** (e.g. follow Frankfurt's install — `docker-ce` + `docker-compose-plugin` from Docker's official `jammy` apt repo), then `ufw allow 9001/tcp` + `docker compose up -d --build`. |
+| WireGuard PSK | ⏸️ Pending operator-present session — credential handoff requires `saved` confirmation per established protocol (see memory `feedback_credential_handoff`). PSK will be generated in-conversation, applied bilaterally on LA + Hillsboro via `wg set ... preshared-key`, surfaced in banner format when operator returns. |
+| LibreSpeed (US-West speed test endpoint) | 🔨 Planned (Phase 4 backlog) |
 
 ## Data pipeline
 
@@ -116,6 +134,8 @@ Hub `wg0` on LA listens on UDP `51820`. Peers identified below by pubkey (public
 | Label | Device | Pubkey | Tunnel IP | Endpoint (last seen) | Client profile(s) |
 |-------|--------|--------|-----------|---------------------|--------------------|
 | **FRA exit** | `BHN-VPS-FRANKFURT-EU1` | `zkfJNbdL9Ptdxv+fxwV2e1q0mbCR5Z/9T80QanSxKA8=` | `10.9.0.2/32` | `192.248.187.208:51821` | server peer, persistent keepalive 25s |
+| **NJ trading** | `BHN-VPS-NEWJERSEY-US2` | `ylnSJOqwkqrNZwt/saJdqoMG7j3l35hoUk+zejru1Sk=` | `10.8.0.5/32` | `140.82.4.35:51820` | server peer; **no PSK yet** |
+| **Hillsboro egress/proxy** | `BHN-HILLSBORO-US3` | `EwBHwkT4iJXzhJZMvtlo70NOLx+wPv8IXmAGSa89zBg=` | `10.8.0.6/32` | `5.78.94.237:51821` | server peer (tinyproxy + planned Tor relay), persistent keepalive 25s; **no PSK yet** (pending operator-present session) |
 | **FLETCH-DESKTOP** | operator workstation (Windows) | `y+ekkxKZsCn9LERiQ3unZxn2zDjsS1yqbz12limv1kA=` | `10.8.0.4/32` | `68.96.70.83:<dynamic>` | `EH-admin` (split: `10.8.0.0/24, 10.9.0.0/24`) + `EH-full` (full: `0.0.0.0/0, ::/0` + `DNS=10.8.0.1`) |
 | **FLETCH-PHONE** | operator phone (iOS) | `N9Tg0dOEE7GQgE7lG1FgfI+pGSQoIo9+EmSUucnEAVA=` | `10.8.0.2/32` | `68.96.70.83:<dynamic>` | `FLETCH-PHONE-SPLIT` + `FLETCH-PHONE-FULL` (same PSK + privkey across both, only `AllowedIPs` differs) |
 
