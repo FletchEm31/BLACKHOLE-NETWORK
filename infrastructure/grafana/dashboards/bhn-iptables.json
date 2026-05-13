@@ -1,0 +1,34 @@
+{
+  "uid": "bhn-iptables",
+  "title": "BHN iptables Counters",
+  "description": "Per-rule packet/byte counters from iptables. 5-min cadence; deltas computed via LAG().",
+  "tags": ["bhn", "iptables", "firewall"],
+  "timezone": "utc",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5m",
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    {
+      "id": 1, "type": "table", "title": "Top rules by byte delta (last 1h)",
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 0 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "targets": [{ "refId": "A", "format": "table",
+        "rawSql": "WITH bounded AS (SELECT node_name, chain, rule_idx, target, MAX(bytes) - MIN(bytes) AS byte_delta, MAX(packets) - MIN(packets) AS pkt_delta, MAX(rule_spec) AS rule_spec FROM iptables_stats WHERE measured_at > NOW() - INTERVAL '1 hour' GROUP BY node_name, chain, rule_idx, target HAVING MAX(bytes) - MIN(bytes) > 0) SELECT node_name, chain, rule_idx, target, byte_delta, pkt_delta, rule_spec FROM bounded ORDER BY byte_delta DESC LIMIT 30" }],
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto" } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "byte_delta" }, "properties": [ { "id": "unit", "value": "bytes" } ] }
+        ]
+      }
+    },
+    {
+      "id": 2, "type": "timeseries", "title": "Drop counter delta per node (DROP+REJECT targets, all chains)",
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 12 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "targets": [{ "refId": "A", "format": "time_series",
+        "rawSql": "WITH per_rule AS (SELECT node_name, chain, rule_idx, measured_at, packets, LAG(packets) OVER (PARTITION BY node_name, chain, rule_idx ORDER BY measured_at) AS prev_pkts FROM iptables_stats WHERE target IN ('DROP','REJECT','ufw-reject-input','ufw-reject-forward')) SELECT $__timeGroupAlias(measured_at, '5m') AS time, node_name AS metric, SUM(GREATEST(packets - COALESCE(prev_pkts, packets), 0)) AS drops FROM per_rule WHERE $__timeFilter(measured_at) GROUP BY 1, node_name ORDER BY 1" }],
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "bars" } }, "overrides": [] }
+    }
+  ]
+}
