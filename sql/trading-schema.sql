@@ -372,6 +372,21 @@ VALUES
      15000.00, 'active', false, 600,
      'Polls every 10 min during market hours, hourly off-hours. Sector mapping in rules.json. Buy within 30 min of signal. $2k per signal. 48h hold, 5% TP, 3% SL. Max 3 simultaneous positions.'),
 
+    ('strat_6_nasdaq_long', 'NASDAQ Long (Two_2Algorithm port)',
+     'Weekly regression of QLD/PSQ/QID against SQQQ. If QLD leads → 99% QLD; else → 99% JPST. QC source: Two_2Algorithm.',
+     5000.00, 'active', false, NULL,
+     'Weekly Monday rebalance (10min after open) + daily risk check. 5% trailing stop, 13.25% profit target, 60d max hold. Dedicated Alpaca paper account (BHN-Paper-Strat6, keys in /etc/bhn-trading/strat6.env). Enabled=false in rules.json until operator validates.'),
+
+    ('strat_7_nasdaq_short', 'NASDAQ Short (operator-spec hedge)',
+     'Short complement to Strat 6. Fires when PSQ/QID leads, SPY < 200MA for 5+ consecutive days, no 3-day above-200MA streak in last 20d. 30% short QQQ + 20% short SPY + 50% JPST.',
+     5000.00, 'active', false, NULL,
+     'Requires margin-enabled Alpaca account. Deploy AFTER Strat 6 validated. 5% trailing stop, 15% profit target, 60d max hold. BHN-Paper-Strat7, keys in /etc/bhn-trading/strat7.env. Enabled=false at start.'),
+
+    ('strat_8_sector_rotation', 'Sector Rotation (TheOmniscientParadox port)',
+     'Daily rotation across SOXL/TECL/TQQQ/FAS/ERX/UUP/TMF/BIL. Weighted ROC (50/30/20 on 9d/21d/63d) divided by 21d vol; trend + RSI penalty; vol-targeted sizing to 80% annualized. Rotation threshold 10% relative.',
+     5000.00, 'active', false, NULL,
+     'Daily rebalance 5min before close. 5% trailing stop, 13.25% profit target, NO max-hold (signal-driven). BHN-Paper-Strat8, keys in /etc/bhn-trading/strat8.env. Enabled=false until operator validates.'),
+
     ('system',            'System (virtual)',
      'Not a real strategy. Used by master_killswitch.py to halt all trading at once. Every real strategy_should_run() checks this row first.',
      0.00, 'active', false, NULL,
