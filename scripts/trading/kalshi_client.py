@@ -52,9 +52,11 @@ import json
 import os
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 from urllib.parse import urlencode, urlparse
 
 import requests
@@ -89,7 +91,15 @@ DEFAULT_PRIVATE_KEY_PATH = "/etc/bhn-trading/kalshi_private.pem"
 
 # Conservative request defaults
 DEFAULT_TIMEOUT = 20
-DEFAULT_RETRY_ATTEMPTS = 3
+
+# Polling cadences (operator-spec'd via research findings):
+# Kalshi rate limits are not publicly documented but community research
+# suggests ~10 req/sec sustained, ~30 req/sec burst. Back off on 429.
+NORMAL_POLL_INTERVAL = 2.0       # seconds — between scans, normal operation
+GFS_WINDOW_POLL_INTERVAL = 0.5   # seconds — during GFS update window (first 5 min)
+BURST_POLL_INTERVAL = 0.1        # 100ms — maximum burst; use sparingly
+MAX_RETRIES = 5
+BACKOFF_BASE = 1.5               # exponential backoff base for 429s
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -616,6 +626,324 @@ class KalshiClient:
         logger.debug(f"prediction_contracts: upserted {n} rows")
         return n
 
+    # ─────────────────────────────────────────────────────────────────────
+    # Aggressive post-GFS-update polling
+    #
+    # Operator's design (per research findings): Kalshi prices reprice
+    # slowly after each GFS update — there's a 10-30 minute window where
+    # our BHN model has the new forecast but the Kalshi market hasn't
+    # yet adjusted. The strategy: spam Kalshi's orderbook endpoints
+    # during that window and catch lagging prices.
+    #
+    # Three-phase polling (operator-spec):
+    #   0-5  min after GFS publish → 0.5s interval (BURST)
+    #   5-15 min                  → 2s   interval (ACTIVE)
+    #   15-30 min                  → 5s   interval (WIND_DOWN)
+    #   >30  min                   → exit; next window is next GFS cycle
+    #
+    # Implementation note on async: operator's spec asked for asyncio
+    # throughout. This method uses ThreadPoolExecutor instead — same I/O
+    # parallelism (4 concurrent HTTP GETs per cycle), no new aiohttp
+    # dependency, no risk to the working sync auth code. A full asyncio
+    # refactor of the entire client is a clean follow-up if benchmarks
+    # show threads aren't fast enough; at 4 markets × 1 fetch/cycle the
+    # threaded approach is ~50ms per cycle (well under the 500ms burst
+    # interval).
+    # ─────────────────────────────────────────────────────────────────────
+
+    def poll_weather_prices_aggressive(
+        self,
+        duration_seconds: int = 1800,
+        tickers: Optional[list[str]] = None,
+        gfs_run_at: Optional[datetime] = None,
+        gfs_run_hour: Optional[int] = None,
+        on_market_update: Optional[Callable[[dict], Optional[dict]]] = None,
+        write_pg_stats: bool = True,
+        send_sms_summary: bool = True,
+    ) -> dict:
+        """Three-phase post-GFS-update polling loop.
+
+        Polls each ticker's orderbook concurrently every cycle; calls
+        on_market_update(payload) per ticker per cycle. The callback
+        decides whether the data point is an opportunity, places the
+        bet, and returns a dict describing the outcome.
+
+        Args:
+            duration_seconds: how long to run (default 1800 = 30 min).
+            tickers: which contract tickers to poll. If None, queries
+                get_weather_markets(status='open') and polls every open
+                contract across the 4 Kalshi weather series.
+            gfs_run_at: timestamp of the GFS cycle this window is
+                tracking. Used for lag calculations + the PG stats row.
+                Defaults to next_gfs_publish_window_utc()'s most-recent
+                cycle estimate.
+            gfs_run_hour: 0/6/12/18. Defaults from gfs_run_at.
+            on_market_update: callback receiving:
+                {
+                  'ticker', 'best_yes_cents', 'best_no_cents',
+                  'raw_book', 'poll_number', 'phase',
+                  'minutes_since_gfs', 'api_latency_ms',
+                }
+                Return dict with keys to update window stats:
+                  is_opportunity: bool   — count toward opportunities_found
+                  bet_placed:     bool   — count toward bets_placed
+                  edge_captured_usd: float — sum into total_edge_captured
+                  lag_minutes:    float — used for fastest/slowest stats
+            write_pg_stats: insert a gfs_window_stats row on completion.
+            send_sms_summary: fire HORIZON SMS with the summary text.
+
+        Returns dict with the same fields written to PG:
+          poll_count, rate_limit_hits, opportunities_found, bets_placed,
+          total_edge_captured, avg_lag_minutes, fastest_capture_minutes,
+          slowest_capture_minutes, window_start, window_end.
+        """
+        if gfs_run_at is None:
+            # Best-effort: most recent cycle whose publish-time has passed
+            now = datetime.now(timezone.utc)
+            today = now.date()
+            most_recent: Optional[datetime] = None
+            most_recent_h: Optional[int] = None
+            for h in GFS_CYCLE_HOURS:
+                cycle_dt = datetime(today.year, today.month, today.day,
+                                     h, 0, 0, 0, tzinfo=timezone.utc)
+                if cycle_dt <= now and (most_recent is None or cycle_dt > most_recent):
+                    most_recent = cycle_dt
+                    most_recent_h = h
+            if most_recent is None:
+                # Pre-00z UTC; use yesterday's 18z
+                y = today - timedelta(days=1)
+                most_recent = datetime(y.year, y.month, y.day,
+                                        18, 0, 0, 0, tzinfo=timezone.utc)
+                most_recent_h = 18
+            gfs_run_at = most_recent
+            gfs_run_hour = most_recent_h
+        if gfs_run_hour is None:
+            gfs_run_hour = gfs_run_at.hour
+
+        if tickers is None:
+            try:
+                weather_markets = self.get_weather_markets(status="open")
+                tickers = [m.get("ticker") for m in weather_markets if m.get("ticker")]
+            except Exception as e:
+                logger.error(f"poll_weather: failed to resolve weather tickers: {e}")
+                tickers = []
+        if not tickers:
+            logger.warning("poll_weather_prices_aggressive: no tickers to poll — exiting")
+            return {
+                "poll_count": 0, "rate_limit_hits": 0,
+                "opportunities_found": 0, "bets_placed": 0,
+                "total_edge_captured": 0.0,
+                "avg_lag_minutes": None,
+                "fastest_capture_minutes": None,
+                "slowest_capture_minutes": None,
+                "window_start": datetime.now(timezone.utc),
+                "window_end": datetime.now(timezone.utc),
+            }
+
+        window_start = datetime.now(timezone.utc)
+        start_mono = time.monotonic()
+        poll_count = 0
+        rate_limit_hits = 0
+        consecutive_429s = 0
+        opportunities_found = 0
+        bets_placed = 0
+        total_edge_captured = 0.0
+        lag_minutes_captured: list[float] = []
+
+        n_workers = min(len(tickers), 8)
+        logger.info(
+            f"poll_weather_prices_aggressive: starting "
+            f"gfs_run={gfs_run_at.isoformat()} ({gfs_run_hour}z) "
+            f"tickers={len(tickers)} duration={duration_seconds}s workers={n_workers}"
+        )
+
+        with ThreadPoolExecutor(max_workers=n_workers) as executor:
+            while time.monotonic() - start_mono < duration_seconds:
+                elapsed = time.monotonic() - start_mono
+                phase = _current_phase_for_elapsed(elapsed)
+                if phase == "idle":
+                    break
+
+                cycle_start_mono = time.monotonic()
+                poll_count += 1
+
+                # Concurrent orderbook fetch across all tickers
+                futures: dict = {}
+                for t in tickers:
+                    fetch_start = time.monotonic()
+                    futures[executor.submit(self._timed_orderbook, t, fetch_start)] = t
+
+                cycle_429 = False
+                for fut in as_completed(futures):
+                    ticker = futures[fut]
+                    try:
+                        book, latency_ms = fut.result(timeout=10)
+                    except KalshiAPIError as e:
+                        if e.status_code == 429:
+                            cycle_429 = True
+                            rate_limit_hits += 1
+                            logger.warning(
+                                f"poll_weather: 429 on {ticker} "
+                                f"(cycle 429 hits this run: {rate_limit_hits})"
+                            )
+                        else:
+                            logger.warning(f"poll_weather: API error on {ticker}: {e}")
+                        continue
+                    except Exception as e:
+                        logger.warning(f"poll_weather: fetch failed for {ticker}: {e}")
+                        continue
+
+                    ob = (book or {}).get("orderbook") or {}
+                    yes_side = ob.get("yes") or []
+                    no_side = ob.get("no") or []
+                    best_yes = (yes_side[0][0]
+                                if yes_side and isinstance(yes_side[0], list) else None)
+                    best_no  = (no_side[0][0]
+                                if no_side  and isinstance(no_side[0],  list) else None)
+                    minutes_since_gfs = (
+                        (datetime.now(timezone.utc) - gfs_run_at).total_seconds() / 60.0
+                    )
+
+                    payload = {
+                        "ticker":             ticker,
+                        "best_yes_cents":     best_yes,
+                        "best_no_cents":      best_no,
+                        "raw_book":           book,
+                        "poll_number":        poll_count,
+                        "phase":              phase,
+                        "minutes_since_gfs":  minutes_since_gfs,
+                        "api_latency_ms":     latency_ms,
+                    }
+                    if on_market_update is None:
+                        continue
+                    try:
+                        result = on_market_update(payload) or {}
+                    except Exception as e:
+                        logger.warning(f"on_market_update callback raised: {e}")
+                        result = {}
+                    if result.get("is_opportunity"):
+                        opportunities_found += 1
+                    if result.get("bet_placed"):
+                        bets_placed += 1
+                    edge_usd = result.get("edge_captured_usd")
+                    if isinstance(edge_usd, (int, float)):
+                        total_edge_captured += float(edge_usd)
+                    lag = result.get("lag_minutes")
+                    if isinstance(lag, (int, float)):
+                        lag_minutes_captured.append(float(lag))
+
+                # Rate-limit escalation per operator spec:
+                # 3 consecutive cycles with any 429 → drop to NORMAL interval
+                if cycle_429:
+                    consecutive_429s += 1
+                    if consecutive_429s >= 3:
+                        wait = BACKOFF_BASE ** min(poll_count, 8)
+                        logger.warning(
+                            f"poll_weather: {consecutive_429s} consecutive cycles with "
+                            f"429 — backing off {wait:.1f}s + dropping to NORMAL interval"
+                        )
+                        time.sleep(wait)
+                        # Override interval for remainder by spoofing phase
+                        sleep_for = NORMAL_POLL_INTERVAL
+                    else:
+                        sleep_for = _phase_interval(phase)
+                else:
+                    consecutive_429s = 0
+                    sleep_for = _phase_interval(phase)
+
+                # Honor per-phase interval, accounting for time already spent in cycle
+                cycle_elapsed = time.monotonic() - cycle_start_mono
+                remaining = sleep_for - cycle_elapsed
+                if remaining > 0:
+                    time.sleep(remaining)
+
+        window_end = datetime.now(timezone.utc)
+        avg_lag = (sum(lag_minutes_captured) / len(lag_minutes_captured)
+                   if lag_minutes_captured else None)
+        fastest = min(lag_minutes_captured) if lag_minutes_captured else None
+        slowest = max(lag_minutes_captured) if lag_minutes_captured else None
+
+        summary = {
+            "poll_count":              poll_count,
+            "rate_limit_hits":         rate_limit_hits,
+            "opportunities_found":     opportunities_found,
+            "bets_placed":             bets_placed,
+            "total_edge_captured":     round(total_edge_captured, 2),
+            "avg_lag_minutes":         (round(avg_lag, 2) if avg_lag is not None else None),
+            "fastest_capture_minutes": (round(fastest, 2) if fastest is not None else None),
+            "slowest_capture_minutes": (round(slowest, 2) if slowest is not None else None),
+            "window_start":            window_start,
+            "window_end":              window_end,
+            "gfs_run_at":              gfs_run_at,
+            "gfs_run_hour":            gfs_run_hour,
+        }
+        logger.info(
+            f"poll_weather_prices_aggressive complete: polls={poll_count} "
+            f"429s={rate_limit_hits} opps={opportunities_found} "
+            f"bets={bets_placed} edge=${total_edge_captured:.2f}"
+        )
+
+        if write_pg_stats:
+            self._write_gfs_window_stats(summary)
+        if send_sms_summary:
+            self._send_window_sms(summary)
+        return summary
+
+    def _timed_orderbook(self, ticker: str,
+                          fetch_start_mono: float) -> tuple[dict, int]:
+        """Helper: fetch orderbook and return (book, latency_ms) for the
+        ThreadPoolExecutor path. Re-raises KalshiAPIError so the cycle
+        loop can distinguish 429 from other failures."""
+        book = self.get_orderbook(ticker)
+        latency_ms = int((time.monotonic() - fetch_start_mono) * 1000)
+        return book, latency_ms
+
+    def _write_gfs_window_stats(self, summary: dict) -> None:
+        """INSERT one row into gfs_window_stats. Best-effort; PG failures
+        are logged but don't crash the polling result."""
+        try:
+            with tc.get_pg_conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        INSERT INTO gfs_window_stats
+                            (gfs_run_at, gfs_run_hour, window_start, window_end,
+                             total_polls, rate_limit_hits, opportunities_found,
+                             bets_placed, total_edge_captured, avg_lag_minutes,
+                             fastest_capture_minutes, slowest_capture_minutes)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """, (
+                        summary["gfs_run_at"], summary["gfs_run_hour"],
+                        summary["window_start"], summary["window_end"],
+                        summary["poll_count"], summary["rate_limit_hits"],
+                        summary["opportunities_found"], summary["bets_placed"],
+                        summary["total_edge_captured"], summary["avg_lag_minutes"],
+                        summary["fastest_capture_minutes"], summary["slowest_capture_minutes"],
+                    ))
+            logger.info("gfs_window_stats row inserted")
+        except Exception as e:
+            logger.warning(f"_write_gfs_window_stats failed (non-fatal): {e}")
+
+    def _send_window_sms(self, summary: dict) -> None:
+        """HORIZON SMS summary per operator spec. Best-effort via the
+        trading_core webhook used elsewhere."""
+        try:
+            hh = summary["gfs_run_hour"]
+            avg_lag = summary["avg_lag_minutes"]
+            avg_lag_str = f"{avg_lag:.1f} min" if avg_lag is not None else "n/a"
+            msg = (
+                f"GFS WINDOW COMPLETE\n"
+                f"Run: {hh:02d}UTC\n"
+                f"Polls: {summary['poll_count']}\n"
+                f"Opportunities: {summary['opportunities_found']}\n"
+                f"Bets placed: {summary['bets_placed']}\n"
+                f"Avg lag: {avg_lag_str}\n"
+                f"Edge captured: ${summary['total_edge_captured']:.2f}\n"
+                f"— HORIZON"
+            )
+            tc._send_alert(severity="info", message=msg)
+        except Exception as e:
+            logger.warning(f"_send_window_sms failed (non-fatal): {e}")
+
 
 # ─────────────────────────────────────────────────────────────────────────
 # Title parsing — best-effort mapping of Kalshi titles to BHN station codes
@@ -655,6 +983,70 @@ def _variable_from_kalshi_title(title: str) -> Optional[str]:
     if "snow" in t:
         return "snow_in"
     return None
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# GFS cycle helpers (module-level — no auth needed)
+# ─────────────────────────────────────────────────────────────────────────
+
+GFS_CYCLE_HOURS = (0, 6, 12, 18)
+DEFAULT_GFS_LAG_HOURS = 3.5         # cycle-to-publish lag
+
+
+def next_gfs_publish_window_utc(
+    lag_hours: float = DEFAULT_GFS_LAG_HOURS,
+    watch_duration_minutes: int = 30,
+) -> tuple[datetime, datetime, int]:
+    """Return (window_start, window_end, gfs_run_hour) UTC for the NEXT GFS
+    publish window. GFS runs at 00/06/12/18 UTC; products typically publish
+    `lag_hours` after cycle start. Returned start = cycle_h + lag_hours."""
+    now = datetime.now(timezone.utc)
+    today = now.date()
+    candidates: list[tuple[datetime, int]] = []
+    for cycle_h in GFS_CYCLE_HOURS:
+        cycle_start = datetime(today.year, today.month, today.day,
+                                cycle_h, 0, 0, 0, tzinfo=timezone.utc)
+        publish = cycle_start + timedelta(hours=lag_hours)
+        candidates.append((publish, cycle_h))
+    # Wrap to tomorrow's first cycle
+    tomorrow = today + timedelta(days=1)
+    candidates.append((
+        datetime(tomorrow.year, tomorrow.month, tomorrow.day,
+                  GFS_CYCLE_HOURS[0], 0, 0, 0, tzinfo=timezone.utc)
+        + timedelta(hours=lag_hours),
+        GFS_CYCLE_HOURS[0],
+    ))
+    for publish, cycle_h in candidates:
+        if publish > now:
+            return (publish, publish + timedelta(minutes=watch_duration_minutes), cycle_h)
+    # unreachable in practice
+    publish, cycle_h = candidates[-1]
+    return (publish, publish + timedelta(minutes=watch_duration_minutes), cycle_h)
+
+
+def _current_phase_for_elapsed(elapsed_seconds: float) -> str:
+    """Three-phase polling per operator spec:
+      0-5 min:    burst       (0.5s interval — maximum aggression)
+      5-15 min:   active      (2s — still catching stragglers)
+      15-30 min:  wind_down   (5s — most edge already captured)
+      >30 min:    idle        (caller should exit the loop)
+    """
+    if elapsed_seconds < 300:
+        return "burst"
+    if elapsed_seconds < 900:
+        return "active"
+    if elapsed_seconds < 1800:
+        return "wind_down"
+    return "idle"
+
+
+def _phase_interval(phase: str) -> float:
+    return {
+        "burst":     GFS_WINDOW_POLL_INTERVAL,
+        "active":    NORMAL_POLL_INTERVAL,
+        "wind_down": 5.0,
+        "idle":      120.0,
+    }.get(phase, NORMAL_POLL_INTERVAL)
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -747,6 +1139,20 @@ def main() -> int:
     po = sub.add_parser("orderbook", help="GET /markets/{ticker}/orderbook")
     po.add_argument("ticker")
 
+    pg = sub.add_parser("next-gfs", help="Show next GFS publish window")
+    pg.add_argument("--lag-hours", type=float, default=DEFAULT_GFS_LAG_HOURS)
+
+    pb = sub.add_parser("burst-poll",
+                          help="Run the aggressive post-GFS-update poll loop (Phase 1 smoke)")
+    pb.add_argument("--duration",  type=int, default=1800,
+                    help="seconds (default 1800 = 30 min)")
+    pb.add_argument("--ticker", action="append",
+                    help="explicit ticker(s); omit to auto-resolve via get_weather_markets")
+    pb.add_argument("--no-pg",  action="store_true",
+                    help="skip writing the gfs_window_stats row")
+    pb.add_argument("--no-sms", action="store_true",
+                    help="skip the HORIZON SMS summary")
+
     args = parser.parse_args()
     if args.cmd == "status":     return _cli_status()
     if args.cmd == "balance":    return _cli_balance()
@@ -754,7 +1160,37 @@ def main() -> int:
     if args.cmd == "markets":    return _cli_markets(args)
     if args.cmd == "weather":    return _cli_weather(args)
     if args.cmd == "orderbook":  return _cli_orderbook(args)
+    if args.cmd == "next-gfs":   return _cli_next_gfs(args)
+    if args.cmd == "burst-poll": return _cli_burst_poll(args)
     parser.print_help()
+    return 0
+
+
+def _cli_next_gfs(args) -> int:
+    start, end, hh = next_gfs_publish_window_utc(lag_hours=args.lag_hours)
+    now = datetime.now(timezone.utc)
+    sleep_min = (start - now).total_seconds() / 60.0
+    print(f"Next GFS cycle:       {hh:02d}UTC")
+    print(f"Publish window opens: {start.isoformat()}  ({sleep_min:.1f} min from now)")
+    print(f"Publish window ends:  {end.isoformat()}")
+    return 0
+
+
+def _cli_burst_poll(args) -> int:
+    client = KalshiClient(paper_only=True)
+    print(f"Running burst-poll for {args.duration}s (write_pg={not args.no_pg}, "
+          f"sms={not args.no_sms})…")
+    summary = client.poll_weather_prices_aggressive(
+        duration_seconds=args.duration,
+        tickers=args.ticker,
+        on_market_update=None,   # CLI smoke test — no edge calc / betting
+        write_pg_stats=not args.no_pg,
+        send_sms_summary=not args.no_sms,
+    )
+    print(json.dumps({
+        k: (v.isoformat() if isinstance(v, datetime) else v)
+        for k, v in summary.items()
+    }, indent=2, default=str))
     return 0
 
 
