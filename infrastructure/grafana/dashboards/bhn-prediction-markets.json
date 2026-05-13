@@ -1,0 +1,28 @@
+{
+  "uid": "bhn-prediction-markets",
+  "title": "BHN Prediction Markets",
+  "description": "Kalshi + Polymarket top markets. 10-min cadence.",
+  "tags": ["bhn", "prediction-market", "kalshi", "polymarket"],
+  "timezone": "utc",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10m",
+  "time": { "from": "now-7d", "to": "now" },
+  "panels": [
+    {
+      "id": 1, "type": "table", "title": "Top markets by volume (latest snapshot, both venues)",
+      "gridPos": { "h": 14, "w": 24, "x": 0, "y": 0 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "targets": [{ "refId": "A", "format": "table",
+        "rawSql": "WITH latest AS (SELECT venue, MAX(measured_at) AS m FROM prediction_market_data GROUP BY venue) SELECT p.venue, p.market_title, p.outcome, p.price, p.volume_24h, p.liquidity FROM prediction_market_data p JOIN latest l USING (venue) WHERE p.measured_at = l.m ORDER BY p.volume_24h DESC NULLS LAST LIMIT 50" }],
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto" } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "price" }, "properties": [ { "id": "unit", "value": "percentunit" }, { "id": "decimals", "value": 3 } ] },
+          { "matcher": { "id": "byName", "options": "volume_24h" }, "properties": [ { "id": "unit", "value": "currencyUSD" } ] },
+          { "matcher": { "id": "byName", "options": "liquidity" }, "properties": [ { "id": "unit", "value": "currencyUSD" } ] }
+        ]
+      }
+    }
+  ]
+}
