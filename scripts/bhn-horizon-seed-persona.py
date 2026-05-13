@@ -124,7 +124,7 @@ SEED = [
     },
     {
         "memory_type": "project_context",
-        "title": "EH VPN network architecture (as of 2026-05-09)",
+        "title": "BHN network architecture (as of 2026-05-09)",
         "importance": 8,
         "tags": ["network", "architecture", "infrastructure"],
         "content": (
