@@ -1,0 +1,37 @@
+{
+  "uid": "bhn-container-stats",
+  "title": "BHN Container Stats",
+  "description": "Per-Docker-container CPU/memory/network from docker stats. 5-min cadence.",
+  "tags": ["bhn", "docker", "containers"],
+  "timezone": "utc",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5m",
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    {
+      "id": 1, "type": "timeseries", "title": "CPU% per container",
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "targets": [{ "refId": "A", "format": "time_series",
+        "rawSql": "SELECT measured_at AS time, node_name || '/' || container_name AS metric, cpu_pct FROM container_stats WHERE $__timeFilter(measured_at) ORDER BY 1" }],
+      "fieldConfig": { "defaults": { "unit": "percent", "custom": { "lineWidth": 2, "fillOpacity": 5 } }, "overrides": [] }
+    },
+    {
+      "id": 2, "type": "timeseries", "title": "Memory% per container",
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "targets": [{ "refId": "A", "format": "time_series",
+        "rawSql": "SELECT measured_at AS time, node_name || '/' || container_name AS metric, mem_pct FROM container_stats WHERE $__timeFilter(measured_at) ORDER BY 1" }],
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "custom": { "lineWidth": 2, "fillOpacity": 5 } }, "overrides": [] }
+    },
+    {
+      "id": 3, "type": "table", "title": "Current per-container snapshot",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 9 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "targets": [{ "refId": "A", "format": "table",
+        "rawSql": "SELECT DISTINCT ON (node_name, container_name) node_name, container_name, image, cpu_pct, mem_used_mb, mem_limit_mb, mem_pct, pids, measured_at FROM container_stats ORDER BY node_name, container_name, measured_at DESC" }],
+      "options": { "showHeader": true }
+    }
+  ]
+}
