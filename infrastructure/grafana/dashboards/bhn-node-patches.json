@@ -1,0 +1,43 @@
+{
+  "uid": "bhn-node-patches",
+  "title": "BHN Node Patch Status",
+  "description": "Pending apt updates per node + reboot-required flags. Daily snapshot via bhn-patch-collector.sh.",
+  "tags": ["bhn", "patching", "security"],
+  "timezone": "utc",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "1h",
+  "time": { "from": "now-30d", "to": "now" },
+  "panels": [
+    {
+      "id": 1, "type": "table", "title": "Current patch state per node",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 0 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "targets": [{ "refId": "A", "format": "table",
+        "rawSql": "SELECT DISTINCT ON (node_name) node_name, pending_total, pending_security, reboot_required, measured_at AS last_check FROM node_patch_status ORDER BY node_name, measured_at DESC" }],
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto" } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "pending_security" },
+            "properties": [
+              { "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "gradient" } },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 5 } ]}}
+            ]},
+          { "matcher": { "id": "byName", "options": "reboot_required" },
+            "properties": [ { "id": "mappings", "value": [
+              { "type": "value", "options": { "true":  { "color": "red",   "index": 0 }}},
+              { "type": "value", "options": { "false": { "color": "green", "index": 1 }}}
+            ] }, { "id": "custom.cellOptions", "value": { "type": "color-text" } } ] }
+        ]
+      }
+    },
+    {
+      "id": 2, "type": "timeseries", "title": "Pending security updates over time",
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 8 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "targets": [{ "refId": "A", "format": "time_series",
+        "rawSql": "SELECT measured_at AS time, node_name AS metric, pending_security FROM node_patch_status WHERE $__timeFilter(measured_at) ORDER BY 1" }],
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "bars", "lineWidth": 1 } }, "overrides": [] }
+    }
+  ]
+}
