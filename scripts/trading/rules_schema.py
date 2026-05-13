@@ -28,7 +28,7 @@ The top-level structure mirrors trading_strategies row ids:
     "system":           {...},
     "strat_1_congress": {...},
     "strat_2_value":    {...},
-    "strat_3_scalp":    {...},
+    "strat_3_mean_reversion": {...},
     "strat_4_momentum": {...},
     "strat_5_pred_mkt": {...}
   }
@@ -151,7 +151,6 @@ _EXECUTION_LIMITS: dict[str, Any] = {
 _STRATEGY_BROKER: dict[str, Any] = {
     "type": "object",
     "additionalProperties": False,
-    "required": ["alpaca_key_id", "alpaca_secret", "alpaca_base_url"],
     "properties": {
         "alpaca_key_id": {
             "type": "string",
@@ -175,7 +174,16 @@ _STRATEGY_BROKER: dict[str, Any] = {
             ],
             "description": "Alpaca endpoint — must be the paper or live URL exactly",
         },
+        "account_alias": {
+            "type": "string",
+            "pattern": r"^BHN-Paper-Strat[1-5]$",
+            "description": ("Human-readable alias for the dedicated Alpaca paper "
+                            "account this strategy uses (e.g. 'BHN-Paper-Strat2'). "
+                            "Pure label — used in logs + daily summaries; does "
+                            "NOT affect connection routing."),
+        },
     },
+    "required": ["alpaca_key_id", "alpaca_secret", "alpaca_base_url", "account_alias"],
 }
 # Convention: at runtime, trading_core resolves alpaca_key_id/alpaca_secret
 # by loading /etc/bhn-trading/strat<N>.env first, then reading os.environ.
@@ -183,62 +191,10 @@ _STRATEGY_BROKER: dict[str, Any] = {
 # cannot drain strat4's account.
 
 
-# ─────────────────────────────────────────────────────────────────────────
-# System.broker — portfolio-wide controls (NO Alpaca credentials here;
-# those live per-strategy in each strat_N_*.broker subblock).
-# ─────────────────────────────────────────────────────────────────────────
-
-BROKER_SCHEMA: dict[str, Any] = {
-    "type": "object",
-    "additionalProperties": False,
-    "properties": {
-        "total_allocation": {
-            **_POS_NUM,
-            "description": "Total dollar capital across all enabled strategies",
-        },
-        "paper_mode": {
-            "type": "boolean",
-            "description": ("Master paper/live gate. When true, runtime ignores any "
-                            "per-strategy live_mode_approved=true and forces paper "
-                            "endpoints. When false, BOTH this flag AND the strategy's "
-                            "live_mode_approved must be true for that strategy to go live."),
-        },
-        "max_portfolio_daily_loss": {
-            **_POS_NUM,
-            "description": "Portfolio-wide dollar floor for the trading day",
-        },
-        "max_portfolio_drawdown": {
-            **_PCT_FRAC,
-            "description": "Portfolio drawdown cap (fractional, 0-1)",
-        },
-        "max_overnight_positions": {
-            **_NON_NEG_INT,
-            "description": "Hard cap on number of positions held past session close",
-        },
-        "premarket_trading": {
-            "type": "boolean",
-            "description": "Allow order execution during pre-market hours",
-        },
-        "afterhours_trading": {
-            "type": "boolean",
-            "description": "Allow order execution during after-hours",
-        },
-        "force_close_if_down_pct": {
-            **_PCT_POS,
-            "description": ("Force-flatten the entire portfolio when intraday P&L "
-                            "drops below this fractional pct of capital"),
-        },
-        "killswitch_on_drawdown": {
-            "type": "boolean",
-            "description": "Auto-fire master_killswitch when killswitch_drawdown_pct breached",
-        },
-        "killswitch_drawdown_pct": {
-            **_PCT_POS,
-            "description": ("Drawdown threshold (fractional) that triggers killswitch "
-                            "when killswitch_on_drawdown=true"),
-        },
-    },
-}
+# system.broker removed 2026-05-13 — each strategy is fully self-contained.
+# Portfolio-wide aggregates (sum of allocations, total daily loss) are
+# computed at runtime from each strategy's own execution_limits + broker
+# subblocks. master_killswitch.py + Grafana own the cross-strategy view.
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -305,7 +261,6 @@ SYSTEM_SCHEMA: dict[str, Any] = {
                 },
             },
         },
-        "broker": BROKER_SCHEMA,
     },
 }
 
@@ -356,6 +311,20 @@ STRAT_2_VALUE_SCHEMA: dict[str, Any] = {
         **_STRATEGY_COMMON,
         "execution_limits": _EXECUTION_LIMITS,
         "broker": _STRATEGY_BROKER,
+        "universe": {
+            "type": "array",
+            "items": _TICKER,
+            "uniqueItems": True,
+            "minItems": 1,
+            "maxItems": 80,
+            "description": ("Fixed universe of tickers the value strategy will "
+                            "evaluate each cycle. Replaces dynamic /stock-screener "
+                            "(which requires paid FMP plan). Per-symbol metrics "
+                            "are pulled via /profile + /ratios-ttm + "
+                            "/balance-sheet-statement on each run — at 3 endpoints "
+                            "per symbol the budget caps around ~80 names against "
+                            "the 250/day free-tier limit."),
+        },
         "screener_filters": {
             "type": "object",
             "additionalProperties": False,
@@ -396,7 +365,7 @@ STRAT_2_VALUE_SCHEMA: dict[str, Any] = {
 # Strategy 3: Mean-reversion Bollinger scalp
 # ─────────────────────────────────────────────────────────────────────────
 
-STRAT_3_SCALP_SCHEMA: dict[str, Any] = {
+STRAT_3_MEAN_REVERSION_SCHEMA: dict[str, Any] = {
     "type": "object",
     "additionalProperties": False,
     "properties": {
@@ -611,23 +580,23 @@ SCHEMA: dict[str, Any] = {
             "maxLength": 500,
             "description": "Free-text note describing why this version exists",
         },
-        "system":            SYSTEM_SCHEMA,
-        "strat_1_congress":  STRAT_1_CONGRESS_SCHEMA,
-        "strat_2_value":     STRAT_2_VALUE_SCHEMA,
-        "strat_3_scalp":     STRAT_3_SCALP_SCHEMA,
-        "strat_4_momentum":  STRAT_4_MOMENTUM_SCHEMA,
-        "strat_5_pred_mkt":  STRAT_5_PRED_MKT_SCHEMA,
+        "system":                  SYSTEM_SCHEMA,
+        "strat_1_congress":        STRAT_1_CONGRESS_SCHEMA,
+        "strat_2_value":           STRAT_2_VALUE_SCHEMA,
+        "strat_3_mean_reversion":  STRAT_3_MEAN_REVERSION_SCHEMA,
+        "strat_4_momentum":        STRAT_4_MOMENTUM_SCHEMA,
+        "strat_5_pred_mkt":        STRAT_5_PRED_MKT_SCHEMA,
     },
 }
 
 
 # Map strategy id → its schema (for partial validation / mutator workflow)
 STRATEGY_SCHEMAS: dict[str, dict[str, Any]] = {
-    "strat_1_congress":  STRAT_1_CONGRESS_SCHEMA,
-    "strat_2_value":     STRAT_2_VALUE_SCHEMA,
-    "strat_3_scalp":     STRAT_3_SCALP_SCHEMA,
-    "strat_4_momentum":  STRAT_4_MOMENTUM_SCHEMA,
-    "strat_5_pred_mkt":  STRAT_5_PRED_MKT_SCHEMA,
+    "strat_1_congress":        STRAT_1_CONGRESS_SCHEMA,
+    "strat_2_value":           STRAT_2_VALUE_SCHEMA,
+    "strat_3_mean_reversion":  STRAT_3_MEAN_REVERSION_SCHEMA,
+    "strat_4_momentum":        STRAT_4_MOMENTUM_SCHEMA,
+    "strat_5_pred_mkt":        STRAT_5_PRED_MKT_SCHEMA,
 }
 
 
@@ -640,14 +609,15 @@ EXAMPLE_RULES: dict[str, Any] = {
     "version":    "1.0",
     "updated_at": "2026-05-13T00:00:00Z",
     "operator_note": (
-        "Operator-controlled execution_limits + per-strategy broker isolation. "
-        "Each strategy has its OWN Alpaca paper account (keys in "
-        "/etc/bhn-trading/strat<N>.env on NJ). Initial state: Strats 2/3/4 "
-        "enabled, Strats 1 (Congress) and 5 (Pred-mkt) disabled until their "
-        "API keys land. Strats 1+5 carry PLACEHOLDER execution_limits — review "
-        "before flipping enabled=true. system.broker holds portfolio-wide caps; "
-        "alpaca_base_url is per-strategy (NOT system-wide) so paper/live can "
-        "diverge by strategy if needed."
+        "Each strategy is fully self-contained: its own Alpaca paper account "
+        "(keys in /etc/bhn-trading/strat<N>.env on NJ), its own execution_limits, "
+        "its own broker subblock with account_alias. system.broker removed — "
+        "portfolio aggregates are computed at runtime from per-strategy state. "
+        "Initial state: Strats 2/3/4 enabled, Strats 1 (Congress) and 5 "
+        "(Pred-mkt) disabled until their API keys land. Strats 1+5 carry "
+        "PLACEHOLDER execution_limits — review before flipping enabled=true. "
+        "Strategy 3 renamed strat_3_scalp → strat_3_mean_reversion to align "
+        "with strategy_mean_reversion.py."
     ),
     "system": {
         "halted": False,
@@ -664,18 +634,6 @@ EXAMPLE_RULES: dict[str, Any] = {
         },
         "twilio": {
             "rate_limit_per_hour": 20,
-        },
-        "broker": {
-            "total_allocation":         65_000,
-            "paper_mode":               True,
-            "max_portfolio_daily_loss": 2_000,
-            "max_portfolio_drawdown":   0.10,
-            "max_overnight_positions":  3,
-            "premarket_trading":        False,
-            "afterhours_trading":       False,
-            "force_close_if_down_pct":  0.05,
-            "killswitch_on_drawdown":   True,
-            "killswitch_drawdown_pct":  0.10,
         },
     },
     "strat_1_congress": {
@@ -697,6 +655,7 @@ EXAMPLE_RULES: dict[str, Any] = {
             "alpaca_key_id":   "STRAT1_ALPACA_KEY_ID",
             "alpaca_secret":   "STRAT1_ALPACA_SECRET",
             "alpaca_base_url": "https://paper-api.alpaca.markets/v2",
+            "account_alias":   "BHN-Paper-Strat1",
         },
         "poll_interval_seconds":    900,
         "min_transaction_usd":      10_000,
@@ -723,7 +682,17 @@ EXAMPLE_RULES: dict[str, Any] = {
             "alpaca_key_id":   "STRAT2_ALPACA_KEY_ID",
             "alpaca_secret":   "STRAT2_ALPACA_SECRET",
             "alpaca_base_url": "https://paper-api.alpaca.markets/v2",
+            "account_alias":   "BHN-Paper-Strat2",
         },
+        "universe": [
+            "JPM", "BAC", "WFC", "C",
+            "JNJ", "PFE", "MRK",
+            "KO", "PG", "WMT", "MO",
+            "T", "VZ",
+            "XOM", "CVX",
+            "INTC", "IBM", "CSCO",
+            "MMM", "GE",
+        ],
         "screener_filters": {
             "pe_max":              15,
             "pb_max":              1.5,
@@ -742,7 +711,7 @@ EXAMPLE_RULES: dict[str, Any] = {
         },
         "earnings_blackout_days": 7,
     },
-    "strat_3_scalp": {
+    "strat_3_mean_reversion": {
         "enabled": True,
         "live_mode_approved": False,
         "execution_limits": {
@@ -760,6 +729,7 @@ EXAMPLE_RULES: dict[str, Any] = {
             "alpaca_key_id":   "STRAT3_ALPACA_KEY_ID",
             "alpaca_secret":   "STRAT3_ALPACA_SECRET",
             "alpaca_base_url": "https://paper-api.alpaca.markets/v2",
+            "account_alias":   "BHN-Paper-Strat3",
         },
         "bollinger": {
             "period":        20,
@@ -800,6 +770,7 @@ EXAMPLE_RULES: dict[str, Any] = {
             "alpaca_key_id":   "STRAT4_ALPACA_KEY_ID",
             "alpaca_secret":   "STRAT4_ALPACA_SECRET",
             "alpaca_base_url": "https://paper-api.alpaca.markets/v2",
+            "account_alias":   "BHN-Paper-Strat4",
         },
         "crossover": {
             "short_period":         50,
@@ -837,6 +808,7 @@ EXAMPLE_RULES: dict[str, Any] = {
             "alpaca_key_id":   "STRAT5_ALPACA_KEY_ID",
             "alpaca_secret":   "STRAT5_ALPACA_SECRET",
             "alpaca_base_url": "https://paper-api.alpaca.markets/v2",
+            "account_alias":   "BHN-Paper-Strat5",
         },
         "live_execution_enabled": False,
         "macro_events": {
