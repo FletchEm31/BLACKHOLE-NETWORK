@@ -42,6 +42,7 @@ CLI:
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 import time
 from datetime import datetime, date, timedelta, timezone
@@ -103,10 +104,17 @@ def fetch_bars(ticker: str, trading_days: int) -> Optional[pd.DataFrame]:
 
     try:
         from alpaca_trade_api import TimeFrame
+        # feed="iex" — required for the basic / free Alpaca plan; SIP feed
+        # needs a paid subscription. IEX-only historical bars are good enough
+        # for daily OHLCV indicators (rebalance signals, not microstructure).
+        # Older Alpaca SDKs default to "iex"; SDK 3.x defaults to SIP-then-fallback,
+        # which fails hard on this account class — so we pin it explicitly.
+        feed_pref = os.environ.get("ALPACA_DATA_FEED", "iex")
         bars_iter = alpaca.get_bars(
             ticker, TimeFrame.Day,
             start=start.isoformat(), end=end.isoformat(),
             adjustment="all",      # split + dividend adjusted
+            feed=feed_pref,
         )
         rows = []
         for b in bars_iter:
