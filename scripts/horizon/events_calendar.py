@@ -168,7 +168,11 @@ def opex_dates(start: date, end: date) -> list[date]:
 # FMP earnings calendar
 # ─────────────────────────────────────────────────────────────────────────
 
-FMP_EARNINGS_URL = "https://financialmodelingprep.com/api/v3/earning_calendar"
+# FMP deprecated v3/v4 earnings endpoints 2025-08-31 ("Legacy Endpoint" 403).
+# /stable/earnings-calendar is the current replacement. Response shape:
+#   [{"symbol":"AAPL","date":"2026-07-30","epsActual":null,"epsEstimated":1.86,
+#     "revenueActual":null,"revenueEstimated":107946900000,"lastUpdated":"2026-05-14"}, ...]
+FMP_EARNINGS_URL = "https://financialmodelingprep.com/stable/earnings-calendar"
 
 
 def fetch_earnings(start: date, end: date, api_key: str) -> list[dict]:

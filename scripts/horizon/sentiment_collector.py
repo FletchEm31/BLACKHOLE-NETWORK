@@ -58,6 +58,14 @@ HTTP_HEADERS = {
     "Accept":     "text/html,application/json,text/csv,*/*",
 }
 
+# Browser-grade UA used for sites that 403 the BHN UA (AAII, CBOE redirects, etc.)
+BROWSER_HEADERS = {
+    "User-Agent": ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+                   "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"),
+    "Accept":          "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+}
+
 
 # ─────────────────────────────────────────────────────────────────────────
 # S&P 500 universe — hardcoded constant
@@ -120,9 +128,23 @@ def fetch_fng(limit: int = 30) -> list[dict]:
 
 # ─────────────────────────────────────────────────────────────────────────
 # Source 2: CBOE put/call ratio
-# CBOE publishes a daily CSV at:
-#   https://cdn.cboe.com/api/global/us_indices/daily_prices/equity_pc_archive.csv
-# (Equity put/call ratio; one of the more useful sentiment views.)
+#
+# DEFERRED — CBOE deprecated their free public CSV endpoints in 2024. The
+# legacy cdn.cboe.com/api/global/us_indices/daily_prices/equity_pc_archive.csv
+# returns 403 AccessDenied. The replacement is a JavaScript-rendered Next.js
+# page at /markets/us/options/market-statistics/daily/ — no static CSV path
+# remains.
+#
+# Future paid alternatives (operator's call):
+#   - Polygon.io ~$30/mo: /v3/snapshot/options/{ticker} aggregates
+#   - IBKR via TWS API (free if operator has IBKR account)
+#   - CBOE LiveVol (institutional pricing)
+#
+# Free-but-imperfect proxy: SPY/QQQ option volume from yfinance — but
+# yfinance requires upgrading websockets in a way that breaks alpaca-trade-api
+# 3.x compatibility on this deploy. Not worth it for a proxy signal.
+#
+# Until one of the above is wired, put_call_ratio stays NULL in market_sentiment.
 # ─────────────────────────────────────────────────────────────────────────
 
 CBOE_PC_URL = ("https://cdn.cboe.com/api/global/us_indices/daily_prices/"
@@ -130,44 +152,12 @@ CBOE_PC_URL = ("https://cdn.cboe.com/api/global/us_indices/daily_prices/"
 
 
 def fetch_cboe_putcall(lookback_days: int = 30) -> dict[date, float]:
-    """Returns {date: put_call_ratio} for the last `lookback_days`. Empty on failure."""
-    try:
-        resp = requests.get(CBOE_PC_URL, headers=HTTP_HEADERS, timeout=15)
-        resp.raise_for_status()
-        df = pd.read_csv(StringIO(resp.text))
-    except Exception as e:
-        logger.warning(f"cboe: fetch failed — {e}")
-        return {}
-
-    # CSV column names vary; common forms: "Date", "Put/Call Ratio"
-    # Match case-insensitively
-    cols = {c.lower(): c for c in df.columns}
-    date_col = cols.get("date") or cols.get("trade date") or list(df.columns)[0]
-    pcr_col = None
-    for c in df.columns:
-        if "ratio" in c.lower() or "p/c" in c.lower() or "putcall" in c.lower().replace(" ", "").replace("/", ""):
-            pcr_col = c
-            break
-    if pcr_col is None:
-        logger.warning(f"cboe: could not identify put/call column in {list(df.columns)}")
-        return {}
-
-    try:
-        df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
-        df = df.dropna(subset=[date_col, pcr_col])
-        cutoff = pd.Timestamp(date.today() - timedelta(days=lookback_days))
-        df = df[df[date_col] >= cutoff]
-        out: dict[date, float] = {}
-        for _, r in df.iterrows():
-            d = r[date_col].date()
-            try:
-                out[d] = float(r[pcr_col])
-            except (TypeError, ValueError):
-                continue
-        return out
-    except Exception as e:
-        logger.warning(f"cboe: parse failed — {e}")
-        return {}
+    """DEFERRED. Returns empty dict and logs once. See block comment above
+    for the deprecation timeline and paid alternatives."""
+    logger.info("cboe: DEFERRED — free CSV endpoint deprecated 2024, replacement "
+                 "page is JS-rendered. put_call_ratio stays NULL. See module "
+                 "comment for paid alternatives.")
+    return {}
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -184,14 +174,25 @@ OPENINSIDER_URL = ("http://openinsider.com/screener?s=&o=&pl=&ph=&ll=&lh="
 def fetch_openinsider(lookback_days: int = 5) -> Optional[float]:
     """Compute dollar-weighted insider buy/sell ratio over trailing
     `lookback_days` trading days, filtered to S&P 500 tickers.
-    Returns None on fetch/parse failure."""
+    Returns None on fetch/parse failure.
+
+    Note: OpenInsider often blocks the Hetzner/Hillsboro egress IP (the
+    LA-egress-isolation egress path). When the timeout fires, we soft-skip.
+    A fully-resilient implementation would migrate to SEC EDGAR Form 4
+    filings (free + official, much harder to parse) or to QuiverQuant's
+    insider endpoint (operator already has QUIVER_API_KEY for strat_1)."""
     try:
-        resp = requests.get(OPENINSIDER_URL, headers=HTTP_HEADERS, timeout=20)
+        # Browser UA reduces (but does not eliminate) the 403/timeout class.
+        # 60s timeout because the screener page is large and the proxy adds
+        # an extra hop.
+        resp = requests.get(OPENINSIDER_URL, headers=BROWSER_HEADERS, timeout=60)
         resp.raise_for_status()
         # OpenInsider returns HTML with a single results table. Parse with pandas.read_html.
         tables = pd.read_html(StringIO(resp.text))
     except Exception as e:
-        logger.warning(f"openinsider: fetch/parse failed — {e}")
+        logger.info(f"openinsider: DEFERRED — {type(e).__name__}: {str(e)[:120]}. "
+                     f"insider_buy_sell_ratio stays NULL. Migrate to SEC EDGAR "
+                     f"or QuiverQuant insider endpoint in a future session.")
         return None
 
     if not tables:
@@ -256,17 +257,31 @@ def fetch_aaii() -> Optional[tuple[date, float, float, float]]:
     recent AAII survey. None on failure.
 
     bull/bear/neutral_pct are returned as PERCENTAGES (e.g. 38.5 for 38.5%)
-    to match the existing market_sentiment column expectations."""
+    to match the existing market_sentiment column expectations.
+
+    Two compatibility traps handled here:
+      1. AAII 403s the BHN UA — use browser-grade UA + Referer.
+      2. AAII publishes .xls (Excel 97-2003 binary). Modern pandas requires
+         xlrd>=2.0.1, but xlrd 2.0+ dropped .xls support. We use xlrd 1.2.0
+         directly (skipping pandas.read_excel) to avoid the catch-22."""
+    import xlrd  # 1.2.0 — supports .xls; modern pandas refuses to call it
+    headers = dict(BROWSER_HEADERS)
+    headers["Referer"] = "https://www.aaii.com/"
     try:
-        resp = requests.get(AAII_URL, headers=HTTP_HEADERS, timeout=20)
+        resp = requests.get(AAII_URL, headers=headers, timeout=30)
         resp.raise_for_status()
-        df = pd.read_excel(StringIO(resp.content.decode("latin-1")) if False else resp.content,
-                            sheet_name=0, header=None, engine="xlrd")
+        book = xlrd.open_workbook(file_contents=resp.content)
+        sheet = book.sheet_by_index(0)
+        # Build a DataFrame from raw cell values — bypasses pandas' Excel
+        # engine version check entirely.
+        rows = [[sheet.cell_value(r, c) for c in range(sheet.ncols)]
+                for r in range(sheet.nrows)]
+        df = pd.DataFrame(rows)
     except Exception as e:
         logger.warning(f"aaii: fetch/parse failed — {e}")
         return None
 
-    # AAII's spreadsheet has a header somewhere in the first 5 rows. Locate
+    # AAII's spreadsheet has a header somewhere in the first ~5 rows. Locate
     # the row that has "Date" / "Bullish" / "Bearish" headers, then read below it.
     header_row = None
     for i in range(min(10, len(df))):
@@ -292,7 +307,16 @@ def fetch_aaii() -> Optional[tuple[date, float, float, float]]:
         logger.warning(f"aaii: header columns not found — {headers}")
         return None
 
-    data[date_col] = pd.to_datetime(data[date_col], errors="coerce")
+    # AAII's date column comes from xlrd as Excel serial floats (e.g. 45234.0 =
+    # 2023-10-12). Convert via the Excel epoch (1899-12-30, off-by-2 from
+    # 1900-01-01 due to the legacy 1900 leap-year bug). Fall back to string
+    # parsing for any rows where the cell happens to be a date string.
+    def _parse_aaii_date(v):
+        if isinstance(v, (int, float)) and v > 1:
+            # Excel serial → Python date
+            return pd.Timestamp("1899-12-30") + pd.Timedelta(days=int(v))
+        return pd.to_datetime(v, errors="coerce")
+    data[date_col] = data[date_col].apply(_parse_aaii_date)
     data = data.dropna(subset=[date_col, bull_col, bear_col])
     data = data.sort_values(date_col)
     last = data.iloc[-1]
