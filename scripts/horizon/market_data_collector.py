@@ -49,7 +49,13 @@ from pathlib import Path
 from typing import Optional
 
 import pandas as pd
-import pandas_ta as ta
+# pandas-ta proper requires Python >=3.12 as of 0.4.x (PyPI yanked older
+# Py3.10-compatible versions). pandas-ta-classic is the maintained fork
+# that still ships wheels for 3.10. Try both; the API surface is identical.
+try:
+    import pandas_ta as ta
+except ImportError:
+    import pandas_ta_classic as ta
 
 # scripts/horizon/ imports scripts/trading/trading_core via path insert
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "trading"))

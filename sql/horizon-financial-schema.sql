@@ -187,8 +187,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS market_events_uq_idx
 
 CREATE INDEX IF NOT EXISTS market_events_date_idx ON market_events (event_date);
 CREATE INDEX IF NOT EXISTS market_events_type_date_idx ON market_events (event_type, event_date);
-CREATE INDEX IF NOT EXISTS market_events_upcoming_idx ON market_events (event_date)
-    WHERE event_date >= CURRENT_DATE;
+-- Partial-index on CURRENT_DATE rejected as non-IMMUTABLE; the plain
+-- event_date index above is sufficient for upcoming-events queries
+-- (BRIN-free range scan on a DATE column).
 
 COMMENT ON TABLE  market_events IS
     'Forward-looking calendar of market-moving events. FOMC dates hardcoded for 12 months. Earnings from FMP API for the strategy universe. Monthly options expiry = 3rd Friday. Major macro releases (CPI/NFP/PCE/GDP/UE) hardcoded with annual regeneration. Written by scripts/horizon/events_calendar.py (no timer — invoked from morning_brief_generator pre-fetch).';
