@@ -1,0 +1,14 @@
+# BHN HORIZON sentiment collector cadence.
+# Fires daily at 17:30 America/New_York.
+
+[Unit]
+Description=BHN HORIZON sentiment collector (daily 17:30 ET)
+
+[Timer]
+OnCalendar=*-*-* 17:30:00 America/New_York
+Unit=bhn-sentiment.service
+Persistent=true
+RandomizedDelaySec=180
+
+[Install]
+WantedBy=timers.target

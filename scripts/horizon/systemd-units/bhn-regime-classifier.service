@@ -1,0 +1,28 @@
+# BHN HORIZON — daily regime classifier.
+# Reads SPY+sma_200 from market_daily and VIX+yield_curve from macro_daily,
+# classifies the latest date into one of 5 regimes, writes market_regimes.
+#
+# Scheduled by bhn-regime-classifier.timer at 17:15 ET (after macro at 17:00).
+
+[Unit]
+Description=BHN HORIZON regime classifier
+After=network-online.target bhn-macro-data.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/bhn/scripts/horizon
+
+EnvironmentFile=/etc/bhn-trading/env
+
+ExecStart=/usr/bin/python3 /opt/bhn/scripts/horizon/regime_classifier.py
+
+StandardOutput=append:/var/log/bhn-trading/horizon-regime.log
+StandardError=append:/var/log/bhn-trading/horizon-regime.log
+
+# Pure PG join + classify; should be subsecond.
+TimeoutStartSec=60
+TimeoutStopSec=30
+
+[Install]

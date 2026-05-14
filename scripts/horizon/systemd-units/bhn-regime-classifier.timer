@@ -1,0 +1,15 @@
+# BHN HORIZON regime classifier cadence.
+# Fires daily at 17:15 America/New_York. Depends on market_data + macro
+# having already run via their earlier timers.
+
+[Unit]
+Description=BHN HORIZON regime classifier (daily 17:15 ET)
+
+[Timer]
+OnCalendar=*-*-* 17:15:00 America/New_York
+Unit=bhn-regime-classifier.service
+Persistent=true
+RandomizedDelaySec=30
+
+[Install]
+WantedBy=timers.target

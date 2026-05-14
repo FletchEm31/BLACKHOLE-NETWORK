@@ -1,0 +1,52 @@
+# BHN HORIZON — morning brief generator.
+#
+# NO TIMER. Operator-triggered only per [[project_horizon_persona]]:
+#   - SMS to HORIZON ("BRIEF" / "MORNING BRIEF")     → HORIZON SMS handler
+#                                                       hits bhn-morning-brief
+#                                                       n8n webhook
+#   - n8n manual button                              → "Execute Workflow"
+#   - Grafana alertmanager P2+ overnight             → webhook with reason=incident
+#   - SMS "BRIEF DAILY HH:MM TZ" + schedule polling  → n8n schedule trigger fires
+#                                                       this service via systemctl
+#                                                       start (or runs the script
+#                                                       directly via Execute Command)
+#
+# Default state: no automatic firing. operator_config.brief_schedule = NULL.
+#
+# Deploy:
+#   sudo cp bhn-morning-brief.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   # No `enable --now` — service is invoked by other triggers, not by a timer.
+#
+# To fire manually from the shell on LA:
+#   sudo systemctl start bhn-morning-brief.service
+#   journalctl -u bhn-morning-brief.service -f
+
+[Unit]
+Description=BHN HORIZON morning brief generator (operator-triggered)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/bhn/scripts/horizon
+
+EnvironmentFile=/etc/bhn-trading/env
+
+# Default invocation: --reason manual. Override via systemctl --set-environment
+# for incident or scheduled paths. The n8n workflow invokes the script directly
+# with appropriate flags via Execute Command (not via systemctl start), so the
+# default here is the manual-from-shell path.
+ExecStart=/usr/bin/python3 /opt/bhn/scripts/horizon/morning_brief_generator.py --reason manual
+
+StandardOutput=append:/var/log/bhn-trading/horizon-morning-brief.log
+StandardError=append:/var/log/bhn-trading/horizon-morning-brief.log
+
+# Data assembly + SMTP send. Should finish under 60s.
+TimeoutStartSec=180
+TimeoutStopSec=30
+
+[Install]
+# No [Install] WantedBy — this service is not enabled directly. Invoked by
+# triggers (n8n webhook, systemctl start, etc.).

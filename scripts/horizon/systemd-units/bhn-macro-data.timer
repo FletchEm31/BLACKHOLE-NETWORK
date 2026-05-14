@@ -1,0 +1,14 @@
+# BHN HORIZON macro collector cadence.
+# Fires daily at 17:00 America/New_York (after market_data at 16:30).
+
+[Unit]
+Description=BHN HORIZON macro collector (daily 17:00 ET)
+
+[Timer]
+OnCalendar=*-*-* 17:00:00 America/New_York
+Unit=bhn-macro-data.service
+Persistent=true
+RandomizedDelaySec=60
+
+[Install]
+WantedBy=timers.target

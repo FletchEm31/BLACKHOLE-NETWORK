@@ -1,0 +1,28 @@
+# BHN HORIZON — daily macro data collector (FRED API).
+# Writes macro_daily for 10 series (dense forward-fill).
+#
+# Scheduled by bhn-macro-data.timer at 17:00 ET.
+# Egress: api.stlouisfed.org via Hillsboro.
+
+[Unit]
+Description=BHN HORIZON macro collector (FRED API)
+After=network-online.target bhn-market-data.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/bhn/scripts/horizon
+
+EnvironmentFile=/etc/bhn-trading/env
+
+ExecStart=/usr/bin/python3 /opt/bhn/scripts/horizon/macro_collector.py
+
+StandardOutput=append:/var/log/bhn-trading/horizon-macro.log
+StandardError=append:/var/log/bhn-trading/horizon-macro.log
+
+# 10 FRED API calls + forward-fill onto business-day grid. Quick.
+TimeoutStartSec=180
+TimeoutStopSec=30
+
+[Install]

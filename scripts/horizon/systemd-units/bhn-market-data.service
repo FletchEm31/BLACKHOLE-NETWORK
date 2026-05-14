@@ -1,0 +1,39 @@
+# BHN HORIZON — daily market data collector (Alpaca + pandas-ta indicators).
+# Writes market_daily for the 29-ticker strategy universe.
+#
+# Scheduled by bhn-market-data.timer at 16:30 ET (30min after close).
+#
+# Deploy:
+#   sudo cp bhn-market-data.service /etc/systemd/system/
+#   sudo cp bhn-market-data.timer   /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now bhn-market-data.timer
+#
+# Egress: external API calls (data.alpaca.markets) route via Hillsboro per
+# the LA egress isolation policy. If Hillsboro WG handshake is broken, this
+# unit will fail with connection timeouts.
+
+[Unit]
+Description=BHN HORIZON market data collector (Alpaca + pandas-ta)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/bhn/scripts/horizon
+
+EnvironmentFile=/etc/bhn-trading/env
+
+ExecStart=/usr/bin/python3 /opt/bhn/scripts/horizon/market_data_collector.py
+
+StandardOutput=append:/var/log/bhn-trading/horizon-market-data.log
+StandardError=append:/var/log/bhn-trading/horizon-market-data.log
+
+# 29 tickers × Alpaca daily-bar fetch + indicator compute. Typical cycle
+# under 60s; cap at 5min to catch hung connections.
+TimeoutStartSec=300
+TimeoutStopSec=30
+
+[Install]
+# Started by the timer; not directly enabled.

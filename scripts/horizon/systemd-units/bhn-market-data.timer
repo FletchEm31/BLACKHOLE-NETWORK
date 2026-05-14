@@ -1,0 +1,15 @@
+# BHN HORIZON market data collector cadence.
+# Fires daily at 16:30 America/New_York (30 minutes after market close).
+# America/New_York timezone in OnCalendar handles EST/EDT automatically.
+
+[Unit]
+Description=BHN HORIZON market data collector (daily 16:30 ET)
+
+[Timer]
+OnCalendar=*-*-* 16:30:00 America/New_York
+Unit=bhn-market-data.service
+Persistent=true
+RandomizedDelaySec=120
+
+[Install]
+WantedBy=timers.target

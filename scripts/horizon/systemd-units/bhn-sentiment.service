@@ -1,0 +1,29 @@
+# BHN HORIZON — daily sentiment collector.
+# Sources: alternative.me F&G (JSON API), CBOE put/call (CSV), OpenInsider
+# (HTML scrape, S&P 500 only), AAII (XLS weekly).
+#
+# Scheduled by bhn-sentiment.timer at 17:30 ET.
+# Egress: multiple external sites via Hillsboro. Each source is best-effort.
+
+[Unit]
+Description=BHN HORIZON sentiment collector
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/bhn/scripts/horizon
+
+EnvironmentFile=/etc/bhn-trading/env
+
+ExecStart=/usr/bin/python3 /opt/bhn/scripts/horizon/sentiment_collector.py
+
+StandardOutput=append:/var/log/bhn-trading/horizon-sentiment.log
+StandardError=append:/var/log/bhn-trading/horizon-sentiment.log
+
+# Scrapes can be slow / flaky. 5min cap with per-source try/except inside.
+TimeoutStartSec=300
+TimeoutStopSec=30
+
+[Install]
