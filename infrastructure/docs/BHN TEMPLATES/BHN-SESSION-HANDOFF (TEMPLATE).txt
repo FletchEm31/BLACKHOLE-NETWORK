@@ -1,0 +1,210 @@
+==================================================================
+BLACKHOLE NETWORK (BHN) — SESSION HANDOFF
+Last Updated: May 13, 2026
+==================================================================
+
+PURPOSE
+-------
+Read this FIRST at the start of every Claude session.
+It tells Claude what state the project is in, what was done
+last session, and what to work on next.
+The Big 3 docs (INFRASTRUCTURE-REFERENCE, DATA-FLOW-BLUEPRINT,
+SECURITY-PROTOCOL) are the deep reference — this doc is the
+quick-start that tells you where we left off.
+
+==================================================================
+SECTION 1 — NETWORK SNAPSHOT (current state)
+==================================================================
+
+NODE          IP (PUBLIC)       TUNNEL IP   STATUS
+LA Hub        149.28.91.100     10.8.0.1    OPERATIONAL (hub, PG, n8n, HORIZON, Grafana)
+Frankfurt     192.248.187.208   10.9.0.2    OPERATIONAL (exit EU1, LibreSpeed, SearXNG, Tor)
+New Jersey    140.82.4.35       10.8.0.5    OPERATIONAL (trading node — stack NOT deployed)
+Hillsboro     5.78.94.237       10.8.0.6    OPERATIONAL (tinyproxy verified, Tor bootstrapping)
+
+WireGuard Mesh (hub-and-spoke, LA is hub):
+  Operator PC:    10.8.0.4   PSK: ✅
+  Operator Phone: 10.8.0.2   PSK: ✅
+  NJ:             10.8.0.5   PSK: ❌ pending
+  Hillsboro:      10.8.0.6   PSK: ✅
+  Frankfurt:      10.9.0.2   PSK: ✅
+  Laptop:         10.8.0.7   PSK: ❌ pending (not added yet)
+
+Tor Relays:
+  BHNFornaxEU1  → Frankfurt   LIVE
+  BHNHeliosUS3  → Hillsboro   Bootstrapping (12-48h to list)
+  BHNNebulaUS2  → NJ          Deployed, not live
+
+CONSOLE TERMINOLOGY (STRICT):
+  REMOTE BROWSER WINDOW = noVNC web console (Vultr/Hetzner)
+  PC LA CONSOLE         = ssh root@149.28.91.100
+  PC GE CONSOLE         = ssh root@192.248.187.208
+  PC NJ CONSOLE         = ssh -p 2222 root@140.82.4.35   ← port 2222
+  PC Hillsboro          = ssh root@5.78.94.237
+  LA→Frankfurt:         ssh frankfurt  (from LA)
+  LA→NJ:                ssh nj         (from LA)
+  LA→Hillsboro:         ssh hillsboro  (from LA)
+
+==================================================================
+SECTION 2 — LAST SESSION COMPLETED (May 13, 2026)
+==================================================================
+
+  ✅ Hillsboro US3 (Hetzner) — fully deployed
+       Bootstrap complete, WireGuard tunnel (10.8.0.6), PSK applied
+       tinyproxy deployed and verified (curl returns 5.78.94.237)
+       Tor relay BHNHeliosUS3 bootstrapping
+       ssh hillsboro alias working from LA
+       Added to nightly diagnostic
+
+  ✅ Frankfurt Tor relay renamed → BHNFornaxEU1 (fingerprint preserved)
+
+  ✅ Bootstrap fixes applied
+       chattr non-fatal, TUNNEL_IP_OVERRIDE, UFW egress snippet in output
+
+  ✅ Three core docs created and committed
+       BHN-INFRASTRUCTURE-REFERENCE.txt
+       BHN-DATA-FLOW-BLUEPRINT.txt
+       BHN-SECURITY-PROTOCOL.txt
+       All in: infrastructure/docs/BHN SESSION UPDATES/
+
+  ✅ All GitHub commits pushed (trading stack + service configs)
+
+  🔄 IN PROGRESS (Claude Code left mid-task):
+       wg_peer_stats table + bhn-wg-stats.sh collection script
+       tor_relay_stats table + bhn-tor-stats.sh collection script
+       Grafana panels for both
+       → Pick these up first in Claude Code next session
+
+==================================================================
+SECTION 3 — PENDING TASKS (PRIORITY ORDER)
+==================================================================
+
+IMMEDIATE (do these first):
+  1. Frankfurt MASQUERADE fix — exit routing still broken (exits via LA)
+       On Frankfurt:
+         iptables -t nat -A POSTROUTING -s 10.8.0.0/24 -o enp1s0 -j MASQUERADE
+         iptables-save > /etc/iptables/rules.v4
+       On LA:
+         /etc/wireguard/bhn-frankfurt-exit.sh apply
+       Verify: curl https://api.ipify.org → should return 192.248.187.208
+
+  2. LA egress lockdown via tinyproxy (in this order):
+       /etc/environment: https_proxy=http://10.8.0.6:8888
+       /etc/apt/apt.conf.d/95bhn-proxy
+       systemd drop-ins for n8n + grafana
+       LAST: UFW rewrite — remove direct 443/587 egress from LA
+
+  3. Add operator laptop as WireGuard peer (tunnel IP: 10.8.0.7)
+       Generate keypair, add to wg0 on LA, add UFW egress rules immediately
+
+NEXT SESSION:
+  4.  Trading stack deploy on NJ
+        Install Python3 + deps, /etc/bhn/ env, apply trading-schema.sql,
+        deploy strategy files, install systemd units, test paper trading
+
+  5.  Remaining trading files (Claude Code)
+        rules_schema.py, validate_rules.py, rules.example.json,
+        systemd-units/*, 3 runbook docs
+
+  6.  WireGuard + Tor stats monitoring (Claude Code — in progress)
+        wg_peer_stats table + collection script (cron every 5min)
+        tor_relay_stats table + collection script
+        Grafana panels for both
+
+  7.  Grafana alerting v1 deploy
+        Apply sql/alerts-schema.sql, build bhn-alert-router in n8n UI,
+        configure Grafana alert rules, test SMS (A2P pending ~May 23-30)
+
+  8.  Frankfurt DNS Phase 2
+        Rebind dnscrypt to 10.9.0.2:53, UFW allow 53, update WG DNS, verify
+
+  9.  SearXNG → Tor routing
+        Uncomment Tor proxy in /opt/bhn-searxng/settings.yml, restart container
+
+  10. NJ Tor relay deploy (BHNNebulaUS2)
+        Files in repo: infrastructure/services/tor-relay-nj/
+        Note: monitor Alpaca flag risk if NJ IP hits Tor lists
+
+  11. MyFamily fingerprint exchange (after all 3 relays 24h+)
+        Frankfurt fingerprint + NJ fingerprint → add to both torrc files
+
+  12. Shadowsocks on Frankfurt
+
+  13. NJ + Laptop WireGuard PSK
+
+  14. CVE-2026-31431 — full kernel patch (apt upgrade + reboot all nodes)
+        Currently mitigated (algif_aead blacklisted) but not fully patched
+
+  15. A2P SMS campaign approval (~May 23-30)
+
+  16. Quiver Quantitative signup ($25/mo) — needed for Strategy 1
+
+  17. Kalshi API key setup — needed for Strategy 5
+
+  18. Repo local rename: D:\GITHUB REPOSITORY\BLACKHOLE-NETWORK\
+
+  19. Sweden node (Bahnhof) — Phase 5.1 cold standby hub
+
+==================================================================
+SECTION 4 — KEY SERVICES & ACCESS
+==================================================================
+
+  n8n:           http://10.8.0.1:5678          (VPN required)
+  HORIZON chat:  http://10.8.0.1:5678/webhook/ec1592c6-8715-4b0f-8ee8-5bc02f551a27/chat
+  Grafana:       http://10.8.0.1:3000          (VPN required)
+  Wallos:        http://10.8.0.1:8090          (VPN required)
+  PostgreSQL:    psql -h 10.8.0.1 -U ehuser -d eventhorizon
+  LibreSpeed:    http://10.9.0.2:8088
+  SearXNG:       http://10.9.0.2:8089
+  tinyproxy:     http://10.8.0.6:8888          (LA egress proxy, WG only)
+
+HORIZON:
+  Status:      OPERATIONAL
+  Workflow ID: fTFjaf2Q2aQrOPsY
+  Known issues:
+    - Token logging disconnected (needs parallel branch rewire)
+    - public: false on chatTrigger (browser works, curl 404s)
+    - Format Memory Block disconnected (Code node bug)
+
+==================================================================
+SECTION 5 — PHASE PROGRESS
+==================================================================
+
+  Phase 1 NETWORK:    ~90%  Frankfurt MASQUERADE fix pending
+  Phase 2 DASHBOARD:  ~65%  Grafana deployed, alerting not wired
+  Phase 3 AI:         ~50%  HORIZON operational, voice/SMS staged
+  Phase 4 PER-NODE:   ~70%  LA+Frankfurt+Hillsboro done, NJ pending
+  Phase 5 RESILIENCE: ~10%  Sweden/Iceland designed, not built
+
+==================================================================
+SECTION 6 — RULES (NEVER DEVIATE)
+==================================================================
+
+  - Project name: BLACKHOLE NETWORK (BHN) — never EventHorizon
+  - Console terminology: use exact names in Section 1
+  - NJ SSH: port 2222 (not 22)
+  - Tor relay nicknames: NO HYPHENS — alphanumeric only [a-zA-Z0-9]
+  - GitHub commits: ALWAYS provide Summary AND Description first
+  - Bootstrap: uses scp, not git clone (repo is private)
+  - Bootstrap: ALWAYS set TUNNEL_IP_OVERRIDE before running
+  - New WireGuard peer on LA: ALWAYS add UFW egress rules immediately after
+  - Hetzner nodes: chattr +i on resolv.conf fails — harmless, fixed in bootstrap
+  - PostgreSQL full packet capture: enabled intentionally (private system, testing)
+  - Gaming/streaming: use SPLIT WireGuard profile, not FULL
+
+==================================================================
+DOCUMENT CONTROL
+==================================================================
+
+Update this file at the END of every session:
+  - Move completed tasks from Section 3 → Section 2
+  - Update node/service status in Section 1 if anything changed
+  - Update phase % in Section 5
+  - Note anything left mid-task in "IN PROGRESS"
+  - Save updated file back to Claude Project
+
+The Big 3 docs are the deep reference — update those for
+architecture changes, new nodes, or security events.
+This doc is the session fast-start only.
+
+==================================================================

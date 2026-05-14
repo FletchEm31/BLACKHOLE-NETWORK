@@ -1,0 +1,107 @@
+BLACKHOLE NETWORK (BHN) - TEST TRADING
+STRAT #, #, #, #, #, #, #
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+{date} | Market Close Report
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+MARKET REGIME: {regime} 
+SPY: ${price} ({pct_change}%) | VIX: {vix} | Yield Curve: {curve}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+STRATEGY PERFORMANCE TODAY
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+STRAT 6 — NASDAQ LONG (BHN-STRAT-PRIMARY)
+Status: {IN QQQ / JPST / No signal}
+Position: {ticker} @ ${entry_price} → ${current_price}
+Today P&L: ${pnl} ({pnl_pct}%)
+Signal: Regression score {score} (threshold 0.20)
+Days held: {days}
+Stop level: ${stop_price}
+Assessment: {WINNING/LOSING/FLAT}
+
+STRAT 7 — NASDAQ SHORT (BHN-STRAT-PRIMARY)
+Status: {DISABLED — pending Strat 6 validation}
+
+STRAT 8 — SECTOR ROTATION (BHN-STRAT-PRIMARY)
+Status: {holding ticker / rotating / cash}
+Current holding: {ETF} @ ${entry}
+Momentum score: {score}
+Today P&L: ${pnl} ({pnl_pct}%)
+Days held: {days}
+Assessment: {WINNING/LOSING/FLAT}
+
+STRAT 3 — MEAN REVERSION (BHN-STRAT-FUNDAMENTAL)
+Status: {scanning / holding X positions}
+Positions today: {list of tickers}
+Trades today: {N opened, N closed}
+Today P&L: ${pnl} ({pnl_pct}%)
+Assessment: {WINNING/LOSING/FLAT}
+
+STRAT 4 — MOMENTUM (BHN-STRAT-SIGNALS)
+Status: {signal / no signal}
+Today P&L: ${pnl} ({pnl_pct}%)
+Assessment: {WINNING/LOSING/FLAT}
+
+STRAT 13 — RSI INTRADAY (BHN-STRAT-SIGNALS)
+Status: {IN QQQ / JPST / scanning}
+Trades today: {N}
+Today P&L: ${pnl} ({pnl_pct}%)
+RSI at close: {value}
+Assessment: {WINNING/LOSING/FLAT}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+PORTFOLIO SUMMARY
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Account 1 PRIMARY:    ${value} | Today: {pnl} ({pct}%)
+Account 2 FUNDAMENTAL: ${value} | Today: {pnl} ({pct}%)
+Account 3 SIGNALS:    ${value} | Today: {pnl} ({pct}%)
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+TOTAL PORTFOLIO:      ${total} | Today: ${total_pnl} ({total_pct}%)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+ERRORS & ISSUES TODAY
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+{If no errors: No errors or issues detected today.}
+
+{If errors exist, list each:}
+[ERROR] Strat 8 — Failed to fetch SOXL price at 14:32 ET
+Cause: Alpaca API timeout (504)
+Impact: Strategy held previous position
+Resolution: Auto-recovered on next cycle
+Severity: LOW
+
+[WARNING] Strat 13 — RSI data gap detected at 11:00 ET
+Cause: Market data delay
+Impact: Signal skipped one cycle
+Resolution: Resumed next cycle
+Severity: LOW
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+PROS & CONS TODAY
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+WORKING WELL:
++ {List what performed as expected}
++ {Any strategies that avoided losses correctly}
++ {Any clean signal executions}
+
+CONCERNS:
+- {Any strategies underperforming}
+- {Any unexpected behavior}
+- {Any data quality issues}
+- {Anything to watch tomorrow}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+TOMORROW TO WATCH
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+- {Upcoming FOMC/earnings/macro events}
+- {Any strategies approaching stop levels}
+- {Any signals close to triggering}
+- {Weather model GFS windows: 03:25, 09:25, 15:25, 21:25 UTC}
+
+— HORIZON
+Generated: {timestamp} ET
