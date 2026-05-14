@@ -1,0 +1,19 @@
+# BHN HORIZON — paper-trades watch cadence.
+# Two fires per market day: 09:35 ET (5 min post-open, catches strat_13's
+# first cycle) and 15:58 ET (3 min after strat_8's 15:55 ET rebalance).
+# America/New_York timezone handles EST/EDT automatically.
+#
+# Mon..Fri only — no weekend fires (no market activity to watch).
+
+[Unit]
+Description=BHN HORIZON paper-trades watch (09:35 ET + 15:58 ET, Mon-Fri)
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 09:35:00 America/New_York
+OnCalendar=Mon..Fri *-*-* 15:58:00 America/New_York
+Unit=bhn-paper-trades-watch.service
+Persistent=true
+RandomizedDelaySec=30
+
+[Install]
+WantedBy=timers.target
