@@ -387,6 +387,11 @@ VALUES
      5000.00, 'active', false, NULL,
      'Daily rebalance 5min before close. 5% trailing stop, 13.25% profit target, NO max-hold (signal-driven). BHN-Paper-Strat8, keys in /etc/bhn-trading/strat8.env. Enabled=false until operator validates.'),
 
+    ('strat_13_rsi_intraday', 'RSI Intraday (pipeline-testing strategy)',
+     'Simple RSI-14 mean reversion on QQQ. Reads RSI from market_daily on LA. Buy QQQ when RSI<30, park JPST when RSI>70, hold otherwise. 3% trailing stop, 8% profit target, 5-day max hold. Primary purpose: generate paper_trades + signals_log volume to exercise the full pipeline.',
+     12500.00, 'active', false, NULL,
+     'Every 30 min during market hours (09:30-16:00 ET, Mon-Fri). BHN-STRAT-SIGNALS account (PA37PRN150AG, shared with strat_4_momentum). Keys in /etc/bhn-trading/strat13.env. enabled=true on deploy.'),
+
     ('system',            'System (virtual)',
      'Not a real strategy. Used by master_killswitch.py to halt all trading at once. Every real strategy_should_run() checks this row first.',
      0.00, 'active', false, NULL,

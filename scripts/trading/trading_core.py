@@ -77,6 +77,10 @@ class StrategyId(str, Enum):
     NASDAQ_LONG = "strat_6_nasdaq_long"
     NASDAQ_SHORT = "strat_7_nasdaq_short"
     SECTOR_ROTATION = "strat_8_sector_rotation"
+    # 9-12 reserved for prior scaffolds (prediction-alpha, bollinger,
+    # january-barometer) that are PARKED (status=inactive) per 2026-05-14
+    # restructure. Strat 13 numbered intentionally to leave safe distance.
+    RSI_INTRADAY = "strat_13_rsi_intraday"
     SYSTEM = SYSTEM_STRATEGY_ID
 
 
@@ -364,18 +368,20 @@ STRAT_NUMBER: dict[str, int] = {
     "strat_6_nasdaq_long":     6,
     "strat_7_nasdaq_short":    7,
     "strat_8_sector_rotation": 8,
+    "strat_13_rsi_intraday":   13,
 }
 
 # Maps short SMS names to full strategy ids.
 SMS_NAME_MAP: dict[str, str] = {
-    "STRAT1": "strat_1_congress",
-    "STRAT2": "strat_2_value",
-    "STRAT3": "strat_3_mean_reversion",
-    "STRAT4": "strat_4_momentum",
-    "STRAT5": "strat_5_pred_mkt",
-    "STRAT6": "strat_6_nasdaq_long",
-    "STRAT7": "strat_7_nasdaq_short",
-    "STRAT8": "strat_8_sector_rotation",
+    "STRAT1":  "strat_1_congress",
+    "STRAT2":  "strat_2_value",
+    "STRAT3":  "strat_3_mean_reversion",
+    "STRAT4":  "strat_4_momentum",
+    "STRAT5":  "strat_5_pred_mkt",
+    "STRAT6":  "strat_6_nasdaq_long",
+    "STRAT7":  "strat_7_nasdaq_short",
+    "STRAT8":  "strat_8_sector_rotation",
+    "STRAT13": "strat_13_rsi_intraday",
 }
 
 

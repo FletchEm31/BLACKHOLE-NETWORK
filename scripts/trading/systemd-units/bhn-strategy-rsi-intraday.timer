@@ -1,0 +1,35 @@
+# BHN trading — RSI-INTRADAY strategy schedule (Strat 13).
+# Fires every 30 minutes during US market hours (09:30-16:00 ET, Mon-Fri).
+# 14 fires per market day.
+#
+# The daily-bar RSI doesn't change intraday, so signal flips are at most
+# once per day. The 30-min cycles primarily serve risk management
+# (trailing stop / profit target / 5-day max hold).
+#
+# America/New_York in OnCalendar handles EST/EDT automatically.
+# Each line is its own scheduled trigger; systemd accepts many.
+
+[Unit]
+Description=BHN RSI-INTRADAY strategy (every 30 min during market hours)
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 09:30:00 America/New_York
+OnCalendar=Mon..Fri *-*-* 10:00:00 America/New_York
+OnCalendar=Mon..Fri *-*-* 10:30:00 America/New_York
+OnCalendar=Mon..Fri *-*-* 11:00:00 America/New_York
+OnCalendar=Mon..Fri *-*-* 11:30:00 America/New_York
+OnCalendar=Mon..Fri *-*-* 12:00:00 America/New_York
+OnCalendar=Mon..Fri *-*-* 12:30:00 America/New_York
+OnCalendar=Mon..Fri *-*-* 13:00:00 America/New_York
+OnCalendar=Mon..Fri *-*-* 13:30:00 America/New_York
+OnCalendar=Mon..Fri *-*-* 14:00:00 America/New_York
+OnCalendar=Mon..Fri *-*-* 14:30:00 America/New_York
+OnCalendar=Mon..Fri *-*-* 15:00:00 America/New_York
+OnCalendar=Mon..Fri *-*-* 15:30:00 America/New_York
+OnCalendar=Mon..Fri *-*-* 16:00:00 America/New_York
+Unit=bhn-strategy@rsi-intraday.service
+Persistent=true
+RandomizedDelaySec=15
+
+[Install]
+WantedBy=timers.target
