@@ -1,0 +1,274 @@
+==================================================================
+BLACKHOLE NETWORK (BHN) — SESSION HANDOFF
+Last Updated: May 15, 2026
+==================================================================
+
+PURPOSE
+-------
+Read this FIRST at the start of every Claude session.
+It tells Claude what state the project is in, what was done
+last session, and what to work on next.
+The Big 3 docs (INFRASTRUCTURE-REFERENCE, DATA-FLOW-BLUEPRINT,
+SECURITY-PROTOCOL) are the deep reference — this doc is the
+quick-start that tells you where we left off.
+
+==================================================================
+SECTION 1 — NETWORK SNAPSHOT (current state)
+==================================================================
+
+NODE          IP (PUBLIC)       TUNNEL IP   STATUS
+LA Hub        149.28.91.100     10.8.0.1    OPERATIONAL (hub, PG, n8n, HORIZON, Grafana)
+Frankfurt     192.248.187.208   10.9.0.2    OPERATIONAL (exit EU1, LibreSpeed, SearXNG, Tor)
+New Jersey    140.82.4.35       10.8.0.5    OPERATIONAL (trading stack LIVE — 5 strategies running)
+Hillsboro     5.78.94.237       10.8.0.6    OPERATIONAL (tinyproxy verified, Tor bootstrapping)
+
+WireGuard Mesh (hub-and-spoke, LA is hub):
+  Operator PC:     10.8.0.4   PSK: ✅
+  Operator Phone:  10.8.0.2   PSK: ✅
+  Operator Laptop: 10.8.0.7   PSK: ✅ (added this session)
+  NJ:              10.8.0.5   PSK: ❌ pending
+  Hillsboro:       10.8.0.6   PSK: ✅
+  Frankfurt:       10.9.0.2   PSK: ✅
+
+Tor Relays:
+  BHNFornaxEU1  → Frankfurt   LIVE
+  BHNHeliosUS3  → Hillsboro   Bootstrapping
+  BHNNebulaUS2  → NJ          Deployed, not live
+
+CONSOLE TERMINOLOGY (STRICT):
+  REMOTE BROWSER WINDOW = noVNC web console (Vultr/Hetzner)
+  PC LA CONSOLE         = ssh root@149.28.91.100
+  PC GE CONSOLE         = ssh root@192.248.187.208
+  PC NJ CONSOLE         = ssh -p 2222 root@140.82.4.35   ← port 2222
+  PC Hillsboro          = ssh root@5.78.94.237
+  LA→Frankfurt:         ssh frankfurt  (from LA)
+  LA→NJ:                ssh nj         (from LA)
+  LA→Hillsboro:         ssh hillsboro  (from LA)
+
+==================================================================
+SECTION 2 — TRADING STACK STATUS
+==================================================================
+
+ACTIVE STRATEGIES ON NJ:
+
+Account 1 — BHN-STRAT-PRIMARY (PA39LSUT2NW8) $100,000:
+  Strat 6  — BHN-NASDAQ-LONG      enabled    $40,000   Mon 9:40am ET
+  Strat 7  — BHN-NASDAQ-SHORT     DISABLED   $40,000   pending Strat 6 validation
+  Strat 8  — BHN-SECTOR-ROTATION  enabled    $20,000   daily 3:55pm ET
+
+Account 2 — BHN-STRAT-FUNDAMENTAL (PA3AZX0UE3JC) $25,000:
+  Strat 3  — BHN-MEAN-REVERSION   enabled    $20,000   daily
+
+Account 3 — BHN-STRAT-SIGNALS (PA37PRN150AG) $25,000:
+  Strat 4  — BHN-MOMENTUM         enabled    $12,500   daily
+  Strat 13 — BHN-RSI-INTRADAY     enabled    $12,500   every 30min market hours
+
+FIXES APPLIED THIS SESSION:
+  ✅ rules.json — real API keys replacing placeholders
+  ✅ trading.env — removed double /v2 from ALPACA_BASE_URL
+  ✅ Strat 6/7/8/13.env — removed double /v2 from ALPACA_BASE_URL
+
+NOTE: rules.json changes on NJ NOT yet committed to repo — scp back and commit next session
+
+PARKED (built, not deployed):
+  Strat 1  — Congress Trading      (needs Quiver API key $25/mo)
+  Strat 2  — Buffett Value
+  Strat 5  — Weather Arbitrage     (needs Kalshi API key)
+
+==================================================================
+SECTION 3 — GRAFANA DASHBOARD SUITE
+==================================================================
+
+ALL 6 DASHBOARDS LIVE — imported and operational:
+
+  BHN — Market Intelligence         (uid: bhn-market-intelligence)
+  BHN — Trade Execution & Operations (uid: bhn-trade-execution)
+  BHN — Derivatives & Options Markets (uid: bhn-derivatives-options)
+  BHN — Prediction & Alternative Markets (uid: bhn-prediction-alternative)
+  BHN — Commodities & Tangible Asset Markets (uid: bhn-commodities)
+  BHN — Infrastructure & Security Operations (uid: bhn-security-network)
+
+Datasource UID: cflc7izgwm7lsc (grafana-postgresql-datasource)
+
+DASHBOARD NOTES:
+  - Market Intelligence: ETF-based (no individual stocks in market_daily)
+    32 tickers: SPY/QQQ/IWM/DIA, leveraged ETFs, sectors, vol, bonds, commodities
+  - Trade Execution: panels ready, populates as paper trades come in
+  - Derivatives: panels ready, populates when options collector built
+  - Prediction & Alt: weather live (195 rows), prediction markets empty (needs Kalshi)
+  - Commodities: WTI/Brent/NatGas live, agriculture live, weather live
+  - Security: fully live — 199K+ security events, 3 nodes online
+
+DASHBOARD TODO (cosmetic — low priority):
+  - Rename "BHN — Market Intelligence V5" → "BHN — Market Intelligence"
+  - Move all dashboards from "EventHorizon" folder to "BHN" folder
+  - Fix stat panels showing field names (e.g. "current_temp_f 60.4") — change Fields filter
+
+==================================================================
+SECTION 4 — FINANCIAL INTELLIGENCE LAYER
+==================================================================
+
+DATA TABLES ON LA (live collectors):
+  market_daily       14,431 rows   32 ETF tickers × 450 days
+  macro_daily         1,305 rows   5 years FRED data
+  market_regimes        252 rows   1 year classified
+  market_sentiment       30 rows   last 30 days
+  market_events          48 rows   next 12 months
+  news_articles         187 rows   technology only
+  agriculture_prices     60 rows   USDA — corn/wheat/soybeans/cotton/cattle/hogs
+  energy_prices          90 rows   EIA — WTI/Brent/HenryHub
+  weather_snapshots     195 rows   operator-home location
+  earnings_data          32 rows   Mag 7 earnings
+  analyst_data           32 rows   Mag 7 analyst ratings
+  security_events    199K+ rows   growing fast
+
+CURRENT REGIME: BULL_VOLATILE
+  SPY 11.2% above 200MA, VIX 17.9, yield curve +0.48
+
+DAILY COLLECTORS RUNNING ON LA:
+  bhn-market-data.timer      → 4:30pm ET
+  bhn-macro-data.timer       → 5:00pm ET
+  bhn-regime-classifier.timer → 5:15pm ET
+  bhn-sentiment.timer        → 5:30pm ET
+
+MACRO DATA EXPANSION NEEDED (next session — ALTER TABLE):
+  Add to macro_daily:
+    treasury_1m (DGS1MO), treasury_3m (DGS3MO), treasury_6m (DGS6MO)
+    treasury_1y (DGS1), treasury_2y (DGS2), treasury_5y (DGS5)
+    treasury_7y (DGS7), treasury_10y (DGS10), treasury_30y (DGS30)
+    mortgage_15y (MORTGAGE15US), mortgage_30y (MORTGAGE30US)
+    gold_spot (GOLDAMGBD228NLBM), silver_spot (SLVPRUSD)
+  Process: pg_dump first → ALTER TABLE → update collector → backfill → verify
+
+==================================================================
+SECTION 5 — HORIZON STATUS
+==================================================================
+
+Status: OPERATIONAL but running STALE WORKFLOW
+Chat URL: http://10.8.0.1:5678/webhook/ec1592c6-8715-4b0f-8ee8-5bc02f551a27/chat
+
+CRITICAL — needs next session:
+  ❌ bhn-horizon.json NOT re-imported — running old workflow (introduces as "Nathan")
+  ❌ Cannot see financial tables — needs workflow re-import
+  ❌ Daily summary email — SMTP credentials missing from env
+  ❌ Finance news category not added to n8n poller
+  ❌ HORIZON docs not synced to LA filesystem
+
+WHAT HORIZON CAN DO NOW:
+  ✅ Answer questions about security/infrastructure tables
+  ✅ Send/receive SMS
+  ✅ pgvector semantic memory (19 entries)
+  ✅ Redis short-term memory
+
+==================================================================
+SECTION 6 — PENDING TASKS (PRIORITY ORDER)
+==================================================================
+
+IMMEDIATE — DO FIRST (Claude Code session in progress):
+  1. Check NJ node registration in PostgreSQL nodes table
+  2. Frankfurt MASQUERADE fix (exits via LA still)
+  3. LA egress lockdown via tinyproxy (/etc/environment + apt + systemd)
+  4. NJ WireGuard PSK
+  5. CVE-2026-31431 full kernel patch (apt upgrade + reboot all nodes)
+  6. Commit rules.json from NJ back to repo
+  7. Re-import bhn-horizon.json into n8n UI
+
+NEXT SESSION:
+  8.  ALTER TABLE macro_daily — add treasury rates + gold/silver spot
+  9.  Update macro collector with new FRED series + backfill
+  10. Rebuild Market Intelligence dashboard with treasury yield curve panel
+  11. Trading stack monitoring — check first real trades fired today
+  12. Build Alpaca WebSocket collector → market_bars_1min + market_ticks
+  13. Grafana alerting v1 deploy (n8n bhn-alert-router)
+  14. Frankfurt DNS Phase 2 (rebind dnscrypt to 10.9.0.2:53)
+  15. SearXNG → Tor routing
+  16. NJ Tor relay deploy (BHNNebulaUS2)
+  17. MyFamily fingerprint exchange (after all relays 24h+)
+  18. Shadowsocks on Frankfurt
+  19. A2P SMS campaign approval (~May 23-30)
+  20. Quiver Quantitative signup ($25/mo) → enable Strat 1
+  21. Kalshi API key setup → enable Strat 5 + Prediction Markets dashboard
+  22. Sweden node (Bahnhof) — Phase 5.1
+  23. EH data pipeline NVMe→HDD nightly archive
+  24. DBeaver setup on operator laptop
+  25. Build options chain collector (Tradier $10/mo) → Derivatives dashboard
+  26. Build crypto collector → crypto_market_data table
+  27. Build Alpaca news collector → alpaca_news table
+  28. Enable Strat 7 after Strat 6 validated 30+ days
+  29. HORIZON bidirectional SMS command routing
+  30. Wire daily summary email trigger in n8n
+  31. Pattern detector (needs 90 days data first)
+
+==================================================================
+SECTION 7 — GITHUB
+==================================================================
+
+Repo: FletchEm31/BLACKHOLE-NETWORK (PRIVATE — main branch)
+Local: D:\GITHUB REPOSITORY\BLACKHOLE-NETWORK\
+
+Recent commits this session:
+  - BHN Financial Intelligence Dashboard (v4 → superseded)
+  - BHN Security & Network Dashboard
+  - BHN Market Intelligence Dashboard (v2)
+  - (rules.json NOT yet committed — pending scp from NJ)
+
+Dashboard JSONs to commit next session:
+  infrastructure/grafana/BHN-Market-Intelligence-Dashboard.json
+  infrastructure/grafana/BHN-Trade-Execution-Dashboard.json
+  infrastructure/grafana/BHN-Derivatives-Options-Dashboard.json
+  infrastructure/grafana/BHN-Prediction-Alternative-Dashboard.json
+  infrastructure/grafana/BHN-Commodities-Dashboard.json
+  (Security dashboard already committed)
+
+==================================================================
+SECTION 8 — PHASE PROGRESS
+==================================================================
+
+  Phase 1 NETWORK:    ~90%  Frankfurt MASQUERADE + NJ PSK pending
+  Phase 2 DASHBOARD:  ~85%  All 6 dashboards live, alerting not wired
+  Phase 3 AI:         ~60%  HORIZON operational but workflow stale
+  Phase 4 PER-NODE:   ~80%  All nodes live, trading stack active
+  Phase 5 RESILIENCE: ~10%  Sweden/Iceland designed, not built
+
+==================================================================
+SECTION 9 — COSTS (~$210-225/month)
+==================================================================
+
+  LA VPS:          $12
+  Frankfurt VPS:   $12
+  NJ VPS:          $12
+  Hillsboro:       $6.99
+  NVMe storage:    $10.10
+  HDD storage:     $9.97
+  Backups:         $2.40
+  ElevenLabs:      $22
+  Twilio:          ~$16
+  Claude Max:      $100-200
+  API costs:       ~$5-20
+
+  Break-even: 15-25 users at $10/month
+
+==================================================================
+RULES (NEVER DEVIATE)
+==================================================================
+
+  - Project: BLACKHOLE NETWORK (BHN) — never EventHorizon
+  - Console names: exact terminology only (Section 1)
+  - NJ SSH: port 2222 (not 22)
+  - Tor relay nicknames: NO HYPHENS — alphanumeric only [a-zA-Z0-9]
+  - GitHub commits: ALWAYS provide Summary AND Description first
+  - Bootstrap: scp not git clone, ALWAYS set TUNNEL_IP_OVERRIDE
+  - New WireGuard peer on LA: ALWAYS add UFW egress rules immediately
+  - Hetzner nodes: chattr +i on resolv.conf fails — harmless
+  - PostgreSQL full packet capture: enabled intentionally (testing)
+  - Gaming/streaming: SPLIT WireGuard profile not FULL
+  - ALTER TABLE: always pg_dump first, test on copy, never rush
+
+==================================================================
+DOCUMENT CONTROL
+==================================================================
+
+Update this file at the END of every session.
+Store in: Claude Project files + repo infrastructure/docs/
+
+==================================================================
