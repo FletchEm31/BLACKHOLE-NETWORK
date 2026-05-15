@@ -7,7 +7,7 @@
 --
 -- Tables:
 --   1. market_daily        — daily OHLCV + 14 computed indicators per ticker
---   2. macro_daily         — 10 FRED macro series, dense (one row per business day)
+--   2. macro_daily         — 23 FRED macro series, dense (one row per business day)
 --   3. market_regimes      — daily 5-regime classification with confidence
 --   4. market_sentiment    — daily F&G + put/call + insider + AAII
 --   5. market_events       — FOMC + earnings + opex + macro releases (forward-looking)
@@ -92,13 +92,26 @@ CREATE TABLE IF NOT EXISTS macro_daily (
     consumer_sentiment      NUMERIC(8, 3),
     high_yield_spread       NUMERIC(8, 4),
     dollar_index            NUMERIC(10, 4),
+    treasury_1m             NUMERIC(8, 4),
+    treasury_3m             NUMERIC(8, 4),
+    treasury_6m             NUMERIC(8, 4),
+    treasury_1y             NUMERIC(8, 4),
+    treasury_2y             NUMERIC(8, 4),
+    treasury_5y             NUMERIC(8, 4),
+    treasury_7y             NUMERIC(8, 4),
+    treasury_10y            NUMERIC(8, 4),
+    treasury_30y            NUMERIC(8, 4),
+    mortgage_15y_fixed      NUMERIC(8, 4),
+    mortgage_30y_fixed      NUMERIC(8, 4),
+    gold_spot_usd           NUMERIC(12, 4),
+    silver_spot_usd         NUMERIC(12, 4),
     fetched_at              TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS macro_daily_date_idx ON macro_daily (date DESC);
 
 COMMENT ON TABLE  macro_daily IS
-    'FRED 10-series macro snapshot. Dense forward-fill: every business day has a row, slow-moving series (CPI/UNRATE/GDP) carry last published value until FRED publishes new data. Written by scripts/horizon/macro_collector.py at 17:00 ET.';
+    'FRED 23-series macro snapshot. Dense forward-fill: every business day has a row, slow-moving series (CPI/UNRATE/GDP, MORTGAGE15US/30US weekly) carry last published value until FRED publishes new data. Written by scripts/horizon/macro_collector.py at 17:00 ET.';
 
 
 -- ────────────────────────────────────────────────────────────────────────
@@ -337,6 +350,19 @@ SELECT
     mac.consumer_sentiment,
     mac.high_yield_spread,
     mac.dollar_index,
+    mac.treasury_1m,
+    mac.treasury_3m,
+    mac.treasury_6m,
+    mac.treasury_1y,
+    mac.treasury_2y,
+    mac.treasury_5y,
+    mac.treasury_7y,
+    mac.treasury_10y,
+    mac.treasury_30y,
+    mac.mortgage_15y_fixed,
+    mac.mortgage_30y_fixed,
+    mac.gold_spot_usd,
+    mac.silver_spot_usd,
     reg.regime,
     reg.confidence_score   AS regime_confidence,
     reg.spy_vs_200ma,

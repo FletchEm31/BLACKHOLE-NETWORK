@@ -2,7 +2,7 @@
 """
 macro_collector.py — HORIZON macro indicators collector (FRED API).
 
-Pulls 10 FRED series, dense forward-fills into one row per business day,
+Pulls 23 FRED series, dense forward-fills into one row per business day,
 upserts into macro_daily.
 
 Cadence: systemd timer at 17:00 ET daily. Idempotent — ON CONFLICT (date)
@@ -13,16 +13,29 @@ DO UPDATE.
                             FRED revisions and the new trading day).
 
 Series mapping (FRED ID → column):
-  VIXCLS         → vix                       (daily)
-  T10Y2Y         → yield_curve_10y2y         (daily)
-  T10Y3M         → yield_curve_10y3m         (daily)
-  DFF            → fed_funds_rate            (daily)
-  CPIAUCSL       → cpi                       (monthly, forward-filled)
-  UNRATE         → unemployment              (monthly, forward-filled)
-  GDP            → gdp                       (quarterly, forward-filled)
-  UMCSENT        → consumer_sentiment        (monthly, forward-filled)
-  BAMLH0A0HYM2   → high_yield_spread         (daily)
-  DTWEXBGS       → dollar_index              (daily)
+  VIXCLS            → vix                       (daily)
+  T10Y2Y            → yield_curve_10y2y         (daily, spread)
+  T10Y3M            → yield_curve_10y3m         (daily, spread)
+  DFF               → fed_funds_rate            (daily)
+  CPIAUCSL          → cpi                       (monthly, forward-filled)
+  UNRATE            → unemployment              (monthly, forward-filled)
+  GDP               → gdp                       (quarterly, forward-filled)
+  UMCSENT           → consumer_sentiment        (monthly, forward-filled)
+  BAMLH0A0HYM2      → high_yield_spread         (daily)
+  DTWEXBGS          → dollar_index              (daily)
+  DGS1MO            → treasury_1m               (daily)
+  DGS3MO            → treasury_3m               (daily)
+  DGS6MO            → treasury_6m               (daily)
+  DGS1              → treasury_1y               (daily)
+  DGS2              → treasury_2y               (daily)
+  DGS5              → treasury_5y               (daily)
+  DGS7              → treasury_7y               (daily)
+  DGS10             → treasury_10y              (daily)
+  DGS30             → treasury_30y              (daily)
+  MORTGAGE15US      → mortgage_15y_fixed        (weekly, forward-filled)
+  MORTGAGE30US      → mortgage_30y_fixed        (weekly, forward-filled)
+  GOLDAMGBD228NLBM  → gold_spot_usd             (daily, LBMA AM fix)
+  SLVPRUSD          → silver_spot_usd           (daily — verify FRED id)
 
 Forward-fill semantics: every business day from start through today gets
 one row. Slow-moving series carry the last published value until FRED
@@ -67,16 +80,29 @@ FRED_API_BASE = "https://api.stlouisfed.org/fred/series/observations"
 
 # FRED series ID → macro_daily column name
 SERIES_MAP: dict[str, str] = {
-    "VIXCLS":       "vix",
-    "T10Y2Y":       "yield_curve_10y2y",
-    "T10Y3M":       "yield_curve_10y3m",
-    "DFF":          "fed_funds_rate",
-    "CPIAUCSL":     "cpi",
-    "UNRATE":       "unemployment",
-    "GDP":          "gdp",
-    "UMCSENT":      "consumer_sentiment",
-    "BAMLH0A0HYM2": "high_yield_spread",
-    "DTWEXBGS":     "dollar_index",
+    "VIXCLS":           "vix",
+    "T10Y2Y":           "yield_curve_10y2y",
+    "T10Y3M":           "yield_curve_10y3m",
+    "DFF":              "fed_funds_rate",
+    "CPIAUCSL":         "cpi",
+    "UNRATE":           "unemployment",
+    "GDP":              "gdp",
+    "UMCSENT":          "consumer_sentiment",
+    "BAMLH0A0HYM2":     "high_yield_spread",
+    "DTWEXBGS":         "dollar_index",
+    "DGS1MO":           "treasury_1m",
+    "DGS3MO":           "treasury_3m",
+    "DGS6MO":           "treasury_6m",
+    "DGS1":             "treasury_1y",
+    "DGS2":             "treasury_2y",
+    "DGS5":             "treasury_5y",
+    "DGS7":             "treasury_7y",
+    "DGS10":            "treasury_10y",
+    "DGS30":            "treasury_30y",
+    "MORTGAGE15US":     "mortgage_15y_fixed",
+    "MORTGAGE30US":     "mortgage_30y_fixed",
+    "GOLDAMGBD228NLBM": "gold_spot_usd",
+    "SLVPRUSD":         "silver_spot_usd",
 }
 
 BACKFILL_YEARS = 5
@@ -184,13 +210,21 @@ UPSERT_SQL = """
         date,
         vix, yield_curve_10y2y, yield_curve_10y3m, fed_funds_rate,
         cpi, unemployment, gdp, consumer_sentiment,
-        high_yield_spread, dollar_index
+        high_yield_spread, dollar_index,
+        treasury_1m, treasury_3m, treasury_6m, treasury_1y, treasury_2y,
+        treasury_5y, treasury_7y, treasury_10y, treasury_30y,
+        mortgage_15y_fixed, mortgage_30y_fixed,
+        gold_spot_usd, silver_spot_usd
     )
     VALUES (
         %(date)s,
         %(vix)s, %(yield_curve_10y2y)s, %(yield_curve_10y3m)s, %(fed_funds_rate)s,
         %(cpi)s, %(unemployment)s, %(gdp)s, %(consumer_sentiment)s,
-        %(high_yield_spread)s, %(dollar_index)s
+        %(high_yield_spread)s, %(dollar_index)s,
+        %(treasury_1m)s, %(treasury_3m)s, %(treasury_6m)s, %(treasury_1y)s, %(treasury_2y)s,
+        %(treasury_5y)s, %(treasury_7y)s, %(treasury_10y)s, %(treasury_30y)s,
+        %(mortgage_15y_fixed)s, %(mortgage_30y_fixed)s,
+        %(gold_spot_usd)s, %(silver_spot_usd)s
     )
     ON CONFLICT (date) DO UPDATE SET
         vix                 = EXCLUDED.vix,
@@ -203,6 +237,19 @@ UPSERT_SQL = """
         consumer_sentiment  = EXCLUDED.consumer_sentiment,
         high_yield_spread   = EXCLUDED.high_yield_spread,
         dollar_index        = EXCLUDED.dollar_index,
+        treasury_1m         = EXCLUDED.treasury_1m,
+        treasury_3m         = EXCLUDED.treasury_3m,
+        treasury_6m         = EXCLUDED.treasury_6m,
+        treasury_1y         = EXCLUDED.treasury_1y,
+        treasury_2y         = EXCLUDED.treasury_2y,
+        treasury_5y         = EXCLUDED.treasury_5y,
+        treasury_7y         = EXCLUDED.treasury_7y,
+        treasury_10y        = EXCLUDED.treasury_10y,
+        treasury_30y        = EXCLUDED.treasury_30y,
+        mortgage_15y_fixed  = EXCLUDED.mortgage_15y_fixed,
+        mortgage_30y_fixed  = EXCLUDED.mortgage_30y_fixed,
+        gold_spot_usd       = EXCLUDED.gold_spot_usd,
+        silver_spot_usd     = EXCLUDED.silver_spot_usd,
         fetched_at          = NOW()
 """
 
@@ -236,6 +283,19 @@ def upsert_rows(df: pd.DataFrame, dry_run: bool = False) -> int:
             "consumer_sentiment":  _safe_float(r.get("consumer_sentiment")),
             "high_yield_spread":   _safe_float(r.get("high_yield_spread")),
             "dollar_index":        _safe_float(r.get("dollar_index")),
+            "treasury_1m":         _safe_float(r.get("treasury_1m")),
+            "treasury_3m":         _safe_float(r.get("treasury_3m")),
+            "treasury_6m":         _safe_float(r.get("treasury_6m")),
+            "treasury_1y":         _safe_float(r.get("treasury_1y")),
+            "treasury_2y":         _safe_float(r.get("treasury_2y")),
+            "treasury_5y":         _safe_float(r.get("treasury_5y")),
+            "treasury_7y":         _safe_float(r.get("treasury_7y")),
+            "treasury_10y":        _safe_float(r.get("treasury_10y")),
+            "treasury_30y":        _safe_float(r.get("treasury_30y")),
+            "mortgage_15y_fixed":  _safe_float(r.get("mortgage_15y_fixed")),
+            "mortgage_30y_fixed":  _safe_float(r.get("mortgage_30y_fixed")),
+            "gold_spot_usd":       _safe_float(r.get("gold_spot_usd")),
+            "silver_spot_usd":     _safe_float(r.get("silver_spot_usd")),
         })
 
     if dry_run:
