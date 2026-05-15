@@ -934,7 +934,7 @@ def place_order(
             f"live_mode_approved=false. Refusing order."
         )
 
-    alpaca = get_alpaca()
+    alpaca = get_strategy_alpaca(strategy_id)
     order_kwargs = {
         "symbol": ticker,
         "qty": qty,
