@@ -1,0 +1,686 @@
+{
+  "__inputs": [
+    {
+      "name": "DS_GRAFANA-POSTGRESQL-DATASOURCE",
+      "label": "grafana-postgresql-datasource",
+      "description": "",
+      "type": "datasource",
+      "pluginId": "postgres",
+      "pluginName": "PostgreSQL"
+    }
+  ],
+  "__requires": [
+    { "type": "grafana", "id": "grafana", "name": "Grafana", "version": "10.0.0" },
+    { "type": "datasource", "id": "postgres", "name": "PostgreSQL", "version": "1.0.0" },
+    { "type": "panel", "id": "timeseries", "name": "Time series", "version": "" },
+    { "type": "panel", "id": "stat", "name": "Stat", "version": "" },
+    { "type": "panel", "id": "table", "name": "Table", "version": "" },
+    { "type": "panel", "id": "gauge", "name": "Gauge", "version": "" }
+  ],
+  "annotations": { "list": [] },
+  "description": "BHN Financial Intelligence — Market Data, Macro, Regime, Sentiment",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 100,
+      "title": "── MARKET REGIME",
+      "type": "row"
+    },
+
+    {
+      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [
+            { "type": "value", "options": {
+              "BULL_CALM":     { "color": "green",  "index": 0, "text": "BULL CALM" },
+              "BULL_VOLATILE": { "color": "yellow", "index": 1, "text": "BULL VOLATILE" },
+              "BULL_STRESSED": { "color": "orange", "index": 2, "text": "BULL STRESSED" },
+              "BEAR_GRIND":    { "color": "red",    "index": 3, "text": "BEAR GRIND" },
+              "BEAR_PANIC":    { "color": "dark-red","index": 4, "text": "BEAR PANIC" }
+            }}
+          ],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }
+        }
+      },
+      "gridPos": { "h": 4, "w": 5, "x": 0, "y": 1 },
+      "id": 1,
+      "options": {
+        "colorMode": "background", "graphMode": "none", "justifyMode": "center",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "/^regime$/", "values": false },
+        "textMode": "auto"
+      },
+      "title": "Current Regime",
+      "type": "stat",
+      "targets": [{
+        "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+        "rawSql": "SELECT regime FROM market_regimes ORDER BY date DESC LIMIT 1;",
+        "format": "table", "refId": "A"
+      }]
+    },
+
+    {
+      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 20 }, { "color": "red", "value": 30 }] },
+          "unit": "short", "decimals": 1
+        }
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 5, "y": 1 },
+      "id": 2,
+      "options": {
+        "colorMode": "background", "graphMode": "none", "justifyMode": "center",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "/^vix$/", "values": false },
+        "textMode": "value_and_name"
+      },
+      "title": "VIX",
+      "type": "stat",
+      "targets": [{
+        "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+        "rawSql": "SELECT vix FROM market_regimes ORDER BY date DESC LIMIT 1;",
+        "format": "table", "refId": "A"
+      }]
+    },
+
+    {
+      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "yellow", "value": -0.05 }, { "color": "green", "value": 0.05 }] },
+          "unit": "percentunit", "decimals": 2
+        }
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 9, "y": 1 },
+      "id": 3,
+      "options": {
+        "colorMode": "background", "graphMode": "none", "justifyMode": "center",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "/^spy_vs_200ma$/", "values": false },
+        "textMode": "value_and_name"
+      },
+      "title": "SPY vs 200MA",
+      "type": "stat",
+      "targets": [{
+        "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+        "rawSql": "SELECT spy_vs_200ma FROM market_regimes ORDER BY date DESC LIMIT 1;",
+        "format": "table", "refId": "A"
+      }]
+    },
+
+    {
+      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "yellow", "value": -0.5 }, { "color": "green", "value": 0 }] },
+          "unit": "short", "decimals": 2
+        }
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 13, "y": 1 },
+      "id": 4,
+      "options": {
+        "colorMode": "background", "graphMode": "none", "justifyMode": "center",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "/^yield_curve$/", "values": false },
+        "textMode": "value_and_name"
+      },
+      "title": "Yield Curve (10Y-2Y)",
+      "type": "stat",
+      "targets": [{
+        "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+        "rawSql": "SELECT yield_curve FROM market_regimes ORDER BY date DESC LIMIT 1;",
+        "format": "table", "refId": "A"
+      }]
+    },
+
+    {
+      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "yellow", "value": 50 }, { "color": "green", "value": 70 }] },
+          "unit": "short", "decimals": 1, "min": 0, "max": 100
+        }
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 17, "y": 1 },
+      "id": 5,
+      "options": {
+        "minVizHeight": 75, "minVizWidth": 75, "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "showThresholdLabels": false, "showThresholdMarkers": true
+      },
+      "title": "Regime Confidence",
+      "type": "gauge",
+      "targets": [{
+        "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+        "rawSql": "SELECT ROUND((confidence_score * 100)::numeric, 1) AS confidence FROM market_regimes ORDER BY date DESC LIMIT 1;",
+        "format": "table", "refId": "A"
+      }]
+    },
+
+    {
+      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "custom": { "lineWidth": 2, "fillOpacity": 10 } },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 5 },
+      "id": 6,
+      "options": { "legend": { "calcs": ["last"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "title": "Market Regime History — VIX / SPY vs 200MA / Yield Curve (90 days)",
+      "type": "timeseries",
+      "targets": [{
+        "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+        "rawSql": "SELECT date::timestamptz AS time, vix, spy_vs_200ma, yield_curve FROM market_regimes WHERE date >= NOW() - INTERVAL '90 days' ORDER BY date ASC;",
+        "format": "table", "refId": "A",
+        "timeColumn": "time"
+      }]
+    },
+
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 11 },
+      "id": 101,
+      "title": "── PRICE DATA",
+      "type": "row"
+    },
+
+    {
+      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "custom": { "lineWidth": 2, "fillOpacity": 5 }, "unit": "currencyUSD" }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "id": 7,
+      "options": { "legend": { "calcs": ["last", "min", "max"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "title": "SPY / QQQ / IWM — Close Price (90 days)",
+      "type": "timeseries",
+      "targets": [{
+        "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+        "rawSql": "SELECT date::timestamptz AS time, ticker, close FROM market_daily WHERE ticker IN ('SPY','QQQ','IWM') AND date >= NOW() - INTERVAL '90 days' ORDER BY date ASC;",
+        "format": "table", "refId": "A",
+        "timeColumn": "time"
+      }]
+    },
+
+    {
+      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "custom": { "lineWidth": 2, "fillOpacity": 5 }, "unit": "currencyUSD" }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "id": 8,
+      "options": { "legend": { "calcs": ["last", "min", "max"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "title": "Tech Leaders — Close Price (90 days)",
+      "type": "timeseries",
+      "targets": [{
+        "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+        "rawSql": "SELECT date::timestamptz AS time, ticker, close FROM market_daily WHERE ticker IN ('AAPL','MSFT','NVDA','GOOGL','META') AND date >= NOW() - INTERVAL '90 days' ORDER BY date ASC;",
+        "format": "table", "refId": "A",
+        "timeColumn": "time"
+      }]
+    },
+
+    {
+      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "custom": { "lineWidth": 2, "fillOpacity": 5 }, "unit": "short" }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 20 },
+      "id": 9,
+      "options": { "legend": { "calcs": ["last"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "title": "Volume — SPY / QQQ / IWM (90 days)",
+      "type": "timeseries",
+      "targets": [{
+        "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+        "rawSql": "SELECT date::timestamptz AS time, ticker, volume FROM market_daily WHERE ticker IN ('SPY','QQQ','IWM') AND date >= NOW() - INTERVAL '90 days' ORDER BY date ASC;",
+        "format": "table", "refId": "A",
+        "timeColumn": "time"
+      }]
+    },
+
+    {
+      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "custom": { "lineWidth": 2, "fillOpacity": 5 }, "unit": "short", "min": 0, "max": 100 }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 20 },
+      "id": 10,
+      "options": { "legend": { "calcs": ["last"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "title": "RSI-14 — Key Tickers (90 days)",
+      "type": "timeseries",
+      "targets": [{
+        "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+        "rawSql": "SELECT date::timestamptz AS time, ticker, rsi_14 FROM market_daily WHERE ticker IN ('SPY','QQQ','NVDA','AAPL') AND date >= NOW() - INTERVAL '90 days' ORDER BY date ASC;",
+        "format": "table", "refId": "A",
+        "timeColumn": "time"
+      }]
+    },
+
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 28 },
+      "id": 102,
+      "title": "── MACRO DATA",
+      "type": "row"
+    },
+
+    {
+      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "custom": { "lineWidth": 2, "fillOpacity": 8 }, "unit": "percent" }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 29 },
+      "id": 11,
+      "options": { "legend": { "calcs": ["last"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "title": "Interest Rates (1 Year)",
+      "type": "timeseries",
+      "targets": [{
+        "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+        "rawSql": "SELECT date::timestamptz AS time, fed_funds_rate, yield_curve_10y2y, yield_curve_10y3m FROM macro_daily WHERE date >= NOW() - INTERVAL '1 year' ORDER BY date ASC;",
+        "format": "table", "refId": "A",
+        "timeColumn": "time"
+      }]
+    },
+
+    {
+      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "custom": { "lineWidth": 2, "fillOpacity": 8 }, "unit": "short" }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 29 },
+      "id": 12,
+      "options": { "legend": { "calcs": ["last"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "title": "CPI / Unemployment / Consumer Sentiment (1 Year)",
+      "type": "timeseries",
+      "targets": [{
+        "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+        "rawSql": "SELECT date::timestamptz AS time, cpi, unemployment, consumer_sentiment FROM macro_daily WHERE date >= NOW() - INTERVAL '1 year' ORDER BY date ASC;",
+        "format": "table", "refId": "A",
+        "timeColumn": "time"
+      }]
+    },
+
+    {
+      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "custom": { "lineWidth": 2, "fillOpacity": 8 }, "unit": "short" }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 37 },
+      "id": 13,
+      "options": { "legend": { "calcs": ["last"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "title": "Dollar Index / High Yield Spread (1 Year)",
+      "type": "timeseries",
+      "targets": [{
+        "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+        "rawSql": "SELECT date::timestamptz AS time, dollar_index, high_yield_spread FROM macro_daily WHERE date >= NOW() - INTERVAL '1 year' ORDER BY date ASC;",
+        "format": "table", "refId": "A",
+        "timeColumn": "time"
+      }]
+    },
+
+    {
+      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 3 }, { "color": "red", "value": 5 }] },
+          "unit": "short", "decimals": 2
+        }
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 37 },
+      "id": 14,
+      "options": {
+        "colorMode": "background", "graphMode": "none", "justifyMode": "center",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "/^cpi$/", "values": false },
+        "textMode": "value_and_name"
+      },
+      "title": "CPI (latest)",
+      "type": "stat",
+      "targets": [{
+        "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+        "rawSql": "SELECT cpi FROM macro_daily WHERE cpi IS NOT NULL ORDER BY date DESC LIMIT 1;",
+        "format": "table", "refId": "A"
+      }]
+    },
+
+    {
+      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 4.5 }, { "color": "red", "value": 5.5 }] },
+          "unit": "percent", "decimals": 2
+        }
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 37 },
+      "id": 15,
+      "options": {
+        "colorMode": "background", "graphMode": "none", "justifyMode": "center",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "/^fed_funds_rate$/", "values": false },
+        "textMode": "value_and_name"
+      },
+      "title": "Fed Funds Rate (latest)",
+      "type": "stat",
+      "targets": [{
+        "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+        "rawSql": "SELECT fed_funds_rate FROM macro_daily WHERE fed_funds_rate IS NOT NULL ORDER BY date DESC LIMIT 1;",
+        "format": "table", "refId": "A"
+      }]
+    },
+
+    {
+      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 5 }, { "color": "red", "value": 7 }] },
+          "unit": "percent", "decimals": 1
+        }
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 37 },
+      "id": 16,
+      "options": {
+        "colorMode": "background", "graphMode": "none", "justifyMode": "center",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "/^unemployment$/", "values": false },
+        "textMode": "value_and_name"
+      },
+      "title": "Unemployment (latest)",
+      "type": "stat",
+      "targets": [{
+        "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+        "rawSql": "SELECT unemployment FROM macro_daily WHERE unemployment IS NOT NULL ORDER BY date DESC LIMIT 1;",
+        "format": "table", "refId": "A"
+      }]
+    },
+
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 41 },
+      "id": 103,
+      "title": "── MARKET SENTIMENT",
+      "type": "row"
+    },
+
+    {
+      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "custom": { "lineWidth": 2, "fillOpacity": 15 }, "unit": "short" }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 42 },
+      "id": 17,
+      "options": { "legend": { "calcs": ["last", "mean"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "title": "Fear & Greed + Put/Call Ratio (30 days)",
+      "type": "timeseries",
+      "targets": [{
+        "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+        "rawSql": "SELECT date::timestamptz AS time, fear_greed_index, put_call_ratio, insider_buy_sell_ratio FROM market_sentiment ORDER BY date ASC;",
+        "format": "table", "refId": "A",
+        "timeColumn": "time"
+      }]
+    },
+
+    {
+      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "custom": { "lineWidth": 2, "fillOpacity": 15 }, "unit": "percent" }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 42 },
+      "id": 18,
+      "options": { "legend": { "calcs": ["last", "mean"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "title": "AAII Sentiment — Bull / Bear / Neutral (30 days)",
+      "type": "timeseries",
+      "targets": [{
+        "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+        "rawSql": "SELECT date::timestamptz AS time, aaii_bull_pct, aaii_bear_pct, aaii_neutral_pct FROM market_sentiment ORDER BY date ASC;",
+        "format": "table", "refId": "A",
+        "timeColumn": "time"
+      }]
+    },
+
+    {
+      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "orange", "value": 25 }, { "color": "yellow", "value": 45 }, { "color": "green", "value": 55 }, { "color": "dark-green", "value": 75 }] },
+          "unit": "short", "min": 0, "max": 100
+        }
+      },
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 50 },
+      "id": 19,
+      "options": {
+        "minVizHeight": 75, "minVizWidth": 75, "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "/^fear_greed_index$/", "values": false },
+        "showThresholdLabels": true, "showThresholdMarkers": true
+      },
+      "title": "Fear & Greed Index",
+      "type": "gauge",
+      "targets": [{
+        "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+        "rawSql": "SELECT fear_greed_index FROM market_sentiment ORDER BY date DESC LIMIT 1;",
+        "format": "table", "refId": "A"
+      }]
+    },
+
+    {
+      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [
+            { "type": "value", "options": {
+              "Extreme Fear": { "color": "dark-red",   "index": 0 },
+              "Fear":         { "color": "red",        "index": 1 },
+              "Neutral":      { "color": "yellow",     "index": 2 },
+              "Greed":        { "color": "green",      "index": 3 },
+              "Extreme Greed":{ "color": "dark-green", "index": 4 }
+            }}
+          ],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }
+        }
+      },
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 50 },
+      "id": 20,
+      "options": {
+        "colorMode": "background", "graphMode": "none", "justifyMode": "center",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "/^fear_greed_label$/", "values": false },
+        "textMode": "auto"
+      },
+      "title": "Fear & Greed Label",
+      "type": "stat",
+      "targets": [{
+        "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+        "rawSql": "SELECT fear_greed_label FROM market_sentiment ORDER BY date DESC LIMIT 1;",
+        "format": "table", "refId": "A"
+      }]
+    },
+
+    {
+      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 1.2 }] },
+          "unit": "short", "decimals": 2
+        }
+      },
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 50 },
+      "id": 21,
+      "options": {
+        "colorMode": "background", "graphMode": "none", "justifyMode": "center",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "/^put_call_ratio$/", "values": false },
+        "textMode": "value_and_name"
+      },
+      "title": "Put/Call Ratio (latest)",
+      "type": "stat",
+      "targets": [{
+        "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+        "rawSql": "SELECT put_call_ratio FROM market_sentiment ORDER BY date DESC LIMIT 1;",
+        "format": "table", "refId": "A"
+      }]
+    },
+
+    {
+      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "yellow", "value": 30 }, { "color": "green", "value": 45 }] },
+          "unit": "percent", "decimals": 1
+        }
+      },
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 50 },
+      "id": 22,
+      "options": {
+        "colorMode": "background", "graphMode": "none", "justifyMode": "center",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "/^aaii_bull_pct$/", "values": false },
+        "textMode": "value_and_name"
+      },
+      "title": "AAII Bull % (latest)",
+      "type": "stat",
+      "targets": [{
+        "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+        "rawSql": "SELECT aaii_bull_pct FROM market_sentiment ORDER BY date DESC LIMIT 1;",
+        "format": "table", "refId": "A"
+      }]
+    },
+
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 55 },
+      "id": 104,
+      "title": "── TRADING PERFORMANCE",
+      "type": "row"
+    },
+
+    {
+      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 0 }] },
+          "unit": "currencyUSD", "decimals": 2
+        }
+      },
+      "gridPos": { "h": 4, "w": 24, "x": 0, "y": 56 },
+      "id": 23,
+      "options": {
+        "colorMode": "background", "graphMode": "none", "justifyMode": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": true },
+        "textMode": "auto"
+      },
+      "title": "PnL by Strategy (all time) — populates when trades arrive",
+      "type": "stat",
+      "targets": [{
+        "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+        "rawSql": "SELECT strategy_name, ROUND(SUM(pnl)::numeric, 2) AS total_pnl FROM paper_trades GROUP BY strategy_name ORDER BY total_pnl DESC;",
+        "format": "table", "refId": "A"
+      }]
+    },
+
+    {
+      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "custom": { "lineWidth": 2, "fillOpacity": 10 }, "unit": "currencyUSD" }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 60 },
+      "id": 24,
+      "options": { "legend": { "calcs": ["last"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "title": "Cumulative PnL by Strategy — populates when trades arrive",
+      "type": "timeseries",
+      "targets": [{
+        "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+        "rawSql": "SELECT filled_at AS time, strategy_name, SUM(pnl) OVER (PARTITION BY strategy_name ORDER BY filled_at) AS cumulative_pnl FROM paper_trades ORDER BY filled_at ASC;",
+        "format": "table", "refId": "A",
+        "timeColumn": "time"
+      }]
+    },
+
+    {
+      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto" } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "total_pnl" }, "properties": [{ "id": "custom.displayMode", "value": "color-background" }, { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 0 }] } }, { "id": "unit", "value": "currencyUSD" }] },
+          { "matcher": { "id": "byName", "options": "win_rate" }, "properties": [{ "id": "unit", "value": "percent" }] },
+          { "matcher": { "id": "byName", "options": "avg_pnl" }, "properties": [{ "id": "unit", "value": "currencyUSD" }] }
+        ]
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 60 },
+      "id": 25,
+      "options": { "footer": { "show": false }, "showHeader": true },
+      "title": "Strategy Performance Summary — populates when trades arrive",
+      "type": "table",
+      "targets": [{
+        "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+        "rawSql": "SELECT strategy_name, COUNT(*) AS trades, SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) AS wins, ROUND((SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END)::float / NULLIF(COUNT(*),0) * 100)::numeric, 1) AS win_rate, ROUND(SUM(pnl)::numeric, 2) AS total_pnl, ROUND(AVG(pnl)::numeric, 2) AS avg_pnl FROM paper_trades GROUP BY strategy_name ORDER BY total_pnl DESC;",
+        "format": "table", "refId": "A"
+      }]
+    },
+
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 68 },
+      "id": 105,
+      "title": "── UPCOMING MARKET EVENTS",
+      "type": "row"
+    },
+
+    {
+      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto" } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "importance" }, "properties": [{ "id": "custom.displayMode", "value": "color-background" }, { "id": "mappings", "value": [{ "type": "value", "options": { "high": { "color": "red", "index": 0 }, "medium": { "color": "yellow", "index": 1 }, "low": { "color": "green", "index": 2 } } }] }] }
+        ]
+      },
+      "gridPos": { "h": 8, "w": 14, "x": 0, "y": 69 },
+      "id": 26,
+      "options": { "footer": { "show": false }, "showHeader": true },
+      "title": "Upcoming Market Events (next 30 days)",
+      "type": "table",
+      "targets": [{
+        "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+        "rawSql": "SELECT event_date, event_name, event_type, importance, expected_value, previous_value FROM market_events WHERE event_date BETWEEN NOW() AND NOW() + INTERVAL '30 days' ORDER BY event_date ASC LIMIT 20;",
+        "format": "table", "refId": "A"
+      }]
+    },
+
+    {
+      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "fieldConfig": { "defaults": { "custom": { "align": "auto" } } },
+      "gridPos": { "h": 8, "w": 10, "x": 14, "y": 69 },
+      "id": 27,
+      "options": { "footer": { "show": false }, "showHeader": true },
+      "title": "Recent News",
+      "type": "table",
+      "targets": [{
+        "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+        "rawSql": "SELECT published_at::date AS date, source, LEFT(title, 60) AS headline FROM news_articles ORDER BY published_at DESC LIMIT 15;",
+        "format": "table", "refId": "A"
+      }]
+    }
+
+  ],
+  "refresh": "5m",
+  "schemaVersion": 38,
+  "tags": ["bhn", "financial", "trading", "market"],
+  "templating": { "list": [] },
+  "time": { "from": "now-90d", "to": "now" },
+  "timepicker": {},
+  "timezone": "America/Los_Angeles",
+  "title": "BHN — Financial Intelligence V3",
+  "uid": "bhn-financial-intelligence-v3",
+  "version": 1,
+  "weekStart": ""
+}
