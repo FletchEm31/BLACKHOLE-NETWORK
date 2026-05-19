@@ -1,0 +1,21 @@
+# BHN trading — one-shot recon restart timer.
+# Fires once at 2026-05-19 14:00 UTC, then self-deactivates
+# (RemainAfterElapse=false). Persistent=false means a missed fire is
+# NOT replayed — if the system was down at the calendar moment, the
+# operator must restart reconciliation manually after verifying state.
+#
+# Cleanup after firing:
+#   systemctl disable --now bhn-recon-restart-after-fill.timer
+#   rm /etc/systemd/system/bhn-recon-restart-after-fill.{timer,service}
+
+[Unit]
+Description=BHN — one-shot recon restart verifier (Tue 2026-05-19 14:00 UTC)
+
+[Timer]
+OnCalendar=2026-05-19 14:00:00 UTC
+Unit=bhn-recon-restart-after-fill.service
+Persistent=false
+RemainAfterElapse=false
+
+[Install]
+WantedBy=timers.target

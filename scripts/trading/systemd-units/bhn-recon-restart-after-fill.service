@@ -1,0 +1,28 @@
+# BHN trading — one-shot recon restart verifier.
+# Fired once by bhn-recon-restart-after-fill.timer at 2026-05-19 14:00 UTC
+# (~30min after the queued JPST close fills at Tue 13:30 UTC market open).
+#
+# Verifies the close filled + no JPST orphan on default account, then
+# starts bhn-reconciliation.timer. Exits non-zero (and does NOT start
+# the timer) on any failure.
+
+[Unit]
+Description=BHN — verify JPST close fill + restart reconciliation (one-shot)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/bhn/trading
+ExecStart=/usr/bin/python3 /opt/bhn/trading/recon-restart-after-fill.py
+EnvironmentFile=/etc/bhn-trading/env
+
+StandardOutput=append:/var/log/bhn-trading/recon-restart-after-fill.log
+StandardError=append:/var/log/bhn-trading/recon-restart-after-fill.log
+
+TimeoutStartSec=120
+TimeoutStopSec=15
+
+[Install]
+# Enabled via the timer.
