@@ -547,6 +547,23 @@ def get_strategy_alpaca(strategy_id: str) -> tradeapi.REST:
     return client
 
 
+def iter_strategy_alpaca_clients() -> Iterator[tuple[str, tradeapi.REST]]:
+    """Yield (strategy_id, REST client) for every strategy in STRAT_NUMBER
+    whose broker block is fully configured. Strategies with a missing broker
+    subblock, unset env vars, or a blocked account are silently skipped
+    (logged at debug). Callers must NOT assume all STRAT_NUMBER ids appear
+    — under partial onboarding only some strategies have per-account creds.
+    Default get_alpaca() singleton is NOT yielded; query it separately when
+    you need a sweep of the legacy/default account."""
+    for sid in STRAT_NUMBER:
+        try:
+            yield (sid, get_strategy_alpaca(sid))
+        except Exception as e:
+            get_logger("system").debug(
+                f"iter_strategy_alpaca_clients: skipping {sid}: {e}"
+            )
+
+
 # ─────────────────────────────────────────────────────────────────────────
 # Strategy lifecycle
 # ─────────────────────────────────────────────────────────────────────────
@@ -1082,82 +1099,84 @@ def compute_next_interval(mismatches_present: bool, phase: MarketPhase) -> int:
 
 def reconcile_state() -> list[Mismatch]:
     """
-    Pure deterministic comparison: Alpaca positions vs PG open trades.
+    Multi-account deterministic comparison. For each strategy with a
+    configured per-account broker, compare that strategy's Alpaca positions
+    against its open paper_trades. Also sweep the legacy/default account
+    (the one tied to ALPACA_API_KEY in /etc/bhn-trading/env) — under
+    multi-account routing nothing should be held there, so any position
+    found is an UNKNOWN_POSITION orphan (this is exactly how the JPST-on-
+    PRIMARY incident would surface).
+
     Returns list of Mismatch objects (empty if clean).
-    Strategy attribution: an Alpaca position is "known" if any open
-    paper_trades row matches (ticker, sign). Otherwise UNKNOWN_POSITION.
     """
     mismatches: list[Mismatch] = []
 
-    alpaca = get_alpaca()
-    try:
-        alpaca_positions = alpaca.list_positions()
-    except Exception as e:
-        # If Alpaca is unreachable, conservatively report no mismatches —
-        # daemon's heartbeat handles "daemon is alive but Alpaca is down" case.
-        get_logger("system").warning(f"Alpaca list_positions failed: {e}")
-        return []
-
     pg_open = get_open_trades()
-
-    # Build lookup: ticker → (qty, strategy_id, trade_id) from PG side
-    pg_by_ticker: dict[str, list[dict]] = {}
+    # Partition PG state by (strategy_id, ticker)
+    pg_by_strat: dict[str, dict[str, list[dict]]] = {}
     for t in pg_open:
-        pg_by_ticker.setdefault(t["ticker"], []).append(t)
+        pg_by_strat.setdefault(t["strategy_id"], {}).setdefault(t["ticker"], []).append(t)
 
-    # Build lookup: ticker → qty from Alpaca side
-    alpaca_by_ticker: dict[str, int] = {}
-    for p in alpaca_positions:
-        alpaca_by_ticker[p.symbol] = int(p.qty)
+    # ── Per-strategy reconciliation ─────────────────────────────────
+    seen_strategies: set[str] = set()
+    for strategy_id, alpaca in iter_strategy_alpaca_clients():
+        seen_strategies.add(strategy_id)
+        try:
+            alpaca_positions = alpaca.list_positions()
+        except Exception as e:
+            get_logger("system").warning(
+                f"reconcile_state: list_positions failed for {strategy_id}: {e}"
+            )
+            continue
 
-    # Pass 1: Alpaca-side tickers vs PG
-    for ticker, alpaca_qty in alpaca_by_ticker.items():
-        pg_trades = pg_by_ticker.get(ticker, [])
-        pg_qty = sum(int(t["qty"]) * (1 if t["side"] == "buy" else -1) for t in pg_trades)
-        if pg_qty == 0:
-            # Alpaca has a position but PG doesn't recognize it
+        alpaca_by_ticker: dict[str, int] = {p.symbol: int(p.qty) for p in alpaca_positions}
+        pg_for_strat = pg_by_strat.get(strategy_id, {})
+
+        # Alpaca-side: what's in this account
+        for ticker, alpaca_qty in alpaca_by_ticker.items():
+            pg_trades = pg_for_strat.get(ticker, [])
+            pg_qty = sum(int(t["qty"]) * (1 if t["side"] == "buy" else -1)
+                         for t in pg_trades)
+            if pg_qty == alpaca_qty:
+                continue
             try:
                 latest = alpaca.get_latest_trade(ticker)
                 price = Decimal(str(latest.price))
             except Exception:
                 price = Decimal("0")
-            mismatches.append(Mismatch(
-                type=MismatchType.UNKNOWN_POSITION,
-                strategy_id=None,
-                ticker=ticker,
-                expected_qty=0,
-                actual_qty=alpaca_qty,
-                value_usd=price * abs(alpaca_qty),
-                details={"price": str(price), "alpaca_qty": alpaca_qty},
-            ))
-        elif pg_qty != alpaca_qty:
-            # Qty mismatch — count as missing (PG thinks more than Alpaca has)
-            # or unknown (Alpaca has more than PG)
-            diff = alpaca_qty - pg_qty
-            if diff > 0:
-                mtype = MismatchType.UNKNOWN_POSITION
+            if pg_qty == 0:
+                mismatches.append(Mismatch(
+                    type=MismatchType.UNKNOWN_POSITION,
+                    strategy_id=strategy_id,
+                    ticker=ticker,
+                    expected_qty=0,
+                    actual_qty=alpaca_qty,
+                    value_usd=price * abs(alpaca_qty),
+                    details={"account": strategy_id, "price": str(price),
+                             "alpaca_qty": alpaca_qty},
+                ))
             else:
-                mtype = MismatchType.MISSING_POSITION
-            try:
-                latest = alpaca.get_latest_trade(ticker)
-                price = Decimal(str(latest.price))
-            except Exception:
-                price = Decimal("0")
-            mismatches.append(Mismatch(
-                type=mtype,
-                strategy_id=pg_trades[0]["strategy_id"] if pg_trades else None,
-                ticker=ticker,
-                expected_qty=pg_qty,
-                actual_qty=alpaca_qty,
-                value_usd=price * abs(diff),
-                details={"price": str(price), "diff": diff,
-                         "pg_trade_ids": [t["id"] for t in pg_trades]},
-            ))
+                diff = alpaca_qty - pg_qty
+                mtype = (MismatchType.UNKNOWN_POSITION if diff > 0
+                         else MismatchType.MISSING_POSITION)
+                mismatches.append(Mismatch(
+                    type=mtype,
+                    strategy_id=strategy_id,
+                    ticker=ticker,
+                    expected_qty=pg_qty,
+                    actual_qty=alpaca_qty,
+                    value_usd=price * abs(diff),
+                    details={"account": strategy_id, "price": str(price),
+                             "diff": diff,
+                             "pg_trade_ids": [t["id"] for t in pg_trades]},
+                ))
 
-    # Pass 2: PG-side tickers Alpaca doesn't have at all
-    for ticker, pg_trades in pg_by_ticker.items():
-        if ticker not in alpaca_by_ticker:
-            pg_qty = sum(int(t["qty"]) * (1 if t["side"] == "buy" else -1) for t in pg_trades)
+        # PG-side: trades in PG for this strategy but absent from its Alpaca account
+        for ticker, pg_trades in pg_for_strat.items():
+            if ticker in alpaca_by_ticker:
+                continue
+            pg_qty = sum(int(t["qty"]) * (1 if t["side"] == "buy" else -1)
+                         for t in pg_trades)
             try:
                 latest = alpaca.get_latest_trade(ticker)
                 price = Decimal(str(latest.price))
@@ -1165,12 +1184,71 @@ def reconcile_state() -> list[Mismatch]:
                 price = Decimal("0")
             mismatches.append(Mismatch(
                 type=MismatchType.MISSING_POSITION,
-                strategy_id=pg_trades[0]["strategy_id"],
+                strategy_id=strategy_id,
                 ticker=ticker,
                 expected_qty=pg_qty,
                 actual_qty=0,
                 value_usd=price * abs(pg_qty),
-                details={"price": str(price),
+                details={"account": strategy_id, "price": str(price),
+                         "pg_trade_ids": [t["id"] for t in pg_trades]},
+            ))
+
+    # ── Default-account sweep ───────────────────────────────────────
+    # Anything in the legacy ALPACA_API_KEY account is an orphan under
+    # multi-account routing. This is the load-bearing detection path
+    # for "place_order routed to PRIMARY instead of the strategy account"
+    # bugs — keep it even if all per-strategy accounts come up clean.
+    try:
+        default_alpaca = get_alpaca()
+        default_positions = default_alpaca.list_positions()
+    except Exception as e:
+        get_logger("system").warning(
+            f"reconcile_state: default account sweep failed: {e}"
+        )
+        default_positions = []
+
+    for p in default_positions:
+        ticker = p.symbol
+        alpaca_qty = int(p.qty)
+        try:
+            latest = default_alpaca.get_latest_trade(ticker)
+            price = Decimal(str(latest.price))
+        except Exception:
+            price = Decimal("0")
+        mismatches.append(Mismatch(
+            type=MismatchType.UNKNOWN_POSITION,
+            strategy_id=None,
+            ticker=ticker,
+            expected_qty=0,
+            actual_qty=alpaca_qty,
+            value_usd=price * abs(alpaca_qty),
+            details={"account": "default", "price": str(price),
+                     "alpaca_qty": alpaca_qty,
+                     "note": "position on legacy/default ALPACA_API_KEY "
+                             "account — no strategy should hold here under "
+                             "multi-account routing"},
+        ))
+
+    # ── PG rows for strategies we never inspected ───────────────────
+    # Surface paper_trades whose strategy_id has no broker config (so we
+    # didn't enumerate its Alpaca account above). Otherwise these would be
+    # silently invisible to reconciliation.
+    for sid, by_ticker in pg_by_strat.items():
+        if sid in seen_strategies:
+            continue
+        for ticker, pg_trades in by_ticker.items():
+            pg_qty = sum(int(t["qty"]) * (1 if t["side"] == "buy" else -1)
+                         for t in pg_trades)
+            mismatches.append(Mismatch(
+                type=MismatchType.MISSING_POSITION,
+                strategy_id=sid,
+                ticker=ticker,
+                expected_qty=pg_qty,
+                actual_qty=0,
+                value_usd=Decimal("0"),
+                details={"account": "unconfigured",
+                         "note": f"strategy_id {sid!r} has no per-account "
+                                 f"broker config; Alpaca side not checked",
                          "pg_trade_ids": [t["id"] for t in pg_trades]},
             ))
 
@@ -1300,12 +1378,26 @@ def _cli_reconcile() -> int:
     return 1
 
 def _cli_health() -> int:
+    rc = 0
+    # Default / legacy account
     try:
         acct = get_alpaca().get_account()
-        print(f"✓ Alpaca: status={acct.status}, equity=${acct.equity}, cash=${acct.cash}")
+        print(f"✓ Alpaca[default]: status={acct.status}, "
+              f"equity=${acct.equity}, cash=${acct.cash}")
     except Exception as e:
-        print(f"✗ Alpaca error: {e}")
-        return 1
+        print(f"✗ Alpaca[default] error: {e}")
+        rc = 1
+
+    # Per-strategy accounts — log each independently; an unconfigured
+    # strategy is a soft failure (might just not be onboarded yet)
+    for sid in STRAT_NUMBER:
+        try:
+            acct = get_strategy_alpaca(sid).get_account()
+            print(f"✓ Alpaca[{sid}]: status={acct.status}, "
+                  f"equity=${acct.equity}, cash=${acct.cash}")
+        except Exception as e:
+            print(f"  Alpaca[{sid}]: not available ({e})")
+
     try:
         with get_pg_conn() as conn:
             with conn.cursor() as cur:
@@ -1314,7 +1406,7 @@ def _cli_health() -> int:
         print(f"✓ PostgreSQL: connected to {_load_env()['pg_host']}")
     except Exception as e:
         print(f"✗ PostgreSQL error: {e}")
-        return 1
+        rc = 1
     if RULES_PATH.exists():
         rules = load_rules()
         strat_ids = [k for k in rules if k.startswith("strat_")]
@@ -1323,7 +1415,7 @@ def _cli_health() -> int:
               f"({n_enabled} enabled), version={rules.get('version')}")
     else:
         print(f"✗ rules.json: missing at {RULES_PATH}")
-    return 0
+    return rc
 
 
 def _cli_set_enabled(enabled: bool, args: list[str]) -> int:

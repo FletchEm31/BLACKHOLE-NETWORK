@@ -96,35 +96,51 @@ def send_sms(message: str) -> bool:
 # ─────────────────────────────────────────────────────────────────────────
 
 def cancel_all_open_orders() -> dict:
-    """Cancel every open order on the Alpaca account. Returns
+    """Cancel every open order across every Alpaca account we own (default
+    legacy account + each per-strategy account). Returns
     {"cancelled": [order_ids...], "failed": [(order_id, error)...]}"""
-    alpaca = tc.get_alpaca()
     cancelled: list[str] = []
     failed: list[tuple[str, str]] = []
-    try:
-        open_orders = alpaca.list_orders(status="open", limit=500)
-    except Exception as e:
-        logger.error(f"Could not list open orders: {e}")
-        return {"cancelled": cancelled, "failed": [("list_orders", str(e))]}
 
-    for order in open_orders:
+    def _cancel_on(label: str, client) -> None:
         try:
-            alpaca.cancel_order(order.id)
-            cancelled.append(order.id)
-            logger.info(f"Cancelled order {order.id} ({order.symbol} "
-                        f"{order.side} {order.qty})")
+            open_orders = client.list_orders(status="open", limit=500)
         except Exception as e:
-            failed.append((order.id, str(e)))
-            logger.warning(f"Failed to cancel order {order.id}: {e}")
+            logger.error(f"Alpaca[{label}] list_orders failed: {e}")
+            failed.append((f"list_orders[{label}]", str(e)))
+            return
+        for order in open_orders:
+            try:
+                client.cancel_order(order.id)
+                cancelled.append(order.id)
+                logger.info(f"Cancelled order {order.id} on {label} "
+                            f"({order.symbol} {order.side} {order.qty})")
+            except Exception as e:
+                failed.append((order.id, str(e)))
+                logger.warning(f"Failed to cancel order {order.id} on "
+                               f"{label}: {e}")
+
+    try:
+        _cancel_on("default", tc.get_alpaca())
+    except Exception as e:
+        logger.warning(f"Alpaca[default] client unavailable: {e}")
+        failed.append(("client[default]", str(e)))
+
+    for sid, client in tc.iter_strategy_alpaca_clients():
+        _cancel_on(sid, client)
 
     return {"cancelled": cancelled, "failed": failed}
 
 
 def flatten_all_positions() -> dict:
     """Market-sell every open paper_trades row across all strategies.
-    Uses trading_core.close_trade() so signal/trade linkage stays clean and
+    Each sell is routed to the strategy's OWN Alpaca account
+    (tc.get_strategy_alpaca(strategy_id)) — NEVER the default singleton.
+    Routing a flatten to the wrong account opens shorts on the wrong
+    account; that bug class (a7ba358 fixed it for place_order) is exactly
+    how the -3,920 JPST short on PRIMARY accumulated. Uses
+    trading_core.close_trade() so signal/trade linkage stays clean and
     P&L gets recorded. Returns {"closed": [...], "failed": [...]}"""
-    alpaca = tc.get_alpaca()
     closed: list[dict] = []
     failed: list[tuple[int, str]] = []
 
@@ -146,7 +162,20 @@ def flatten_all_positions() -> dict:
     for t in open_trades:
         ticker = t["ticker"]
         qty = int(t["qty"])
+        strategy_id = t["strategy_id"]
         try:
+            try:
+                alpaca = tc.get_strategy_alpaca(strategy_id)
+            except Exception as e:
+                # No per-strategy broker config — refuse to fall back to
+                # the default singleton. Falling back is what created the
+                # JPST short. Surface as a failure so operator can flatten
+                # by hand on the correct account.
+                raise RuntimeError(
+                    f"no per-strategy Alpaca client for {strategy_id!r} "
+                    f"({e}); refusing to route flatten to default account"
+                )
+
             order = alpaca.submit_order(symbol=ticker, qty=qty, side="sell",
                                         type="market", time_in_force="day")
             # Wait briefly for fill (market orders fill fast during RTH)
@@ -168,14 +197,16 @@ def flatten_all_positions() -> dict:
             )
             closed.append({
                 "trade_id": t["id"], "ticker": ticker, "qty": qty,
+                "account": strategy_id,
                 "fill": float(fill_price),
                 "pnl_dollar": float(result["pnl_dollar"]),
             })
-            logger.info(f"FLATTENED {ticker} {qty}@${fill_price} "
-                        f"P&L=${result['pnl_dollar']}")
+            logger.info(f"FLATTENED {ticker} {qty}@${fill_price} on "
+                        f"{strategy_id} P&L=${result['pnl_dollar']}")
         except Exception as e:
             failed.append((t["id"], str(e)))
-            logger.error(f"Failed to flatten trade {t['id']} ({ticker}): {e}")
+            logger.error(f"Failed to flatten trade {t['id']} ({ticker}) on "
+                         f"{strategy_id}: {e}")
 
     return {"closed": closed, "failed": failed}
 
@@ -194,10 +225,25 @@ def get_halt_state() -> dict:
             cur.execute("SELECT COUNT(*) AS n FROM paper_trades WHERE status='open'")
             open_pos = cur.fetchone()["n"]
 
+    # Sum open orders across every account (default + per-strategy). -1
+    # means "we couldn't query any account at all"; partial errors are
+    # logged but we return the running total from the accounts we did
+    # reach (better than reporting unknown when most of the picture is
+    # available).
+    open_orders = 0
+    any_ok = False
     try:
-        open_orders = len(tc.get_alpaca().list_orders(status="open", limit=500))
+        open_orders += len(tc.get_alpaca().list_orders(status="open", limit=500))
+        any_ok = True
     except Exception as e:
-        logger.warning(f"Could not query open Alpaca orders: {e}")
+        logger.warning(f"Could not query Alpaca[default] open orders: {e}")
+    for sid, client in tc.iter_strategy_alpaca_clients():
+        try:
+            open_orders += len(client.list_orders(status="open", limit=500))
+            any_ok = True
+        except Exception as e:
+            logger.warning(f"Could not query Alpaca[{sid}] open orders: {e}")
+    if not any_ok:
         open_orders = -1  # unknown
 
     return {

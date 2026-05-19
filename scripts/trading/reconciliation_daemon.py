@@ -163,30 +163,84 @@ def fetch_nj_cache_state() -> dict[str, dict]:
 # ─────────────────────────────────────────────────────────────────────────
 
 def fetch_alpaca_state() -> dict[str, dict]:
-    """Returns {ticker: {qty, avg_entry_price}}. Aggregates if Alpaca
-    reports multiple position rows for the same ticker (shouldn't happen
-    but defensive)."""
-    alpaca = tc.get_alpaca()
+    """Returns {ticker: {qty, avg_entry_price}} aggregated across ALL
+    Alpaca accounts the framework owns (every per-strategy account plus
+    the legacy/default ALPACA_API_KEY account).
+
+    Why aggregate: PG (the compare-target) aggregates open paper_trades by
+    ticker across all strategies, since multiple strategies CAN legitimately
+    hold the same ticker. Matching that shape on the Alpaca side means
+    summing each ticker's qty across every account we look at.
+
+    Account labels (which account a position came from) are preserved in
+    a per-ticker `accounts` list inside the value dict — useful for
+    diagnostics and for spotting orphan positions on the default account
+    (which should be empty under multi-account routing).
+    """
     out: dict[str, dict] = {}
-    try:
-        positions = alpaca.list_positions()
-    except Exception as e:
-        logger.error(f"Alpaca list_positions failed: {e}")
-        raise
-    for p in positions:
-        ticker = p.symbol
-        qty = int(p.qty)
-        avg = Decimal(str(p.avg_entry_price))
+
+    def _merge(ticker: str, qty: int, avg: Decimal, account: str) -> None:
         if ticker in out:
-            # Defensive merge (weighted avg)
             prev = out[ticker]
             total_qty = prev["qty"] + qty
-            weighted = (prev["avg_entry_price"] * prev["qty"] + avg * qty) / total_qty
-            out[ticker] = {"ticker": ticker, "qty": total_qty,
-                            "avg_entry_price": weighted}
+            if total_qty == 0:
+                weighted = prev["avg_entry_price"]
+            else:
+                weighted = (
+                    (prev["avg_entry_price"] * prev["qty"] + avg * qty)
+                    / total_qty
+                )
+            prev["qty"] = total_qty
+            prev["avg_entry_price"] = weighted
+            prev["accounts"].append(account)
         else:
-            out[ticker] = {"ticker": ticker, "qty": qty,
-                            "avg_entry_price": avg}
+            out[ticker] = {
+                "ticker": ticker, "qty": qty,
+                "avg_entry_price": avg,
+                "accounts": [account],
+            }
+
+    # Default / legacy account first — anything here under multi-account
+    # routing is misrouted, but the daemon's job is to surface state
+    # truthfully and let the comparison flag the divergence vs PG.
+    saw_any = False
+    try:
+        for p in tc.get_alpaca().list_positions():
+            saw_any = True
+            _merge(p.symbol, int(p.qty),
+                   Decimal(str(p.avg_entry_price)), "default")
+    except Exception as e:
+        logger.warning(f"Alpaca[default] list_positions failed: {e}")
+
+    # Per-strategy accounts
+    any_strategy_ok = False
+    for sid, client in tc.iter_strategy_alpaca_clients():
+        try:
+            positions = client.list_positions()
+        except Exception as e:
+            logger.warning(f"Alpaca[{sid}] list_positions failed: {e}")
+            continue
+        any_strategy_ok = True
+        for p in positions:
+            saw_any = True
+            _merge(p.symbol, int(p.qty),
+                   Decimal(str(p.avg_entry_price)), sid)
+
+    # If neither default nor any strategy could be queried, the daemon
+    # can't make a trustworthy compare — propagate so run_once records
+    # an 'error' heartbeat instead of falsely reporting "all clean".
+    if not any_strategy_ok and not saw_any:
+        # Distinguish "all accounts reachable but empty" from "no account
+        # was queryable at all" by re-checking the default — if even the
+        # default raised, we have nothing.
+        try:
+            tc.get_alpaca().get_account()
+        except Exception as e:
+            raise RuntimeError(
+                f"fetch_alpaca_state: no Alpaca account reachable "
+                f"(default error: {e})"
+            )
+
     return out
 
 
