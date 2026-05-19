@@ -891,7 +891,7 @@ def close_trade(trade_id: int, exit_price: Decimal, exit_reason: ExitReason,
                 (exit_price, exit_reason.value, pnl_dollar, pnl_pct,
                  alpaca_order_id_exit, trade_id),
             )
-            entry_time = cur.fetchone()[0]
+            entry_time = cur.fetchone()["entry_time"]
 
     duration = (datetime.now(timezone.utc) - entry_time).total_seconds()
     return {
