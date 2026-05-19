@@ -1,7 +1,7 @@
 {
   "version": "1.0",
   "updated_at": "2026-05-13T00:00:00Z",
-  "operator_note": "Each strategy is fully self-contained: its own Alpaca paper account (keys in /etc/bhn-trading/strat<N>.env on NJ), its own execution_limits, its own broker subblock with account_alias. system.broker removed — portfolio aggregates are computed at runtime from per-strategy state. Initial state: Strats 2/3/4 enabled, Strats 1 (Congress) and 5 (Pred-mkt) disabled until their API keys land. Strats 1+5 carry PLACEHOLDER execution_limits — review before flipping enabled=true. Strategy 3 renamed strat_3_scalp → strat_3_mean_reversion to align with strategy_mean_reversion.py.",
+  "operator_note": "Each strategy is fully self-contained: its own Alpaca paper account (keys in /etc/bhn-trading/strat<N>.env on NJ), its own execution_limits, its own broker subblock with account_alias. system.broker removed — portfolio aggregates are computed at runtime from per-strategy state. Initial state: Strats 3/4 enabled; Strats 1, 2, 5, 6, 7, 8 disabled until distinct per-strategy Alpaca paper accounts exist. Do NOT alias STRAT<N>_ALPACA_KEY_ID/SECRET to ALPACA_API_KEY (shared account → reconcile_state flags every trade as UNKNOWN_POSITION on default → halt_all). Strats 1+5 carry PLACEHOLDER execution_limits — review before flipping enabled=true. Strategy 3 renamed strat_3_scalp → strat_3_mean_reversion to align with strategy_mean_reversion.py.",
   "system": {
     "halted": false,
     "circuit_breakers": {
@@ -47,7 +47,7 @@
     "hold_days": 30
   },
   "strat_2_value": {
-    "enabled": true,
+    "enabled": false,
     "live_mode_approved": false,
     "execution_limits": {
       "max_position_size": 5000,
