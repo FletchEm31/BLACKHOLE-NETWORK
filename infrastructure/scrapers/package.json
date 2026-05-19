@@ -1,0 +1,8 @@
+{
+  "name": "bhn-pop-scrapers",
+  "private": true,
+  "description": "Graded-card population scrapers for eventhorizon.pop_reports. The CGC scraper uses native fetch; pg is only needed for cgc-pop-insert.js (TCP path with PGPASSWORD).",
+  "dependencies": {
+    "pg": "^8.21.0"
+  }
+}

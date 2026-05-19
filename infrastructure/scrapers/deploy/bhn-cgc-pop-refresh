@@ -1,0 +1,46 @@
+#!/bin/bash
+# Weekly refresh: scrape CGC population reports for the tracked Pokémon sets and upsert
+# into eventhorizon.pop_reports. Invoked by bhn-cgc-pop-refresh.service.
+#
+# Deployed paths on LA (per deploy/install.sh):
+#   /opt/bhn/cgc-pop-scraper/    - node code + sets.json
+#   /var/lib/bhn-cgc-pop/        - per-run JSON output (overwritten each run)
+#   /usr/local/bin/bhn-cgc-pop-refresh - this script
+
+set -uo pipefail
+
+SCRAPER_DIR=/opt/bhn/cgc-pop-scraper
+STATE_DIR=/var/lib/bhn-cgc-pop
+NODE=/usr/bin/node
+
+mkdir -p "$STATE_DIR"
+
+echo "[$(date -u +%FT%TZ)] cgc-pop-refresh: starting"
+cd "$SCRAPER_DIR"
+
+# Allow scrape rc=2 (completeness warning) to proceed — we still want to load whatever data
+# was captured. rc=1 (hard failure) aborts.
+SCRAPE_RC=0
+"$NODE" cgc-pop-scrape-all.js --out-dir "$STATE_DIR" || SCRAPE_RC=$?
+if [[ $SCRAPE_RC -eq 1 ]]; then
+    echo "[$(date -u +%FT%TZ)] cgc-pop-refresh: scrape hard-failed (rc=1), aborting"
+    exit 1
+fi
+
+# Pipe SQL into psql via the local socket as postgres (no PGPASSWORD needed).
+"$NODE" cgc-pop-load.js "$STATE_DIR"/*.json \
+  | sudo -u postgres psql -d eventhorizon \
+      -v ON_ERROR_STOP=1 -q -P pager=off
+LOAD_RC=${PIPESTATUS[1]}
+
+if [[ $LOAD_RC -ne 0 ]]; then
+    echo "[$(date -u +%FT%TZ)] cgc-pop-refresh: load failed (rc=$LOAD_RC)"
+    exit "$LOAD_RC"
+fi
+
+if [[ $SCRAPE_RC -eq 2 ]]; then
+    echo "[$(date -u +%FT%TZ)] cgc-pop-refresh: data loaded but one or more sets were INCOMPLETE"
+    exit 2
+fi
+
+echo "[$(date -u +%FT%TZ)] cgc-pop-refresh: done"

@@ -1,0 +1,15 @@
+[Unit]
+Description=Refresh CGC population reports for tracked Pokémon sets
+After=network-online.target postgresql.service
+Wants=network-online.target
+Requires=postgresql.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/bhn-cgc-pop-refresh
+User=root
+TimeoutStartSec=600
+# API scraper runs at ~30MB; cap generously to catch runaway behavior without false trips.
+MemoryMax=256M
+StandardOutput=journal
+StandardError=journal

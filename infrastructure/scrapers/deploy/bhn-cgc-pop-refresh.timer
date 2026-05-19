@@ -1,0 +1,13 @@
+[Unit]
+Description=Weekly CGC pop-report refresh
+After=postgresql.service
+
+[Timer]
+# Sundays at 03:00 UTC. ±10min jitter so we don't co-fire with other weekly jobs.
+OnCalendar=Sun *-*-* 03:00:00 UTC
+RandomizedDelaySec=600
+Persistent=true
+Unit=bhn-cgc-pop-refresh.service
+
+[Install]
+WantedBy=timers.target

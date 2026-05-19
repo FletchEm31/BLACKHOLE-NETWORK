@@ -1,0 +1,5 @@
+node_modules/
+package-lock.json
+
+# Transient scrape output. Regenerated each run on operator-pc and in /var/lib/bhn-cgc-pop/ on LA.
+*-1st-edition.json
