@@ -192,7 +192,7 @@ def flatten_all_positions() -> dict:
             result = tc.close_trade(
                 trade_id=t["id"],
                 exit_price=fill_price,
-                exit_reason=tc.ExitReason.KILLSWITCH,
+                exit_reason=tc.ExitReason.SYSTEM_HALT,
                 alpaca_order_id_exit=order.id,
             )
             closed.append({
