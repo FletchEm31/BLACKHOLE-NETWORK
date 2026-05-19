@@ -1194,10 +1194,11 @@ def reconcile_state() -> list[Mismatch]:
             ))
 
     # ── Default-account sweep ───────────────────────────────────────
-    # Anything in the legacy ALPACA_API_KEY account is an orphan under
-    # multi-account routing. This is the load-bearing detection path
-    # for "place_order routed to PRIMARY instead of the strategy account"
-    # bugs — keep it even if all per-strategy accounts come up clean.
+    # The default ALPACA_API_KEY account is meant to be empty under
+    # multi-account routing, but a strategy's broker subblock may route to
+    # default by design (e.g. strat_13_rsi_intraday). For each position on
+    # default, claim it against active+enabled strategies' pg_open trades:
+    # exact-match → by-design routing, skip; mismatch or no claim → orphan.
     try:
         default_alpaca = get_alpaca()
         default_positions = default_alpaca.list_positions()
@@ -1207,9 +1208,28 @@ def reconcile_state() -> list[Mismatch]:
         )
         default_positions = []
 
+    active_enabled_by_ticker: dict[str, int] = {}
+    for sid, by_ticker in pg_by_strat.items():
+        if not is_strategy_enabled(sid):
+            continue
+        try:
+            if not is_strategy_active(sid):
+                continue
+        except Exception:
+            continue
+        for ticker, pg_trades in by_ticker.items():
+            qty = sum(int(t["qty"]) * (1 if t["side"] == "buy" else -1)
+                      for t in pg_trades)
+            active_enabled_by_ticker[ticker] = (
+                active_enabled_by_ticker.get(ticker, 0) + qty
+            )
+
     for p in default_positions:
         ticker = p.symbol
         alpaca_qty = int(p.qty)
+        claimed = active_enabled_by_ticker.get(ticker, 0)
+        if claimed == alpaca_qty and alpaca_qty != 0:
+            continue
         try:
             latest = default_alpaca.get_latest_trade(ticker)
             price = Decimal(str(latest.price))
@@ -1219,14 +1239,15 @@ def reconcile_state() -> list[Mismatch]:
             type=MismatchType.UNKNOWN_POSITION,
             strategy_id=None,
             ticker=ticker,
-            expected_qty=0,
+            expected_qty=claimed,
             actual_qty=alpaca_qty,
-            value_usd=price * abs(alpaca_qty),
+            value_usd=price * abs(alpaca_qty - claimed),
             details={"account": "default", "price": str(price),
                      "alpaca_qty": alpaca_qty,
-                     "note": "position on legacy/default ALPACA_API_KEY "
-                             "account — no strategy should hold here under "
-                             "multi-account routing"},
+                     "claimed_by_enabled_strategies": claimed,
+                     "note": "position on default ALPACA_API_KEY account "
+                             "not fully claimed by any active+enabled "
+                             "strategy's pg_open trades"},
         ))
 
     # ── PG rows for strategies we never inspected ───────────────────
