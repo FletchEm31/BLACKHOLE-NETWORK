@@ -12,9 +12,19 @@ Blackhole Network is a self-hosted private intelligence and trading infrastructu
 
 **Trading Stack:** Algorithmic paper trading via Alpaca — 5 active strategies across 3 accounts, $150k total capital, real-time signal generation and execution on NJ trading node
 
-**Financial Intelligence:** 6 Grafana dashboards covering market regime classification, ETF price data, macro indicators, sentiment, commodities, energy, agriculture, prediction markets, and options flow
+**Financial Intelligence:** 6 Grafana dashboards covering market regime classification, ETF price data, macro indicators, sentiment, commodities, energy, agriculture, prediction markets, and options flow across 71 PostgreSQL tables
 
-**AI Agent:** HORIZON — n8n-based AI agent powered by Claude, with SMS/voice interface via Twilio, pgvector memory, Redis session management, and read access to all PostgreSQL tables
+**AI Agent — HORIZON:** HORIZON is the autonomous intelligence layer of the Blackhole Network — an n8n-based AI agent powered by Claude with full read access to all 71 PostgreSQL tables. HORIZON operates as both a personal assistant and autonomous infrastructure manager across three domains:
+
+*Operations:* Monitors all 4 nodes in real time, reads security events, anomalies, pulse reports, and node health. Triggers alerts via SMS/voice (Twilio + ElevenLabs) for P1/P2 security events, node outages, and storage pressure. Can execute restricted actions — restart services, trigger fail2ban bans, run smoke tests, and activate the trading killswitch on operator command.
+
+*Trading & Finance:* Full read access to all financial intelligence tables — market regime, ETF price data, macro indicators, sentiment, earnings, analyst ratings, commodities, energy, agriculture, prediction markets, and options flow. Monitors paper trade performance across all 5 strategies, delivers daily PnL summaries, and flags reconciliation mismatches.
+
+*Memory & Context:* pgvector semantic memory (384-dim) for long-term context, Redis for short-term session state. HORIZON builds a persistent model of operator preferences, infrastructure state, and trading history across all interactions.
+
+*Interface:* SMS, voice call, and VPN-only web chat. Operator can query any aspect of the stack conversationally — "How are my strategies performing?", "Any threats in the last 24 hours?", "What's the current market regime?" — or issue commands — "HALT trading", "Restart n8n", "Run smoke tests".
+
+*Goal:* Single conversational interface to the entire BHN stack — infrastructure, security, trading, and financial intelligence — available 24/7 via SMS from anywhere.
 
 Any future public VPN product is a separate concern (different servers, different protocol, different holding entity) and is not part of this repository.
 
@@ -51,6 +61,8 @@ Phase 3: AI INTEGRATION                 [in progress, ~60% complete]
 ├─ Redis short-term session memory (operational)
 ├─ HORIZON workflow (operational — stale workflow, re-import pending)
 ├─ Voice ops interface (Twilio + ElevenLabs — staged, A2P 10DLC in review)
+├─ HORIZON financial table access — pending workflow re-import
+├─ HORIZON restricted action executor — not yet built
 └─ Proactive alerting + auto-response — not yet built
 
 Phase 4: PER-NODE SERVICES              [~80% complete]
@@ -141,6 +153,53 @@ Account 3 — BHN-STRAT-SIGNALS (PA37PRN150AG)     $25,000
 Parked (pending API keys):
   Strat 1  — Congress Trading      (Quiver Quantitative API — $25/mo)
   Strat 5  — Weather Arbitrage     (Kalshi API key)
+```
+
+## HORIZON roadmap
+
+HORIZON is built in phases. Each phase enables the next.
+
+```
+Phase 1 — Foundation
+  [✅] n8n workflow operational
+  [✅] Claude API integration
+  [✅] SMS/voice via Twilio + ElevenLabs
+  [✅] pgvector semantic memory
+  [✅] Redis short-term session memory
+  [✅] PostgreSQL read access (agent_reader role)
+  [✅] Security + infrastructure table access
+
+Phase 2 — Financial Intelligence
+  [ ] Re-import bhn-horizon.json — unlock financial table access
+  [ ] Market regime + ETF data queries
+  [ ] Trading performance queries
+  [ ] Daily PnL summary via SMS
+  [ ] Morning market briefing (8am PT)
+  [ ] Finance news category added to n8n poller
+
+Phase 3 — Active Monitoring
+  [ ] Per-node health checks every 5 minutes
+  [ ] Auto-alert if any node goes offline
+  [ ] Auto-alert if NVMe > 80% full
+  [ ] P1/P2 security event SMS within minutes
+  [ ] WireGuard peer stats monitoring
+  [ ] Tor relay bandwidth monitoring
+
+Phase 4 — Restricted Action Executor
+  [ ] Restart services via SMS command
+  [ ] Trigger fail2ban ban on attacker IP
+  [ ] Run smoke tests on demand
+  [ ] Trading killswitch on "HALT" SMS
+  [ ] Push rules.json to NJ trading node
+  [ ] Confirm all actions before executing
+
+Phase 5 — Autonomous Management
+  [ ] Pattern detection across all 71 tables
+  [ ] Proactive threat intelligence (CVE feeds, CrowdSec)
+  [ ] Weekly threat + performance digest
+  [ ] Trading strategy optimization suggestions
+  [ ] Infrastructure cost analysis
+  [ ] Anomaly correlation across security + trading + market data
 ```
 
 ## Repository layout
