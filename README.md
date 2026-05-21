@@ -167,8 +167,12 @@ both keyed off a single watchlist of cards worth following.
 `card_catalog` (in `eventhorizon`) is the shared search queue. Every scraper reads
 `WHERE active = true` and pulls `set_name, card_number` (plus `card_name, variant`), so adding a card
 to the watchlist is a single `INSERT … active = true` and it auto-enrolls across all collectors.
-Seeded with 617 cards across 8 sets (Base Set, Fossil, Jungle, Team Rocket, Gym Heroes, Gym
-Challenge, Wizards Black Star Promos, Best of Game), with PriceCharting reference prices.
+Covers 8 sets (Base Set, Fossil, Jungle, Team Rocket, Gym Heroes, Gym Challenge, Wizards Black Star
+Promos, Best of Game) with PriceCharting reference prices. As of 2026-05-21 the six main WOTC sets are
+audited to **full canonical completeness** against Bulbapedia + pkmncards — every card carries its
+standard editions (1st Edition + Unlimited; Base Set also Shadowless) — for **637 distinct cards /
+1,355 variant rows** total. Error/alternate-print variants (errors, no-symbol, jumbo, staff stamps)
+are tracked opportunistically, not exhaustively.
 
 ### Data flow
 
@@ -205,7 +209,7 @@ card_catalog  (active = true → set_name, card_number)
 
 ### Tables
 
-- **`card_catalog`** — watchlist / scraper queue (617 cards, 8 sets, `active` flag, PriceCharting prices).
+- **`card_catalog`** — watchlist / scraper queue (637 distinct cards / 1,355 variant rows, 8 sets, `active` flag, PriceCharting prices).
 - **`pop_reports`** — graded-card population counts per `(grader, set, card, grade)`. Grader-agnostic;
   CGC live, PSA built, SGC/BGS planned. Grades stored verbatim ("Gem Mint 10", "9.5", "Authentic").
 - **`sold_listings`** — eBay sold comps (price, grade, grader, sale type, seller, raw title);
