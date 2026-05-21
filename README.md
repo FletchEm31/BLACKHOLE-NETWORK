@@ -112,6 +112,7 @@ Both volumes use LUKS2 with auto-unlock keyfiles, XFS filesystem, and persistent
 - Security: `security_events`, `anomalies`, `pulse_reports`, `node_logs`, `node_logs_summary`, `fail2ban_events`, `crowdsec_decisions`
 - Infrastructure: `nodes`, `node_resource_stats`, `node_bandwidth_stats`, `node_disk_stats`, `node_patch_status`, `wg_peer_stats`, `wg_sessions`, `tor_relay_stats`
 - AI: `memories` (pgvector 384-dim), `agent_token_log`, `call_transcripts`, `conversation_sessions`, `qa_cache`
+- Collectibles (Pokémon graded-card market — see [Pokémon graded-card data pipeline](#pokémon-graded-card-data-pipeline)): `card_catalog` (scraper search queue), `pop_reports` (CGC/PSA population counts), `sold_listings` (eBay sold comps)
 
 ## Security stack
 
@@ -154,6 +155,62 @@ Parked (pending API keys):
   Strat 1  — Congress Trading      (Quiver Quantitative API — $25/mo)
   Strat 5  — Weather Arbitrage     (Kalshi API key)
 ```
+
+## Pokémon Graded Card Data Pipeline
+
+A self-contained collectibles-intelligence subsystem feeding HORIZON. It tracks two market signals
+for WOTC-era Pokémon cards — **scarcity** (graded population counts) and **price** (eBay sold comps) —
+both keyed off a single watchlist of cards worth following.
+
+### Source of truth — `card_catalog`
+
+`card_catalog` (in `eventhorizon`) is the shared search queue. Every scraper reads
+`WHERE active = true` and pulls `set_name, card_number` (plus `card_name, variant`), so adding a card
+to the watchlist is a single `INSERT … active = true` and it auto-enrolls across all collectors.
+Seeded with 617 cards across 8 sets (Base Set, Fossil, Jungle, Team Rocket, Gym Heroes, Gym
+Challenge, Wizards Black Star Promos, Best of Game), with PriceCharting reference prices.
+
+### Data flow
+
+```
+card_catalog  (active = true → set_name, card_number)
+   │
+   ├─ CGC pop scraper ── native fetch, ccg-ops JSON API ─────────────┐
+   │   infrastructure/scrapers/cgc-pop-scrape.js                      │
+   │   LA weekly cron: bhn-cgc-pop-refresh.timer (Sun 03:00 UTC)      ├─ cgc-pop-load.js ─→ pop_reports
+   │                                                                  │   (grader-agnostic upsert)
+   ├─ PSA pop scraper ── stealth browser, runs OFF-LA (residential) ──┘
+   │   infrastructure/scrapers/psa-pop-scrape.js
+   │   clears Cloudflare → POST /Pop/GetSetItems → emits JSON → shipped to LA for load
+   │
+   └─ n8n sold-data workflow ── eBay sold comps ─────────────────────→ sold_listings
+```
+
+### Scrapers (`infrastructure/scrapers/`)
+
+- **CGC** (`cgc-pop-scrape.js`) — CGC exposes a clean public population JSON API (no auth, no
+  browser). The driver scrapes every tracked set, asserts completeness against the API's
+  `TotalCount`, and loads via `cgc-pop-load.js`. Deployed on LA as the
+  `bhn-cgc-pop-refresh.{service,timer}` weekly job.
+- **PSA** (`psa-pop-scrape.js`) — PSA has **no** population API and its pages sit behind a Cloudflare
+  managed challenge, so this uses a **decoupled residential fetch model**: a stealth browser
+  (`puppeteer-extra` + stealth) clears Cloudflare once, then calls the page's own
+  `POST /Pop/GetSetItems` endpoint in-page so `cf_clearance` rides along. It **never runs on LA**
+  (datacenter IPs get challenged hardest) — it runs on a residential box, emits CGC-shaped JSON, and
+  LA only ingests it via `cgc-pop-load.js`. Catalog `set_name` → PSA heading is curated in
+  `psa-sets.json` (PSA slugs aren't derivable: "Base Set" → `pokemon-game`, "Team Rocket" →
+  `pokemon-rocket`). **7 of 8 catalog sets are mapped**; Wizards Black Star Promos is the lone
+  exception — PSA fragments it across multiple year-headings, so it's flagged for multi-heading
+  support and skipped until then.
+
+### Tables
+
+- **`card_catalog`** — watchlist / scraper queue (617 cards, 8 sets, `active` flag, PriceCharting prices).
+- **`pop_reports`** — graded-card population counts per `(grader, set, card, grade)`. Grader-agnostic;
+  CGC live, PSA built, SGC/BGS planned. Grades stored verbatim ("Gem Mint 10", "9.5", "Authentic").
+- **`sold_listings`** — eBay sold comps (price, grade, grader, sale type, seller, raw title);
+  `item_id` unique for idempotent ingest. Bootstrapped with 651 rows (Base Set, Team Rocket, Fossil,
+  Gym Heroes/Challenge) across CGC/PSA/raw, dates through 2026-05-21.
 
 ## HORIZON roadmap
 
@@ -218,7 +275,8 @@ Phase 5 — Autonomous Management
 │   ├── docs/                        Architecture docs, roadmap, session updates
 │   │   └── BHN SESSION UPDATES/     Per-session handoff docs
 │   ├── grafana/dashboards/          All 6 Grafana dashboard JSONs
-│   └── services/                    tor-relay, tinyproxy, searxng, librespeed, wallos
+│   ├── services/                    tor-relay, tinyproxy, searxng, librespeed, wallos
+│   └── scrapers/                    Graded-card pop scrapers (CGC cron + PSA stealth) + psa-sets.json
 ├── scripts/                         Production scripts (deployed to LA)
 │   ├── trading/                     5-strategy trading framework (Python)
 │   │   ├── trading_core.py          Core Alpaca + PostgreSQL integration
