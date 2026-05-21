@@ -9,11 +9,11 @@
 // The fetch runs in the page origin so the cf_clearance cookie rides along. cf_clearance is
 // persisted in ./_psa-profile so re-runs reuse the cleared session.
 //
-// The search queue is eventhorizon.card_catalog WHERE active=true (set_name, card_number). Sets are
+// The search queue is eventhorizon.master_card_catalog WHERE active=true (set_name, card_number). Sets are
 // mapped to PSA heading ids via psa-sets.json (PSA slugs are not derivable from catalog names).
 //
 // Usage:
-//   PGPASSWORD=... node psa-pop-scrape.js --out-dir ./out          # full run from card_catalog
+//   PGPASSWORD=... node psa-pop-scrape.js --out-dir ./out          # full run from master_card_catalog
 //   PGPASSWORD=... node psa-pop-scrape.js --sets "Base Set,Fossil"  # subset of catalog sets
 //   node psa-pop-scrape.js --heading 57801 --name "Base Set" --no-filter   # offline test, no DB
 //
@@ -188,12 +188,12 @@ async function loadCatalogFromDb(setFilter) {
     password: process.env.PGPASSWORD,
     ssl: process.env.PGSSLMODE === 'require' ? { rejectUnauthorized: false } : false,
   };
-  if (!PG.password) throw new Error('PGPASSWORD required to read card_catalog (or use --catalog/--heading)');
+  if (!PG.password) throw new Error('PGPASSWORD required to read master_card_catalog (or use --catalog/--heading)');
   const client = new Client(PG);
   await client.connect();
   try {
     const res = await client.query(
-      `SELECT set_name, card_number FROM card_catalog WHERE active = true`
+      `SELECT set_name, card_number FROM master_card_catalog WHERE active = true`
     );
     return res.rows;
   } finally {

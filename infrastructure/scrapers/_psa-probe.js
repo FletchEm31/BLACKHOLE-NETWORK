@@ -2,7 +2,7 @@
 //
 // Goal: get past Cloudflare's managed challenge ONCE with a stealth browser, then capture
 // everything we need to build psa-pop-scrape.js against ground truth:
-//   - PSA's /pop/ URL taxonomy (so we can map card_catalog.set_name -> a set pop page)
+//   - PSA's /pop/ URL taxonomy (so we can map master_card_catalog.set_name -> a set pop page)
 //   - any XHR/fetch JSON the pop table renders from (preferred data path)
 //   - the rendered table structure + grade column headers (DOM fallback)
 //
