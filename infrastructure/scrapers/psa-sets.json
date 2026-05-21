@@ -1,0 +1,14 @@
+{
+  "_comment": "Maps eventhorizon.card_catalog.set_name -> PSA pop heading. PSA set slugs are NOT derivable from the catalog name (e.g. 'Base Set' -> 'pokemon-game', 'Team Rocket' -> 'pokemon-rocket'), so this mapping is curated by hand from the PSA /pop/ taxonomy. categoryID 156940 = TCG Cards (constant). headingID is the PSA set id used by POST /Pop/GetSetItems. 'verify:true' marks mappings that still need a human eyeball.",
+  "categoryID": 156940,
+  "sets": {
+    "Base Set":                  { "year": "1999", "slug": "pokemon-game",            "headingID": 57801 },
+    "Fossil":                    { "year": "1999", "slug": "pokemon-fossil",          "headingID": 57617 },
+    "Jungle":                    { "year": "1999", "slug": "pokemon-jungle",          "headingID": 58977 },
+    "Team Rocket":               { "year": "2000", "slug": "pokemon-rocket",          "headingID": 61534 },
+    "Gym Heroes":                { "year": "2000", "slug": "pokemon-gym-heroes",      "headingID": 58312 },
+    "Gym Challenge":             { "year": "2000", "slug": "pokemon-gym-challenge",   "headingID": 58311 },
+    "Wizards Black Star Promos": { "year": "2000", "slug": "pokemon-promo-black-star","headingID": 81092, "verify": true },
+    "Best of Game":              { "year": null,   "slug": null,                       "headingID": null,  "verify": true }
+  }
+}

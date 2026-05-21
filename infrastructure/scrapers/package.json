@@ -1,8 +1,11 @@
 {
   "name": "bhn-pop-scrapers",
   "private": true,
-  "description": "Graded-card population scrapers for eventhorizon.pop_reports. The CGC scraper uses native fetch; pg is only needed for cgc-pop-insert.js (TCP path with PGPASSWORD).",
+  "description": "Graded-card population scrapers for eventhorizon.pop_reports. The CGC scraper uses native fetch (no deps); pg is only needed for cgc-pop-insert.js (TCP path with PGPASSWORD). The PSA scraper needs puppeteer + stealth because PSA's pop pages sit behind a Cloudflare managed challenge with no clean JSON API.",
   "dependencies": {
-    "pg": "^8.21.0"
+    "pg": "^8.21.0",
+    "puppeteer": "^24.10.0",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2"
   }
 }
