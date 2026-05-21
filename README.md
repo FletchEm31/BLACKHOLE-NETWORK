@@ -209,6 +209,11 @@ master_card_catalog  (active = true → set_name, card_number)
 
 ### Tables
 
+> **Renamed 2026-05-21** (added `master_` prefix to the three reference catalogs):
+> `card_catalog → master_card_catalog`, `grade_catalog → master_grade_catalog`,
+> `grading_criteria_catalog → master_grading_criteria_catalog`. FK constraints auto-followed; an
+> auto-updatable view `card_catalog` is kept as a back-compat alias for live n8n consumers.
+
 - **`master_card_catalog`** — watchlist / scraper queue (637 distinct cards / 1,355 variant rows, 8 sets, `active` flag, PriceCharting prices). A compatibility view **`card_catalog`** aliases it (auto-updatable) for legacy/n8n consumers not yet migrated to the `master_` name.
 - **`pop_reports`** — graded-card population counts per `(grader, set, card, grade)`. Grader-agnostic;
   CGC live, PSA built, SGC/BGS planned. `grade` is verbatim ("Gem Mint 10", "9.5", "Authentic") and
