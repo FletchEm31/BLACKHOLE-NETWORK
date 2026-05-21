@@ -102,7 +102,7 @@ Both volumes use LUKS2 with auto-unlock keyfiles, XFS filesystem, and persistent
 
 ### PostgreSQL schema
 
-71 tables in the `eventhorizon` database covering:
+78 tables in the `eventhorizon` database covering:
 
 - Market data: `market_daily`, `market_bars_*`, `market_ticks`, `market_regimes`, `market_sentiment`, `market_events`, `market_signals`
 - Macro: `macro_daily`, `macro_indicators`
@@ -112,7 +112,7 @@ Both volumes use LUKS2 with auto-unlock keyfiles, XFS filesystem, and persistent
 - Security: `security_events`, `anomalies`, `pulse_reports`, `node_logs`, `node_logs_summary`, `fail2ban_events`, `crowdsec_decisions`
 - Infrastructure: `nodes`, `node_resource_stats`, `node_bandwidth_stats`, `node_disk_stats`, `node_patch_status`, `wg_peer_stats`, `wg_sessions`, `tor_relay_stats`
 - AI: `memories` (pgvector 384-dim), `agent_token_log`, `call_transcripts`, `conversation_sessions`, `qa_cache`
-- Collectibles (Pokémon graded-card market — see [Pokémon graded-card data pipeline](#pokémon-graded-card-data-pipeline)): `card_catalog` (scraper search queue), `pop_reports` (CGC/PSA population counts), `sold_listings` (eBay sold comps)
+- Collectibles (Pokémon graded-card market — see [Pokémon graded-card data pipeline](#pokémon-graded-card-data-pipeline)): `card_catalog` (scraper search queue), `pop_reports` (CGC/PSA population counts), `sold_listings` (eBay sold comps), `grade_catalog` (per-grader grade scale + FK validation source), `grading_criteria_catalog` (condition factors + PSA qualifiers)
 
 ## Security stack
 
@@ -211,10 +211,19 @@ card_catalog  (active = true → set_name, card_number)
 
 - **`card_catalog`** — watchlist / scraper queue (637 distinct cards / 1,355 variant rows, 8 sets, `active` flag, PriceCharting prices).
 - **`pop_reports`** — graded-card population counts per `(grader, set, card, grade)`. Grader-agnostic;
-  CGC live, PSA built, SGC/BGS planned. Grades stored verbatim ("Gem Mint 10", "9.5", "Authentic").
+  CGC live, PSA built, SGC/BGS planned. `grade` is verbatim ("Gem Mint 10", "9.5", "Authentic") and
+  **FK-constrained to `grade_catalog(grader, raw_label)`** — an unknown grade is rejected at insert.
 - **`sold_listings`** — eBay sold comps (price, grade, grader, sale type, seller, raw title);
-  `item_id` unique for idempotent ingest. Bootstrapped with 651 rows (Base Set, Team Rocket, Fossil,
-  Gym Heroes/Challenge) across CGC/PSA/raw, dates through 2026-05-21.
+  `item_id` unique for idempotent ingest. `grade` is `text` (verbatim raw_label) and
+  **FK-constrained to `grade_catalog`**; raw/ungraded sales must set `grade = NULL`. Bootstrapped with
+  651 rows (Base Set, Team Rocket, Fossil, Gym Heroes/Challenge) across CGC/PSA, dates through 2026-05-21.
+- **`grade_catalog`** — canonical grade scale per grader (CGC/PSA/BGS/SGC), keyed by the verbatim
+  `raw_label` scrapers emit (both full labels like `Gem Mint 10` and bare numerics like `10`). Carries
+  `numeric_grade`, `tier_label`, `market_equiv_10`, `is_authentic`. It is the validation source for the
+  `pop_reports`/`sold_listings` grade FKs, so every emitted grade string must exist here.
+- **`grading_criteria_catalog`** — the four condition factors (Centering / Corners / Edges / Surface)
+  broken out per grader with `subgrades_published` (BGS publishes subgrades; PSA/CGC/SGC grade overall),
+  plus PSA qualifiers (OC/MC/ST/MK/PD/OF).
 
 ## HORIZON roadmap
 
