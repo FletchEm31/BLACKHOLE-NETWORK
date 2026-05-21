@@ -8,7 +8,7 @@
     "Team Rocket":               { "year": "2000", "slug": "pokemon-rocket",          "headingID": 61534 },
     "Gym Heroes":                { "year": "2000", "slug": "pokemon-gym-heroes",      "headingID": 58312 },
     "Gym Challenge":             { "year": "2000", "slug": "pokemon-gym-challenge",   "headingID": 58311 },
-    "Wizards Black Star Promos": { "year": "2000", "slug": "pokemon-promo-black-star","headingID": 81092, "verify": true },
-    "Best of Game":              { "year": null,   "slug": null,                       "headingID": null,  "verify": true }
+    "Best of Game":              { "year": "2003", "slug": "pokemon-best-game-promo",  "headingID": 100603 },
+    "Wizards Black Star Promos": { "year": null,   "slug": null,                       "headingID": null,  "verify": true, "note": "NO single PSA heading: PSA fragments the WOTC Black Star Promos by year (2000 pokemon-promo-black-star/81092 [foreign-heavy, #1-29], 2001/81226, 2003 pokemon-black-star-promo/57939, 2006/101616). Catalog models it as one set (#1-#51). Needs multi-heading aggregation support before it can be scraped correctly — do NOT use 81092 alone." }
   }
 }
