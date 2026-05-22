@@ -8,7 +8,7 @@ A privacy-focused personal infrastructure platform built on WireGuard with deep 
 
 Blackhole Network is a self-hosted private intelligence and trading infrastructure platform operated by a single operator. Built on battle-tested open-source tools with custom automation and AI-driven monitoring.
 
-**Domain model:** BLACKHOLE-NETWORK (BHN) is the infrastructure platform. Three data domains run on it — **PokemonBHN** (graded card-market data), **FinancialBHN** (algorithmic trading + financial intelligence), and **SecurityBHN** (network/host security telemetry) — over shared infrastructure (HORIZON, WireGuard, PostgreSQL, n8n). A companion game front-end, *Pokemon Blackhole*, lives in a separate repo (`TEAM-ROCKET-BHN`) and consumes PokemonBHN data.
+**Domain model:** BLACKHOLE-NETWORK (BHN) is the infrastructure platform. Three data domains run on it — **PokemonBHN**, **FinancialBHN**, and **SecurityBHN** — over shared infrastructure (HORIZON, WireGuard, PostgreSQL, n8n). The naming pattern is `{Domain}BHN`; a thing earns a domain label only if it has its own distinct tables, scripts, and services. A companion game front-end, *Pokemon Blackhole*, lives in a separate repo (`TEAM-ROCKET-BHN`) and consumes PokemonBHN data.
 
 **Shared infrastructure:** WireGuard mesh VPN (4 nodes across US-West, US-East, EU), PostgreSQL, Grafana, n8n, Tor relay network, dnscrypt-proxy, CrowdSec, Suricata, Shadowsocks
 
