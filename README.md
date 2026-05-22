@@ -275,7 +275,7 @@ source material only.**
 | Artifact | Location | Role |
 |----------|----------|------|
 | **`collectibles-data-standard.md`** | `infrastructure/docs/pokemonbhn/` | **THE single source of truth** for the PokemonBHN data domain — table/column naming, canonical value vocabularies, the verbatim-`raw_label` grade model, identity model, and enforcement rules. Written and maintained by Claude Code from the live DB. Where this file disagrees with the live DB, the DB wins and this file is corrected. |
-| Schema DDL | `sql/` | Schema files define tables and constraints; the schema *enforces* the standard (FKs, CHECKs, NOT NULL). **Gap (2026-05-21):** the PokemonBHN catalog DDL (`master_card_catalog`, `master_grade_catalog`, `master_grading_criteria_catalog`, their FKs, the variant split) was applied directly to the live DB this session and is **not yet captured in `sql/`** — the live DB is ahead of committed DDL; capturing it is an open task. |
+| Schema DDL | `sql/` | Schema files define tables and constraints; the schema *enforces* the standard (FKs, CHECKs, NOT NULL). `master_set_catalog` DDL is captured (`sql/pokemonbhn-master-set-catalog-schema.sql`). **Gap (2026-05-21):** the rest of the PokemonBHN catalog DDL (`master_card_catalog`, `master_grade_catalog`, `master_grading_criteria_catalog`, their FKs, the variant split) was applied directly to the live DB this session and is **not yet captured in `sql/`** — the live DB is still ahead of committed DDL for those; capturing them is an open task. |
 
 ### Canonical catalog tables (live data, in `eventhorizon`)
 
@@ -286,7 +286,7 @@ These are PostgreSQL tables, not documents — changed via SQL, defined by the s
 | `master_card_catalog` | Source-of-truth card roster / scraper queue. 637 distinct cards / 1,354 variant rows across 8 sets. `active` flag enrolls a card across all collectors. (`card_catalog` view = back-compat alias.) |
 | `master_grade_catalog` | Canonical grade scale per grader (CGC/PSA/BGS/SGC), keyed by verbatim `raw_label`. Carries `numeric_grade`, `tier_label`, `market_equiv_10`, `is_authentic`. FK validation source for all grades. |
 | `master_grading_criteria_catalog` | The four condition factors (Centering/Corners/Edges/Surface) per grader, `subgrades_published`, PSA qualifiers. |
-| `master_set_catalog` | One row per set: canonical name, era, legal editions, card count, PSA heading mapping. (Being built; absorbs `psa-sets.json`.) |
+| `master_set_catalog` | One row per set: canonical name, year/era, legal editions, card count, PSA heading mapping (absorbs `psa-sets.json`). 8 sets; `master_card_catalog.set_name` is FK-bound to it. |
 
 ### Core rules (defined in full in the standard doc)
 

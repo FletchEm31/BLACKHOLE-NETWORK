@@ -31,7 +31,7 @@ One **control** table drives a collector. Nothing fuses identity with observatio
 | `master_card_catalog` (+ `card_catalog` compat view) | which cards exist (card identity) |
 | `master_grade_catalog` | valid grades per grader |
 | `master_grading_criteria_catalog` | grading criteria + qualifiers |
-| `master_set_catalog` *(to build)* | sets: year, era, legal editions, count, PSA heading mapping |
+| `master_set_catalog` | sets: year, era, legal editions, count, PSA heading mapping (8 sets; `master_card_catalog.set_name` FK-bound) |
 
 ### Control
 | Table | Role |
@@ -164,7 +164,7 @@ worse than nothing.
 | `sold_listings.grade` | text raw_label | ✅ migrated |
 | `card_number` bare | §3.2 | ⏳ catalog stores `#NN` (1,354/1,354) — **strip-`#` migration pending** |
 | variant SPLIT | `edition` + `print_variant` | ✅ done 2026-05-21 — split live + parity-verified; legacy `variant` retained (trigger-bridged) pending consumer migration; 1 dedup resolved (TR #5 Holo/Unlimited) |
-| `master_set_catalog` | §1 / §3.3 | ⏳ **not built** |
+| `master_set_catalog` | §1 / §3.3 | ✅ built 2026-05-21 — 8 sets, legal_editions + PSA headings; `set_name` FK-bound; DDL in `sql/` |
 | `grade_reject_log` + staging-filter | §4 | ⏳ **not built** (loaders are all-or-nothing) |
 | `ebay_listings` columns/FK | `edition`,`card_number`,`grade_tier` + soft validate | ⏳ missing 3 cols; `grade` is `numeric`; no FK; `grader` has descriptors |
 | `pop_reports.card_set` | rename to `set_name` | ⏳ pending |
