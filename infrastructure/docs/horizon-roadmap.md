@@ -534,6 +534,7 @@ Once 1-7 done and keys are in PM, Session 1 can build M1 (Voice Pipeline) and st
 
 ## Future considerations (not in current scope, captured for completeness)
 
+- **Backup-via-Tor** *(planned feature — intent only, no implementation yet)* — route BHN backup pushes over a Tor circuit so the transport is unlinkable and the storage endpoint never sees a BHN origin IP. Phase 5.2 already specifies the concrete instance of this (LA's `restic`-via-Tor push to Sweden's hidden-service SFTP). This entry generalizes the intent: any backup destination should be reachable over Tor, using the **FRA Tor SOCKS proxy at `10.9.0.2:9050`** (already available — see `bhn-frankfurt-scoping.md`) for nodes that don't run their own onion routing. Out of scope until Phase 5 backup plumbing lands; captured here so backup design defaults to Tor transport rather than clearnet.
 - **EU voice processing** — N/A under personal-only direction. Voice infrastructure stays on LA. (Any future public VPN product is a separate concern on different infrastructure under a different entity — out of scope here.)
 - **Multi-region failover** — HORIZON depends on LA single-host today. Future: replication of `memories` + `call_transcripts` to a secondary node for DR.
 - **Voice biometric authentication** — operator-voice match could gate sensitive actions (live trades, large eBay purchases). Not yet planned.
