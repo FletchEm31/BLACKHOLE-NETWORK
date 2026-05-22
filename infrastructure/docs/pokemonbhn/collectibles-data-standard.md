@@ -41,7 +41,7 @@ One **control** table drives a collector. Nothing fuses identity with observatio
 ### Three concepts that must never fuse
 | Concept | Identifies | Lives where | Cardinality |
 |---------|-----------|-------------|-------------|
-| `card_id` | a card-variant ("this kind of card exists") | `master_card_catalog.id` (serial PK) | 1,355 |
+| `card_id` | a card-variant ("this kind of card exists") | `master_card_catalog.id` (serial PK) | 1,354 |
 | `cert_number` | one physical graded slab | observation rows (not stored today) | thousands+ |
 | `card_number` | within-set number (a **field**, not a key) | all tables | repeats per set |
 
@@ -159,11 +159,11 @@ worse than nothing.
 | Item | Standard (target) | Live state |
 |------|-------------------|------------|
 | `set_name` 8 strings | §3.1 | ✅ conforms |
-| `master_card_catalog` editions | full canonical (637 cards / 1,355 rows) | ✅ audited complete |
+| `master_card_catalog` editions | full canonical (637 cards / 1,354 rows) | ✅ audited complete |
 | grade FK on `pop_reports`/`sold_listings` | hard FK | ✅ in place |
 | `sold_listings.grade` | text raw_label | ✅ migrated |
-| `card_number` bare | §3.2 | ⏳ catalog stores `#NN` (1,355/1,355) — **strip-`#` migration pending** |
-| variant SPLIT | `edition` + `print_variant` | ⏳ single `variant` column (20 values) — **migration pending** |
+| `card_number` bare | §3.2 | ⏳ catalog stores `#NN` (1,354/1,354) — **strip-`#` migration pending** |
+| variant SPLIT | `edition` + `print_variant` | ✅ done 2026-05-21 — split live + parity-verified; legacy `variant` retained (trigger-bridged) pending consumer migration; 1 dedup resolved (TR #5 Holo/Unlimited) |
 | `master_set_catalog` | §1 / §3.3 | ⏳ **not built** |
 | `grade_reject_log` + staging-filter | §4 | ⏳ **not built** (loaders are all-or-nothing) |
 | `ebay_listings` columns/FK | `edition`,`card_number`,`grade_tier` + soft validate | ⏳ missing 3 cols; `grade` is `numeric`; no FK; `grader` has descriptors |

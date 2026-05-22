@@ -16,7 +16,7 @@ Blackhole Network is a self-hosted private intelligence and trading infrastructu
 
 **FinancialBHN — financial intelligence:** 6 Grafana dashboards covering market regime classification, ETF price data, macro indicators, sentiment, commodities, energy, agriculture, prediction markets, and options flow across 78 PostgreSQL tables
 
-**PokemonBHN — graded-card market:** WOTC-era card data pipeline — `master_card_catalog` (637 cards / 1,355 variant rows, 8 sets) feeding three streams: sold comps (`sold_listings`), active eBay listings (`ebay_listings`), and graded population reports (`pop_reports`), with CGC/PSA/BGS/SGC grade normalization via `master_grade_catalog`. See [Pokémon Graded Card Data Pipeline](#pokémon-graded-card-data-pipeline) and [Data standards & authority](#data-standards--authority).
+**PokemonBHN — graded-card market:** WOTC-era card data pipeline — `master_card_catalog` (637 cards / 1,354 variant rows, 8 sets) feeding three streams: sold comps (`sold_listings`), active eBay listings (`ebay_listings`), and graded population reports (`pop_reports`), with CGC/PSA/BGS/SGC grade normalization via `master_grade_catalog`. See [Pokémon Graded Card Data Pipeline](#pokémon-graded-card-data-pipeline) and [Data standards & authority](#data-standards--authority).
 
 **SecurityBHN — security telemetry:** Defense-in-depth signals across the 4-node mesh — `security_events`, `anomalies`, `fail2ban_events`, `crowdsec_decisions`, and per-node resource / bandwidth / WireGuard / Tor stats.
 
@@ -181,7 +181,7 @@ Covers 8 sets (Base Set, Fossil, Jungle, Team Rocket, Gym Heroes, Gym Challenge,
 Promos, Best of Game) with PriceCharting reference prices. As of 2026-05-21 the six main WOTC sets are
 audited to **full canonical completeness** against Bulbapedia + pkmncards — every card carries its
 standard editions (1st Edition + Unlimited; Base Set also Shadowless) — for **637 distinct cards /
-1,355 variant rows** total. Error/alternate-print variants (errors, no-symbol, jumbo, staff stamps)
+1,354 variant rows** total. Error/alternate-print variants (errors, no-symbol, jumbo, staff stamps)
 are tracked opportunistically, not exhaustively.
 
 ### Data flow
@@ -224,7 +224,7 @@ master_card_catalog  (active = true → set_name, card_number)
 > `grading_criteria_catalog → master_grading_criteria_catalog`. FK constraints auto-followed; an
 > auto-updatable view `card_catalog` is kept as a back-compat alias for live n8n consumers.
 
-- **`master_card_catalog`** — watchlist / scraper queue (637 distinct cards / 1,355 variant rows, 8 sets, `active` flag, PriceCharting prices). A compatibility view **`card_catalog`** aliases it (auto-updatable) for legacy/n8n consumers not yet migrated to the `master_` name.
+- **`master_card_catalog`** — watchlist / scraper queue (637 distinct cards / 1,354 variant rows, 8 sets, `active` flag, PriceCharting prices). A compatibility view **`card_catalog`** aliases it (auto-updatable) for legacy/n8n consumers not yet migrated to the `master_` name.
 - **`pop_reports`** — graded-card population counts per `(grader, set, card, grade)`. Grader-agnostic;
   CGC live, PSA built, SGC/BGS planned. `grade` is verbatim ("Gem Mint 10", "9.5", "Authentic") and
   **FK-constrained to `master_grade_catalog(grader, raw_label)`** — an unknown grade is rejected at insert.
@@ -260,7 +260,7 @@ These are PostgreSQL tables, not documents — changed via SQL, defined by the s
 
 | Table | What it is |
 |-------|------------|
-| `master_card_catalog` | Source-of-truth card roster / scraper queue. 637 distinct cards / 1,355 variant rows across 8 sets. `active` flag enrolls a card across all collectors. (`card_catalog` view = back-compat alias.) |
+| `master_card_catalog` | Source-of-truth card roster / scraper queue. 637 distinct cards / 1,354 variant rows across 8 sets. `active` flag enrolls a card across all collectors. (`card_catalog` view = back-compat alias.) |
 | `master_grade_catalog` | Canonical grade scale per grader (CGC/PSA/BGS/SGC), keyed by verbatim `raw_label`. Carries `numeric_grade`, `tier_label`, `market_equiv_10`, `is_authentic`. FK validation source for all grades. |
 | `master_grading_criteria_catalog` | The four condition factors (Centering/Corners/Edges/Surface) per grader, `subgrades_published`, PSA qualifiers. |
 | `master_set_catalog` | One row per set: canonical name, era, legal editions, card count, PSA heading mapping. (Being built; absorbs `psa-sets.json`.) |
