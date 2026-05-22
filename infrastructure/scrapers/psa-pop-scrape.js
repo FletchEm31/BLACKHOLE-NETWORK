@@ -138,24 +138,45 @@ function itemsToRecords(items, { setName, sourceUrl, scrapedAt, keep }) {
 }
 
 async function scrapeSet(page, { setName, mapping, keep, categoryID }) {
-  const sourceUrl = setUrl({ ...mapping });
   const scrapedAt = new Date().toISOString();
 
-  const resp = await page.goto(sourceUrl, { waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT_MS });
+  // A set maps to either a single PSA headingID or an array of year-headings. PSA fragments some
+  // sets across years (e.g. Wizards Black Star Promos: 2000/2001/2003/2006). For multi-heading sets
+  // we navigate ONCE to clear Cloudflare, then fetch each headingID in-page — the /Pop/GetSetItems
+  // fetch rides the cf_clearance cookie regardless of the current page, so only headings[0] needs a
+  // real slug; the rest are fetched by headingID alone.
+  const headings = (mapping.headings && mapping.headings.length)
+    ? mapping.headings
+    : [{ year: mapping.year, slug: mapping.slug, headingID: mapping.headingID }];
+
+  const navUrl = setUrl(headings[0]);
+  const resp = await page.goto(navUrl, { waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT_MS });
   const httpStatus = resp ? resp.status() : 0;
   if (!(await clearChallenge(page))) {
-    throw new Error(`cloudflare challenge not cleared for ${setName} (${sourceUrl})`);
+    throw new Error(`cloudflare challenge not cleared for ${setName} (${navUrl})`);
   }
 
-  const { recordsTotal, data } = await fetchSetItems(page, {
-    headingID: mapping.headingID,
-    categoryID,
-  });
-  const { records, uniqueCards } = itemsToRecords(data, { setName, sourceUrl, scrapedAt, keep });
+  const records = [];
+  let recordsTotal = 0;
+  let apiRows = 0;
+  let nonZeroSpec = 0;
+  for (let i = 0; i < headings.length; i++) {
+    const headingUrl = setUrl(headings[i]);
+    const { recordsTotal: rt, data } = await fetchSetItems(page, {
+      headingID: headings[i].headingID,
+      categoryID,
+    });
+    recordsTotal += rt;
+    apiRows += data.length;
+    nonZeroSpec += data.filter((d) => d && d.SpecID !== 0).length;
+    const r = itemsToRecords(data, { setName, sourceUrl: headingUrl, scrapedAt, keep });
+    for (const rec of r.records) records.push(rec);
+    if (i < headings.length - 1) await sleep(jitter(SET_DELAY_MS)); // polite gap between headings
+  }
 
-  // Completeness signals: did the API hand back as many rows as it claimed, and (when filtering)
-  // which cataloged card numbers were never found on PSA?
-  const apiComplete = recordsTotal === 0 ? null : data.filter((d) => d && d.SpecID !== 0).length >= recordsTotal - 1;
+  // Completeness signals: did the API hand back (about) as many rows as it claimed across all
+  // headings, and (when filtering) which cataloged card numbers were never found on PSA?
+  const apiComplete = recordsTotal === 0 ? null : nonZeroSpec >= recordsTotal - 1;
   let missingFromPsa = [];
   if (keep) {
     const found = new Set(records.map((r) => r.card_number));
@@ -164,11 +185,11 @@ async function scrapeSet(page, { setName, mapping, keep, categoryID }) {
 
   return {
     setName,
-    sourceUrl,
+    sourceUrl: headings.length > 1 ? headings.map(setUrl).join(' | ') : navUrl,
     httpStatus,
     recordsTotal,
-    api_rows: data.length,
-    unique_cards: uniqueCards,
+    api_rows: apiRows,
+    unique_cards: new Set(records.map((r) => r.card_number)).size,
     total_records: records.length,
     api_complete: apiComplete,
     missing_from_psa: missingFromPsa,

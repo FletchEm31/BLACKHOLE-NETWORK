@@ -1,0 +1,274 @@
+==================================================================
+BLACKHOLE NETWORK (BHN) — SESSION HANDOFF
+Last Updated: May 21, 2026
+==================================================================
+
+PURPOSE
+-------
+Read this FIRST at the start of every Claude session.
+It tells Claude what state the project is in, what was done
+last session, and what to work on next.
+The Big 3 docs (INFRASTRUCTURE-REFERENCE, DATA-FLOW-BLUEPRINT,
+SECURITY-PROTOCOL) are the deep reference — this doc is the
+quick-start that tells you where we left off.
+
+==================================================================
+SECTION 1 — NETWORK SNAPSHOT (current state)
+==================================================================
+
+NODE          IP (PUBLIC)       TUNNEL IP   STATUS
+LA Hub        149.28.91.100     10.8.0.1    OPERATIONAL (hub, PG, n8n, HORIZON, Grafana)
+Frankfurt     192.248.187.208   10.9.0.2    OPERATIONAL (exit EU1, LibreSpeed, SearXNG, Tor)
+New Jersey    140.82.4.35       10.8.0.5    OPERATIONAL (trading stack LIVE — 5 strategies running)
+Hillsboro     5.78.94.237       10.8.0.6    OPERATIONAL (tinyproxy verified, Tor bootstrapping)
+
+WireGuard Mesh (hub-and-spoke, LA is hub):
+  Operator PC:     10.8.0.4   PSK: ✅
+  Operator Phone:  10.8.0.2   PSK: ✅
+  Operator Laptop: 10.8.0.7   PSK: ✅
+  NJ:              10.8.0.5   PSK: ❌ pending
+  Hillsboro:       10.8.0.6   PSK: ✅
+  Frankfurt:       10.9.0.2   PSK: ✅
+
+Tor Relays:
+  BHNFornaxEU1  → Frankfurt   LIVE
+  BHNHeliosUS3  → Hillsboro   Bootstrapping
+  BHNNebulaUS2  → NJ          Deployed, not live
+
+CONSOLE TERMINOLOGY (STRICT):
+  REMOTE BROWSER WINDOW = noVNC web console (Vultr/Hetzner)
+  PC LA CONSOLE         = ssh root@149.28.91.100
+  PC GE CONSOLE         = ssh root@192.248.187.208
+  PC NJ CONSOLE         = ssh -p 2222 root@140.82.4.35   ← port 2222
+  PC Hillsboro          = ssh root@5.78.94.237
+  LA→Frankfurt:         ssh frankfurt  (from LA)
+  LA→NJ:                ssh nj         (from LA)
+  LA→Hillsboro:         ssh hillsboro  (from LA)
+
+==================================================================
+SECTION 2 — TRADING STACK STATUS
+==================================================================
+
+ACTIVE STRATEGIES ON NJ:
+
+Account 1 — BHN-STRAT-PRIMARY (PA39LSUT2NW8) $100,000:
+  Strat 6  — BHN-NASDAQ-LONG      enabled    $40,000   Mon 9:40am ET
+  Strat 7  — BHN-NASDAQ-SHORT     DISABLED   $40,000   pending Strat 6 validation
+  Strat 8  — BHN-SECTOR-ROTATION  enabled    $20,000   daily 3:55pm ET
+
+Account 2 — BHN-STRAT-FUNDAMENTAL (PA3AZX0UE3JC) $25,000:
+  Strat 3  — BHN-MEAN-REVERSION   enabled    $20,000   daily
+
+Account 3 — BHN-STRAT-SIGNALS (PA37PRN150AG) $25,000:
+  Strat 4  — BHN-MOMENTUM         enabled    $12,500   daily
+  Strat 13 — BHN-RSI-INTRADAY     enabled    $12,500   every 30min market hours
+
+PARKED (built, not deployed):
+  Strat 1  — Congress Trading      (needs Quiver API key $25/mo)
+  Strat 2  — Buffett Value
+  Strat 5  — Weather Arbitrage     (needs Kalshi API key)
+
+==================================================================
+SECTION 3 — POKEMON GRADED CARD PIPELINE
+==================================================================
+
+THIS SESSION'S FOCUS — Master catalog standardization
+
+MASTER CATALOGS (source of truth — live in eventhorizon):
+
+  Table                          Authority For                    Status
+  ─────────────────────────────────────────────────────────────────────
+  master_card_catalog            Which cards exist & are tracked  ✅ COMPLETE
+  master_grade_catalog           What grades are valid per grader ✅ COMPLETE
+  master_grading_criteria_catalog How grading works per grader    ✅ COMPLETE
+
+master_card_catalog:
+  637 distinct cards / 1,355 variant rows / 8 sets
+  All sets audited to full canonical completeness (Bulbapedia + pkmncards)
+  Sets: Base Set, Fossil, Jungle, Team Rocket, Gym Heroes, Gym Challenge,
+        Wizards Black Star Promos, Best of Game
+  active = true → scrapers auto-enroll card in all collectors
+  Compat view: card_catalog (alias) left in place for live n8n consumers
+               until n8n workflows are migrated to master_card_catalog
+
+master_grade_catalog:
+  88 rows — PSA (20), CGC (25), BGS (21), SGC (22)
+  NOTE: TAG not yet seeded — pending
+  Full labels + bare numerics seeded for scraper format flexibility
+  FK enforced on sold_listings AND pop_reports
+    → any grade string not in this table is REJECTED at insert
+  sold_listings.grade converted from numeric → text this session
+  169 ambiguous CGC bare "10" rows resolved via title_raw parsing
+  market_equiv_10 flag = true on grades that trade as 10s
+    (e.g. CGC 9.5 Blue Label legacy, BGS 9.5)
+
+master_grading_criteria_catalog:
+  22 rows — 4 condition factors (Centering/Corners/Edges/Surface) per grader
+  PSA qualifiers included (OC/MC/ST/MK/PD/OF)
+  subgrades_published = true for BGS only
+
+NAMING CONVENTION:
+  All master reference tables use *_catalog suffix
+  Adding a card = one INSERT into master_card_catalog → auto-enrolls everywhere
+  Adding a grader/grade = one INSERT into master_grade_catalog → FK validates downstream
+
+DATA TABLES (consume the catalogs):
+
+  Table            Rows     Status
+  ────────────────────────────────────────────────────────
+  sold_listings    651      Live. FK wired to master_grade_catalog.
+                            689-row update STILL PENDING (file in Downloads)
+  pop_reports      9,708    CGC live. PSA scraper built, not yet run in prod.
+                            (Cloudflare cooling — wait ~24hrs from May 21)
+
+GITHUB STATUS:
+  Last commits this session:
+    720abbd — docs: document master_* catalog rename mapping in README Tables
+    bea045e — refactor: rename reference catalogs to master_*
+    11c62b1 — feat: grade_catalog + grading_criteria_catalog + FK enforcement
+    671023d — docs: card_catalog audited to full canonical completeness (8 sets)
+    7a17392 — fix(scrapers): map Best of Game (100603), flag Wizards Black Star Promos
+
+  Uncommitted:
+    README Pokemon pipeline section (waiting on final sold_listings row count)
+    sold_listings 689-row update (file: C:\Users\fletc\Downloads\sold_listings_master.sql)
+
+==================================================================
+SECTION 4 — GRAFANA DASHBOARD SUITE
+==================================================================
+
+ALL 6 DASHBOARDS LIVE:
+  BHN — Market Intelligence         (uid: bhn-market-intelligence)
+  BHN — Trade Execution & Operations (uid: bhn-trade-execution)
+  BHN — Derivatives & Options Markets (uid: bhn-derivatives-options)
+  BHN — Prediction & Alternative Markets (uid: bhn-prediction-alternative)
+  BHN — Commodities & Tangible Asset Markets (uid: bhn-commodities)
+  BHN — Infrastructure & Security Operations (uid: bhn-security-network)
+
+==================================================================
+SECTION 5 — FINANCIAL INTELLIGENCE LAYER
+==================================================================
+
+CURRENT REGIME: BULL_VOLATILE
+  SPY 11.2% above 200MA, VIX 17.9, yield curve +0.48
+
+DAILY COLLECTORS RUNNING ON LA:
+  bhn-market-data.timer      → 4:30pm ET
+  bhn-macro-data.timer       → 5:00pm ET
+  bhn-regime-classifier.timer → 5:15pm ET
+  bhn-sentiment.timer        → 5:30pm ET
+
+MACRO DATA EXPANSION NEEDED (next session):
+  Add treasury yield curve + gold/silver spot to macro_daily
+  Process: pg_dump → ALTER TABLE → update collector → backfill → verify
+
+==================================================================
+SECTION 6 — HORIZON STATUS
+==================================================================
+
+Status: OPERATIONAL but running STALE WORKFLOW
+Chat URL: http://10.8.0.1:5678/webhook/ec1592c6-8715-4b0f-8ee8-5bc02f551a27/chat
+
+BLOCKERS:
+  ❌ bhn-horizon.json NOT re-imported — running old workflow (introduces as "Nathan")
+  ❌ Cannot see financial tables
+  ❌ Daily summary email — SMTP credentials missing from env
+  ❌ Finance news category not added to n8n poller
+
+WHAT HORIZON CAN DO NOW:
+  ✅ Answer questions about security/infrastructure tables
+  ✅ Send/receive SMS
+  ✅ pgvector semantic memory (19 entries)
+  ✅ Redis short-term memory
+
+==================================================================
+SECTION 7 — PENDING TASKS (PRIORITY ORDER)
+==================================================================
+
+POKEMON PIPELINE — IMMEDIATE:
+  1. Push 689-row sold_listings update
+       File: C:\Users\fletc\Downloads\sold_listings_master.sql
+       Tell Claude Code: truncate-and-replace eventhorizon sold_listings
+  2. Seed TAG grades into master_grade_catalog (not yet added)
+  3. Commit README Pokemon pipeline section (waiting on row count)
+  4. Wire PSA scraper into weekly deploy runbook (residential PC)
+  5. Wizards Black Star Promos PSA headingID
+       Wait 24hrs for Cloudflare to cool first
+  6. n8n SOLD-DATA workflow (33 searches/day, 60-day rotation)
+  7. Connect HORIZON to Pokemon tables
+  8. Gixen API (enable from Mario — auction sniper)
+  9. Migrate n8n workflows from card_catalog → master_card_catalog
+     then DROP VIEW card_catalog
+
+INFRASTRUCTURE — NEXT SESSION:
+  10. Frankfurt MASQUERADE fix
+  11. LA egress lockdown via tinyproxy
+  12. NJ WireGuard PSK
+  13. CVE-2026-31431 full kernel patch (all nodes)
+  14. Re-import bhn-horizon.json into n8n
+  15. ALTER TABLE macro_daily — treasury rates + gold/silver
+  16. Grafana alerting v1
+  17. A2P SMS approval (~May 23-30)
+  18. Quiver Quantitative signup ($25/mo)
+  19. Kalshi API key setup
+
+FUTURE ROADMAP (Pokemon):
+  Sets not yet scraped: Neo Genesis, Neo Discovery, Neo Revelation, Neo Destiny
+  Secondary sources: 130point, PWCC, Goldin, Whatnot, Mavin
+  eBay Marketplace Insights API — ticket #260520-000069 open
+
+==================================================================
+SECTION 8 — PHASE PROGRESS
+==================================================================
+
+  Phase 1 NETWORK:    ~90%  Frankfurt MASQUERADE + NJ PSK pending
+  Phase 2 DASHBOARD:  ~85%  All 6 dashboards live, alerting not wired
+  Phase 3 AI:         ~60%  HORIZON operational but workflow stale
+  Phase 4 PER-NODE:   ~80%  All nodes live, trading stack active
+  Phase 5 RESILIENCE: ~10%  Sweden/Iceland designed, not built
+
+  Pokemon Pipeline:   ~35%  Catalogs locked, scrapers built, data flowing
+                            Sold listings + pop reports partially loaded
+                            n8n automation not yet built
+
+==================================================================
+SECTION 9 — COSTS (~$210-225/month)
+==================================================================
+
+  LA VPS:          $12
+  Frankfurt VPS:   $12
+  NJ VPS:          $12
+  Hillsboro:       $6.99
+  NVMe storage:    $10.10
+  HDD storage:     $9.97
+  Backups:         $2.40
+  ElevenLabs:      $22
+  Twilio:          ~$16
+  Claude Max:      $100-200
+  API costs:       ~$5-20
+
+==================================================================
+RULES (NEVER DEVIATE)
+==================================================================
+
+  - Project: BLACKHOLE NETWORK (BHN) — never EventHorizon
+  - Console names: exact terminology only (Section 1)
+  - NJ SSH: port 2222 (not 22)
+  - Tor relay nicknames: NO HYPHENS — alphanumeric only [a-zA-Z0-9]
+  - GitHub commits: ALWAYS provide Summary AND Description first
+  - Bootstrap: scp not git clone, ALWAYS set TUNNEL_IP_OVERRIDE
+  - New WireGuard peer on LA: ALWAYS add UFW egress rules immediately
+  - PostgreSQL: sudo -u postgres psql -d eventhorizon
+  - ALTER TABLE: always pg_dump first, test on copy, never rush
+  - master_card_catalog is the scraper queue — WHERE active = true
+  - master_grade_catalog is the FK enforcer — invalid grades rejected at DB
+  - Cloudflare cooling on PSA — no probing for ~24hrs from May 21 evening
+
+==================================================================
+DOCUMENT CONTROL
+==================================================================
+
+Update this file at the END of every session.
+Store in: Claude Project files + repo infrastructure/docs/
+
+==================================================================
