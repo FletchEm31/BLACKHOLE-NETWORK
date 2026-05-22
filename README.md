@@ -8,17 +8,23 @@ A privacy-focused personal infrastructure platform built on WireGuard with deep 
 
 Blackhole Network is a self-hosted private intelligence and trading infrastructure platform operated by a single operator. Built on battle-tested open-source tools with custom automation and AI-driven monitoring.
 
-**Infrastructure:** WireGuard mesh VPN (4 nodes across US-West, US-East, EU), PostgreSQL, Grafana, n8n, Tor relay network, dnscrypt-proxy, CrowdSec, Suricata, Shadowsocks
+**Domain model:** BLACKHOLE-NETWORK (BHN) is the infrastructure platform. Three data domains run on it — **PokemonBHN** (graded card-market data), **FinancialBHN** (algorithmic trading + financial intelligence), and **SecurityBHN** (network/host security telemetry) — over shared infrastructure (HORIZON, WireGuard, PostgreSQL, n8n). A companion game front-end, *Pokemon Blackhole*, lives in a separate repo (`TEAM-ROCKET-BHN`) and consumes PokemonBHN data.
 
-**Trading Stack:** Algorithmic paper trading via Alpaca — 5 active strategies across 3 accounts, $150k total capital, real-time signal generation and execution on NJ trading node
+**Shared infrastructure:** WireGuard mesh VPN (4 nodes across US-West, US-East, EU), PostgreSQL, Grafana, n8n, Tor relay network, dnscrypt-proxy, CrowdSec, Suricata, Shadowsocks
 
-**Financial Intelligence:** 6 Grafana dashboards covering market regime classification, ETF price data, macro indicators, sentiment, commodities, energy, agriculture, prediction markets, and options flow across 71 PostgreSQL tables
+**FinancialBHN — trading:** Algorithmic paper trading via Alpaca on the NJ trading node. As of 2026-05-21, **only Strat 13 (`BHN-RSI-INTRADAY`) is active as an operational test**; the remaining strategies are sidelined pending validation.
 
-**AI Agent — HORIZON:** HORIZON is the autonomous intelligence layer of the Blackhole Network — an n8n-based AI agent powered by Claude with full read access to all 71 PostgreSQL tables. HORIZON operates as both a personal assistant and autonomous infrastructure manager across three domains:
+**FinancialBHN — financial intelligence:** 6 Grafana dashboards covering market regime classification, ETF price data, macro indicators, sentiment, commodities, energy, agriculture, prediction markets, and options flow across 78 PostgreSQL tables
+
+**PokemonBHN — graded-card market:** WOTC-era card data pipeline — `master_card_catalog` (637 cards / 1,355 variant rows, 8 sets) feeding three streams: sold comps (`sold_listings`), active eBay listings (`ebay_listings`), and graded population reports (`pop_reports`), with CGC/PSA/BGS/SGC grade normalization via `master_grade_catalog`. See [Pokémon Graded Card Data Pipeline](#pokémon-graded-card-data-pipeline) and [Data standards & authority](#data-standards--authority).
+
+**SecurityBHN — security telemetry:** Defense-in-depth signals across the 4-node mesh — `security_events`, `anomalies`, `fail2ban_events`, `crowdsec_decisions`, and per-node resource / bandwidth / WireGuard / Tor stats.
+
+**AI Agent — HORIZON (shared infrastructure):** HORIZON is the shared autonomous intelligence layer serving all three domains — an n8n-based AI agent powered by Claude with full read access to all 78 PostgreSQL tables. HORIZON operates as both a personal assistant and autonomous infrastructure manager across three domains:
 
 *Operations:* Monitors all 4 nodes in real time, reads security events, anomalies, pulse reports, and node health. Triggers alerts via SMS/voice (Twilio + ElevenLabs) for P1/P2 security events, node outages, and storage pressure. Can execute restricted actions — restart services, trigger fail2ban bans, run smoke tests, and activate the trading killswitch on operator command.
 
-*Trading & Finance:* Full read access to all financial intelligence tables — market regime, ETF price data, macro indicators, sentiment, earnings, analyst ratings, commodities, energy, agriculture, prediction markets, and options flow. Monitors paper trade performance across all 5 strategies, delivers daily PnL summaries, and flags reconciliation mismatches.
+*Trading & Finance:* Full read access to all financial intelligence tables — market regime, ETF price data, macro indicators, sentiment, earnings, analyst ratings, commodities, energy, agriculture, prediction markets, and options flow. Monitors paper trade performance (currently Strat 13, the active operational test), delivers daily PnL summaries, and flags reconciliation mismatches.
 
 *Memory & Context:* pgvector semantic memory (384-dim) for long-term context, Redis for short-term session state. HORIZON builds a persistent model of operator preferences, infrastructure state, and trading history across all interactions.
 
@@ -36,7 +42,7 @@ Any future public VPN product is a separate concern (different servers, differen
 Phase 1: NETWORK                        [✅ ~90% complete]
 ├─ LA hub (BHN|VPS-LOSANGELES-US1) — hub, PostgreSQL, n8n, HORIZON, Grafana
 ├─ Frankfurt exit node (BHN|VPS-FRANKFURT-EU1) — EU exit, LibreSpeed, SearXNG, Tor relay
-├─ NJ trading node (BHN|VPS-NEWJERSEY-US2) — Alpaca paper trading, 5 strategies live
+├─ NJ trading node (BHN|VPS-NEWJERSEY-US2) — Alpaca paper trading, Strat 13 active (operational test), others sidelined
 ├─ Hillsboro proxy node (BHN-HILLSBORO-US3) — LA egress proxy via tinyproxy, Tor relay
 ├─ WireGuard hub-and-spoke mesh — all nodes + operator devices connected, PSK on most peers
 ├─ Bootstrap script v4 (declarative node types + modular install)
@@ -44,7 +50,7 @@ Phase 1: NETWORK                        [✅ ~90% complete]
 └─ Future nodes: Sweden (Bahnhof), Iceland via snapshot deployment
 
 Phase 2: DASHBOARD                      [✅ ~85% complete]
-├─ PostgreSQL on encrypted NVMe — 71 tables, live financial + security data
+├─ PostgreSQL on encrypted NVMe — 78 tables, live financial + security data
 ├─ 6 Grafana dashboards (VPN-only access):
 │   ├─ BHN Market Intelligence — regime, ETFs, macro, sentiment, earnings, analyst ratings
 │   ├─ BHN Trade Execution & Operations — signals, PnL, paper trades, reconciliation
@@ -66,7 +72,7 @@ Phase 3: AI INTEGRATION                 [in progress, ~60% complete]
 └─ Proactive alerting + auto-response — not yet built
 
 Phase 4: PER-NODE SERVICES              [~80% complete]
-├─ Trading stack live on NJ — 5 strategies, 3 Alpaca accounts, first trades firing
+├─ Trading stack live on NJ — Strat 13 operational test (others sidelined), 3 Alpaca accounts
 ├─ Wallos (LA) — subscription / cost tracking [✅] http://10.8.0.1:8090
 ├─ SearXNG (Frankfurt) — private meta-search [✅] http://10.9.0.2:8089
 ├─ LibreSpeed Frankfurt (EU speedtest) [✅] http://10.9.0.2:8088
@@ -134,9 +140,13 @@ LA hub additional layers:
 - PostgreSQL role-based access control (7 roles, least privilege)
 - WireGuard PSK on all peers (quantum-resistant key exchange)
 
-## Trading stack
+## FinancialBHN — trading stack
 
 Runs on NJ trading node (BHN|VPS-NEWJERSEY-US2). Paper trading via Alpaca.
+
+> **Status (2026-05-21):** only **Strat 13 (`BHN-RSI-INTRADAY`)** is active, as an operational test;
+> all other strategies are **sidelined** pending validation. The matrix below is the *configured*
+> strategy set (capital/schedule), not the current live set.
 
 ```
 Account 1 — BHN-STRAT-PRIMARY (PA39LSUT2NW8)    $100,000
@@ -230,9 +240,67 @@ master_card_catalog  (active = true → set_name, card_number)
   broken out per grader with `subgrades_published` (BGS publishes subgrades; PSA/CGC/SGC grade overall),
   plus PSA qualifiers (OC/MC/ST/MK/PD/OF).
 
-## HORIZON roadmap
+## Data standards & authority
 
-HORIZON is built in phases. Each phase enables the next.
+The PokemonBHN data domain is governed by a single authoritative standard plus a set of canonical
+catalog tables. This section maps *what is binding* and *where it lives*. Precedence: **the live
+database is ground truth; the standard doc is the binding rulebook; the chat-derived design docs are
+source material only.**
+
+### The authority (binding)
+
+| Artifact | Location | Role |
+|----------|----------|------|
+| **`collectibles-data-standard.md`** | `infrastructure/docs/pokemonbhn/` | **THE single source of truth** for the PokemonBHN data domain — table/column naming, canonical value vocabularies, the verbatim-`raw_label` grade model, identity model, and enforcement rules. Written and maintained by Claude Code from the live DB. Where this file disagrees with the live DB, the DB wins and this file is corrected. |
+| Schema DDL | `sql/` | Schema files define tables and constraints; the schema *enforces* the standard (FKs, CHECKs, NOT NULL). **Gap (2026-05-21):** the PokemonBHN catalog DDL (`master_card_catalog`, `master_grade_catalog`, `master_grading_criteria_catalog`, their FKs, the variant split) was applied directly to the live DB this session and is **not yet captured in `sql/`** — the live DB is ahead of committed DDL; capturing it is an open task. |
+
+### Canonical catalog tables (live data, in `eventhorizon`)
+
+These are PostgreSQL tables, not documents — changed via SQL, defined by the schema in `sql/`.
+
+| Table | What it is |
+|-------|------------|
+| `master_card_catalog` | Source-of-truth card roster / scraper queue. 637 distinct cards / 1,355 variant rows across 8 sets. `active` flag enrolls a card across all collectors. (`card_catalog` view = back-compat alias.) |
+| `master_grade_catalog` | Canonical grade scale per grader (CGC/PSA/BGS/SGC), keyed by verbatim `raw_label`. Carries `numeric_grade`, `tier_label`, `market_equiv_10`, `is_authentic`. FK validation source for all grades. |
+| `master_grading_criteria_catalog` | The four condition factors (Centering/Corners/Edges/Surface) per grader, `subgrades_published`, PSA qualifiers. |
+| `master_set_catalog` | One row per set: canonical name, era, legal editions, card count, PSA heading mapping. (Being built; absorbs `psa-sets.json`.) |
+
+### Core rules (defined in full in the standard doc)
+
+- **Naming:** `master_` prefix = reference/source-of-truth tables; plural nouns = observation data
+  (`pop_reports`, `sold_listings`, `ebay_listings`); views alias legacy names; `snake_case` throughout;
+  same concept = same column name everywhere. American spelling `catalog` (not `catalogue`).
+- **Identity:** a surrogate `card_id` is the join key — *not* a smart key, *not* the cert number.
+  `card_number` is a bare integer field (not a key; repeats per set). `cert_number` lives only on
+  observation rows. Unique card identity = the `(set_name, card_number, edition, print_variant)` composite.
+- **Variant model:** the legacy grab-bag `variant` is split into two orthogonal columns —
+  `edition` (`1st Edition` / `Unlimited` / `Shadowless` / `N/A`) and `print_variant`
+  (`Standard` / `Holo` / `Winner` / `Jumbo` / `No Symbol` / `Error` / stamps / etc.), `print_variant`
+  NOT NULL DEFAULT `'Standard'`. Migrated via a non-breaking trigger that keeps the old column live
+  until a row-parity check passes.
+- **Grades:** stored as the verbatim `raw_label` (text), FK-constrained to `master_grade_catalog` —
+  an unknown label is rejected at insert. Numeric/tier values are derived by JOIN, never re-stored.
+  Raw/ungraded sales set `grade = NULL`. Legacy designations (e.g. CGC Perfect 10, retired 2023) are
+  kept as valid rows for historical backfill.
+- **Grade enforcement is tiered by table role:** hard FK on controlled tables (`sold_listings`,
+  `pop_reports`); soft validate-and-log on the live feed (`ebay_listings`) so one bad grade string
+  can't roll back a whole batch. Rejected rows are logged, never silently dropped.
+- **Prices:** `listed_price` (asking) and `sold_price` (actual sale) are distinct columns, never
+  mixed; valuation uses sold only. Money/shipping is NULL when absent (0 means free/zero, not missing).
+- **Card number format:** bare integer everywhere; the `#`/denominator is display only, derivable
+  from `master_set_catalog`, never a join key.
+
+### Design source material (non-binding)
+
+The decisions above were worked out in a set of design docs (decision rationale, identity/variant
+spec, target-data spec, collector spec). These capture the *why* and are kept for reference, but they
+are **not authoritative** — they fed the standard doc, which supersedes them. If a design doc and the
+standard doc disagree, the standard doc wins.
+
+## BLACKHOLE-NETWORK roadmap
+
+The combined BHN + HORIZON buildout proceeds in phases — network and data/storage foundations first,
+with HORIZON (the shared AI layer) layered on top. Each phase enables the next.
 
 ```
 Phase 1 — Foundation
@@ -269,7 +337,7 @@ Phase 4 — Restricted Action Executor
   [ ] Confirm all actions before executing
 
 Phase 5 — Autonomous Management
-  [ ] Pattern detection across all 71 tables
+  [ ] Pattern detection across all 78 tables
   [ ] Proactive threat intelligence (CVE feeds, CrowdSec)
   [ ] Weekly threat + performance digest
   [ ] Trading strategy optimization suggestions
@@ -296,7 +364,7 @@ Phase 5 — Autonomous Management
 │   ├── services/                    tor-relay, tinyproxy, searxng, librespeed, wallos
 │   └── scrapers/                    Graded-card pop scrapers (CGC cron + PSA stealth) + psa-sets.json
 ├── scripts/                         Production scripts (deployed to LA)
-│   ├── trading/                     5-strategy trading framework (Python)
+│   ├── trading/                     FinancialBHN trading framework (Python)
 │   │   ├── trading_core.py          Core Alpaca + PostgreSQL integration
 │   │   ├── strategy_*.py            Individual strategy implementations
 │   │   ├── master_killswitch.py     Emergency halt + flatten all positions
