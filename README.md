@@ -10,29 +10,52 @@ Blackhole Network is a self-hosted private intelligence and trading infrastructu
 
 **Domain model:** BLACKHOLE-NETWORK (BHN) is the infrastructure platform. Three data domains run on it — **PokemonBHN**, **FinancialBHN**, and **SecurityBHN** — over shared infrastructure (HORIZON, WireGuard, PostgreSQL, n8n). The naming pattern is `{Domain}BHN`; a thing earns a domain label only if it has its own distinct tables, scripts, and services. A companion game front-end, *Pokemon Blackhole*, lives in a separate repo (`TEAM-ROCKET-BHN`) and consumes PokemonBHN data.
 
-**Shared infrastructure:** WireGuard mesh VPN (4 nodes across US-West, US-East, EU), PostgreSQL, Grafana, n8n, Tor relay network, dnscrypt-proxy, CrowdSec, Suricata, Shadowsocks
+### Shared infrastructure
 
-**FinancialBHN — trading:** Algorithmic paper trading via Alpaca on the NJ trading node. As of 2026-05-21, **only Strat 13 (`BHN-RSI-INTRADAY`) is active as an operational test**; the remaining strategies are sidelined pending validation.
+WireGuard mesh VPN (4 nodes across US-West, US-East, EU), PostgreSQL, Grafana, n8n, Tor relay network, dnscrypt-proxy, CrowdSec, Suricata, Shadowsocks. Serves all domains, belongs to none.
 
-**FinancialBHN — financial intelligence:** 6 Grafana dashboards covering market regime classification, ETF price data, macro indicators, sentiment, commodities, energy, agriculture, prediction markets, and options flow across 78 PostgreSQL tables
+---
 
-**PokemonBHN — graded-card market:** WOTC-era card data pipeline — `master_card_catalog` (637 cards / 1,354 variant rows, 8 sets) feeding three streams: sold comps (`sold_listings`), active eBay listings (`ebay_listings`), and graded population reports (`pop_reports`), with CGC/PSA/BGS/SGC grade normalization via `master_grade_catalog`. See [Pokémon Graded Card Data Pipeline](#pokémon-graded-card-data-pipeline) and [Data standards & authority](#data-standards--authority).
+### FinancialBHN — trading & financial intelligence
 
-**SecurityBHN — security telemetry:** Defense-in-depth signals across the 4-node mesh — `security_events`, `anomalies`, `fail2ban_events`, `crowdsec_decisions`, and per-node resource / bandwidth / WireGuard / Tor stats.
+Algorithmic paper trading via Alpaca on the NJ trading node, across 3 accounts / $150k total capital. As of 2026-05-21, only **Strat 13 (`BHN-RSI-INTRADAY`)** is active as an operational test to validate execution and protocol; the remaining strategies are sidelined pending that validation. Financial intelligence is surfaced through 6 Grafana dashboards covering market regime, ETF prices, macro indicators, sentiment, commodities, energy, agriculture, prediction markets, and options flow.
 
-**AI Agent — HORIZON (shared infrastructure):** HORIZON is the shared autonomous intelligence layer serving all three domains — an n8n-based AI agent powered by Claude with full read access to all 78 PostgreSQL tables. HORIZON operates as both a personal assistant and autonomous infrastructure manager across three domains:
+---
 
-*Operations:* Monitors all 4 nodes in real time, reads security events, anomalies, pulse reports, and node health. Triggers alerts via SMS/voice (Twilio + ElevenLabs) for P1/P2 security events, node outages, and storage pressure. Can execute restricted actions — restart services, trigger fail2ban bans, run smoke tests, and activate the trading killswitch on operator command.
+### PokemonBHN — graded-card market
 
-*Trading & Finance:* Full read access to all financial intelligence tables — market regime, ETF price data, macro indicators, sentiment, earnings, analyst ratings, commodities, energy, agriculture, prediction markets, and options flow. Monitors paper trade performance (currently Strat 13, the active operational test), delivers daily PnL summaries, and flags reconciliation mismatches.
+WOTC-era graded-card data pipeline. `master_card_catalog` (637 cards / 1,354 variant rows, 8 sets) feeds three streams — sold comps (`sold_listings`), active eBay listings (`ebay_listings`), and graded population reports (`pop_reports`) — with CGC/PSA/BGS/SGC grade normalization via `master_grade_catalog`.
+→ See [Pokémon Graded Card Data Pipeline](#pokémon-graded-card-data-pipeline) and [Data standards & authority](#data-standards--authority).
 
-*Memory & Context:* pgvector semantic memory (384-dim) for long-term context, Redis for short-term session state. HORIZON builds a persistent model of operator preferences, infrastructure state, and trading history across all interactions.
+---
 
-*Interface:* SMS, voice call, and VPN-only web chat. Operator can query any aspect of the stack conversationally — "How are my strategies performing?", "Any threats in the last 24 hours?", "What's the current market regime?" — or issue commands — "HALT trading", "Restart n8n", "Run smoke tests".
+### SecurityBHN — security telemetry
 
-*Goal:* Single conversational interface to the entire BHN stack — infrastructure, security, trading, and financial intelligence — available 24/7 via SMS from anywhere.
+Defense-in-depth signals across the 4-node mesh: `security_events`, `anomalies`, `fail2ban_events`, `crowdsec_decisions`, plus per-node resource, bandwidth, WireGuard, and Tor stats.
 
-Any future public VPN product is a separate concern (different servers, different protocol, different holding entity) and is not part of this repository.
+---
+
+### HORIZON — AI agent (shared infrastructure)
+
+The autonomous intelligence layer — an n8n-based AI agent powered by Claude with full read access to all PostgreSQL tables. Shared infrastructure, not a domain: it serves every domain but belongs to none. It acts as both personal assistant and autonomous infrastructure manager:
+
+- **Operations** — real-time monitoring of all 4 nodes (health, security events, anomalies, pulse). SMS/voice alerts (Twilio + ElevenLabs) for P1/P2 events, outages, and storage pressure. Executes restricted actions on operator command: restart services, fail2ban bans, smoke tests, trading killswitch.
+- **Querying & control** — full read access across every domain's tables. Conversational over SMS, voice, and VPN-only web chat: *"How are my strategies performing?"*, *"Any threats in the last 24 hours?"*, *"HALT trading"*, *"Restart n8n"*.
+- **Memory** — pgvector semantic memory (384-dim) for long-term context, Redis for short-term session state; a persistent model of operator preferences, infra state, and history.
+
+**Goal:** one conversational interface to the entire BHN stack — infrastructure, security, trading, financial intelligence — 24/7 via SMS from anywhere.
+
+---
+
+### Companion repo — Pokemon Blackhole (the game)
+
+**Pokemon Blackhole** (repo `TEAM-ROCKET-BHN`) is a separate front-end — not part of this repository — and an independent *consumer* of PokemonBHN data. It's a GBA-style FireRed/LeafGreen interface that turns card trading into gameplay: a listing renders as a wild Pokémon encounter, where the card is the Pokémon, the HP bar is the deal quality (listed price vs. market value — greener/fuller = better deal), the level is the grade, the badge is the grading company, and rarity tiers map to population scarcity. The player can BUY (open the listing), WATCH, ANALYZE (open in Claude), or RUN.
+
+It reads the same `master_card_catalog`, `pop_reports`, and `sold_listings` that PokemonBHN populates — that's the data connection. The game is **not built or orchestrated by HORIZON**; it's an independent app, not driven by the AI agent. HORIZON's deal recommendations *can surface inside it* as advice (e.g. *"in the RED — 68% below market, recommend BUY"*), the same way they appear elsewhere in the stack — but the game stands on its own. In short: a genuinely fun, GameBoy-style way to trade graded Pokémon cards online, built on top of the PokemonBHN market data. **BLACKHOLE-NETWORK produces the card-market data; Pokemon Blackhole is an independent game that renders it as a battle.**
+
+---
+
+*Any future public VPN product is a separate concern (different servers, protocol, and holding entity) and is not part of this repository.*
 
 ## Architecture
 
