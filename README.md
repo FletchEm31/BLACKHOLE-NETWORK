@@ -27,7 +27,7 @@ Algorithmic paper trading via Alpaca on the NJ trading node, across 3 accounts /
 WOTC-era graded-card data pipeline. `master_card_catalog` (637 cards / 1,354 variant rows, 8 sets) feeds three streams — sold comps (`sold_listings`), active eBay listings (`ebay_listings`), and graded population reports (`pop_reports`) — with CGC/PSA/BGS/SGC grade normalization via `master_grade_catalog`.
 → See [Pokémon Graded Card Data Pipeline](#pokémon-graded-card-data-pipeline) and [Data standards & authority](#data-standards--authority).
 
----
+This data will be used to reserach and buy my own investment/collection opportunities.  It will also be collected at scale, refined, and possbily sold B2B or B2C as inventory and valuation software (similar to ChartPricing).  FInally, this will operate as the backend hard data to Pokemon: Blackhole.  Pokemon: Blackhole is a GBA-style Pokemon FireRed/LeafGreen battle interface built on top of real Pokemon card market intelligence.  Part of the Team Rocket BHN — Pokemon Market — Blackhole Network operation.
 
 ### SecurityBHN — security telemetry
 
