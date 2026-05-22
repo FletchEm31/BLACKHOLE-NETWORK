@@ -20,4 +20,4 @@ Working area for the comprehensive BHN audit (started 2026-05-22).
 
 Operator saves images into `screenshots/` and tells Claude Code the filename; Claude Code views them via its Read tool (PNG/JPG/PDF supported).
 
-> **Note on committing images:** screenshots of dashboards/terminals/configs can carry IPs, tokens, or PII, and once committed they live in git history + App Claude's read window. Decide per-batch whether they should be committed (durable, but permanent) or kept local-only (gitignored). Default for this folder is TBD — set in the plan.
+> **Screenshots are local-only.** `screenshots/.gitignore` excludes everything in that folder from git (images can carry IPs/tokens/PII). They stay on the operator's machine; Claude Code reads them locally for the audit, but they never enter git history or App Claude's read window. Findings derived from them go into the `findings-*.md` docs (text), which are committed.

@@ -1,0 +1,7 @@
+# Local-only audit screenshots — NEVER committed.
+# These may contain IPs, tokens, or PII; they stay on the operator's machine.
+# Claude Code can still read them locally for the audit; they just never
+# enter git history or App Claude's read window.
+*
+!.gitignore
+!.gitkeep
