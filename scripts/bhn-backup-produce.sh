@@ -32,9 +32,10 @@ OUT="${2:-}"
 
 # === Configuration (override via env) ===
 PG_DB="${BHN_PG_DB:-eventhorizon}"
-BHN_REPO_PATH="${BHN_REPO_PATH:-/opt/bhn-repo}"     # only used for bhn-repo-snapshot
+BHN_REPO_PATH="${BHN_REPO_PATH:-/opt/bhn-repo}"       # only used for bhn-repo-snapshot
 MIN_FREE_MB="${BHN_BACKUP_MIN_FREE_MB:-500}"
-N8N_USER="${BHN_N8N_USER:-n8n}"                     # only used for n8n-workflows
+N8N_USER="${BHN_N8N_USER:-n8n}"                       # only used for native n8n
+N8N_CONTAINER="${BHN_N8N_CONTAINER:-n8n}"             # docker container name; auto-detected
 
 # === Helpers ===
 err() {
@@ -59,7 +60,8 @@ Artifact IDs:
 Environment overrides:
   BHN_PG_DB              (default: eventhorizon)
   BHN_REPO_PATH          (default: /opt/bhn-repo)
-  BHN_N8N_USER           (default: n8n)
+  BHN_N8N_USER           (default: n8n)         — native CLI path only
+  BHN_N8N_CONTAINER      (default: n8n)         — docker container name; preferred if docker present
   BHN_BACKUP_MIN_FREE_MB (default: 500)
 EOF
   exit 2
@@ -94,15 +96,29 @@ case "$ARTIFACT" in
   n8n-workflows)
     need zstd
     need tar
-    if ! command -v n8n >/dev/null 2>&1; then
-      err "n8n CLI not on PATH — if n8n is dockerized, edit this case to docker exec into the container" 5
-    fi
     EXPORT_DIR=$(mktemp -d -t bhn-n8n-export.XXXXXX)
     # Override the cleanup trap to also nuke the tmpdir
     trap 'rm -rf "$EXPORT_DIR"; rm -f "$OUT"' ERR
-    echo "[bhn-backup-produce] producing n8n-workflows (user=$N8N_USER) → $OUT" >&2
-    sudo -u "$N8N_USER" n8n export:workflow --all --output="$EXPORT_DIR/workflows.json" >&2 \
-      || err "n8n export:workflow failed" 6
+
+    # Detect Docker n8n container first; fall back to native /usr/bin/n8n.
+    # In practice on LA the n8n service is a systemd-managed Docker container
+    # (image n8nio/n8n:latest), so the host's native /usr/bin/n8n CLI cannot
+    # see the live workflow DB — it would export an empty set.
+    if command -v docker >/dev/null 2>&1 && docker inspect "$N8N_CONTAINER" >/dev/null 2>&1; then
+      echo "[bhn-backup-produce] producing n8n-workflows (docker container=$N8N_CONTAINER) → $OUT" >&2
+      docker exec "$N8N_CONTAINER" n8n export:workflow --all --output=/tmp/bhn-workflows.json >&2 \
+        || err "docker exec $N8N_CONTAINER n8n export:workflow failed" 6
+      docker cp "$N8N_CONTAINER:/tmp/bhn-workflows.json" "$EXPORT_DIR/workflows.json" \
+        || err "docker cp from $N8N_CONTAINER failed" 1
+      docker exec "$N8N_CONTAINER" rm -f /tmp/bhn-workflows.json 2>/dev/null || true
+    elif command -v n8n >/dev/null 2>&1; then
+      echo "[bhn-backup-produce] producing n8n-workflows (native user=$N8N_USER) → $OUT" >&2
+      sudo -u "$N8N_USER" n8n export:workflow --all --output="$EXPORT_DIR/workflows.json" >&2 \
+        || err "native n8n export:workflow failed" 6
+    else
+      err "n8n not available — neither docker container '$N8N_CONTAINER' nor native n8n CLI" 5
+    fi
+
     tar -C "$EXPORT_DIR" -cf - workflows.json | zstd -T0 -19 -q > "$OUT" \
       || err "tar | zstd failed" 1
     rm -rf "$EXPORT_DIR"
