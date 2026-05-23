@@ -36,6 +36,13 @@ A parallel fact stream covering NFT-backed graded cards on Courtyard (Polygon) a
 | `master_grading_criteria_catalog` | grading criteria + qualifiers |
 | `master_set_catalog` | sets: year, era, legal editions, count, PSA heading mapping (8 sets; `master_card_catalog.set_name` FK-bound) |
 
+### Derived dimensions — see [§11](#11-seller-profile-dimension)
+Unlike the `master_*` authorities (externally curated), derived dimensions are *populated by aggregating observations*. They are not "truth lists"; they are *summaries the observations have already shown*.
+
+| Table | Captures |
+|-------|----------|
+| `seller_profiles` | cross-platform seller dimension - per-seller metrics rolled up from `ebay_listings`, `courtyard_listings`, `courtyard_sales`, `collector_crypt_sales` |
+
 ### Control
 | Table | Role |
 |-------|------|
@@ -45,7 +52,7 @@ A parallel fact stream covering NFT-backed graded cards on Courtyard (Polygon) a
 | Concept | Identifies | Lives where | Cardinality |
 |---------|-----------|-------------|-------------|
 | `card_id` | a card-variant ("this kind of card exists") | `master_card_catalog.id` (serial PK) | 1,354 |
-| `cert_number` | one physical graded slab | observation rows (not stored today) | thousands+ |
+| `cert_number` | one physical graded slab | `ebay_listings.cert_number`, `sold_listings.cert_number` (added 2026-05-22); other observation streams pending | thousands+ |
 | `card_number` | within-set number (a **field**, not a key) | all tables | repeats per set |
 
 Observations should resolve to `card_id` (the dumb surrogate). Do **not** encode meaning into the
@@ -106,7 +113,10 @@ columns. Both are **NOT NULL** (NULLs are distinct in a UNIQUE index and would b
 
 ### 3.7 Column-name conventions
 - `card_number`, `set_name`, `card_name`, `grader`, `grade`, `edition`, `print_variant` — these exact
-  names everywhere. **Known drift to fix:** `pop_reports` uses `card_set` (should be `set_name`).
+  names everywhere. **Known drift to fix:**
+  - `pop_reports` uses `card_set` (should be `set_name`).
+  - `sold_listings.seller` (legacy) vs `ebay_listings.seller_username` vs `seller_profiles.seller_username` — same concept, three names. Standard target: `seller_username` everywhere; `sold_listings` rename pending.
+  - `seller_profiles.seller_feedback_score` (INT) vs `ebay_listings.seller_feedback` (INTEGER) — same concept (feedback count), two names. Standard target: pick one; rename pending.
 
 ---
 
@@ -174,6 +184,9 @@ worse than nothing.
 | `pop_reports.card_set` | rename to `set_name` | ⏳ pending |
 | `card_id` on observations | FK to `master_card_catalog.id` | ⏳ observations join on text today |
 | `courtyard_listings`, `courtyard_sales`, `collector_crypt_sales`, `tokenized_arbitrage_signals` | day-one compliant per [§10](#10-tokenized-market-stream) | ✅ created 2026-05-22 with edition+print_variant NOT NULL, grader/edition/print_variant CHECK, grade TEXT, sold_price separate from listed_price |
+| `seller_profiles` | cross-platform seller dimension per [§11](#11-seller-profile-dimension) | ✅ created 2026-05-22; UNIQUE (seller_username, platform); self-ref `linked_seller_id` (INT references BIGINT - implicit cast at FK lookup, low-impact precision drift) |
+| `ebay_listings` enrichment cols | observation-history + slab-identity + demand columns | ✅ added 2026-05-22: `auction_end_time`, `first_seen_at`, `last_seen_at`, `original_item_id`, `relist_count INT DEFAULT 0`, `original_listed_at`, `cert_number`, `location`, `watchers`. `obo_min_price` preserved as legacy NUMERIC (operator spec asked for DECIMAL(10,2); operationally equivalent; rewrite scheduled separately) |
+| `sold_listings` enrichment cols | same set as ebay_listings | ✅ added 2026-05-22: all 10 columns including a fresh `obo_min_price DECIMAL(10,2)` |
 
 ---
 
@@ -270,3 +283,71 @@ raw_payload         JSONB
 | `ehuser` | `SELECT` on all 4 tables |
 
 Sequence `USAGE` granted to writers as needed for the `SERIAL` / `BIGSERIAL` defaults.
+
+### 10.8 Relationship to `seller_profiles`
+
+Tokenized observation tables carry `seller_username` (mirror column from `ebay_listings`) and `seller_address` (the wallet address — a tokenized-specific addition). Neither is FK-bound to `seller_profiles`, but both are *expected* to map to it for cross-table joins:
+
+- Courtyard rows → `seller_profiles WHERE platform='courtyard'` on `seller_username`
+- Collector Crypt rows → `seller_profiles WHERE platform='collector_crypt'` on `seller_username` (which on CC is operationally the wallet address)
+
+A single real-world seller appearing across multiple platforms is asserted via `seller_profiles.linked_seller_id` (operator/HORIZON, not auto-derived). See [§11](#11-seller-profile-dimension).
+
+---
+
+## 11. Seller Profile Dimension
+
+A **derived** dimension — one row per `(seller_username, platform)` — populated by aggregating signals from the observation streams. Unlike the `master_*` authorities (externally curated truth lists), `seller_profiles` is a *summary the observations have already shown*: how many listings has this seller posted, how many have sold, what's their sell-through rate, are they a dealer, are they flagged.
+
+Schema lives at [`sql/seller-profiles-schema.sql`](../../../sql/seller-profiles-schema.sql); applied to live `eventhorizon` on 2026-05-22.
+
+### 11.1 Identity & uniqueness
+
+| Aspect | Value |
+|--------|-------|
+| Primary key | `id BIGSERIAL` |
+| Natural key | `UNIQUE (seller_username, platform)` |
+| Platform vocab | `platform CHECK IN ('ebay','courtyard','collector_crypt')` |
+| Cross-platform linking | `linked_seller_id INT REFERENCES seller_profiles(id)` — self-ref pointer asserting "the seller with this id and the seller in *this* row are the same real-world person operating under different usernames" |
+
+> ⚠️ **Type drift:** `linked_seller_id INT` references `id BIGSERIAL` (== `BIGINT`). Postgres accepts this FK with an implicit cast at lookup time. Promote `linked_seller_id` to `BIGINT` later if seller count ever approaches 2.1B (almost certainly never). Flagged in §9.
+
+### 11.2 Metrics columns
+
+| Column | Type | Captures |
+|--------|------|----------|
+| `seller_feedback_score` | `INT` | eBay-style feedback count (when applicable) |
+| `seller_feedback_pct` | `DECIMAL(5,2)` | positive-feedback % |
+| `total_listings_seen` | `INT DEFAULT 0` | lifetime listings observed |
+| `total_sold` | `INT DEFAULT 0` | lifetime sales observed |
+| `sell_through_rate` | `DECIMAL(5,2)` | `total_sold / total_listings_seen` (as %) |
+| `avg_days_to_sell` | `DECIMAL(6,1)` | mean time-on-market for sold inventory |
+| `avg_price_cut_pct` | `DECIMAL(5,2)` | mean price reduction before sale |
+| `relist_frequency` | `DECIMAL(5,2)` | how often the same card is relisted (per period) |
+| `active_listings` | `INT DEFAULT 0` | current live listings |
+| `active_listings_value` | `DECIMAL(10,2)` | sum of current asks |
+| `avg_listing_age_days` | `DECIMAL(6,1)` | mean age of active inventory |
+| `last_seen_at`, `first_seen_at` | `TIMESTAMPTZ` | first/last observation window |
+| `is_dealer` | `BOOLEAN DEFAULT FALSE` | operator/HORIZON-asserted: this seller operates as a professional reseller |
+| `is_flagged` | `BOOLEAN DEFAULT FALSE` | operator/HORIZON-asserted: seller is under review (suspect pricing, suspect grading, prior bad transaction) |
+| `notes` | `TEXT` | free-form operator notes |
+| `updated_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | last refresh; writers must update on each enrichment |
+
+### 11.3 Grants
+
+| Role | Permissions |
+|------|-------------|
+| `log_shipper` | `INSERT, UPDATE` (scraper-side enrichment as new sellers / observations appear) |
+| `n8n_user` | `INSERT, UPDATE` (HORIZON workflow enrichment — feature flags `is_dealer`, `is_flagged`, signal-weighting metrics) |
+| `agent_reader` | `SELECT` |
+| `grafana_reader` | `SELECT` |
+| `ehuser` | `SELECT` |
+
+### 11.4 Naming drift to converge
+
+The new dimension surfaced a long-standing naming drift across the observation streams — same concepts under different column names. Not fixed in this batch; tracked here so it doesn't fall through.
+
+| Concept | Current names | Target |
+|---------|---------------|--------|
+| Seller username | `ebay_listings.seller_username`, `sold_listings.seller`, `seller_profiles.seller_username`, tokenized tables `seller_username` | `seller_username` everywhere — `sold_listings.seller` rename pending |
+| Seller feedback count | `ebay_listings.seller_feedback`, `seller_profiles.seller_feedback_score` | pick one — `seller_feedback_score` is the more descriptive choice |
