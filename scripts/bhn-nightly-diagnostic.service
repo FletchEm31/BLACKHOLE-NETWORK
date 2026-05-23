@@ -1,0 +1,22 @@
+[Unit]
+Description=EH nightly diagnostic — collects host + remote node stats, embeds summary into memories
+Documentation=file:///opt/eh-diagnostics/eh-nightly-diagnostic.sh
+After=network-online.target docker.service postgresql.service
+Wants=network-online.target
+ConditionPathExists=/opt/eh-diagnostics/eh-nightly-diagnostic.sh
+
+[Service]
+Type=oneshot
+ExecStart=/opt/eh-diagnostics/eh-nightly-diagnostic.sh
+StandardOutput=journal
+StandardError=journal
+TimeoutStartSec=10min
+Nice=10
+IOSchedulingClass=2
+IOSchedulingPriority=7
+
+# Modest hardening
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
+NoNewPrivileges=true

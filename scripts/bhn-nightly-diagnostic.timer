@@ -1,0 +1,18 @@
+[Unit]
+Description=Daily EH nightly diagnostic timer (fires 02:00 PT)
+Documentation=file:///opt/eh-diagnostics/eh-nightly-diagnostic.sh
+
+[Timer]
+# 09:00 UTC = 02:00 PDT (April-Nov) / 01:00 PST (Nov-March).
+# Operator is Pacific Time; this lands in the early-morning quiet window
+# regardless of DST shift.
+OnCalendar=*-*-* 09:00:00 UTC
+# Spread runs +/- 15 minutes to avoid exact-minute concurrence with anything
+# else and to let load amortize across the cluster.
+RandomizedDelaySec=15min
+# If the host was down at the scheduled time, run on next boot.
+Persistent=true
+Unit=eh-nightly-diagnostic.service
+
+[Install]
+WantedBy=timers.target
