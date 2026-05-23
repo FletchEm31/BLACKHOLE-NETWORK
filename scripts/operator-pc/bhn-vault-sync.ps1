@@ -13,7 +13,7 @@
       4. SSH back and rm the tmpfile (server retains no plaintext-at-rest)
 
     For each local repo (D:\GITHUB REPOSITORY\*):
-      1. git bundle --all  →  vault under the appropriate domain folder
+      1. git bundle --all  ->  vault under the appropriate domain folder
 
     All operations append to E:\_backup-log\sync-{TS}.log.
 
@@ -42,7 +42,7 @@
     SSH alias     : 'la' by default; override via $env:BHN_LA_HOST
     Requires      : Windows PowerShell 5.1+, OpenSSH client (ssh.exe, scp.exe),
                     Git for Windows (git.exe).
-    PS edition    : Written for PowerShell 5.1 — no PS7-only syntax.
+    PS edition    : Written for PowerShell 5.1 -- no PS7-only syntax.
 
     ------------------------------------------------------------------------
     ONE-TIME SETUP ON OPERATOR PC
@@ -53,7 +53,7 @@
          Copy-Item .\bhn-vault-sync.ps1 C:\BHN\
 
     2. Drop the vault-identity sentinel (one-line marker, unlock the vault first):
-         "BHN-BLACKBOX vault — sentinel for bhn-vault-sync — do not delete" |
+         "BHN-BLACKBOX vault -- sentinel for bhn-vault-sync -- do not delete" |
              Set-Content E:\.bhn-vault-identity
 
     3. Ensure SSH alias 'la' is configured in %USERPROFILE%\.ssh\config:
@@ -73,7 +73,7 @@
              -User $env:USERNAME
 
          # The WMI event subscription itself is registered on logon by the task body;
-         # see the WMI-Registration block below — copy that into a separate
+         # see the WMI-Registration block below -- copy that into a separate
          # C:\BHN\register-vault-trigger.ps1 if you want it to survive reboots cleanly.
 
          Register-ScheduledTask `
@@ -128,21 +128,27 @@ $SSH_TIMEOUT    = 5
 $TS = Get-Date -Format 'yyyyMMdd-HHmm'
 
 # ----------------------------------------------------------------------------
-# Manifest: server-produced artifacts (SSH → produce → scp → verify)
+# Manifest: server-produced artifacts (SSH -> produce -> scp -> verify)
 # ----------------------------------------------------------------------------
+# Ordered lightest-first: LA has 1.9 GiB RAM and the n8n container has been
+# observed getting SIGKILL'd (exit 137) when pg_dump's memory spike lands
+# immediately before the n8n CLI export. Run the lightweight one first.
 $SERVER_ARTIFACTS = @(
-    @{
-        Id       = 'pg-eventhorizon'
-        Dest     = 'BLACKHOLE NETWORK-BACKUP'
-        FileName = "eventhorizon-$TS.dump.zst"
-    },
     @{
         Id       = 'n8n-workflows'
         Dest     = 'BLACKHOLE NETWORK-BACKUP'
         FileName = "n8n-workflows-$TS.tar.zst"
+    },
+    @{
+        Id       = 'pg-eventhorizon'
+        Dest     = 'BLACKHOLE NETWORK-BACKUP'
+        FileName = "eventhorizon-$TS.dump.zst"
     }
-    # 'bhn-repo-snapshot' — enable once /opt/bhn-repo is set up on LA as a server-side mirror clone
+    # 'bhn-repo-snapshot' -- enable once /opt/bhn-repo is set up on LA as a server-side mirror clone
 )
+
+# Brief pause between server artifacts to let LA's memory settle (1.9 GiB box).
+$INTER_ARTIFACT_SLEEP_SEC = 5
 
 # ----------------------------------------------------------------------------
 # Manifest: local repos to bundle (git bundle --all, no server roundtrip)
@@ -160,7 +166,7 @@ $LOCAL_REPOS = @(
         # SecurityBHN domain (the audit layer for the whole platform), NOT IncubatorBHN.
         # Vault folder will be auto-created at first sync. If a stale
         # IncubatorBHN\BEYOND THE HORIZON-BACKUP\ exists from earlier vault layout,
-        # operator can delete it manually — it's not referenced anywhere.
+        # operator can delete it manually -- it's not referenced anywhere.
         Dest   = 'SecurityBHN\BTEH-BACKUP'
     },
     @{
@@ -225,9 +231,9 @@ foreach ($tool in @('ssh', 'scp', 'git')) {
     }
 }
 
-# 2. Vault sentinel — proves we're looking at BHN-BLACKBOX, not some random E:
+# 2. Vault sentinel -- proves we're looking at BHN-BLACKBOX, not some random E:
 if (-not (Test-Path $SENTINEL)) {
-    Exit-WithError "vault sentinel missing at $SENTINEL — this drive doesn't look like BHN-BLACKBOX" 2
+    Exit-WithError "vault sentinel missing at $SENTINEL -- this drive doesn't look like BHN-BLACKBOX" 2
 }
 
 # 3. SSH probe to LA (cheap; bails fast if WG/jump is broken)
@@ -249,11 +255,11 @@ if ((-not $Force) -and (Test-Path $LAST_OK)) {
             $lastRun = [DateTime]::Parse($lastRunRaw.Trim())
             $sinceHours = (New-TimeSpan -Start $lastRun -End (Get-Date)).TotalHours
             if ($sinceHours -lt $DEBOUNCE_HR) {
-                Write-Log ("Recent successful sync at {0} ({1:F2}h ago < {2}h debounce) — skipping. Use -Force to override." -f $lastRun, $sinceHours, $DEBOUNCE_HR)
+                Write-Log ("Recent successful sync at {0} ({1:F2}h ago < {2}h debounce) -- skipping. Use -Force to override." -f $lastRun, $sinceHours, $DEBOUNCE_HR)
                 exit 0
             }
         } catch {
-            Write-Log -Level 'WARN' -Message "couldn't parse last-success-timestamp '$lastRunRaw' — treating as stale"
+            Write-Log -Level 'WARN' -Message "couldn't parse last-success-timestamp '$lastRunRaw' -- treating as stale"
         }
     }
 }
@@ -269,7 +275,7 @@ if (Test-Path $LOCK) {
         if ($running) {
             Exit-WithError "sync already running (PID $stalePid)" 4
         } else {
-            Write-Log -Level 'WARN' -Message "stale lock (PID $stalePid not alive) — reclaiming"
+            Write-Log -Level 'WARN' -Message "stale lock (PID $stalePid not alive) -- reclaiming"
         }
     }
 }
@@ -294,47 +300,49 @@ try {
         $finalPath  = Join-Path $destFolder $a.FileName
 
         if (-not (Test-Path $destFolder)) {
-            Write-Log -Level 'WARN' -Message "vault folder missing — creating: $destFolder"
+            Write-Log -Level 'WARN' -Message "vault folder missing -- creating: $destFolder"
             if (-not $DryRun) {
                 New-Item -ItemType Directory -Path $destFolder -Force | Out-Null
             }
         }
 
         if ($DryRun) {
-            Write-Log "[dry-run] would produce '$($a.Id)' on $LA_HOST → pull → $finalPath"
+            Write-Log "[dry-run] would produce '$($a.Id)' on $LA_HOST -> pull -> $finalPath"
             continue
         }
 
         # Random tmpfile path on LA
         $remoteTmp = "/tmp/bhn-backup-$([guid]::NewGuid().ToString('N')).tmp"
-        Write-Log "Producing '$($a.Id)' on $LA_HOST → $remoteTmp"
+        Write-Log "Producing '$($a.Id)' on $LA_HOST -> $remoteTmp"
 
-        # Run producer. stdout = sha256, stderr = diagnostics. Capture both, extract the sha256
-        # by regex from the combined stream (cleanest pattern in PS 5.1 for native exes).
-        $combined = & ssh $LA_HOST "$PRODUCER_PATH $($a.Id) $remoteTmp" 2>&1
+        # Capture stdout only (one line: the sha256 hex). Do NOT use 2>&1 here -
+        # PowerShell 5.1 wraps native-exe stderr as NativeCommandError under
+        # ErrorActionPreference=Stop and aborts the script, even on exit 0.
+        # Producer diagnostics flow through ssh.exe's own stderr to the console,
+        # which is fine for smoke; they aren't needed by the script logic.
+        $stdout = & ssh $LA_HOST "$PRODUCER_PATH $($a.Id) $remoteTmp"
         $producerExit = $LASTEXITCODE
 
-        # The sha256 line is the only stdout output; everything else is stderr (ErrorRecord).
-        # Filter by the well-formed hex pattern.
-        $remoteSha = $combined |
+        # stdout has exactly one line: the sha256 hash. Defensive regex filter.
+        $remoteSha = $stdout |
             ForEach-Object { "$_" } |
             Where-Object { $_ -match '^[a-f0-9]{64}$' } |
             Select-Object -Last 1
 
         if ($producerExit -ne 0 -or -not $remoteSha) {
-            Write-Log -Level 'ERROR' -Message ("producer failed for '$($a.Id)' (exit $producerExit): " + ($combined -join ' | '))
-            & ssh $LA_HOST "rm -f $remoteTmp" 2>&1 | Out-Null
+            Write-Log -Level 'ERROR' -Message "producer failed for '$($a.Id)' (exit $producerExit) - see ssh stderr above for diagnostics"
+            & ssh $LA_HOST "rm -f $remoteTmp" 2>$null | Out-Null
             $serverFail++
             continue
         }
         Write-Log "Producer OK. remote sha256=$remoteSha. Pulling..."
 
-        # Pull via scp
-        & scp -q "${LA_HOST}:${remoteTmp}" "$finalPath" 2>&1 | ForEach-Object { Write-Log -Level 'DBG' -Message "scp: $_" }
+        # Pull via scp. Same stderr-rule applies - don't merge streams.
+        & scp -q "${LA_HOST}:${remoteTmp}" "$finalPath"
         $scpExit = $LASTEXITCODE
         if ($scpExit -ne 0 -or -not (Test-Path $finalPath)) {
             Write-Log -Level 'ERROR' -Message "scp failed for '$($a.Id)' (exit $scpExit)"
-            & ssh $LA_HOST "rm -f $remoteTmp" 2>&1 | Out-Null
+            & ssh $LA_HOST "rm -f $remoteTmp" 2>$null | Out-Null
             $serverFail++
             continue
         }
@@ -342,18 +350,23 @@ try {
         # Verify sha256 locally
         $localSha = (Get-FileHash $finalPath -Algorithm SHA256).Hash.ToLower()
         if ($localSha -ne $remoteSha) {
-            Write-Log -Level 'ERROR' -Message "sha256 MISMATCH for '$($a.Id)': remote=$remoteSha local=$localSha — deleting corrupt local"
+            Write-Log -Level 'ERROR' -Message "sha256 MISMATCH for '$($a.Id)': remote=$remoteSha local=$localSha -- deleting corrupt local"
             Remove-Item $finalPath -Force -ErrorAction SilentlyContinue
-            & ssh $LA_HOST "rm -f $remoteTmp" 2>&1 | Out-Null
+            & ssh $LA_HOST "rm -f $remoteTmp" 2>$null | Out-Null
             $serverFail++
             continue
         }
 
-        # All good — clean up server-side
-        & ssh $LA_HOST "rm -f $remoteTmp" 2>&1 | Out-Null
+        # All good -- clean up server-side
+        & ssh $LA_HOST "rm -f $remoteTmp" 2>$null | Out-Null
         $sizeMB = [Math]::Round(((Get-Item $finalPath).Length / 1MB), 1)
-        Write-Log "OK   $($a.Id) → $finalPath ($sizeMB MB, sha256=$localSha)"
+        Write-Log "OK   $($a.Id) -> $finalPath ($sizeMB MB, sha256=$localSha)"
         $serverOk++
+
+        # Settle the box before the next artifact (LA RAM is tight)
+        if ($INTER_ARTIFACT_SLEEP_SEC -gt 0) {
+            Start-Sleep -Seconds $INTER_ARTIFACT_SLEEP_SEC
+        }
     }
 
     # ------------------------------------------------------------------------
@@ -362,19 +375,19 @@ try {
     foreach ($r in $LOCAL_REPOS) {
 
         if (-not (Test-Path $r.Source)) {
-            Write-Log "skip $($r.Id) — not present on this PC ($($r.Source))"
+            Write-Log "skip $($r.Id) -- not present on this PC ($($r.Source))"
             $localSkip++
             continue
         }
         if (-not (Test-Path (Join-Path $r.Source '.git'))) {
-            Write-Log -Level 'WARN' -Message "skip $($r.Id) — source exists but is not a git repo ($($r.Source))"
+            Write-Log -Level 'WARN' -Message "skip $($r.Id) -- source exists but is not a git repo ($($r.Source))"
             $localSkip++
             continue
         }
 
         $destFolder = Join-Path $VAULT_ROOT $r.Dest
         if (-not (Test-Path $destFolder)) {
-            Write-Log -Level 'WARN' -Message "vault folder missing — creating: $destFolder"
+            Write-Log -Level 'WARN' -Message "vault folder missing -- creating: $destFolder"
             if (-not $DryRun) {
                 New-Item -ItemType Directory -Path $destFolder -Force | Out-Null
             }
@@ -384,7 +397,7 @@ try {
         $bundlePath = Join-Path $destFolder $bundleName
 
         if ($DryRun) {
-            Write-Log "[dry-run] would bundle $($r.Source) → $bundlePath"
+            Write-Log "[dry-run] would bundle $($r.Source) -> $bundlePath"
             continue
         }
 
@@ -398,7 +411,7 @@ try {
                 continue
             }
             $sizeMB = [Math]::Round(((Get-Item $bundlePath).Length / 1MB), 1)
-            Write-Log "OK   $($r.Id) → $bundlePath ($sizeMB MB)"
+            Write-Log "OK   $($r.Id) -> $bundlePath ($sizeMB MB)"
             $localOk++
         } finally {
             Pop-Location
@@ -412,7 +425,7 @@ try {
         (Get-Date -Format 'o') | Set-Content $LAST_OK
     }
 
-    Write-Log ("=== bhn-vault-sync done — server: {0} OK / {1} fail  |  local: {2} OK / {3} skip / {4} fail ===" -f $serverOk, $serverFail, $localOk, $localSkip, $localFail)
+    Write-Log ("=== bhn-vault-sync done -- server: {0} OK / {1} fail  |  local: {2} OK / {3} skip / {4} fail ===" -f $serverOk, $serverFail, $localOk, $localSkip, $localFail)
 
     if ($serverFail -gt 0 -or $localFail -gt 0) {
         exit 10
