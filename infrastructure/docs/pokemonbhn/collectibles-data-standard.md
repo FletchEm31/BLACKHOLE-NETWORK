@@ -25,6 +25,9 @@ One **control** table drives a collector. Nothing fuses identity with observatio
 | Active listings | `ebay_listings` | **listed/asking** price | availability / deals |
 | Population | `pop_reports` | grader **population** counts | scarcity |
 
+### Tokenized Market Stream — see [§10](#10-tokenized-market-stream)
+A parallel fact stream covering NFT-backed graded cards on Courtyard (Polygon) and Collector Crypt (Solana). Three observation tables plus one cross-market signal table — built day-one compliant with this standard. Same identity model, same grade vocabulary, same enforcement tier (soft) as `ebay_listings`.
+
 ### Dimensions — authorities (facts conform to these)
 | Table | Authority for |
 |-------|---------------|
@@ -112,7 +115,8 @@ columns. Both are **NOT NULL** (NULLs are distinct in a UNIQUE index and would b
 | Table | Grade enforcement |
 |-------|-------------------|
 | `pop_reports`, `sold_listings` | **hard FK** `(grader, grade) → master_grade_catalog(grader, raw_label)` |
-| `ebay_listings` | **soft validate-and-log** (live high-churn feed) |
+| `ebay_listings`, `courtyard_listings`, `courtyard_sales`, `collector_crypt_sales` | **soft validate-and-log** (live high-churn feeds) |
+| `tokenized_arbitrage_signals` | **soft** (signal table; references the observation streams above) |
 
 The hard FK is all-or-nothing in a batch loader, so it **requires** a reject path:
 - a **`grade_reject_log`** (one schema, shared by the FK batch-failure path and the soft path), and
@@ -169,3 +173,100 @@ worse than nothing.
 | `ebay_listings` columns/FK | `edition`,`card_number`,`grade_tier` + soft validate | ⏳ missing 3 cols; `grade` is `numeric`; no FK; `grader` has descriptors |
 | `pop_reports.card_set` | rename to `set_name` | ⏳ pending |
 | `card_id` on observations | FK to `master_card_catalog.id` | ⏳ observations join on text today |
+| `courtyard_listings`, `courtyard_sales`, `collector_crypt_sales`, `tokenized_arbitrage_signals` | day-one compliant per [§10](#10-tokenized-market-stream) | ✅ created 2026-05-22 with edition+print_variant NOT NULL, grader/edition/print_variant CHECK, grade TEXT, sold_price separate from listed_price |
+
+---
+
+## 10. Tokenized Market Stream
+
+A parallel fact stream alongside the Big 3, capturing the **NFT-backed graded-card market**: cards minted as tokens on Courtyard (Polygon) and Collector Crypt (Solana) that represent real physical slabs held in custody. The same graded card can appear simultaneously across the physical (eBay) and tokenized markets — that overlap is exactly what the cross-market arbitrage signal table is built to surface.
+
+Schema lives at [`sql/tokenized-market-schema.sql`](../../../sql/tokenized-market-schema.sql); applied to live `eventhorizon` on 2026-05-22.
+
+### 10.1 Tables
+
+| Table | Captures | Lifecycle | Idempotency |
+|-------|----------|-----------|-------------|
+| `courtyard_listings` | active NFT listings on Courtyard (Polygon) | mutable (UPDATE allowed) | `item_id UNIQUE` |
+| `courtyard_sales` | completed NFT sales on Courtyard (Polygon) | immutable | `item_id UNIQUE` |
+| `collector_crypt_sales` | completed sales on Collector Crypt (Solana) | immutable | `item_id UNIQUE` |
+| `tokenized_arbitrage_signals` | cross-market opportunity flags | mutable (review/action flags) | `id BIGSERIAL` |
+
+### 10.2 Shape: mirror of `ebay_listings` + standard-required + tokenized additions
+
+The three observation tables (`courtyard_listings`, `courtyard_sales`, `collector_crypt_sales`) have **identical** column shape — 40 columns each, in this order:
+
+1. **`ebay_listings` mirror block (27 columns)** — `id`, `item_id`, `title`, `card_name`, `grader`, `grade`, `listed_price`, `shipping`, `seller_username`, `seller_feedback`, `seller_feedback_pct`, `listing_url`, `image_url`, `condition`, `item_creation_date`, `returns_accepted`, `listed_at`, `created_at`, `current_bid`, `bid_count`, `currency`, `transaction_type`, `obo_available`, `obo_min_price`, `set_name`, `language`, `item_url`.
+
+   Mirror is column-for-column, types-and-order-exact, with **one type correction**: `grade` is `TEXT` (not `NUMERIC` — `ebay_listings`'s `numeric` is acknowledged drift per [§9](#9-conformance-status), and the new tables converge to the standard).
+
+   Mirrored-but-always-NULL on tokenized rows (kept for shape parity, not data):
+   - `shipping` — tokenized cards don't ship per transaction
+   - `bid_count`, `current_bid`, `obo_*` — no eBay-style auctions / best-offer on tokenized
+   - `seller_feedback`, `seller_feedback_pct` — no reputation system
+   - `returns_accepted` — N/A
+
+2. **Standard-required columns missing from `ebay_listings`'s current drift (4 columns)** — `card_number TEXT`, `edition TEXT NOT NULL DEFAULT 'N/A'`, `print_variant TEXT NOT NULL DEFAULT 'Standard'`, `sold_price NUMERIC`.
+
+   `edition` and `print_variant` enforce the [§3.3](#33-variant--split-into-edition--print_variant) vocab via CHECK. `sold_price` keeps listed/sold separation per [§3.6](#36-money).
+
+3. **Tokenized-only additions (9 columns)** — `platform TEXT NOT NULL`, `blockchain TEXT NOT NULL`, `transaction_hash`, `sale_type TEXT` (CHECK ∈ `{peer_to_peer, buyback, gacha}`), `seller_address`, `buyer_address`, `sol_price DECIMAL(20,9)` (Solana native units), `sol_usd_rate DECIMAL(10,2)`, `nft_contract`.
+
+   Per-table CHECK pins `(platform, blockchain)`:
+   - `courtyard_listings` / `courtyard_sales`: `platform='courtyard'`, `blockchain='polygon'`
+   - `collector_crypt_sales`: `platform='collector_crypt'`, `blockchain='solana'`
+
+### 10.3 Grader codes (CHECK-enforced on all four tables)
+
+`grader IS NULL OR grader IN ('CGC','PSA','BGS','SGC')` — no descriptors per [§3.4](#34-grader--codes-only). This is **stricter** than `ebay_listings` today (which still admits descriptors); the new tables don't inherit that drift.
+
+### 10.4 Grade enforcement: soft validate, no FK
+
+`grade` is `TEXT` (verbatim raw_label) but there is **no FK** to `master_grade_catalog`. Same tier as `ebay_listings` — high-churn ingestion via the Courtyard / Collector Crypt scrapers should not roll back batches on a single unknown label. Loaders are expected to validate against `master_grade_catalog` and divert unknowns to the (still-pending) `grade_reject_log`. Raw / ungraded rows: `grade = NULL`.
+
+### 10.5 Money model
+
+- `listed_price` — the ask (populated for listings; populated as pre-sale ask on sales if known).
+- `sold_price` — the realized USD-pegged sale price (populated on sales; NULL on listings).
+- `sol_price` + `sol_usd_rate` — Solana sales record native-currency view; FX captured at sale time. USD-pegged value (`sold_price`) is what's used for cross-market comparison.
+- Always: NULL means absent, 0 means free / zero. Never silently zeroed.
+
+### 10.6 `tokenized_arbitrage_signals` — signal table
+
+Cross-market opportunity flags. Schema:
+
+```
+id                  BIGSERIAL PK
+detected_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+card_name           TEXT NOT NULL
+set_name            TEXT
+grader, grade, edition, print_variant   -- standard-vocab CHECK
+ebay_item_id        TEXT                -- soft ref to ebay_listings.item_id
+ebay_listed_price   DECIMAL(10,2)
+ebay_90d_avg        DECIMAL(10,2)
+courtyard_ask       DECIMAL(10,2)
+collector_crypt_ask DECIMAL(10,2)
+tokenized_90d_avg   DECIMAL(10,2)
+buyback_floor       DECIMAL(10,2)
+spread_pct          DECIMAL(6,2)
+estimated_profit    DECIMAL(10,2)
+signal_strength     TEXT CHECK IN ('weak','moderate','strong','critical')
+reviewed, actioned  BOOLEAN DEFAULT FALSE
+notes               TEXT
+expires_at          TIMESTAMPTZ
+raw_payload         JSONB
+```
+
+`ebay_item_id` is a **soft reference** (not a hard FK) — `ebay_listings` is high-churn and rows may be purged before a signal expires, so the signal row needs to survive that.
+
+### 10.7 Grants (per role)
+
+| Role | Permissions |
+|------|-------------|
+| `log_shipper` | `INSERT` on all 3 observation tables; `UPDATE` on `courtyard_listings` only (sales are immutable) |
+| `n8n_user` | `INSERT, UPDATE` on `tokenized_arbitrage_signals` |
+| `agent_reader` | `SELECT` on all 4 tables |
+| `grafana_reader` | `SELECT` on all 4 tables |
+| `ehuser` | `SELECT` on all 4 tables |
+
+Sequence `USAGE` granted to writers as needed for the `SERIAL` / `BIGSERIAL` defaults.
