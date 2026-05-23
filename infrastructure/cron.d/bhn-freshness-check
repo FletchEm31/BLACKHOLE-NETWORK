@@ -1,0 +1,6 @@
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+# Table-freshness audit every 6h. Reads v_table_freshness, records
+# freshness_alerts for any table past its per-row threshold (dedup window
+# = table_freshness_targets.alert_dedup_hours, default 6h).
+0 */6 * * *  root  /usr/local/sbin/bhn-freshness-check.sh >> /var/log/bhn-freshness-check.log 2>&1
