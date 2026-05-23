@@ -2,7 +2,7 @@
 
 A privacy-focused personal infrastructure platform built on WireGuard with deep defense-in-depth security, AI-powered operations, and algorithmic trading. **Single-operator network — no customers, no public service offering. Personal infrastructure only.**
 
-> **Note:** Repo renamed 2026-05-11 from EventHorizon VPN to Blackhole Network. Vultr-side server display names updated to `BHN|VPS-LOSANGELES-US1`, `BHN|VPS-FRANKFURT-EU1`, `BHN|VPS-NEWJERSEY-US2`. LA-deployed script paths (`/usr/local/sbin/eh-*`, `/opt/eh-diagnostics/*`), PostgreSQL database name `eventhorizon`, email domain `eventhorizonvpn.com`, and n8n credential names (`Postgres EventHorizon`, `EventHorizonVPN-Claude`) are intentionally preserved as live-system identifiers until a coordinated migration session. The "EventHorizon VPN" name is reserved for the future separate commercial product.
+> **Note:** Repo renamed 2026-05-11 from EventHorizon VPN to Blackhole Network. Vultr-side server display names updated to `BHN|VPS-LOSANGELES-US1` and `BHN|VPS-NEWJERSEY-US2`. LA-deployed script paths (`/usr/local/sbin/eh-*`, `/opt/eh-diagnostics/*`), PostgreSQL database name `eventhorizon`, email domain `eventhorizonvpn.com`, and n8n credential names (`Postgres EventHorizon`, `EventHorizonVPN-Claude`) are intentionally preserved as live-system identifiers until a coordinated migration session. The "EventHorizon VPN" name is reserved for the future separate commercial product. Frankfurt (EU1) was decommissioned May 2026; configs archived in [`infrastructure/archive/frankfurt/`](infrastructure/archive/frankfurt/).
 
 ## Overview
 
@@ -12,7 +12,7 @@ Blackhole Network is a self-hosted private intelligence and trading infrastructu
 
 ### Shared infrastructure
 
-WireGuard mesh VPN (4 nodes across US-West, US-East, EU), PostgreSQL, Grafana, n8n, Tor relay network, dnscrypt-proxy, CrowdSec, Suricata, Shadowsocks. Serves all domains, belongs to none.
+WireGuard mesh VPN (3 nodes across US-West and US-East), PostgreSQL, Grafana, n8n, Tor relay network, dnscrypt-proxy, CrowdSec, Suricata, Shadowsocks. Serves all domains, belongs to none.
 
 ---
 
@@ -29,9 +29,11 @@ WOTC-era graded-card data pipeline. `master_card_catalog` (637 cards / 1,354 var
 
 This data will be used to reserach and buy my own investment/collection opportunities.  It will also be collected at scale, refined, and possbily sold B2B or B2C as inventory and valuation software (similar to ChartPricing).  FInally, this will operate as the backend hard data to Pokemon: Blackhole.  Pokemon: Blackhole is a GBA-style Pokemon FireRed/LeafGreen battle interface built on top of real Pokemon card market intelligence.  Part of the Team Rocket BHN — Pokemon Market — Blackhole Network operation.
 
-### SecurityBHN — security telemetry
+### SecurityBHN — security telemetry & audit
 
-Defense-in-depth signals across the 4-node mesh: `security_events`, `anomalies`, `fail2ban_events`, `crowdsec_decisions`, plus per-node resource, bandwidth, WireGuard, and Tor stats.
+Defense-in-depth signals across the mesh: `security_events`, `anomalies`, `fail2ban_events`, `crowdsec_decisions`, plus per-node resource, bandwidth, WireGuard, and Tor stats.
+
+**Governance + audit layer:** **BTEH** — *Beyond The EventHorizon* (repo `BTEH-Beyond-The-EventHorizon`) is the audit framework for the whole platform. 10-section protocol covering Infrastructure / Security / Database / Workflow & Data Pipeline / AI Agent / Code Quality / Financial & Trading / Legal & Compliance / Consumer Applications / Future Architecture, plus 4 appendices (scoring rubrics, multi-instance execution guide, recurring cadence, glossary). **v1.0 scaffolded May 2026, actively under development.** BTEH is the audit layer for SecurityBHN — same domain, one project, two name forms.
 
 ---
 
@@ -49,9 +51,13 @@ The autonomous intelligence layer — an n8n-based AI agent powered by Claude wi
 
 ### Companion repo — Pokemon Blackhole (the game)
 
-**Pokemon Blackhole** (repo `TEAM-ROCKET-BHN`) is a separate front-end — not part of this repository — and an independent *consumer* of PokemonBHN data. It's a GBA-style FireRed/LeafGreen interface that turns card trading into gameplay: a listing renders as a wild Pokémon encounter, where the card is the Pokémon, the HP bar is the deal quality (listed price vs. market value — greener/fuller = better deal), the level is the grade, the badge is the grading company, and rarity tiers map to population scarcity. The player can BUY (open the listing), WATCH, ANALYZE (open in Claude), or RUN.
+**Pokemon Blackhole** (repo `TEAM-ROCKET-BHN`) is a separate front-end — not part of this repository — and an independent *consumer* of PokemonBHN data.
 
-It reads the same `master_card_catalog`, `pop_reports`, and `sold_listings` that PokemonBHN populates — that's the data connection. The game is **not built or orchestrated by HORIZON**; it's an independent app, not driven by the AI agent. HORIZON's deal recommendations *can surface inside it* as advice (e.g. *"in the RED — 68% below market, recommend BUY"*), the same way they appear elsewhere in the stack — but the game stands on its own. In short: a genuinely fun, GameBoy-style way to trade graded Pokémon cards online, built on top of the PokemonBHN market data. **BLACKHOLE-NETWORK produces the card-market data; Pokemon Blackhole is an independent game that renders it as a battle.**
+**The primary experience is alert-driven.** When HORIZON detects a deal in the card market (listing well below sold-comp value), it triggers a full GBA-style FireRed/LeafGreen battle cutscene: the seller becomes your rival trainer, the card is the Pokémon, the HP bar is deal quality (listed vs. market value — greener/fuller = better deal), the level is the grade, the badge is the grading company, and rarity tiers map to population scarcity. The player can BUY (open the listing), WATCH, ANALYZE (open in Claude), or RUN.
+
+**Browse mode is the secondary entry point** — the operator can open the game manually and walk active listings the same way, encountering each as a wild Pokémon without waiting for HORIZON to flag one.
+
+Either way the data connection is the same: the game reads `master_card_catalog`, `pop_reports`, and `sold_listings` that PokemonBHN populates. The game is **not built or orchestrated by HORIZON**; it's an independent app. HORIZON's deal recommendations surface as in-game advice (e.g. *"in the RED — 68% below market, recommend BUY"*), but the game stands on its own. **BLACKHOLE-NETWORK produces the card-market data; Pokemon Blackhole renders it as a battle.**
 
 ---
 
@@ -64,12 +70,11 @@ It reads the same `master_card_catalog`, `pop_reports`, and `sold_listings` that
 ```
 Phase 1: NETWORK                        [✅ ~90% complete]
 ├─ LA hub (BHN|VPS-LOSANGELES-US1) — hub, PostgreSQL, n8n, HORIZON, Grafana
-├─ Frankfurt exit node (BHN|VPS-FRANKFURT-EU1) — EU exit, LibreSpeed, SearXNG, Tor relay
 ├─ NJ trading node (BHN|VPS-NEWJERSEY-US2) — Alpaca paper trading, Strat 13 active (operational test), others sidelined
 ├─ Hillsboro proxy node (BHN-HILLSBORO-US3) — LA egress proxy via tinyproxy, Tor relay
+├─ Frankfurt (EU1) — decommissioned May 2026. Configs archived in infrastructure/archive/frankfurt/.
 ├─ WireGuard hub-and-spoke mesh — all nodes + operator devices connected, PSK on most peers
 ├─ Bootstrap script v4 (declarative node types + modular install)
-├─ Frankfurt exit routing — BROKEN, FRA MASQUERADE fix pending
 └─ Future nodes: Sweden (Bahnhof), Iceland via snapshot deployment
 
 Phase 2: DASHBOARD                      [✅ ~85% complete]
@@ -97,11 +102,10 @@ Phase 3: AI INTEGRATION                 [in progress, ~60% complete]
 Phase 4: PER-NODE SERVICES              [~80% complete]
 ├─ Trading stack live on NJ — Strat 13 operational test (others sidelined), 3 Alpaca accounts
 ├─ Wallos (LA) — subscription / cost tracking [✅] http://10.8.0.1:8090
-├─ SearXNG (Frankfurt) — private meta-search [✅] http://10.9.0.2:8089
-├─ LibreSpeed Frankfurt (EU speedtest) [✅] http://10.9.0.2:8088
 ├─ tinyproxy (Hillsboro) — LA egress proxy [✅] verified, lockdown pending
-├─ Tor relays: BHNFornaxEU1 (Frankfurt, live), BHNHeliosUS3 (Hillsboro, bootstrapping),
+├─ Tor relays: BHNHeliosUS3 (Hillsboro, bootstrapping),
 │              BHNNebulaUS2 (NJ, deployed not live)
+├─ SearXNG / LibreSpeed — were Frankfurt-hosted; offline post-decommission, relocation TBD
 └─ MyFamily fingerprint exchange — pending (after all relays 24h+)
 
 Phase 5: RESILIENCE                     [designed, not built]
@@ -131,17 +135,19 @@ Both volumes use LUKS2 with auto-unlock keyfiles, XFS filesystem, and persistent
 
 ### PostgreSQL schema
 
-78 tables in the `eventhorizon` database covering:
+78 tables in the `eventhorizon` database, grouped into nine functional categories:
 
-- Market data: `market_daily`, `market_bars_*`, `market_ticks`, `market_regimes`, `market_sentiment`, `market_events`, `market_signals`
-- Macro: `macro_daily`, `macro_indicators`
-- Trading: `paper_trades`, `signals_log`, `order_events`, `circuit_breaker_log`, `strategy_performance`, `trading_rules`, `trading_strategies`, `reconciliation_heartbeat`
-- Financial intelligence: `earnings_data`, `analyst_data`, `options_chain_snapshots`, `prediction_market_data`, `crypto_market_data`, `investment_signals`, `alpaca_news`
-- Alternative data: `agriculture_prices`, `energy_prices`, `weather_snapshots`, `corporate_actions`
-- Security: `security_events`, `anomalies`, `pulse_reports`, `node_logs`, `node_logs_summary`, `fail2ban_events`, `crowdsec_decisions`
-- Infrastructure: `nodes`, `node_resource_stats`, `node_bandwidth_stats`, `node_disk_stats`, `node_patch_status`, `wg_peer_stats`, `wg_sessions`, `tor_relay_stats`
-- AI: `memories` (pgvector 384-dim), `agent_token_log`, `call_transcripts`, `conversation_sessions`, `qa_cache`
-- Collectibles (Pokémon graded-card market — see [Pokémon graded-card data pipeline](#pokémon-graded-card-data-pipeline)): `master_card_catalog` (scraper search queue), `pop_reports` (CGC/PSA population counts), `sold_listings` (eBay sold comps), `master_grade_catalog` (per-grader grade scale + FK validation source), `master_grading_criteria_catalog` (condition factors + PSA qualifiers)
+- **Market data** — daily/bars/ticks, regimes, sentiment, events, signals
+- **Macro** — daily macro + indicator series
+- **Trading** — paper trades, signals log, order events, circuit breaker, strategy performance + rules, reconciliation heartbeat
+- **Financial intelligence** — earnings, analyst data, options chain snapshots, prediction markets, crypto, investment signals, news
+- **Alternative data** — agriculture, energy, weather, corporate actions
+- **Security** — security events, anomalies, pulse reports, node logs, fail2ban, crowdsec decisions
+- **Infrastructure** — node metadata, resource/bandwidth/disk/patch stats, WireGuard peer + session stats, Tor relay stats
+- **AI** — `memories` (pgvector 384-dim), agent token log, call transcripts, conversation sessions, QA cache
+- **Collectibles (PokemonBHN)** — `master_card_catalog`, `pop_reports`, `sold_listings`, `master_grade_catalog`, `master_grading_criteria_catalog`, `master_set_catalog` (see [Pokémon Graded Card Data Pipeline](#pokémon-graded-card-data-pipeline))
+
+**Authority:** the live DB is ground truth; canonical DDL lives in [`sql/`](sql/). The exhaustive table-by-table reference is in the data flow blueprint at [`infrastructure/docs/bhn-network-data-flow.md`](infrastructure/docs/bhn-network-data-flow.md#schema-reference).
 
 ## Security stack
 
@@ -425,10 +431,8 @@ Tor relay nicknames:
 |------|------------|
 | **REMOTE BROWSER WINDOW** | noVNC web console (Vultr/Hetzner) — emergency fallback only |
 | **PC LA CONSOLE** | SSH from operator PC to LA hub (`ssh root@149.28.91.100`) |
-| **PC GE CONSOLE** | SSH from operator PC to Frankfurt (`ssh root@192.248.187.208`) |
 | **PC NJ CONSOLE** | SSH from operator PC to NJ (`ssh -p 2222 root@140.82.4.35`) — port 2222 |
 | **PC Hillsboro** | SSH from operator PC to Hillsboro (`ssh root@5.78.94.237`) |
-| **LA→Frankfurt** | `ssh frankfurt` (alias from LA, via WireGuard tunnel) |
 | **LA→NJ** | `ssh nj` (alias from LA, via WireGuard tunnel) |
 | **LA→Hillsboro** | `ssh hillsboro` (alias from LA, via WireGuard tunnel) |
 
@@ -440,8 +444,6 @@ HORIZON chat:     http://10.8.0.1:5678/webhook/ec1592c6-8715-4b0f-8ee8-5bc02f551
 Grafana:          http://10.8.0.1:3000
 Wallos:           http://10.8.0.1:8090
 PostgreSQL:       psql -h 10.8.0.1 -U <role> -d eventhorizon
-LibreSpeed (EU):  http://10.9.0.2:8088
-SearXNG:          http://10.9.0.2:8089
 tinyproxy:        http://10.8.0.6:8888 (LA egress proxy, WireGuard only)
 ```
 

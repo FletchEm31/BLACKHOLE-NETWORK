@@ -88,4 +88,40 @@ NJ's trading API calls (Alpaca) go out **NJ's own interface directly**, never th
 | NJ trading direct egress | **[LIVE]** |
 | Mesh-internal + underlay + DNS + NTP | **[LIVE]** |
 
-**Related docs:** `la-egress-lockdown/README.md` · `bhn-frankfurt-exit-routing.md` · `frankfurt-exit-backlog.md` · `bhn-frankfurt-scoping.md` · `bhn-hillsboro-ssh-diagnosis.md`
+**Related docs:** `la-egress-lockdown/README.md` · `bhn-hillsboro-ssh-diagnosis.md` · Frankfurt-specific docs are historical post-decommission, archived under `infrastructure/archive/frankfurt/`.
+
+---
+
+## Schema reference
+
+78 tables in `eventhorizon`, by functional category. **The live DB is ground truth**; this listing is for orientation. Canonical DDL is in [`sql/`](../../sql/); per-table column-level reference is generated from the live schema and is not duplicated here.
+
+### Market data
+`market_daily`, `market_bars_1min`, `market_bars_5min`, `market_bars_1hour`, `market_ticks`, `market_regimes`, `market_sentiment`, `market_events`, `market_signals`
+
+### Macro
+`macro_daily`, `macro_indicators`
+
+### Trading
+`paper_trades`, `signals_log`, `order_events`, `circuit_breaker_log`, `strategy_performance`, `trading_rules`, `trading_strategies`, `reconciliation_heartbeat`
+
+### Financial intelligence
+`earnings_data`, `analyst_data`, `options_chain_snapshots`, `prediction_market_data`, `crypto_market_data`, `investment_signals`, `alpaca_news`
+
+### Alternative data
+`agriculture_prices`, `energy_prices`, `weather_snapshots`, `corporate_actions`
+
+### Security
+`security_events`, `anomalies`, `pulse_reports`, `node_logs`, `node_logs_summary`, `fail2ban_events`, `crowdsec_decisions`
+
+### Infrastructure
+`nodes`, `node_resource_stats`, `node_bandwidth_stats`, `node_disk_stats`, `node_patch_status`, `wg_peer_stats`, `wg_sessions`, `tor_relay_stats`
+
+### AI (HORIZON)
+`memories` (pgvector 384-dim BAAI/bge-small-en-v1.5), `agent_token_log`, `call_transcripts`, `conversation_sessions`, `qa_cache`
+
+### Collectibles (PokemonBHN)
+`master_card_catalog` (637 cards / 1,354 variant rows, 8 sets — scraper search queue), `pop_reports` (CGC/PSA population counts), `sold_listings` (eBay sold comps), `ebay_listings` (active listings), `master_grade_catalog` (per-grader scale + FK validation source), `master_grading_criteria_catalog` (condition factors + PSA qualifiers), `master_set_catalog` (set dimension — name, era, editions, PSA heading)
+
+### Access roles
+`agent_reader` is HORIZON's read role — SELECT across all categories above. Service-specific writer roles (`bootstrap_writer`, the trading service role, collector ingest roles) are narrower; see `sql/` for grants.
