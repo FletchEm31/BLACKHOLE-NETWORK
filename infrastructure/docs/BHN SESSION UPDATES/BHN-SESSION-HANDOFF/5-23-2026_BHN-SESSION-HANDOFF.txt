@@ -302,5 +302,126 @@ SCRATCH DOCS (not committed; review before next session if relevant):
     - BHN DOMAIN AND ORG.txt
 
 ==================================================================
+CC1 SESSION ADDENDUM — 2026-05-23 (late session)
+==================================================================
+
+OWNER: CC1 (per parallel-cc-execution-rules.md, committed this session)
+
+COMMITS PUSHED THIS SESSION (5 total, on origin/main):
+  50cc9ba  docs(infra): add parallel CC execution rules
+  4e4ab7b  chore(infra): complete Frankfurt decommission — archive stale docs
+  f9d7c77  sql(horizon): backfill 7 missing agent_reader grants
+  b137c21  docs(security): disable + wipe DNS qname logging — privacy finding resolved
+  ccf495e  feat(horizon): sync repo workflow to live D2groJaxtihbfV3f
+                          + add 3-tier memory section to system prompt
+
+WHAT CHANGED (state to update in SECTION 1 above next session):
+
+  Frankfurt
+    - Docs moved to infrastructure/archive/frankfurt/
+      (bhn-frankfurt-exit-routing, bhn-frankfurt-scoping,
+      frankfurt-exit-backlog)
+    - bhn-network-data-flow.md rewritten to current 3-node topology
+      (LA / NJ / Hillsboro). FRA traffic classes 2+3+4 removed.
+    - CC2 confirmed server-side mesh cleanup complete (Tor MyFamily
+      reduced to BHNHeliosUS3 + BHNNebulaUS2).
+    - LEFTOVER (per CC2 finding, not blocking): FRA egress peer +
+      table-100 policy route still present on LA wg0. Operator-decision
+      item; held until Vultr destroy.
+
+  HORIZON
+    - Stale-workflow blocker RESOLVED. Active workflow on live n8n is
+      D2groJaxtihbfV3f (HORIZON identity, 3-domain knowledge, all
+      tools wired, Frankfurt-decommissioned constraint). The old
+      fTFjaf2Q2aQrOPsY is inactive — DO NOT run scripts/horizon-fix.sh.
+    - 7 agent_reader SELECT grants backfilled (nodes, node_logs,
+      master_card_catalog, master_grade_catalog,
+      master_grading_criteria_catalog, sold_listings, filter_rejections).
+      sql/horizon-agent-reader-grants-verify.sql updated to keep them
+      in the canonical list.
+    - n8n-workflows/bhn-horizon.json resynced from live + patched with
+      a new MEMORY ARCHITECTURE section (Redis hot tier /
+      conversation_sessions durable / memories semantic). Repo file is
+      READY for operator re-import — does NOT change live HORIZON yet.
+
+  Redis (HORIZON working-memory tier)
+    - Already deployed 9d ago, healthy, bound to 10.8.0.1:6379 (VPN only),
+      conversation_sessions schema applied. UFW correct.
+    - GAP: n8n credential not yet added. See "Operator actions" below.
+
+  DNS privacy
+    - dnscrypt-proxy [query_log] disabled; service restarted; resolution
+      verified.
+    - /var/log/dnscrypt-proxy/query.log (8.1 MiB) + rotated .gz wiped.
+    - dns_query_log PG table TRUNCATE'd (was 8,788 rows at execution).
+    - /etc/cron.d/bhn-dns-log-collector removed (archived under
+      /root/bhn-backups/ on LA).
+    - Suricata pcap-log was already disabled; confirmed.
+    - Out-of-scope (flagged): /var/log/dnscrypt-proxy/nx.log
+      (158 KiB NXDOMAIN qnames) still being written.
+
+  Backups + disk
+    - Audited; both healthy. eh-backup runs daily 02:30 UTC (restic,
+      AES-256, retention 7d/4w/6m). Last successful run today.
+      pg_dump verified non-empty (~4.4 MiB on 5/23).
+    - NVMe hot tier 1% used, HDD cold tier 1% used, root 39% used.
+      eh-purge cron runs cleanly; 80% threshold never hit.
+
+  Pokemon workstreams (WS2 + WS3 in CC1 brief)
+    - NO CODE CHANGES. Brief's premise was outdated:
+      - All 4 vintage eBay sold-comp workflows already built, active,
+        and writing standard-compliant rows
+        (PSA: 430 sold rows, CGC: 215, BGS: 6, SGC: 0 — active).
+      - Gym Heroes + Gym Challenge already in master_set_catalog
+        (132 cards each), already in master_card_catalog
+        (132 distinct card_numbers × 2 editions each).
+      - CGC pop reports already running for both Gym sets via
+        bhn-cgc-pop-refresh.timer (Gym Heroes: 1683 rows,
+        Gym Challenge: 1755 rows, last refresh 5/19).
+    - SURFACED STANDARD DRIFT (not fixed — operator-decision):
+      - print_variant column missing on sold_listings + ebay_listings
+        (standard §3.3 mandates it on observation streams; §9 shows
+         "variant SPLIT ✅ done 2026-05-21" but that landed on the
+         dimension only, not the facts).
+      - grade_reject_log table never built (standard §4 mandates it
+        as the destination for unknown-grade rows; §9 already flags
+        as "not built — loaders are all-or-nothing").
+
+OPERATOR ACTIONS OUTSTANDING (sorted by reversibility cost):
+
+  1. Vultr → destroy EH|VPS-FRANKFURT-EU1 (192.248.187.208) to
+     stop $12/mo billing. (Server-side cleanup already done.)
+
+  2. n8n UI → add credential "EH HORIZON Redis (LA)":
+       Type: Redis
+       Host: 10.8.0.1
+       Port: 6379
+       Password: from Proton Pass "EH-Redis-Password"
+       Database: 0
+       SSL: off
+
+  3. n8n UI → re-import n8n-workflows/bhn-horizon.json (so the new
+     MEMORY ARCHITECTURE prompt is live). Steps in ccf495e commit body.
+     ⚠ Do NOT run scripts/horizon-fix.sh — it targets the OLD inactive
+     workflow ID and would resurrect the stale prompt.
+
+  4. CC2 sync — answer CC1's signal block re Strat 13:
+       trading_strategies.status = 'active' since 2026-05-15 (manual reset)
+       signals_log: empty for strat_13
+       circuit_breaker_log: 10x system_halt on 2026-05-19 03:05–03:50
+         due to JPST recon (alpaca=-3920 vs pg=980 vs nj_cache=980)
+       paper_trades row 2026-05-22 13:30 JPST buy 244 @ $0.00 entry_price
+         — broken-write or new news?
+     Need to confirm whether 'active' = actually running, or stale flag.
+
+  5. nx.log decision — disable [nx_log] in dnscrypt-proxy.toml and wipe
+     the file if same treatment as query.log is desired.
+
+UNCOMMITTED / SCRATCH (left as-is, not in CC1's path ownership):
+  infrastructure/docs/audit/org-structure-thoughts/  (operator scratch)
+  CC-SESSION-BRIEF-2026-05-23.txt + CC2-SESSION-BRIEF-2-2026-05-23.txt
+    (the briefs themselves; intentionally untracked per usual pattern)
+
+==================================================================
 END OF HANDOFF
 ==================================================================
