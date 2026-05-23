@@ -1,0 +1,306 @@
+==================================================================
+BLACKHOLE NETWORK (BHN) — SESSION HANDOFF
+Last Updated: May 23, 2026
+==================================================================
+
+PURPOSE
+-------
+Read this FIRST at the start of every Claude session.
+It tells Claude what state the project is in, what was done
+last session, and what to work on next.
+The Big 3 docs (INFRASTRUCTURE-REFERENCE, DATA-FLOW-BLUEPRINT,
+SECURITY-PROTOCOL) are the deep reference — this doc is the
+quick-start that tells you where we left off.
+
+==================================================================
+SECTION 1 — NETWORK SNAPSHOT (current state)
+==================================================================
+
+NODE          IP (PUBLIC)       TUNNEL IP   STATUS
+LA Hub        149.28.91.100     10.8.0.1    OPERATIONAL (hub, PG, n8n,
+                                            HORIZON, Grafana)
+Frankfurt     192.248.187.208   10.9.0.2    DECOMMISSIONING — configs
+                                            archived, Vultr shutdown pending
+New Jersey    140.82.4.35       10.8.0.5    OPERATIONAL (trading stack live,
+                                            Strat 13 only active)
+Hillsboro     5.78.94.237       10.8.0.6    OPERATIONAL (tinyproxy + Tor,
+                                            SSH hanging — recheck next session)
+
+WireGuard Mesh (hub-and-spoke, LA is hub):
+  Operator PC:     10.8.0.2   PSK: ✅
+  Operator Laptop: 10.8.0.7   PSK: ✅
+  NJ:              10.8.0.5   PSK: ❌ pending
+  Hillsboro:       10.8.0.6   PSK: ✅
+  Frankfurt:       10.9.0.2   PSK: ✅ (decommissioning)
+
+Tor Relays:
+  BHNFornaxEU1  → Frankfurt   LIVE (decommissioning)
+  BHNHeliosUS3  → Hillsboro   Bootstrapping
+
+CONSOLE TERMINOLOGY (STRICT):
+  REMOTE BROWSER WINDOW = noVNC web console (Vultr/Hetzner)
+  PC LA CONSOLE         = ssh root@149.28.91.100
+  PC NJ CONSOLE         = ssh -p 2222 root@140.82.4.35  ← port 2222
+  PC Hillsboro          = ssh root@5.78.94.237
+  LA→NJ:                ssh nj        (from LA)
+  LA→Hillsboro:         ssh hillsboro (from LA)
+  Frankfurt:            DECOMMISSIONING — do not SSH unless needed for
+                        shutdown checklist
+
+==================================================================
+SECTION 2 — LAST SESSION COMPLETED (May 22-23, 2026)
+==================================================================
+
+INFRASTRUCTURE:
+  ✅ All 8 n8n workflows exported, renamed, committed to repo
+  ✅ collaboration-model.md committed
+  ✅ Git email fixed (noreply address)
+  ✅ BHN-BLACKBOX Cryptomator vault created (mounts as E:\)
+  ✅ Backup pipeline LIVE and tested:
+       bhn-backup-produce.sh on LA (/usr/local/sbin/)
+       bhn-vault-sync.ps1 on PC (C:\BHN\)
+       WMI trigger registered — vault unlock → auto backup
+       Debounce: 6 hours — end-to-end test PASSED
+  ✅ Egress audit completed and committed
+       LA lockdown DESIGNED but NOT EXECUTED
+       GAP-2: ~15 systemd units bypass proxy via /etc/bhn-trading/env
+  ✅ README refreshed — Frankfurt decommission, BTEH, domain model
+  ✅ Legacy EVENT HORIZON VPN folder deleted from repo
+  ✅ Ecosystem document defined:
+       3 domains: FinancialBHN, PokemonBHN, SecurityBHN
+       All repos mapped and defined
+       BHNwave confirmed as standalone BHN project
+
+HORIZON:
+  ✅ HORIZON fully operational — correct BHN identity
+  ✅ System prompt updated — all behavioral constraints active:
+       Query discipline (≤2 DB queries per response)
+       Memory discipline (no retry on empty)
+       Channel awareness (SMS brevity)
+       Column integrity (no fabrication)
+       Tool discipline
+       Integrity (no lying/assuming, DB first)
+       Trust ladder Tier 1/2/3
+       Confirmation protocol
+  ✅ Postgres Chat Memory wired (n8n_chat_histories table)
+       Known issue: permission error — ehuser grant needed
+  ✅ bhn-horizon.json re-exported and committed
+
+POKEMONBHN SCHEMA (major):
+  ✅ tokenized-market-schema.sql applied to live DB:
+       courtyard_listings (40 cols)
+       courtyard_sales (40 cols)
+       collector_crypt_sales (40 cols)
+       tokenized_arbitrage_signals (23 cols)
+  ✅ seller_profiles table created and applied
+  ✅ ebay_listings + sold_listings ALTERed (10 new columns):
+       auction_end_time, first_seen_at, last_seen_at,
+       original_item_id, relist_count, original_listed_at,
+       obo_min_price, cert_number, location, watchers
+  ✅ collectibles-data-standard.md updated — §10 added
+  ✅ PSA + CGC workflows fixed — Gixen disconnected
+  ✅ BGS workflow built, tested (41 passed grade filter,
+       17 logged to EventHorizon), committed
+  ✅ SGC workflow built, tested (7 logged, 2 runoff), committed
+  ✅ All 4 workflows scheduled and staggered:
+       CGC: every 30min
+       PSA: every 30min
+       BGS: :30 past every hour
+       SGC: :45 past every hour
+
+TOKENIZED MARKET STRATEGY:
+  ✅ Courtyard.io (Polygon) researched and validated
+  ✅ Collector Crypt (Solana) researched — $165M/month volume
+  ✅ Arbitrage model validated:
+       Buy underpriced on eBay → vault at Brink's → tokenize →
+       sell on Courtyard/Collector Crypt at 0% fees
+       Buyback floor: 85-90% of fair market value
+  ✅ Both blockchains confirmed scrapeable (public)
+  ✅ Schema built and applied to eventhorizon
+
+COMMITS TONIGHT (10 total):
+  4c63417  chore(migrate)    — EH legacy folder import
+  107c594  feat(backup)      — backup scripts
+  cc6cef9  feat(operator)    — HORIZON system prompt BHN identity
+  8dd76e9  docs(readme)      — 6-resolution README refresh
+  b5f3fbc  fix(backup)       — n8n docker exec
+  d299a21  fix(backup)       — ASCII fix
+  bf4fdab  feat(backup)      — watch-vault.ps1 WMI trigger
+  07d2d7a  config(backup)    — debounce 6h
+  ce54b5c  feat(pokemonbhn)  — tokenized-market schema + std §10
+  84e71ea  feat(pokemonbhn)  — seller_profiles + ebay ALTERs + std sync
+  75beade  feat(pokemonbhn)  — VINTAGE-BGS + VINTAGE-SGC workflows
+  bedcd1c  feat(pokemonbhn)  — BGS + SGC committed to repo
+
+==================================================================
+SECTION 3 — PENDING TASKS (PRIORITY ORDER)
+==================================================================
+
+IMMEDIATE (next session — do these first):
+
+  1. Frankfurt shutdown — execute decommission checklist:
+       - Export any remaining configs not in repo
+       - Remove Frankfurt peer from LA wg0
+       - Remove Frankfurt UFW egress rules on LA
+       - Update repo (peer registry, README, data flow blueprint)
+       - Destroy Frankfurt VPS in Vultr console
+       - Confirm billing updated
+
+  2. Fix Postgres Chat Memory permissions (HORIZON):
+       GRANT INSERT, UPDATE, SELECT ON n8n_chat_histories TO ehuser;
+       Test HORIZON chat — should store session memory
+
+  3. Gixen credentials exposed in PSA workflow JSON:
+       - Rotate Gixen password immediately
+       - Move credentials out of URL into n8n credential store
+       - Re-export PSA, BGS, SGC workflow JSONs
+       - Consider git filter-repo to scrub history
+
+  4. Fix vector dimension mismatch (315 vs 384):
+       Check embed model on LA, verify pgvector index dimensions
+
+  5. LA egress lockdown — execute (operator present required):
+       Run deploy.sh Phase A-G per egress audit doc
+       Fix GAP-2: add proxy block to /etc/bhn-trading/env
+       Fix SMTP: add ConnectPort 587 before lockdown
+
+  6. NJ WireGuard PSK — complete mesh security
+
+  7. Hillsboro SSH — diagnose and fix hanging connection
+
+  8. OpenSea API key:
+       curl -X POST https://api.opensea.io/api/v2/auth/keys
+       Save as BHN-OpenSea-APIKey in Proton Pass
+
+  9. Courtyard + Collector Crypt accounts:
+       - Sign up Courtyard.io, complete KYC
+       - MetaMask wallet (Polygon) for Courtyard
+       - Phantom wallet (Solana) for Collector Crypt
+       - Sign up Collector Crypt
+
+NEXT PRIORITY:
+
+  10. Build Courtyard data collector:
+        OpenSea API → courtyard_listings + courtyard_sales
+        Pull price history + market value per card
+        n8n workflow polling every 30min
+        Save as BHN-OpenSea-APIKey in Proton Pass
+
+  11. Build Collector Crypt data collector:
+        Magic Eden API → collector_crypt_sales
+        n8n workflow polling every 60min
+
+  12. BlackboxBidder Phase 1 — sniping engine:
+        eBay API direct bid placement (last 3-10 seconds)
+        Reads from tokenized_arbitrage_signals
+        Writes results back to eventhorizon
+        Test on real auctions manually first
+        Drop Gixen entirely — build direct
+
+  13. seller_profiles population script:
+        Build collector populating seller_profiles from
+        existing ebay_listings + sold_listings
+
+  14. HORIZON morning briefing:
+        Daily 8am PT SMS summary
+        Market + trading + Pokemon deals
+
+  15. Macro data expansion:
+        ALTER macro_daily + ~25 new FRED series
+
+BACKLOG:
+
+  16. Sweden node (Bahnhof) — Phase 5 cold standby
+  17. Matrix Synapse (EH Chat) — Phase 4-5
+  18. FINANCIALBHN repo extraction
+  19. TEAM-ROCKET-BHN rename to PokemonBlackhole
+  20. TAG grader — add to master_grade_catalog
+  21. Redis on LA for HORIZON hot memory
+  22. Backup via Tor
+  23. CVE-2026-31431 — full kernel patch all nodes
+  24. BTEH first audit pass
+  25. BGS workflow — verify "Best of Game" set name
+       maps correctly to master_set_catalog
+
+==================================================================
+SECTION 4 — KEY SERVICES & ACCESS
+==================================================================
+
+VPN-ONLY ENDPOINTS (operator PC must be on WireGuard):
+
+  n8n:              http://10.8.0.1:5678
+  HORIZON chat:     http://10.8.0.1:5678/webhook/ec1592c6-8715-4b0f-8ee8-5bc02f551a27/chat
+  Grafana:          http://10.8.0.1:3000
+  Wallos:           http://10.8.0.1:8090
+  PostgreSQL:       psql -h 10.8.0.1 -U <role> -d eventhorizon
+  tinyproxy:        http://10.8.0.6:8888  (LA egress proxy, WG only)
+
+CRYPTOMETER VAULT (operator PC):
+
+  Config name:      BHN-BLACKBOX (Cryptomator)
+  Ciphertext at:    D:\BHN-BLACKBOX\BHN-BLACKBOX\
+  Unlocks to:       E:\
+  Sentinel:         E:\.bhn-vault-identity (do not delete)
+  Watcher:          C:\BHN\watch-vault.ps1  (scheduled task at user logon:
+                                              BHN-Vault-Sync-Watcher)
+  Sync script:      C:\BHN\bhn-vault-sync.ps1
+  Logs:             E:\_backup-log\sync-{TS}.log + watch-vault.log
+  Env var:          BHN_LA_HOST=root@10.8.0.1  (User scope, registry-persisted)
+
+KEY POSTGRES ROLES (on eventhorizon DB):
+
+  agent_reader      SELECT on all PokemonBHN tables (HORIZON's read role)
+  ehuser            SELECT (operator's read role)
+  grafana_reader    SELECT (Grafana dashboards)
+  log_shipper       INSERT (scraper writers) + UPDATE (listings only)
+  n8n_user          INSERT/UPDATE on signal + dimension tables
+
+  ⚠️  ehuser MISSING grant on n8n_chat_histories — fix per pending task #2
+
+SCHEMA FILES (current shape of PokemonBHN data domain):
+
+  sql/pokemonbhn-master-set-catalog-schema.sql
+  sql/tokenized-market-schema.sql              (4 tokenized tables)
+  sql/seller-profiles-schema.sql               (cross-platform seller dim)
+  sql/ebay-listings-alterations.sql            (10 new cols on ebay + sold)
+
+LIVE TABLES SUMMARY (PokemonBHN):
+
+  master_card_catalog            637 cards / 1,354 variant rows (8 sets)
+  master_set_catalog             8 sets (Base, Fossil, Jungle, Team Rocket,
+                                 Gym Heroes, Gym Challenge, Wizards Black
+                                 Star Promos, Best of Game)
+  master_grade_catalog           88 raw_labels across CGC/PSA/BGS/SGC
+  master_grading_criteria_catalog  4 condition factors per grader
+  pop_reports                    grader-agnostic population counts
+  sold_listings                  eBay sold comps (29 cols)
+  ebay_listings                  active eBay listings (36 cols)
+  courtyard_listings             active Courtyard NFTs (40 cols)
+  courtyard_sales                completed Courtyard sales (40 cols)
+  collector_crypt_sales          completed CC sales (40 cols)
+  tokenized_arbitrage_signals    cross-market flags (23 cols)
+  seller_profiles                cross-platform seller dim (20 cols)
+
+REPO PATH ALIASES:
+
+  LA repo path                   (set BHN_REPO_PATH on LA before producing
+                                  bhn-repo-snapshot artifact)
+  Operator-PC repos              D:\GITHUB REPOSITORY\
+    - BLACKHOLE-NETWORK          this repo
+    - BTEH-Beyond-The-EventHorizon (SecurityBHN audit framework)
+    - TEAM ROCKET BHN            (PokemonBHN game)
+    - BHNWAVE                    (StandaloneBHN — NOT a git repo, skipped by sync)
+    - HARPUR HERALDRY FAMILY PROJECT  (NOT a BHN project — explicitly excluded)
+
+SCRATCH DOCS (not committed; review before next session if relevant):
+
+  infrastructure/docs/audit/org-structure-thoughts/
+    - README-PROPOSAL-2026-05-22.md
+    - vault-backup-design-2026-05-22.md
+    - egress-audit-2026-05-22.md
+    - legacy-files-salvaged/BHN-HORIZON-ROADMAP.txt
+    - BHN DOMAIN AND ORG.txt
+
+==================================================================
+END OF HANDOFF
+==================================================================
