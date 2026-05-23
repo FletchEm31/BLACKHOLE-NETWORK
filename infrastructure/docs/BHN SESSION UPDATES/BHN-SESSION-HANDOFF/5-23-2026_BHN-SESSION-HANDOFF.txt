@@ -1,427 +1,257 @@
-==================================================================
-BLACKHOLE NETWORK (BHN) — SESSION HANDOFF
-Last Updated: May 23, 2026
-==================================================================
-
-PURPOSE
--------
-Read this FIRST at the start of every Claude session.
-It tells Claude what state the project is in, what was done
-last session, and what to work on next.
-The Big 3 docs (INFRASTRUCTURE-REFERENCE, DATA-FLOW-BLUEPRINT,
-SECURITY-PROTOCOL) are the deep reference — this doc is the
-quick-start that tells you where we left off.
-
-==================================================================
-SECTION 1 — NETWORK SNAPSHOT (current state)
-==================================================================
-
-NODE          IP (PUBLIC)       TUNNEL IP   STATUS
-LA Hub        149.28.91.100     10.8.0.1    OPERATIONAL (hub, PG, n8n,
-                                            HORIZON, Grafana)
-Frankfurt     192.248.187.208   10.9.0.2    DECOMMISSIONING — configs
-                                            archived, Vultr shutdown pending
-New Jersey    140.82.4.35       10.8.0.5    OPERATIONAL (trading stack live,
-                                            Strat 13 only active)
-Hillsboro     5.78.94.237       10.8.0.6    OPERATIONAL (tinyproxy + Tor,
-                                            SSH hanging — recheck next session)
-
-WireGuard Mesh (hub-and-spoke, LA is hub):
-  Operator PC:     10.8.0.2   PSK: ✅
-  Operator Laptop: 10.8.0.7   PSK: ✅
-  NJ:              10.8.0.5   PSK: ❌ pending
-  Hillsboro:       10.8.0.6   PSK: ✅
-  Frankfurt:       10.9.0.2   PSK: ✅ (decommissioning)
-
-Tor Relays:
-  BHNFornaxEU1  → Frankfurt   LIVE (decommissioning)
-  BHNHeliosUS3  → Hillsboro   Bootstrapping
-
-CONSOLE TERMINOLOGY (STRICT):
-  REMOTE BROWSER WINDOW = noVNC web console (Vultr/Hetzner)
-  PC LA CONSOLE         = ssh root@149.28.91.100
-  PC NJ CONSOLE         = ssh -p 2222 root@140.82.4.35  ← port 2222
-  PC Hillsboro          = ssh root@5.78.94.237
-  LA→NJ:                ssh nj        (from LA)
-  LA→Hillsboro:         ssh hillsboro (from LA)
-  Frankfurt:            DECOMMISSIONING — do not SSH unless needed for
-                        shutdown checklist
-
-==================================================================
-SECTION 2 — LAST SESSION COMPLETED (May 22-23, 2026)
-==================================================================
-
-INFRASTRUCTURE:
-  ✅ All 8 n8n workflows exported, renamed, committed to repo
-  ✅ collaboration-model.md committed
-  ✅ Git email fixed (noreply address)
-  ✅ BHN-BLACKBOX Cryptomator vault created (mounts as E:\)
-  ✅ Backup pipeline LIVE and tested:
-       bhn-backup-produce.sh on LA (/usr/local/sbin/)
-       bhn-vault-sync.ps1 on PC (C:\BHN\)
-       WMI trigger registered — vault unlock → auto backup
-       Debounce: 6 hours — end-to-end test PASSED
-  ✅ Egress audit completed and committed
-       LA lockdown DESIGNED but NOT EXECUTED
-       GAP-2: ~15 systemd units bypass proxy via /etc/bhn-trading/env
-  ✅ README refreshed — Frankfurt decommission, BTEH, domain model
-  ✅ Legacy EVENT HORIZON VPN folder deleted from repo
-  ✅ Ecosystem document defined:
-       3 domains: FinancialBHN, PokemonBHN, SecurityBHN
-       All repos mapped and defined
-       BHNwave confirmed as standalone BHN project
-
-HORIZON:
-  ✅ HORIZON fully operational — correct BHN identity
-  ✅ System prompt updated — all behavioral constraints active:
-       Query discipline (≤2 DB queries per response)
-       Memory discipline (no retry on empty)
-       Channel awareness (SMS brevity)
-       Column integrity (no fabrication)
-       Tool discipline
-       Integrity (no lying/assuming, DB first)
-       Trust ladder Tier 1/2/3
-       Confirmation protocol
-  ✅ Postgres Chat Memory wired (n8n_chat_histories table)
-       Known issue: permission error — ehuser grant needed
-  ✅ bhn-horizon.json re-exported and committed
-
-POKEMONBHN SCHEMA (major):
-  ✅ tokenized-market-schema.sql applied to live DB:
-       courtyard_listings (40 cols)
-       courtyard_sales (40 cols)
-       collector_crypt_sales (40 cols)
-       tokenized_arbitrage_signals (23 cols)
-  ✅ seller_profiles table created and applied
-  ✅ ebay_listings + sold_listings ALTERed (10 new columns):
-       auction_end_time, first_seen_at, last_seen_at,
-       original_item_id, relist_count, original_listed_at,
-       obo_min_price, cert_number, location, watchers
-  ✅ collectibles-data-standard.md updated — §10 added
-  ✅ PSA + CGC workflows fixed — Gixen disconnected
-  ✅ BGS workflow built, tested (41 passed grade filter,
-       17 logged to EventHorizon), committed
-  ✅ SGC workflow built, tested (7 logged, 2 runoff), committed
-  ✅ All 4 workflows scheduled and staggered:
-       CGC: every 30min
-       PSA: every 30min
-       BGS: :30 past every hour
-       SGC: :45 past every hour
-
-TOKENIZED MARKET STRATEGY:
-  ✅ Courtyard.io (Polygon) researched and validated
-  ✅ Collector Crypt (Solana) researched — $165M/month volume
-  ✅ Arbitrage model validated:
-       Buy underpriced on eBay → vault at Brink's → tokenize →
-       sell on Courtyard/Collector Crypt at 0% fees
-       Buyback floor: 85-90% of fair market value
-  ✅ Both blockchains confirmed scrapeable (public)
-  ✅ Schema built and applied to eventhorizon
-
-COMMITS TONIGHT (10 total):
-  4c63417  chore(migrate)    — EH legacy folder import
-  107c594  feat(backup)      — backup scripts
-  cc6cef9  feat(operator)    — HORIZON system prompt BHN identity
-  8dd76e9  docs(readme)      — 6-resolution README refresh
-  b5f3fbc  fix(backup)       — n8n docker exec
-  d299a21  fix(backup)       — ASCII fix
-  bf4fdab  feat(backup)      — watch-vault.ps1 WMI trigger
-  07d2d7a  config(backup)    — debounce 6h
-  ce54b5c  feat(pokemonbhn)  — tokenized-market schema + std §10
-  84e71ea  feat(pokemonbhn)  — seller_profiles + ebay ALTERs + std sync
-  75beade  feat(pokemonbhn)  — VINTAGE-BGS + VINTAGE-SGC workflows
-  bedcd1c  feat(pokemonbhn)  — BGS + SGC committed to repo
-
-==================================================================
-SECTION 3 — PENDING TASKS (PRIORITY ORDER)
-==================================================================
-
-IMMEDIATE (next session — do these first):
-
-  1. Frankfurt shutdown — execute decommission checklist:
-       - Export any remaining configs not in repo
-       - Remove Frankfurt peer from LA wg0
-       - Remove Frankfurt UFW egress rules on LA
-       - Update repo (peer registry, README, data flow blueprint)
-       - Destroy Frankfurt VPS in Vultr console
-       - Confirm billing updated
-
-  2. Fix Postgres Chat Memory permissions (HORIZON):
-       GRANT INSERT, UPDATE, SELECT ON n8n_chat_histories TO ehuser;
-       Test HORIZON chat — should store session memory
-
-  3. Gixen credentials exposed in PSA workflow JSON:
-       - Rotate Gixen password immediately
-       - Move credentials out of URL into n8n credential store
-       - Re-export PSA, BGS, SGC workflow JSONs
-       - Consider git filter-repo to scrub history
-
-  4. Fix vector dimension mismatch (315 vs 384):
-       Check embed model on LA, verify pgvector index dimensions
-
-  5. LA egress lockdown — execute (operator present required):
-       Run deploy.sh Phase A-G per egress audit doc
-       Fix GAP-2: add proxy block to /etc/bhn-trading/env
-       Fix SMTP: add ConnectPort 587 before lockdown
-
-  6. NJ WireGuard PSK — complete mesh security
-
-  7. Hillsboro SSH — diagnose and fix hanging connection
-
-  8. OpenSea API key:
-       curl -X POST https://api.opensea.io/api/v2/auth/keys
-       Save as BHN-OpenSea-APIKey in Proton Pass
-
-  9. Courtyard + Collector Crypt accounts:
-       - Sign up Courtyard.io, complete KYC
-       - MetaMask wallet (Polygon) for Courtyard
-       - Phantom wallet (Solana) for Collector Crypt
-       - Sign up Collector Crypt
-
-NEXT PRIORITY:
-
-  10. Build Courtyard data collector:
-        OpenSea API → courtyard_listings + courtyard_sales
-        Pull price history + market value per card
-        n8n workflow polling every 30min
-        Save as BHN-OpenSea-APIKey in Proton Pass
-
-  11. Build Collector Crypt data collector:
-        Magic Eden API → collector_crypt_sales
-        n8n workflow polling every 60min
-
-  12. BlackboxBidder Phase 1 — sniping engine:
-        eBay API direct bid placement (last 3-10 seconds)
-        Reads from tokenized_arbitrage_signals
-        Writes results back to eventhorizon
-        Test on real auctions manually first
-        Drop Gixen entirely — build direct
-
-  13. seller_profiles population script:
-        Build collector populating seller_profiles from
-        existing ebay_listings + sold_listings
-
-  14. HORIZON morning briefing:
-        Daily 8am PT SMS summary
-        Market + trading + Pokemon deals
-
-  15. Macro data expansion:
-        ALTER macro_daily + ~25 new FRED series
-
-BACKLOG:
-
-  16. Sweden node (Bahnhof) — Phase 5 cold standby
-  17. Matrix Synapse (EH Chat) — Phase 4-5
-  18. FINANCIALBHN repo extraction
-  19. TEAM-ROCKET-BHN rename to PokemonBlackhole
-  20. TAG grader — add to master_grade_catalog
-  21. Redis on LA for HORIZON hot memory
-  22. Backup via Tor
-  23. CVE-2026-31431 — full kernel patch all nodes
-  24. BTEH first audit pass
-  25. BGS workflow — verify "Best of Game" set name
-       maps correctly to master_set_catalog
-
-==================================================================
-SECTION 4 — KEY SERVICES & ACCESS
-==================================================================
-
-VPN-ONLY ENDPOINTS (operator PC must be on WireGuard):
-
-  n8n:              http://10.8.0.1:5678
-  HORIZON chat:     http://10.8.0.1:5678/webhook/ec1592c6-8715-4b0f-8ee8-5bc02f551a27/chat
-  Grafana:          http://10.8.0.1:3000
-  Wallos:           http://10.8.0.1:8090
-  PostgreSQL:       psql -h 10.8.0.1 -U <role> -d eventhorizon
-  tinyproxy:        http://10.8.0.6:8888  (LA egress proxy, WG only)
-
-CRYPTOMETER VAULT (operator PC):
-
-  Config name:      BHN-BLACKBOX (Cryptomator)
-  Ciphertext at:    D:\BHN-BLACKBOX\BHN-BLACKBOX\
-  Unlocks to:       E:\
-  Sentinel:         E:\.bhn-vault-identity (do not delete)
-  Watcher:          C:\BHN\watch-vault.ps1  (scheduled task at user logon:
-                                              BHN-Vault-Sync-Watcher)
-  Sync script:      C:\BHN\bhn-vault-sync.ps1
-  Logs:             E:\_backup-log\sync-{TS}.log + watch-vault.log
-  Env var:          BHN_LA_HOST=root@10.8.0.1  (User scope, registry-persisted)
-
-KEY POSTGRES ROLES (on eventhorizon DB):
-
-  agent_reader      SELECT on all PokemonBHN tables (HORIZON's read role)
-  ehuser            SELECT (operator's read role)
-  grafana_reader    SELECT (Grafana dashboards)
-  log_shipper       INSERT (scraper writers) + UPDATE (listings only)
-  n8n_user          INSERT/UPDATE on signal + dimension tables
-
-  ⚠️  ehuser MISSING grant on n8n_chat_histories — fix per pending task #2
-
-SCHEMA FILES (current shape of PokemonBHN data domain):
-
-  sql/pokemonbhn-master-set-catalog-schema.sql
-  sql/tokenized-market-schema.sql              (4 tokenized tables)
-  sql/seller-profiles-schema.sql               (cross-platform seller dim)
-  sql/ebay-listings-alterations.sql            (10 new cols on ebay + sold)
-
-LIVE TABLES SUMMARY (PokemonBHN):
-
-  master_card_catalog            637 cards / 1,354 variant rows (8 sets)
-  master_set_catalog             8 sets (Base, Fossil, Jungle, Team Rocket,
-                                 Gym Heroes, Gym Challenge, Wizards Black
-                                 Star Promos, Best of Game)
-  master_grade_catalog           88 raw_labels across CGC/PSA/BGS/SGC
-  master_grading_criteria_catalog  4 condition factors per grader
-  pop_reports                    grader-agnostic population counts
-  sold_listings                  eBay sold comps (29 cols)
-  ebay_listings                  active eBay listings (36 cols)
-  courtyard_listings             active Courtyard NFTs (40 cols)
-  courtyard_sales                completed Courtyard sales (40 cols)
-  collector_crypt_sales          completed CC sales (40 cols)
-  tokenized_arbitrage_signals    cross-market flags (23 cols)
-  seller_profiles                cross-platform seller dim (20 cols)
-
-REPO PATH ALIASES:
-
-  LA repo path                   (set BHN_REPO_PATH on LA before producing
-                                  bhn-repo-snapshot artifact)
-  Operator-PC repos              D:\GITHUB REPOSITORY\
-    - BLACKHOLE-NETWORK          this repo
-    - BTEH-Beyond-The-EventHorizon (SecurityBHN audit framework)
-    - TEAM ROCKET BHN            (PokemonBHN game)
-    - BHNWAVE                    (StandaloneBHN — NOT a git repo, skipped by sync)
-    - HARPUR HERALDRY FAMILY PROJECT  (NOT a BHN project — explicitly excluded)
-
-SCRATCH DOCS (not committed; review before next session if relevant):
-
-  infrastructure/docs/audit/org-structure-thoughts/
-    - README-PROPOSAL-2026-05-22.md
-    - vault-backup-design-2026-05-22.md
-    - egress-audit-2026-05-22.md
-    - legacy-files-salvaged/BHN-HORIZON-ROADMAP.txt
-    - BHN DOMAIN AND ORG.txt
-
-==================================================================
-CC1 SESSION ADDENDUM — 2026-05-23 (late session)
-==================================================================
-
-OWNER: CC1 (per parallel-cc-execution-rules.md, committed this session)
-
-COMMITS PUSHED THIS SESSION (5 total, on origin/main):
-  50cc9ba  docs(infra): add parallel CC execution rules
-  4e4ab7b  chore(infra): complete Frankfurt decommission — archive stale docs
-  f9d7c77  sql(horizon): backfill 7 missing agent_reader grants
-  b137c21  docs(security): disable + wipe DNS qname logging — privacy finding resolved
-  ccf495e  feat(horizon): sync repo workflow to live D2groJaxtihbfV3f
-                          + add 3-tier memory section to system prompt
-
-WHAT CHANGED (state to update in SECTION 1 above next session):
-
-  Frankfurt
-    - Docs moved to infrastructure/archive/frankfurt/
-      (bhn-frankfurt-exit-routing, bhn-frankfurt-scoping,
-      frankfurt-exit-backlog)
-    - bhn-network-data-flow.md rewritten to current 3-node topology
-      (LA / NJ / Hillsboro). FRA traffic classes 2+3+4 removed.
-    - CC2 confirmed server-side mesh cleanup complete (Tor MyFamily
-      reduced to BHNHeliosUS3 + BHNNebulaUS2).
-    - LEFTOVER (per CC2 finding, not blocking): FRA egress peer +
-      table-100 policy route still present on LA wg0. Operator-decision
-      item; held until Vultr destroy.
-
-  HORIZON
-    - Stale-workflow blocker RESOLVED. Active workflow on live n8n is
-      D2groJaxtihbfV3f (HORIZON identity, 3-domain knowledge, all
-      tools wired, Frankfurt-decommissioned constraint). The old
-      fTFjaf2Q2aQrOPsY is inactive — DO NOT run scripts/horizon-fix.sh.
-    - 7 agent_reader SELECT grants backfilled (nodes, node_logs,
-      master_card_catalog, master_grade_catalog,
-      master_grading_criteria_catalog, sold_listings, filter_rejections).
-      sql/horizon-agent-reader-grants-verify.sql updated to keep them
-      in the canonical list.
-    - n8n-workflows/bhn-horizon.json resynced from live + patched with
-      a new MEMORY ARCHITECTURE section (Redis hot tier /
-      conversation_sessions durable / memories semantic). Repo file is
-      READY for operator re-import — does NOT change live HORIZON yet.
-
-  Redis (HORIZON working-memory tier)
-    - Already deployed 9d ago, healthy, bound to 10.8.0.1:6379 (VPN only),
-      conversation_sessions schema applied. UFW correct.
-    - GAP: n8n credential not yet added. See "Operator actions" below.
-
-  DNS privacy
-    - dnscrypt-proxy [query_log] disabled; service restarted; resolution
-      verified.
-    - /var/log/dnscrypt-proxy/query.log (8.1 MiB) + rotated .gz wiped.
-    - dns_query_log PG table TRUNCATE'd (was 8,788 rows at execution).
-    - /etc/cron.d/bhn-dns-log-collector removed (archived under
-      /root/bhn-backups/ on LA).
-    - Suricata pcap-log was already disabled; confirmed.
-    - Out-of-scope (flagged): /var/log/dnscrypt-proxy/nx.log
-      (158 KiB NXDOMAIN qnames) still being written.
-
-  Backups + disk
-    - Audited; both healthy. eh-backup runs daily 02:30 UTC (restic,
-      AES-256, retention 7d/4w/6m). Last successful run today.
-      pg_dump verified non-empty (~4.4 MiB on 5/23).
-    - NVMe hot tier 1% used, HDD cold tier 1% used, root 39% used.
-      eh-purge cron runs cleanly; 80% threshold never hit.
-
-  Pokemon workstreams (WS2 + WS3 in CC1 brief)
-    - NO CODE CHANGES. Brief's premise was outdated:
-      - All 4 vintage eBay sold-comp workflows already built, active,
-        and writing standard-compliant rows
-        (PSA: 430 sold rows, CGC: 215, BGS: 6, SGC: 0 — active).
-      - Gym Heroes + Gym Challenge already in master_set_catalog
-        (132 cards each), already in master_card_catalog
-        (132 distinct card_numbers × 2 editions each).
-      - CGC pop reports already running for both Gym sets via
-        bhn-cgc-pop-refresh.timer (Gym Heroes: 1683 rows,
-        Gym Challenge: 1755 rows, last refresh 5/19).
-    - SURFACED STANDARD DRIFT (not fixed — operator-decision):
-      - print_variant column missing on sold_listings + ebay_listings
-        (standard §3.3 mandates it on observation streams; §9 shows
-         "variant SPLIT ✅ done 2026-05-21" but that landed on the
-         dimension only, not the facts).
-      - grade_reject_log table never built (standard §4 mandates it
-        as the destination for unknown-grade rows; §9 already flags
-        as "not built — loaders are all-or-nothing").
-
-OPERATOR ACTIONS OUTSTANDING (sorted by reversibility cost):
-
-  1. Vultr → destroy EH|VPS-FRANKFURT-EU1 (192.248.187.208) to
-     stop $12/mo billing. (Server-side cleanup already done.)
-
-  2. n8n UI → add credential "EH HORIZON Redis (LA)":
-       Type: Redis
-       Host: 10.8.0.1
-       Port: 6379
-       Password: from Proton Pass "EH-Redis-Password"
-       Database: 0
-       SSL: off
-
-  3. n8n UI → re-import n8n-workflows/bhn-horizon.json (so the new
-     MEMORY ARCHITECTURE prompt is live). Steps in ccf495e commit body.
-     ⚠ Do NOT run scripts/horizon-fix.sh — it targets the OLD inactive
-     workflow ID and would resurrect the stale prompt.
-
-  4. CC2 sync — answer CC1's signal block re Strat 13:
-       trading_strategies.status = 'active' since 2026-05-15 (manual reset)
-       signals_log: empty for strat_13
-       circuit_breaker_log: 10x system_halt on 2026-05-19 03:05–03:50
-         due to JPST recon (alpaca=-3920 vs pg=980 vs nj_cache=980)
-       paper_trades row 2026-05-22 13:30 JPST buy 244 @ $0.00 entry_price
-         — broken-write or new news?
-     Need to confirm whether 'active' = actually running, or stale flag.
-
-  5. nx.log decision — disable [nx_log] in dnscrypt-proxy.toml and wipe
-     the file if same treatment as query.log is desired.
-
-UNCOMMITTED / SCRATCH (left as-is, not in CC1's path ownership):
-  infrastructure/docs/audit/org-structure-thoughts/  (operator scratch)
-  CC-SESSION-BRIEF-2026-05-23.txt + CC2-SESSION-BRIEF-2-2026-05-23.txt
-    (the briefs themselves; intentionally untracked per usual pattern)
-
-==================================================================
-END OF HANDOFF
-==================================================================
+================================================================================
+BHN SESSION HANDOFF
+Session date: 2026-05-23 (Saturday)
+Operator: Fletch / Hayden Harper | GitHub: FletchEm31
+================================================================================
+
+This handoff supersedes prior. Read this FIRST next session. Save to:
+D:\GITHUB REPOSITORY\BLACKHOLE-NETWORK\infrastructure\docs\BHN session updates\BHN-SESSION-HANDOFF\
+
+
+================================================================================
+🚨 CRITICAL — DO BEFORE MONDAY MARKET OPEN (13:30 UTC / 6:30 AM PST)
+================================================================================
+STRAT 13 IS ARMED TO TRADE MONDAY, UNVALIDATED, WITH KILLSWITCH BYPASSED.
+
+CC2 confirmed (FIN-006):
+- strat_13_rsi_intraday shows status='active' AND halted=true, BUT should_run()
+  IGNORES the halted boolean — so the killswitch is effectively OFF. Strat 13
+  WILL trade Monday 13:30 UTC.
+- Strat 13 is MISSING from rules_schema.py STRATEGY_SCHEMAS (only strat_1-8
+  defined). validate_rules.py silently skips it across all 4 validation layers.
+  It is running with ZERO field-level validation on RSI thresholds, broker key,
+  ticker, or any parameter.
+
+ACTION (pick one before market open):
+  a) Properly halt Strat 13, OR
+  b) Fix should_run() to honor the halted boolean, OR
+  c) Add strat_13_rsi_intraday to rules_schema.py + STRAT_NUMBER/SMS_NAME_MAP
+     in trading_core.py so it validates.
+Do NOT let it trade unvalidated with a non-functional killswitch.
+
+
+================================================================================
+WHAT GOT DONE THIS SESSION
+================================================================================
+
+FRANKFURT DECOMMISSION (CC1 + CC2)
+- All mesh-side FRA peers / BHNFornax / Tor refs removed from LA wg0, NJ,
+  Hillsboro. Frankfurt docs archived to infrastructure/archive/frankfurt/.
+- 3 commits pushed to BLACKHOLE-NETWORK earlier (parallel-cc rules, Frankfurt
+  archive, agent_reader grants backfill).
+- STILL PARKED: the leftover FRA egress peer on LA wg0 (AllowedIPs=0.0.0.0/0,
+  192.248.187.208) + table-100 routing. Removal draft written & approved
+  (Option A — migrate client 10.8.0.8 to Hillsboro). DO NOT EXECUTE until the
+  Vultr VPS is destroyed Monday. Draft at:
+  infrastructure/docs/.../CC2-FRA-REMOVAL-DRAFT-PARKED-2026-05-23.md
+
+DNS PRIVACY FIX (CC1) — COMMITTED b137c21
+- dnscrypt-proxy query_log DISABLED. query.log + rotated .gz wiped.
+- dns_query_log PG table TRUNCATED (8,788 rows of client-IP+qname privacy debt
+  → 0). Broken bhn-dns-log-collector cron archived.
+- NOTE: This is the PRIVACY LOGGING fix. It is SEPARATE from the traffic/data-
+  flow (Frankfurt routing) item, which is still parked (see above).
+- Outstanding sub-item: nx.log at /var/log/dnscrypt-proxy/nx.log (158 KiB of
+  NXDOMAIN qnames) still being written — not addressed this round.
+
+HORIZON (CC1) — COMMITTED ccf495e
+- Confirmed running CURRENT workflow D2groJaxtihbfV3f (not stale "Nathan" one).
+- Identity correct, 3-node topology (Frankfurt decommissioned), 7 agent_reader
+  grants live and exercised.
+- System prompt extended with MEMORY ARCHITECTURE section (Redis hot tier +
+  conversation_sessions durable + pgvector semantic).
+- n8n-workflows/bhn-horizon.json resynced in repo, READY for operator re-import.
+- BTEH-flagged but NOT yet fixed: token logging audit trail (SEC-003/AGENT-003),
+  per-tool rate/cost caps (AGENT-001).
+
+BLACKBOXBIDDER (CC3) — REPO LIVE ON GITHUB
+- FletchEm31/BLACKBOX-BIDDER created (private) + pushed via HTTPS. Root commit
+  633575f, 17 files, 1,401 insertions. Pushed clean (30 objects).
+  Local: D:\GITHUB REPOSITORY\BLACKBOX-BIDDER
+- Phase 1 scaffold only: src/{collectors,fmv,scoring,sellers,dashboard} stubs,
+  sql/ schema design, sql/proposed-bhn-changes/ (CC1-review diffs), config/,
+  docs/{design.md, build-plan.md, brief/}.
+- Guardrails HONORED: no live eBay calls, no SQL applied to eventhorizon, no
+  code in src/, no billing/auth/sniping, read-only on BLACKHOLE-NETWORK.
+- Memory saved (project_blackbox_bidder.md) so future CC inherits Phase 1
+  gating + read-only-on-BHN constraint.
+
+BTEH AUDIT (App Claude)
+- Full BTEH v1.0 README read end-to-end (1,356 lines). It is a genuine
+  professional audit (AWS WA, CIS, NIST CSF/AI RMF, OWASP ASVS+LLM Top 10,
+  STRIDE, CVSS v4.0, DAMA-DMBOK). Has its own multi-instance run model in
+  Appendix B (4 analysis instances + synthesis, run in Project tabs — NOT CC).
+- Finding division written, mapping still-open BTEH findings to CC lanes:
+  BTEH-CC-Remediation-Division-2026-05-23.txt
+- Several v1.0 findings now STALE/RESOLVED: Frankfurt (INFRA-002, SEC-006),
+  dns_query_log (now truncated), HORIZON identity, Redis deployed.
+
+AUDIT FINDINGS (CC1) — REASSURING
+- Backups/disk are HEALTHY (this contradicted the earlier worry — not a crisis):
+  root 39%, NVMe hot tier 1%, HDD 1%. PG db only 106 MB. eh-purge deployed,
+  cron'd every 2 days, last 9 runs all success. 80% threshold untested (never
+  reached). Restore test still recommended (INFRA-007) but no capacity issue.
+
+
+================================================================================
+OPERATOR ACTIONS — MANUAL, CARRY TO MONDAY
+================================================================================
+1. STRAT 13 — fix/halt before 13:30 UTC Monday (see CRITICAL section above).
+2. VULTR DESTROY — EH|VPS-FRANKFURT-EU1 (192.248.187.208). Locked out until
+   Monday. Kills $12/mo. AFTER destroy → unpark CC2's FRA removal draft.
+3. EBAY LETTER — eBay-Commercial-Disclosure-Letter.txt is DRAFTED, not sent.
+   Edit to your voice, send via eBay Developer support. Phase 1 = personal use
+   only; data protected, shared with no one not approved by eBay. Do NOT form
+   LLC or take commercial action until eBay replies on the commercial path.
+4. PUSH CC1 COMMITS — b137c21 + ccf495e (tell CC1 "push" if not already done).
+5. n8n REDIS CREDENTIAL — add in n8n UI: "EH HORIZON Redis (LA)", Redis type,
+   host 10.8.0.1 port 6379, password from Proton Pass EH-Redis-Password, DB 0,
+   SSL off. Required before HORIZON short-term memory works.
+6. HORIZON RE-IMPORT — import n8n-workflows/bhn-horizon.json via n8n UI when
+   ready. ⚠️ Do NOT run scripts/horizon-fix.sh (targets old inactive workflow
+   fTFjaf2Q2aQrOPsY, would resurrect stale "Nathan" workflow).
+7. WIREGUARD KEY ROTATION — the wg0.conf dump exposed the LA hub PrivateKey +
+   all peer PSKs in terminal scrollback. No observable compromise, but rotate
+   when convenient. Backlog, not emergency.
+8. CC3 — answer the 7 Stage-1 design questions (in docs/build-plan.md):
+   (1) DB role: new bbb_writer vs reuse ehuser [rec: new]
+   (2) Vertical scope: WOTC 8 sets only, or extend day 1
+   (3) /fmv stack: Node vs Python
+   (4) Scheduling: cron on LA vs new n8n workflow
+   (5) Backtest source for tuning weights
+   (6) Dashboard auth model [rec: none — WG perimeter]
+   (7) drop BHN-Ecosystem-Overview.txt into the BBB repo (CC3 never got it)
+9. ADD BTEH README to this Claude project's knowledge (only in uploads now) so
+   future sessions work from the real audit, not a description.
+
+
+================================================================================
+DATA PIPELINE FINDINGS (CC2) — DEDICATED SESSION NEEDED
+================================================================================
+Dead/stale collectors, single root cause dated ~May 13 ("May-13 dead cluster"):
+- crypto_market_data, prediction_market_data, alpaca_news: cron firing, ZERO
+  output — broken collector CODE (not target-registry), likely auth/connection.
+- agriculture_prices dead since January; energy/earnings/analyst stale 10-19 days.
+- Maps to BTEH PIPE-003 (silent failure, no dead-letter) + PIPE-004 (no data
+  quality assertions).
+Next-session fix: tail cron logs (journalctl -t CRON --since 2026-05-13 |
+grep bhn-resource-collector), find failure mode, add to table_freshness_targets.
+
+
+================================================================================
+OTHER OPEN BTEH ITEMS (verify/remediate future sessions)
+================================================================================
+- SEC-002/AGENT-006: n8n encryption key backup to Proton Pass (separate from DB);
+  rotate Anthropic key quarterly + set usage cap.
+- INFRA-006: LA egress lockdown (ufw-rewrite.sh lockdown) never run — LA can
+  still make direct 443/587 egress bypassing Hillsboro tinyproxy.
+- DB-006: Redis hardening — confirm bound 127.0.0.1/VPN only + requirepass set.
+- INFRA-004/SEC-001: CVE-2026-31431 mitigated (algif_aead blacklisted) but full
+  kernel patch+reboot pending. NJ first (holds Alpaca creds), needs trading halt.
+- FIN-001/003/004: confirm true NJ trading-stack deployment state (systemd units,
+  rules.json, env).
+- PIPE-002/LEGAL-002: confirm eBay sold-comps pipeline mechanism (API vs scrape)
+  — directly relevant to BBB.
+- Postgres roles: ehuser unknown scope (DB), n8n_user scope review (DB-009),
+  previously-exposed ehuser/log_shipper creds — rotation status unknown.
+
+
+================================================================================
+CURRENT NODE STATUS
+================================================================================
+LA Hub      149.28.91.100 / 10.8.0.1  — PostgreSQL eventhorizon, n8n, HORIZON,
+            Grafana, Redis, Docker. Healthy. DNS logging now OFF.
+NJ          140.82.4.35 / 10.8.0.5 (SSH port 2222) — Alpaca paper trading.
+            Strat 13 armed (SEE CRITICAL).
+Hillsboro   5.78.94.237 / 10.8.0.6 — tinyproxy egress, Tor relay BHNHeliosUS3.
+Frankfurt   DECOMMISSIONED. VPS destroy pending Monday. wg0 egress peer parked.
+
+
+================================================================================
+DELIVERABLES PRODUCED THIS SESSION (save all to handoff folder)
+================================================================================
+- BHN-SESSION-HANDOFF.txt (this file)
+- BTEH-CC-Remediation-Division-2026-05-23.txt
+- BlackboxBidder-Analysis-and-Scope.txt (incl. tiers/pricing/data layer)
+- BHN-Ecosystem-Overview.txt
+- eBay-Commercial-Disclosure-Letter.txt (DRAFT — edit + send)
+- CC3-SESSION-BRIEF-2026-05-23.txt
+Plus committed in repos:
+- CC2-AUDIT-FINDINGS-2026-05-23.md (handoff folder, by CC2)
+- CC2-FRA-REMOVAL-DRAFT-PARKED-2026-05-23.md (handoff folder, by CC2)
+- infrastructure/docs/security/dns-query-logging-disabled-2026-05-23.md (CC1)
+- infrastructure/docs/parallel-cc-execution-rules.md (CC1)
+
+================================================================================
+END HANDOFF
+================================================================================
+
+
+================================================================================
+⚠️ UNVERIFIED — DISPATCHED BUT NOT CONFIRMED THIS SESSION (check next session)
+================================================================================
+These were assigned to CC2 but the loop did NOT close before session end. Do
+NOT treat as "checked." Confirm before relying on any of it:
+
+TRADING / NJ:
+- NJ node health + true trading-stack deployment state (BTEH FIN-001/003/004).
+  Open contradiction: if systemd units/rules.json/env are NOT fully deployed on
+  NJ, how is Strat 13 "active"? Resolve this. Confirm NJ worker alive + Alpaca
+  connection live + SOMETHING actually executing.
+- Strats 1-8 status — not checked this session. Unknown.
+- Strat 13 shares SIGNALS Alpaca account (PA37PRN150AG) with Strat 4 —
+  contaminates clean validation. Flagged earlier, never resolved. Move Strat 13
+  to its own paper account.
+- master_killswitch integrity (FIN-008) — given should_run() ignores halted,
+  verify the killswitch actually halts everything, not just Strat 13.
+
+FINANCIAL / SCRAPER DATA:
+- CONFIRMED dead (CC2): crypto_market_data, prediction_market_data, alpaca_news
+  (cron firing, zero output, broken collector CODE since ~May 13);
+  agriculture_prices dead since Jan; energy/earnings/analyst stale 10-19 days.
+  Needs a dedicated fix session — tail cron logs from May 13, find failure mode.
+- eBay sold-comps pipeline mechanism (API vs scrape) — UNVERIFIED (BTEH
+  PIPE-002). Directly relevant to BBB. Confirm which eBay API/endpoint, auth,
+  rate-limit compliance.
+
+n8n WORKFLOWS — CURRENT STATE:
+- HORIZON workflow (D2groJaxtihbfV3f) is the live active one; identity correct,
+  grants live, system prompt updated + resynced to repo (commit ccf495e).
+  STILL NEEDS: operator re-import of n8n-workflows/bhn-horizon.json via n8n UI,
+  AND the Redis credential added in n8n UI, before short-term memory works.
+- Old inactive workflow fTFjaf2Q2aQrOPsY still present — leave alone. Do NOT run
+  scripts/horizon-fix.sh (it targets the old one).
+- Other n8n workflows (PSA/CGC eBay scrapers, financial collectors) — these are
+  the n8n side of the dead-collector cluster above. Their workflow health was
+  NOT individually audited this session. Verify each writes successfully and
+  uses upsert (BTEH PIPE-007 idempotency) when the pipeline fix session happens.
+- Full n8n workflow inventory + per-workflow last-success audit = part of the
+  BTEH Section 4 (Pipeline) re-audit. Defer to the full audit.
+
+PLAN: Run the FULL BTEH re-audit (Appendix B: 4 analysis instances A/B/C/D +
+SYNTHESIS, in Claude.ai Project tabs — NOT Claude Code) AFTER BlackboxBidder
+ships and AFTER the CCs remediate live state, so v1.1 reflects reality not the
+stale v1.0 baseline. The trading + financial + n8n items above feed Instance B
+(DB+Pipeline) and Instance C (Agent+Code+Financial).
+================================================================================
+
+
+================================================================================
+WS3 CORRECTION — GYM HEROES / GYM CHALLENGE (accurate status)
+================================================================================
+CC1 originally marked WS3 "N/A — already done." That was WRONG. The truth:
+- 1st Edition Gym Heroes + Gym Challenge ARE covered (pre-existing nodes in the
+  4 vintage workflows: bgs/cgc/psa/sgc). CC1 did NOT build these — they already
+  existed.
+- UNLIMITED edition Gym Heroes + Gym Challenge are NOT collected at all. Never
+  built. This is the actual WS3 work, still pending. We are only capturing half
+  the market for these two sets.
+- Minor: node labels say "Gym Heros" (typo, missing 'e') in all 4 files.
+  Cosmetic — search strings use "heroes" correctly so searches work.
+
+PLAN: Build the Unlimited versions next session (~3 hrs out). It's a
+duplicate-and-modify of the existing 1st Edition nodes — same sets, same
+graders, same structure, just Unlimited. 8 new search nodes (2 sets x 4
+graders). Full step-by-step in: WS3-Unlimited-Gym-Gameplan.txt
+DONE = both 1st Edition AND Unlimited collected across all 4 graders.
+================================================================================
