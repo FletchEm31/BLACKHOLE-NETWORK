@@ -1,0 +1,4 @@
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+# CoinGecko top-N every 15 min (free tier rate-limit comfortable at this cadence)
+*/15 * * * *  root  /usr/local/sbin/bhn-coingecko-poller.py >> /var/log/bhn-coingecko-poller.log 2>&1

@@ -1,0 +1,4 @@
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+# Polymarket top active markets, every 10 min 24/7 (no auth)
+*/10 * * * *  root  /usr/local/sbin/bhn-polymarket-poller.py >> /var/log/bhn-polymarket-poller.log 2>&1

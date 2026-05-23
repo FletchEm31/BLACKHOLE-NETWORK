@@ -1,0 +1,4 @@
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+# FMP watchlist quotes, every 15 min during market hours
+*/15 9-16 * * 1-5  root  /usr/local/sbin/bhn-fmp-poller.py >> /var/log/bhn-fmp-poller.log 2>&1

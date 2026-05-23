@@ -1,0 +1,6 @@
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+CRON_TZ=America/New_York
+# USDA: 08:30 ET daily releases, 15:00 ET Fri crop progress; safety-poll +1 min
+30,31 8 * * 1-5  root  /usr/local/sbin/bhn-usda-poller.py >> /var/log/bhn-usda-poller.log 2>&1
+0,1  15 * * 5    root  /usr/local/sbin/bhn-usda-poller.py >> /var/log/bhn-usda-poller.log 2>&1

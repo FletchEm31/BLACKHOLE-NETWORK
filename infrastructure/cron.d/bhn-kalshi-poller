@@ -1,0 +1,4 @@
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+# Kalshi top markets, every 10 min 24/7
+*/10 * * * *  root  /usr/local/sbin/bhn-kalshi-poller.py >> /var/log/bhn-kalshi-poller.log 2>&1

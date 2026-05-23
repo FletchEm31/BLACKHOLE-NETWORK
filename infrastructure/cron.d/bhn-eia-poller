@@ -1,0 +1,6 @@
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+CRON_TZ=America/New_York
+# EIA: 10:30 ET daily petroleum releases, 10:35 ET Wed weekly inventory
+30,31 10 * * 1-5  root  /usr/local/sbin/bhn-eia-poller.py >> /var/log/bhn-eia-poller.log 2>&1
+35,36 10 * * 3    root  /usr/local/sbin/bhn-eia-poller.py >> /var/log/bhn-eia-poller.log 2>&1

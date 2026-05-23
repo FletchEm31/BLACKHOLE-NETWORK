@@ -1,0 +1,4 @@
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+# Tor onionoo consensus pull, daily 07:15 UTC
+15 7 * * *  root  /usr/local/sbin/bhn-tor-metrics-poller.py >> /var/log/bhn-tor-metrics-poller.log 2>&1

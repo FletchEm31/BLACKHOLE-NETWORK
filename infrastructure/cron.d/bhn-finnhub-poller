@@ -1,0 +1,4 @@
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+# Finnhub analyst recs + earnings, daily 06:30
+30 6 * * *  root  /usr/local/sbin/bhn-finnhub-poller.py >> /var/log/bhn-finnhub-poller.log 2>&1

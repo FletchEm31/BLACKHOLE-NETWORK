@@ -1,0 +1,6 @@
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+CRON_TZ=America/New_York
+# FRED releases at 08:00 and 14:00 ET (weekdays); safety-poll +1 min
+0,1  8 * * 1-5  root  /usr/local/sbin/bhn-fred-poller.py >> /var/log/bhn-fred-poller.log 2>&1
+0,1 14 * * 1-5  root  /usr/local/sbin/bhn-fred-poller.py >> /var/log/bhn-fred-poller.log 2>&1

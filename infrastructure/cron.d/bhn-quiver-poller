@@ -1,0 +1,4 @@
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+# Quiver Quantitative congressional trading disclosures, every 15 min 24/7
+*/15 * * * *  root  /usr/local/sbin/bhn-quiver-poller.py >> /var/log/bhn-quiver-poller.log 2>&1
