@@ -30,8 +30,11 @@ label_for_ip() {
         10.8.0.2) echo "Phone" ;;
         10.8.0.4) echo "PC" ;;
         10.8.0.5) echo "NJ" ;;
+        10.8.0.7) echo "Fletch-Laptop-Split" ;;
         10.8.0.6) echo "Hillsboro" ;;
         10.9.0.2) echo "Frankfurt" ;;
+        10.8.0.8) echo "Fletch-Laptop-Full" ;;
+        10.8.0.9) echo "Fletch-Laptop-Full2" ;;
         *)        echo "Unknown-$1" ;;
     esac
 }
