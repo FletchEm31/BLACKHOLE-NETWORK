@@ -2,7 +2,7 @@
 
 Frankfurt was the BHN EU exit node (`BHN|VPS-FRANKFURT-EU1`, public IP `192.248.187.208`). **Decommissioned May 2026** in favor of a simplified single-egress topology — all LA-originated operational/API traffic now exits via Hillsboro tinyproxy (`10.8.0.6:8888`) on Hetzner.
 
-This folder is the resting place for FRA-specific configuration and documentation as the decommission completes. **It is intentionally empty at archive-folder creation time** (2026-05-22) — actual file moves from `infrastructure/docs/` and `infrastructure/services/` will follow as the FRA-specific docs are retired.
+This folder is the resting place for FRA-specific configuration and documentation. Decommission-completion doc moves landed 2026-05-23.
 
 ## What Frankfurt hosted while it was live
 
@@ -15,17 +15,25 @@ This folder is the resting place for FRA-specific configuration and documentatio
 | LibreSpeed (`10.9.0.2:8088`) | EU speedtest endpoint | Offline; no relocation planned |
 | Operator full-tunnel exit (`192.248.187.208`) | Jurisdictional isolation for personal browsing | Off the table — personal browsing rides Hillsboro or stays on local ISP |
 
-## Stale references still pending cleanup
+## Archived contents (2026-05-23 cleanup)
 
-The following docs reference FRA in ways that became wrong with the decommission. They are *expected* to be either moved into this folder, deleted, or rewritten in a follow-up commit:
+Moved into this folder:
 
-- `infrastructure/docs/bhn-frankfurt-exit-routing.md`
-- `infrastructure/docs/bhn-frankfurt-scoping.md`
-- `infrastructure/docs/frankfurt-exit-backlog.md`
-- `infrastructure/docs/bhn-network-data-flow.md` — FRA-specific traffic classes (operator personal browsing, FRA Tor SOCKS); needs trimming
-- Bootstrap policies / module configs referring to `wg1` or 10.9.0.0/24
+- `bhn-frankfurt-exit-routing.md` — FRA MASQUERADE / fwmark routing design
+- `bhn-frankfurt-scoping.md` — FRA role scoping (Tor relay, SOCKS, SearXNG, LibreSpeed)
+- `frankfurt-exit-backlog.md` — open issues and what-not-to-retry on the broken FRA exit
 
-Until those land here, treat them as **historical** — they describe what FRA *did*, not what BHN does today.
+Rewritten in place (not archived) — FRA references stripped, current topology only:
+
+- `infrastructure/docs/bhn-network-data-flow.md`
+
+All files in this folder are **historical** — they describe what FRA *did*, not what BHN does today.
+
+## Known follow-ups (operator-decision items)
+
+CC2's 2026-05-23 server-side cleanup flagged a separate leftover FRA egress peer + table-100 policy route still present on LA's `wg0`. Not blocking — treated as an operator-decision item for a dedicated session.
+
+Bootstrap policies / module configs still referencing `wg1` or `10.9.0.0/24` may exist; sweep in a later commit.
 
 ## Why FRA was cut (one-line)
 
