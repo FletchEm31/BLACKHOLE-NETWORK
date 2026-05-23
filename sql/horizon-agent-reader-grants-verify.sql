@@ -29,7 +29,13 @@ DECLARE
         'corporate_actions', 'alpaca_news', 'options_chain_snapshots',
         'market_bars', 'market_bars_1min', 'market_bars_5min',
         'market_bars_15min', 'market_bars_1hour', 'market_bars_1day',
-        'market_ticks', 'order_events'
+        'market_ticks', 'order_events',
+        -- 2026-05-23 backfill: tables HORIZON's system prompt references but
+        -- agent_reader had no SELECT on (caught by WS5 grant audit).
+        'nodes', 'node_logs',
+        'master_card_catalog', 'master_grade_catalog',
+        'master_grading_criteria_catalog',
+        'sold_listings', 'filter_rejections'
     ];
 BEGIN
     FOREACH tbl IN ARRAY monitoring_tables LOOP
