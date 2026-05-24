@@ -1,0 +1,139 @@
+CC3 SESSION BRIEF — 2026-05-23
+INSTANCE: CC3 (Claude Code Instance 3)
+================================================================================
+
+PARALLEL SESSION RULES — READ THIS FIRST BEFORE DOING ANYTHING
+================================================================================
+
+CC1 and CC2 may be running simultaneously in separate terminals. You are CC3.
+Read infrastructure/docs/parallel-cc-execution-rules.md before proceeding.
+
+CC3 FILE OWNERSHIP (you may WRITE to these):
+  The BLACKBOX-BIDDER repo only (confirm whether it exists or needs creating).
+  If it lives inside BLACKHOLE-NETWORK initially, only files under a clearly
+  separated BlackboxBidder path that CC1/CC2 do not touch.
+
+CC3 FILES READ-ONLY (read for reference, do NOT modify):
+  Everything in BLACKHOLE-NETWORK — read the existing eBay OAuth flow, the
+  sold-comps pipeline, scrapers, and schemas to REUSE them. Do not edit them.
+
+CC3 NODE OWNERSHIP:
+  None this session. This is design + scaffolding work. No live server changes.
+
+CC3 DB OWNERSHIP:
+  Read-only on eventhorizon for understanding existing schemas. Propose new
+  BBB schema as SQL files for review — do NOT apply to live DB this session.
+
+SHARED RESOURCES:
+  git — if creating the BLACKBOX-BIDDER repo, follow the GitHub rule: provide
+  Summary AND Description before any commit, repo creation, or push.
+
+IF YOU DETECT A CONFLICT WITH CC1 OR CC2:
+  STOP. Output "CONFLICT DETECTED: [what and why]". Wait for operator.
+
+================================================================================
+READ THESE TWO DOCUMENTS FIRST — IN THIS ORDER
+================================================================================
+
+1. BHN-Ecosystem-Overview.txt
+   Full operation context. Shows where BlackboxBidder fits (PokemonBHN domain,
+   own repo, reads/writes eventhorizon). Read this to understand the whole BHN
+   operation before touching BBB.
+
+2. BlackboxBidder-Analysis-and-Scope.txt
+   The corrected, de-risked build scope. Legal posture, what is cleared vs
+   gated, the Phase 1 build, the product/pricing vision, and the data-
+   intelligence guardrails. This supersedes the optimistic v2 gameplan where
+   they conflict.
+
+Both are in: infrastructure/docs/BHN session updates/BHN-SESSION-HANDOFF/
+
+================================================================================
+THE GOLDEN RULE FOR THIS PROJECT
+================================================================================
+
+Build ONLY what is cleared. Phase 1 = personal-use price intelligence engine.
+Everything commercial (billing, multi-user, public launch) and the sniping
+engine are GATED behind eBay approval. The operator has engaged eBay directly
+and is awaiting decisions. Do not build ahead of permission.
+
+NEVER:
+  - Store or proxy user eBay credentials server-side.
+  - Build automated bid-firing (gated; will be browser-extension model only).
+  - Build billing, Stripe, or multi-user accounts (gated on commercial approval).
+  - Make live eBay API calls this session beyond what already works for the
+    operator's personal/existing pipeline.
+
+================================================================================
+THIS SESSION'S ACTUAL TASK: DESIGN + SCAFFOLD PHASE 1
+================================================================================
+
+Mode: design and scaffold. Effort level HIGH is justified (this is
+architecture, not pure execution). Produce a build plan and the code structure;
+do not make live eBay calls or apply schema to the live DB yet. The operator
+flips on live API usage once eBay Marketplace Insights access is approved.
+
+STEP 1 — Read and understand what already exists.
+  Review the existing eBay OAuth flow, the n8n sold-comps and active-listing
+  workflows, the scrapers, and these schemas in eventhorizon:
+  ebay_listings, sold_listings, seller_profiles, master_card_catalog,
+  master_grade_catalog, pop_reports, and the tokenized tables
+  (courtyard_listings, courtyard_sales, collector_crypt_sales,
+  tokenized_arbitrage_signals).
+  Goal: REUSE these. Do not rebuild what exists.
+
+STEP 2 — Confirm repo structure with operator.
+  Is BLACKBOX-BIDDER its own repo (recommended, per ecosystem model) or does it
+  start inside BLACKHOLE-NETWORK? Ask the operator before creating anything.
+
+STEP 3 — Propose the Phase 1 architecture (for operator review, not build yet).
+  A design doc covering:
+  - Generalized sold-comps collector (extend existing PokemonBHN pipeline to
+    any category/keyword, 90-day rolling window).
+  - FMV engine (per-item percentile model: median, 25/50/75/90th, condition/
+    grade weighting, sample-size confidence scoring, trend detection).
+  - Deal scoring (0-100: price-vs-FMV + seller quality + listing quality;
+    STRONG BUY 80+, FAIR 50-79, PASS <50; suggested max bid = FMV x target %).
+  - Seller cancellation/behavior tracker (public-data only: early-end detection,
+    relist-higher detection, rolling 90-day cancellation rate). Frame as buyer
+    transparency, not retaliation.
+  - Simple personal dashboard (single-user, VPN-only, functional not fancy).
+  - Schema design: capture per-user snipe/watch data PRIVATE by default, in a
+    structure that COULD later support anonymized aggregation — but build NO
+    aggregation-product, NO cross-user exposure, NO data-sale capability now.
+
+STEP 4 — Scaffold the code structure.
+  Set up the project skeleton (directories, module stubs, config templates) so
+  the engine can be built out once eBay access is confirmed. Real structure,
+  no live API calls yet.
+
+STEP 5 — Produce a Phase 1 build plan + open questions for the operator.
+  What gets built in what order once eBay approves, what decisions the operator
+  still needs to make, and a clean summary.
+
+================================================================================
+GATED — DO NOT BUILD THIS SESSION (for context only)
+================================================================================
+
+  - Sniping/bid-firing engine (browser-extension model, gated on eBay approval)
+  - Multi-user accounts, registration, auth
+  - Stripe billing, Free/Basic/Pro tiers
+  - Public website or app
+  - Aggregate demand-intelligence product layer (gated on eBay commercial
+    agreement + explicit user consent + anonymization architecture)
+  - Multi-region snipe execution (and NJ + Hillsboro only — NEVER Frankfurt,
+    which is decommissioned)
+
+================================================================================
+NOTES
+================================================================================
+
+  - BlackboxBidder is a PokemonBHN-domain project. Reads/writes eventhorizon on
+    LA via WireGuard, same pattern as PokemonBlackhole and the scrapers.
+  - Do NOT reference Frankfurt as a live node — it is decommissioned.
+  - Reuse, don't rebuild. The eBay OAuth, sold-comps pipeline, seller filtering,
+    and schemas already exist. Adapt them.
+  - This is design + scaffold this session. The operator confirms scope before
+    you write application code, and flips on live eBay calls only after
+    Marketplace Insights access is approved.
+

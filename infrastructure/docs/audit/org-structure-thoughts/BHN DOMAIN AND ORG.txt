@@ -1,0 +1,50 @@
+
+
+
+BLACKHOLE-NETWORK The hub, servers, and infrastructure. LA brain, Frankfurt, NJ, Hillsboro. All backend code, data collection, storage, and HORIZON AI live here. eventhorizon is the master database.
+
+A privacy-focused personal infrastructure platform built on WireGuard with deep defense-in-depth security, AI-powered operations, and algorithmic trading. Single-operator network — no customers, no public service offering. Personal infrastructure only.
+Note: Repo renamed May 2026 from EventHorizon VPN to Blackhole Network. Legacy identifiers (eventhorizon DB, eventhorizonvpn.com, eh- script paths, n8n credential names) are intentionally preserved as live-system identifiers until a coordinated migration session.*
+Infrastructure — Four Nodes:
+
+LA Hub (US1) — The brain. Hosts PostgreSQL eventhorizon (master database for all domains), n8n automation, HORIZON AI agent, and Grafana dashboards. All data across every domain is collected and stored here. VPN-only access to all services.
+Frankfurt (EU1) — EU exit node. Runs Tor middle relay (BHNFornaxEU1), LibreSpeed speed test endpoint, and SearXNG private search. EU-jurisdiction traffic exits here.
+New Jersey (US2) — Dedicated trading execution node. Runs all Alpaca paper trading strategies. Connects directly to Alpaca API. Pushes results back to LA via WireGuard tunnel.
+Hillsboro (US3) — Primary egress proxy node. Runs tinyproxy (all LA outbound API traffic routes through here) and Tor middle relay (BHNHeliosUS3). Hides LA's identity from external services.
+
+Network & Routing:
+All four nodes are connected in a WireGuard hub-and-spoke mesh — LA is the hub, all other nodes are peers. All inter-node traffic is encrypted via WireGuard tunnels. PSK (pre-shared keys) applied to all peers for quantum-resistant protection. Operational traffic (API calls, collectors, HORIZON) routes outbound through Hillsboro tinyproxy. Tor relay traffic runs independently on Frankfurt and Hillsboro. Inbound webhooks (Twilio, n8n) arrive directly at LA. NJ connects directly to Alpaca — trading traffic never routes through the proxy.
+
+
+THE DOMAIN MODEL
+BHN has three data domains plus the core platform. Each domain has its own tables, scripts, and services but shares the same infrastructure and eventhorizon database. These domains represent all the backend development to support any activity, project, or repo related to that category: SecurityBHN, FinancialBHN, PokemonBHN
+
+SecurityBHN - DOMAIN ONE
+All backend development supporting defense, monitoring, and telemetry across all nodes — security events, anomalies, fail2ban, CrowdSec, Suricata, node health. Directly stored and organized within the BLACKHOLE-NETWORK repo because at the end of the day it is the core function of infrastructure protection and management. At the end of the day this is the backend that supports any security activity, project, or repo under the BHN umbrella.BLACKHOLE-NETWORK, BTEH-Beyond-The-EventHorizon (audit layer)
+
+SecurityBHN Projects
+BTEH — Beyond The EventHorizon (repo: BTEH-Beyond-The-EventHorizon)
+A comprehensive system-wide audit protocol covering the entire BHN ecosystem. 10 sections: Infrastructure Audit, Security Audit, Database Audit, Workflow & Data Pipeline Audit, AI Agent Audit (HORIZON), Code Quality & Efficiency Audit, Financial & Trading Systems Audit, Legal & Compliance Audit, Consumer Application Audit (TEAM-ROCKET-BHN), Future Architecture & Scalability Review. Plus 4 appendices covering scoring rubrics, multi-instance Claude execution guide, recurring audit cadence, and technical glossary. The governance and audit layer for everything BHN touches.
+
+
+FinancialBHN - DOMAIN TWO
+All backend development supporting anything financial — trading, market intelligence, macro data, strategy execution. Currently collected and stored within BLACKHOLE-NETWORK repo. Should be extracted into its own repo. At the end of the day this is the backend that supports any financial activity, project, or repo under the BHN umbrella.BLACKHOLE-NETWORK (currently) → FINANCIALBHN (extracting to new repo)
+
+FinancialBHN Projects
+FINANCIALBHN (extracting from BLACKHOLE-NETWORK → new repo)
+The trading and financial intelligence engine. Algorithmic paper trading via Alpaca across 3 accounts ($150k total capital) on the NJ node. Collects macro data (FRED), market data (ETFs), sentiment, earnings, analyst ratings. 6 Grafana dashboards. Currently lives inside BLACKHOLE-NETWORK — should be its own repo. All data stored in eventhorizon on LA.
+
+PokemonBHN - DOMAIN THREE
+All backend development supporting anything Pokemon-related — graded card market data, population reports, eBay listings, sold comps, bidding tools. At the end of the day this is the backend that supports any Pokemon activity, project, or repo under the BHN umbrella.BLACKHOLE-NETWORK/scrapers, PokemonBlackhole (rename from TEAM-ROCKET-BHN), BLACKBOX-BIDDER (new)
+
+PokemonBHN Projects
+PokemonBlackhole (repo: TEAM-ROCKET-BHN — rename pending)
+A GBA-style Pokemon FireRed/LeafGreen battle interface built on top of real Pokemon card market intelligence. When HORIZON detects a card deal alert, it triggers a full Pokemon battle cutscene. The seller becomes your rival trainer, the card is the Pokemon, the HP bar is deal quality (listed price vs. market value), the level is the card grade, the trainer badge is the grading company. Catching the Pokemon = buying the card. Reads from eventhorizon — master_card_catalog, ebay_listings, pop_reports, sold_listings. Consumer-facing frontend for PokemonBHN data.
+
+BlackboxBidder (repo: BLACKBOX-BIDDER — new)
+A desktop application for Windows and Mac that automatically places last-second bids on eBay auctions — and unlike every existing tool, tells you what an item is actually worth before you bid a dollar. Three things in one product: (1) Snipe engine — fires bids from 3 global servers simultaneously in the last 3–10 seconds of any eBay auction, your computer doesn't need to be on. (2) Price intelligence — pulls 90 days of real completed sales to calculate fair market value on any item, shows a deal score so you know instantly whether the current price is a steal, fair, or overpriced. (3) Reseller toolkit — tracks cost basis, landed cost (shipping + fees + tax), and net margin on every item you win. Starting with the Pokemon graded card market. Pulls and stores data in eventhorizon under PokemonBHN. Replaces the broken Gixen integration.
+
+
+Standalone BHN Projects
+BHNwave (repo: BHNwave)
+A fully-offline, beep-tone cipher language. One self-contained HTML file per app — no dependencies, no internet, no tokens, no cost. Type a message → encode it as tones → transmit/record/share → decode it back to text → optionally speak it aloud. Includes Direct and Encrypted modes, 5 sound profiles, sophistication tiers (Plain / 33% / 66% / 99.99%), a 197-word auto-mixed word codebook, and an offline passphrase/secret generator. The official voice profile is B · Modem Chatter (fast bursts) at 33% sophistication. Part of the BHN brand — not tied to eventhorizon data or any other domain.

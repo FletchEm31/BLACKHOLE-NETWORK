@@ -1,0 +1,234 @@
+================================================================================
+HORIZON AI — FULL ROADMAP & CAPABILITY SPEC
+Last Updated: May 10, 2026
+================================================================================
+
+IDENTITY
+--------
+Name:    HORIZON
+Named after: Event Horizon Telescope (photographed Sagittarius A* + M87*)
+Voice:   Charlotte (ElevenLabs British female, Creator plan)
+Email:   horizon@eventhorizonvpn.com (Proton Mail)
+Phone:   +1 310 929 6201 (Twilio)
+Tone:    Professional, warm, concise — personal chief of staff
+
+================================================================================
+VOICE STACK
+================================================================================
+
+  ElevenLabs Creator ($22/mo):
+    - Charlotte voice (HORIZON default)
+    - Hayden cloned voice (for outbound calls as Hayden)
+    - 95,000 chars/month quota
+    - API header: xi-api-key
+
+  Twilio (~$16/mo):
+    - Phone: +1 310 929 6201 (LA area code)
+    - SMS + Voice capable
+    - Inbound: whitelist Hayden's cell only
+    - Outbound: HORIZON texts/calls Hayden
+
+  Whisper (local on LA):
+    - tiny model (fits in 2GB RAM)
+    - Transcribes call audio locally
+    - Raw audio deleted immediately after transcription
+    - Transcript saved to call_transcripts table
+
+================================================================================
+RECORDING POLICY
+================================================================================
+
+  Friends/family testing:  Delete raw audio immediately
+  Business calls:          3-sec disclosure prefix + delete immediately
+  Transcripts:             Kept 1 year, then purge
+  Legal:                   California two-party consent covered by disclosure
+
+================================================================================
+MODULE BUILD ORDER
+================================================================================
+
+M1 — VOICE PIPELINE
+-------------------
+Phase 1: Outbound SMS
+  - send_sms tool in HORIZON
+  - Env vars: TWILIO_FROM_NUMBER, TWILIO_ALLOWED_FROM
+  - HORIZON texts Hayden alerts/opportunities
+
+Phase 2: Inbound SMS (whitelist only)
+  - Twilio webhook → n8n
+  - 4-layer security (per horizon-inbound-webhook-security.md)
+  - Layer 5: caller whitelist (Hayden's cell only)
+  - Prereqs: webhook.eventhorizonvpn.com DNS A → 149.28.91.100
+             nginx narrow re-enable + certbot SSL
+             UFW Twilio IP allowlist
+             HMAC validator
+
+Phase 3: ElevenLabs TTS + Outbound Voice
+  - TTS subflow → audio cache /mnt/eh-nvme-hot/horizon/audio-cache/
+  - Twilio outbound call plays ElevenLabs audio
+  - Charlotte voice default, Hayden voice for impersonation calls
+
+Confirmation timeout: Default deny after 10 minutes
+Alpaca trading: Paper only until explicit "PROMOTE TO LIVE" gate
+
+M2 — MORNING BRIEFING
+----------------------
+Triggered: Daily at operator-defined time (7:00am PT)
+HORIZON calls Hayden via Twilio + ElevenLabs:
+
+  "Good Morning Hayden"
+  🌤️  Weather (OpenWeatherMap)
+  📅  Calendar (Google Calendar OAuth)
+  🔒  Security overnight (PostgreSQL)
+  📈  Markets overnight (FMP + Alpaca)
+  🃏  eBay summary (eBay API)
+  🚨  Trading opportunities
+  📰  Breaking news (NewsAPI)
+  "Have a great day Hayden."
+
+M3 — EVENING BRIEFING
+----------------------
+  📈  Market close summary
+  🃏  eBay daily summary
+  🔒  BHN security summary
+  📅  Tomorrow preview
+  💡  Overnight opportunities
+
+M4 — INTRADAY ALERTS
+---------------------
+  Stock hits parameter    → Call + text
+  eBay deal found         → Push + text
+  Security anomaly        → Immediate call
+  Card offer received     → Push notification
+  Market volatility spike → Text
+
+M5 — EBAY INTEGRATION
+----------------------
+Target cards:
+  Team Rocket 1st Edition (1999/2000)
+  Gym Challenge set
+  Grades: PSA 10/9, CGC 10/9.5 (esp Blue Label Pristine), SGC 10
+
+Features:
+  - Monitor listings below market comp
+  - Pull sold comps via Finding API (completedItems=true)
+  - Handle customer service messages
+  - Purchase confirmation loop (Hayden confirms before buy)
+
+M6 — TRADING INTEGRATION
+-------------------------
+  Alpaca API (paper first, live behind STATUS.md gate)
+  FMP for market data
+  NEVER auto-execute without Hayden confirmation
+  Confirmation: HORIZON calls → Hayden presses 1=YES / 2=NO
+  No Robinhood (unofficial API, TOS risk)
+
+M7 — OUTBOUND CALLING
+----------------------
+  HORIZON calls on Hayden's behalf
+  Charlotte voice OR Hayden cloned voice
+  Whisper transcribes locally → raw audio deleted → transcript saved
+  Testing: friends/family only (no disclosure needed)
+  Business calls: 3-sec disclosure prefix
+
+M8 — EMAIL MANAGEMENT
+----------------------
+  horizon@eventhorizonvpn.com (Proton Mail)
+  Read + categorize incoming email
+  Draft responses, send with confirmation
+  Auto-handle eBay messages
+  Calendar invites via email → shows in Proton Calendar
+
+M9 — CALENDAR MANAGEMENT
+-------------------------
+  Google Calendar OAuth via n8n
+  Read schedule for morning briefing
+  Create events, send invites
+  Professional identity: "Hi, this is Horizon, Hayden's assistant"
+
+M10 — JOB SEARCH (Later)
+-------------------------
+  Monitor ZipRecruiter + Indeed
+  Draft tailored cover letters (uses conversation memory)
+  Track applications in PostgreSQL
+  Follow-up reminders
+
+================================================================================
+MEMORY ARCHITECTURE
+================================================================================
+
+Three memory lanes (PostgreSQL pgvector, 384-dim BAAI/bge-small-en-v1.5):
+
+  conversation    → every chat/call turn, forever (compressed after 90 days)
+  security_event  → alert triggers, forever (audit trail)
+  market_data     → eBay + financial signals, 1 year rolling
+
+QA Cache:         Frequent Q&A pairs, free lookups
+Cost Cascade:     Local PG first → pgvector → Claude API (only on miss)
+
+================================================================================
+COST ESTIMATES (HORIZON monthly add)
+================================================================================
+
+  ElevenLabs Creator: $22
+  Twilio:             ~$15
+  OpenWeatherMap:     Free
+  NewsAPI:            Free
+  Google Calendar:    Free
+  eBay API:           Free
+  Alpaca:             Free
+  FMP:                Free (MCP connected)
+  Whisper local:      Free
+  TOTAL ADD:          ~$37/month
+
+================================================================================
+TECHNICAL DECISIONS LOCKED
+================================================================================
+
+  Voice infra location:    LA only (German law §201 StGB blocks Frankfurt)
+  Whisper model:           tiny (fits LA's 2GB RAM)
+  HORIZON default voice:   Charlotte (British female, ElevenLabs library)
+  Hayden voice:            Clone via ElevenLabs (Creator tier required)
+  Recording disclosure:    3-sec prefix on business calls
+  Raw audio retention:     Delete immediately after transcription
+  Confirmation timeout:    Default deny after 10 minutes
+  Alpaca:                  Paper trading first
+  ElevenLabs tier:         Creator ($22/mo)
+  Inbound calls/SMS:       Whitelist Hayden's cell only
+  Caller ID display:       "HORIZON"
+
+================================================================================
+STATUS
+================================================================================
+
+  BHN Network Ops:         ✅ Built
+  pgvector Memory:         ✅ Built
+  HORIZON Chat (browser):  ✅ Working
+  JARVIS→HORIZON Rename:   ✅ Done
+  ElevenLabs Account:      ✅ Creator
+  Twilio Account:          ✅ +1 310 929 6201
+  horizon@ehvpn.com email: ✅ Active
+  All API accounts:        ✅ Ready
+  M1 SMS Outbound:         🔨 Next
+  M1 SMS Inbound:          🔨 Next
+  M1 Voice Pipeline:       🔨 Next
+  Morning Briefing:        🔨 Queue
+  eBay Integration:        🔨 Queue
+  Trading Integration:     🔨 Queue
+  Outbound Calling:        🔨 Queue
+  Email Management:        🔨 Queue
+  Calendar Management:     🔨 Queue
+  Job Search:              📋 Later
+
+================================================================================
+OPERATOR ACTIONS REMAINING
+================================================================================
+
+  1. Record voice sample for Hayden clone (ElevenLabs, ~10 min)
+  2. Set TWILIO_FROM_NUMBER + TWILIO_ALLOWED_FROM env vars on LA
+  3. Set up Alpaca paper trading account (signup was broken, retry)
+  4. Google Calendar OAuth in n8n
+  5. Kernel patches: apt upgrade && reboot (LA + Frankfurt)
+  6. Frankfurt SSH investigation (timed out May 10)
+
+================================================================================
