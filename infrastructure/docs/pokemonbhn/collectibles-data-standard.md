@@ -8,6 +8,8 @@ wins**; where this file disagrees with the live DB, **the live DB wins** and thi
 
 Last verified against the live DB: **2026-05-27** (see [§9 Conformance status](#9-conformance-status)).
 
+**Session Start Protocol:** At the start of any Claude Code session touching PokemonBHN data, run the grade catalog verification query in [§9](#9-conformance-status) (`SELECT grader, raw_label FROM master_grade_catalog ORDER BY grader, numeric_grade DESC NULLS LAST`) before writing any grade logic. Expected: 88 rows (CGC 25 / PSA 20 / BGS 21 / SGC 22). If the DB result disagrees with this document, the DB wins — correct this document first.
+
 PokemonBHN is one of three data domains (PokemonBHN, FinancialBHN, SecurityBHN) inside the
 **BLACKHOLE-NETWORK** repo, over shared infra (HORIZON, WireGuard, PostgreSQL, n8n).
 
@@ -96,28 +98,51 @@ Future sets (Neo Genesis etc.) get their own 3-letter `set_code` when added to `
 
 ### 2.2 `slab_code` — derived identifier
 
-Identifies one **graded** card variant — `card_code` + grader + numeric grade. **Never stored** —
+Identifies one **graded** card variant — `pbds_code` + grader + grade. **Never stored** —
 always derived on demand via `slab_code(p_card_code, p_grader, p_grade)` (PL/pgSQL function,
 `STABLE`, granted to `n8n_user`, `log_shipper`, `ehuser`, `agent_reader`).
 
-Format: `CARD_CODE-GRADER-NUMERIC_GRADE`
+Format: `[PBDS_CODE]-[GRADER+GRADE]` — **no separator between grader and grade** (locked 2026-05-27):
+
+```
+TRK014-2000-1E-HOL-PSA10      (not PSA-10)
+TRK014-2000-1E-HOL-CGC9.5     (not CGC-9.5)
+TRK014-2000-1E-HOL-RAW        (ungraded — always RAW, never NULL)
+```
 
 - Grader: `PSA` · `CGC` · `BGS` · `SGC` (codes only per [§3.4](#34-grader--codes-only)).
-- Numeric grade: looked up via `master_grade_catalog.numeric_grade` from `(grader, raw_label)`.
-  Returns NULL if the `(grader, grade)` pair doesn't resolve.
-- Note: distinct raw_labels with the same `numeric_grade` collapse — e.g. CGC `Gem Mint 10`,
-  `Pristine 10`, and `10` all yield `…-CGC-10`. The slab_code is a comparison key for
+- Grade: `numeric_grade` from `master_grade_catalog`, formatted without trailing `.0`
+  (`10` not `10.0`; `9.5` stays `9.5`). Returns `RAW` when grader or grade is NULL.
+  Returns NULL if the `(grader, grade)` pair doesn't resolve in the catalog.
+- Note: distinct raw_labels with the same `numeric_grade` collapse — e.g. CGC `Gem Mint 10`
+  and `Pristine 10` both yield `…-CGC10`. The slab_code is a comparison key for
   cross-platform overlap; if the tier distinction matters, use the raw_label directly.
 
-Examples: `BST-004-1E-PSA-10` · `BST-004-SH-CGC-10` · `TRK-004-1E-BGS-9.5`.
+Examples: `BST004-1999-1E-PSA10` · `BST004-1999-SH-CGC10` · `TRK004-2000-1E-BGS9.5` · `TRK014-2000-1E-HOL-RAW`.
 
 Used for HORIZON alert payloads and arbitrage signal display — see
 [`tokenized_arbitrage_signals.card_code`](#106-tokenized_arbitrage_signals--signal-table) (added
 2026-05-27 for in-row labelling; the slab_code itself is composed at alert time).
 
+### 2.3 `bhn_slab_id` — unique physical card identifier
+
+A **15-character randomly generated alphanumeric** identifier (A–Z, 0–9) assigned once per unique
+`slab_code`. Stored on `ebay_transactions` and `ebay_asks`; NULL for ungraded rows.
+
+- Assigned at first observation of a `slab_code` — the same physical slab always gets the same
+  `bhn_slab_id` across relists or platform transfers.
+- Used to resolve ambiguous grades (e.g. CGC 10 → Pristine vs Gem Mint) when the `grade_label`
+  has been captured from at least one listing title.
+- Never blocks a row from loading — informational / display aid only; absence of a `bhn_slab_id`
+  is valid and expected for ungraded cards and early-backfill rows.
+- Generation: `crypto.randomBytes(12).toString('base64').toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,15)`
+  (re-draw if collision with existing rows — expected frequency: negligible at current cardinality).
+
+Status: ⏳ not yet built — defined 2026-05-27. See [§9 Open items](#open-items).
+
 ---
 
-## 3. Canonical value formats (verified 2026-05-21)
+## 3. Canonical value formats (verified 2026-05-27)
 
 ### 3.1 `set_name` — 8 exact strings
 `Base Set` · `Best of Game` · `Fossil` · `Gym Challenge` · `Gym Heroes` · `Jungle` ·
@@ -165,6 +190,33 @@ columns. Both are **NOT NULL** (NULLs are distinct in a UNIQUE index and would b
   - `pop_reports` uses `card_set` (should be `set_name`).
   - `sold_listings.seller` (legacy) vs `ebay_listings.seller_username` vs `seller_profiles.seller_username` — same concept, three names. Standard target: `seller_username` everywhere; `sold_listings` rename pending.
   - `seller_profiles.seller_feedback_score` (INT) vs `ebay_listings.seller_feedback` (INTEGER) — same concept (feedback count), two names. Standard target: pick one; rename pending.
+
+### 3.8 The three-column grade system
+
+Every graded-card observation row carries three grade-related fields:
+
+| Column | Stored? | Definition |
+|--------|---------|------------|
+| `grade` | **YES** | Verbatim raw_label — FK-enforced against `master_grade_catalog` |
+| `grade_label` | **YES** | Tier name only, parsed from listing title — e.g. `Gem Mint`, `Pristine`, `NM-MT` |
+| `grade_numeric` | **NO** | Numeric value — derived via JOIN to `master_grade_catalog`, never stored on facts |
+
+**`grade_label` rules:**
+- Populated when the seller includes the tier name in the listing title.
+- NULL/empty when the title contains only a bare number (e.g. `PSA 9`).
+- Used to resolve ambiguous grades — primarily CGC 10, where `Pristine 10` and `Gem Mint 10`
+  are distinct raw_labels with different market values.
+- Never blocks a row from loading — informational / display aid only.
+
+**`grade_numeric` rules:**
+- **NEVER stored** on any fact table.
+- Always derived: `JOIN master_grade_catalog ON (grader, raw_label)`.
+- Used for sorting, cross-grader comparison, and HORIZON calculations.
+
+**Ambiguity resolution:**
+- CGC bare `10` with no tier label in the listing title → `grade_reject_log` (cannot determine
+  `Pristine 10` vs `Gem Mint 10` without seeing the physical slab). Do not guess.
+- All other graders: bare numeric resolves unambiguously from the catalog.
 
 ---
 
@@ -237,6 +289,26 @@ worse than nothing.
 | `seller_profiles` | cross-platform seller dimension per [§11](#11-seller-profile-dimension) | ✅ created 2026-05-22; UNIQUE (seller_username, platform); self-ref `linked_seller_id` (INT references BIGINT - implicit cast at FK lookup, low-impact precision drift) |
 | `ebay_listings` enrichment cols | observation-history + slab-identity + demand columns | ✅ added 2026-05-22: `auction_end_time`, `first_seen_at`, `last_seen_at`, `original_item_id`, `relist_count INT DEFAULT 0`, `original_listed_at`, `cert_number`, `location`, `watchers`. `obo_min_price` preserved as legacy NUMERIC (operator spec asked for DECIMAL(10,2); operationally equivalent; rewrite scheduled separately) |
 | `sold_listings` enrichment cols | same set as ebay_listings | ✅ added 2026-05-22: all 10 columns including a fresh `obo_min_price DECIMAL(10,2)` |
+| `slab_code` format | §2.2 — `[PBDS]-[GRADER+GRADE]`, no separator between grader and grade | ✅ locked 2026-05-27 |
+| `slab_code` ungraded | §2.2 — `-RAW` suffix, never NULL | ✅ locked 2026-05-27 |
+| `bhn_slab_id` | §2.3 — 15-char random alphanumeric per unique slab_code — stored on `ebay_transactions` + `ebay_asks`, NULL for ungraded | ⏳ not yet built |
+| `grade_label` column | §3.8 — tier name parsed from title, nullable, never blocks load | ⏳ not yet on `ebay_transactions` |
+| `currency` standardization | `currency TEXT` present on all `_transactions` tables, `USD`/`CAD`/`GBP` | ⏳ `ebay_transactions` has column; other tables pending audit |
+
+### Open items
+
+| # | Item | Notes |
+|---|------|-------|
+| 1 | `grade_reject_log` + staging-filter | Loaders still all-or-nothing — not yet built |
+| 2 | `ebay_listings` columns/FK | Missing `edition`, `card_number`, `grade_tier`; `grade` is NUMERIC; no FK; `grader` has descriptors |
+| 3 | `pop_reports.card_set` rename | Should be `set_name` |
+| 4 | `sold_listings.seller` rename | Should be `seller_username` |
+| 5 | `seller_feedback` name unification | `ebay_listings.seller_feedback` vs `seller_profiles.seller_feedback_score` |
+| 6 | `linked_seller_id INT` type drift | Should be `BIGINT`; acceptable until seller count approaches 2.1B |
+| 7 | `ebay_listings.obo_min_price` type | Is `NUMERIC` (legacy); target `DECIMAL(10,2)` |
+| 8 | `bhn_slab_id` | Defined §2.3 — not yet built; add column to `ebay_transactions` + `ebay_asks` |
+| 9 | `grade_label` column | Defined §3.8 — not yet on `ebay_transactions`; scraper will populate |
+| 10 | `currency` audit | Confirm `currency TEXT` present and populated on all `_bids`, `_asks`, `_transactions` tables |
 
 ---
 
