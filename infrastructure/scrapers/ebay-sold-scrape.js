@@ -3,6 +3,16 @@
 // Scrapes eBay sold listing search results pages (HTML, no API).
 // Exports: { scrapeCard, scrapeSet }
 //
+// ╔══════════════════════════════════════════════════════════════════════════════╗
+// ║  DEPLOYMENT RULES — NON-NEGOTIABLE                                          ║
+// ║  • This scraper MUST only run on LA (10.8.0.1).                             ║
+// ║  • NEVER run from the operator's home IP — eBay will associate the IP       ║
+// ║    with any personal account activity on that machine.                      ║
+// ║  • NEVER authenticate to eBay from LA. Guest-only sessions. No cookies,    ║
+// ║    no login, no eBay account credentials anywhere in this pipeline.         ║
+// ║  • Set  BHN_RUN_ON_LA=1  in the LA environment to unlock execution.        ║
+// ╚══════════════════════════════════════════════════════════════════════════════╝
+//
 // Usage (single card):
 //   node ebay-sold-scrape.js --card "Dark Weezing" --set "Team Rocket" \
 //     --card-number 14 --edition "1st Edition" --variant Holo [--dry-run]
@@ -12,6 +22,29 @@
 //   Full break every ~50 req: 3–5 min · 3 consecutive rate-limits → stop
 
 'use strict';
+
+// ── Deployment guard ───────────────────────────────────────────────────────────
+// Blocks execution unless BHN_RUN_ON_LA=1 is set in the environment.
+// This variable is present on the LA server and MUST NOT be set on the operator PC.
+// --force-local bypasses the check for offline unit-testing only (no real requests).
+function assertRunningOnLA() {
+  const isApproved  = process.env.BHN_RUN_ON_LA === '1';
+  const forceLocal  = process.argv.includes('--force-local');
+  if (!isApproved && !forceLocal) {
+    console.error(
+      '\n╔══════════════════════════════════════════════════════════════════════════════╗\n' +
+      '║  BLOCKED: BHN_RUN_ON_LA=1 is not set.                                      ║\n' +
+      '║  This scraper must only run on the LA server (10.8.0.1).                   ║\n' +
+      '║  Running it from your home IP risks associating your personal IP with       ║\n' +
+      '║  automated eBay scraping. Deploy to LA and set BHN_RUN_ON_LA=1 there.      ║\n' +
+      '╚══════════════════════════════════════════════════════════════════════════════╝\n'
+    );
+    process.exit(1);
+  }
+  if (forceLocal && !isApproved) {
+    console.warn('[WARN] --force-local set: running outside LA. No real HTTP requests should be made.');
+  }
+}
 
 const fs   = require('fs');
 const path = require('path');
@@ -36,6 +69,8 @@ const BROWSER_HEADERS = {
   'Sec-Fetch-Mode': 'navigate',
   'Sec-Fetch-Site': 'none',
   'Cache-Control': 'max-age=0',
+  // Explicitly NO Cookie header — guest-only sessions, never authenticated.
+  // If a Cookie somehow appears in the environment, it must never reach eBay.
 };
 
 const SET_MAP = {
@@ -348,14 +383,19 @@ function parseListings($, cardDef) {
 }
 
 // Fetch one URL with full browser-like headers; return response text or throw.
+// Cookie header is explicitly deleted — guest-only sessions, never authenticated.
 async function fetchPage(url, sessionUA, timeoutMs = 25000) {
   const ac  = new AbortController();
   const tid = setTimeout(() => ac.abort(), timeoutMs);
+  const headers = { ...BROWSER_HEADERS, 'User-Agent': sessionUA };
+  delete headers['Cookie'];   // belt-and-suspenders: no auth cookies ever sent to eBay
+  delete headers['cookie'];
   try {
     const res = await fetch(url, {
       signal: ac.signal,
-      headers: { ...BROWSER_HEADERS, 'User-Agent': sessionUA },
+      headers,
       redirect: 'follow',
+      credentials: 'omit',    // Node fetch: omit any credential storage
     });
     const text = await res.text();
     return { status: res.status, text };
@@ -653,6 +693,8 @@ module.exports = {
 };
 
 async function main() {
+  assertRunningOnLA();
+
   const args   = process.argv.slice(2);
   const flag   = (k) => { const i = args.indexOf(k); return i >= 0 && args[i+1] ? args[i+1] : null; };
   const hasF   = (k) => args.includes(k);

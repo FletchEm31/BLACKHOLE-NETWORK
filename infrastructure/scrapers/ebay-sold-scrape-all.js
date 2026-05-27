@@ -1,6 +1,14 @@
 #!/usr/bin/env node
 // BHN eBay sold-comps multi-set driver with blessed-contrib terminal dashboard.
 //
+// ╔══════════════════════════════════════════════════════════════════════════════╗
+// ║  DEPLOYMENT RULES — NON-NEGOTIABLE                                          ║
+// ║  • This scraper MUST only run on LA (10.8.0.1).                             ║
+// ║  • NEVER run from the operator's home IP.                                   ║
+// ║  • NEVER authenticate to eBay from LA. Guest-only, no cookies, no login.   ║
+// ║  • Set  BHN_RUN_ON_LA=1  in the LA environment to unlock execution.        ║
+// ╚══════════════════════════════════════════════════════════════════════════════╝
+//
 // Reads active cards from master_card_catalog (or --sets filter), scrapes in order:
 //   BOG → WSP → FSL → JGL → TRK → BST → GYH → GYC
 //
@@ -16,8 +24,29 @@
 //   --no-ui                  Headless mode (for SSH sessions without terminal)
 //   --dry-run                Parse + plan without writing to DB
 //   --host / --db / --user   Postgres connection flags
+//   --force-local            Bypass LA guard for offline testing (no real requests)
 
 'use strict';
+
+// ── Deployment guard ───────────────────────────────────────────────────────────
+(function assertRunningOnLA() {
+  const isApproved = process.env.BHN_RUN_ON_LA === '1';
+  const forceLocal = process.argv.includes('--force-local');
+  if (!isApproved && !forceLocal) {
+    console.error(
+      '\n╔══════════════════════════════════════════════════════════════════════════════╗\n' +
+      '║  BLOCKED: BHN_RUN_ON_LA=1 is not set.                                      ║\n' +
+      '║  This scraper must only run on the LA server (10.8.0.1).                   ║\n' +
+      '║  Running it from your home IP risks associating your personal IP with       ║\n' +
+      '║  automated eBay scraping. Deploy to LA and set BHN_RUN_ON_LA=1 there.      ║\n' +
+      '╚══════════════════════════════════════════════════════════════════════════════╝\n'
+    );
+    process.exit(1);
+  }
+  if (forceLocal && !isApproved) {
+    console.warn('[WARN] --force-local set: running outside LA. No real HTTP requests should be made.');
+  }
+})();
 
 const fs   = require('fs');
 const path = require('path');
