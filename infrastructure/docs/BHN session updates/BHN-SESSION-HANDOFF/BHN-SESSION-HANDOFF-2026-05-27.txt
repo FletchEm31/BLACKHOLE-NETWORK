@@ -1,0 +1,390 @@
+================================================================================
+BHN SESSION HANDOFF — 2026-05-27
+Claude Code, three objectives + bug-fix sweep
+================================================================================
+
+Companion docs in this folder (all referenced below):
+  CC-SESSION-BRIEF-COLLECTION-DEPLOY-2026-05-27.txt
+  CC-SESSION-BRIEF-COURTYARD-COLLECTOR-2026-05-27.txt
+  BHN-CARD-CODE-SPEC-2026-05-27.txt
+  BHN-COLLECTION-ISSUES-2026-05-27.txt          (authored this session)
+
+5 commits pushed to origin/main (newest first):
+  31f0303  fix(security-events): tighten IPv4 regex + validate before inet cast
+  c679bab  fix(vnstat): malformed 'null-null-1T...' timestamps + UPSERT permissions
+  9228791  feat(sql): add raw_payload JSONB to tokenized observation tables
+  9ac469c  feat: Courtyard on-chain collectors + card_id/card_code identity system
+  fdecc35  feat: collector_config PENDING status + 2026-05-27 collection issues audit
+
+================================================================================
+PHASE 1 — COLLECTION INFRASTRUCTURE DEPLOY  (commit fdecc35)
+================================================================================
+
+Driven by CC-SESSION-BRIEF-COLLECTION-DEPLOY-2026-05-27.txt.
+
+Repo artifacts:
+  sql/collector-config-schema.sql                                    (new)
+  infrastructure/docs/.../BHN-COLLECTION-ISSUES-2026-05-27.txt       (new)
+
+What happened on LA:
+  - Confirmed LA has no git checkout of BLACKHOLE-NETWORK. Established
+    stateless-scp deploy pattern: /root/bhn-deploy-YYYY-MM-DD/{scripts,sql}.
+    37 bhn-*.sh scripts + 2 SQL files scp'd from PC. Workaround for the
+    "postgres can't cd into /root" gotcha: pipe SQL via stdin into psql.
+    Memory: project_la_no_repo_checkout.
+
+  - Applied collector_config schema. 32 rows seeded:
+      14 PENDING  (intended — never-deployed or upstream-broken)
+      18 NULL     (auto-compute from freshness)
+      Every row carries a populated override_note.
+
+  - Pre-deploy grants:
+      GRANT INSERT ON wg_peer_stats, tor_relay_stats TO log_shipper;
+      GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO log_shipper;
+    (77 sequences covered.)
+
+  - Verified n8n SQLite path on LA's Docker mount —
+    /root/.n8n/database.sqlite ↔ /home/node/.n8n inside container, ~1.2 GB.
+
+  - bhn-deploy-all-collectors.sh status → deploy → test --skip-nodes Hillsboro:
+      11 PASS / 8 NO-DATA / 4 FAIL across LA + Frankfurt + NJ.
+      PASS:    Iptables (all 3), fail2ban (all 3), resource-stats (all 3),
+               Docker Stats (LA), WireGuard Stats (LA).
+      NO-DATA: dns-log (3 nodes — privacy logging disabled by policy 2026-05-23),
+               conntrack (3 nodes — kernel proc interface missing, see Phase 3),
+               tor-stats (Frankfurt — no Tor relay yet),
+               n8n-stats (caught up via state file).
+      FAIL:    vnstat (3 nodes — script bug, fixed in Phase 3),
+               pg-stats (LA — pg_stat_statements extension not loaded).
+
+  - 5 PASS collectors flipped from PENDING to ACTIVE with informative
+    override_note (Iptables, fail2ban, Node Resources, Docker Stats,
+    WireGuard Stats). DNS Query Log flipped to MAINTENANCE with policy note.
+    vnstat / pg-stats notes documented with concrete bug pointers.
+
+  - Attempted security_events restart. Discovered the existing cron at
+    /etc/cron.d/bhn-security-events had been firing every 5 min since the
+    2026-05-24 19:25:07 cutoff, silently failing on 'invalid input syntax
+    for type inet: "0000"'. State file never advanced. Cron renamed to
+    .disabled-2026-05-27 (cron ignores dotted filenames). CC2's audit
+    calling security_events "healthy + current" on 2026-05-23 was wrong.
+    Fixed in Phase 3.
+
+  - Surfaced /usr/local/bin/eh-security-collector.py — the pre-rename
+    Python collector — running on the same 5-min tick. Both writing to
+    security_events suggests potential duplicate-key churn; investigate
+    canonical writer before re-enabling either.
+    Memory: project_dual_security_collectors.
+
+  - grafana_reader granted SELECT on 13 collector tables. agent_reader
+    verify-grants SQL applied (29 grants).
+
+  - db_size_log table created + nightly 00:00 UTC cron + 116 MB baseline
+    seed row.
+
+Carried-forward bugs documented in:
+  Memory: project_collector_script_bugs_2026_05_27
+    1. bhn-vnstat-collector.sh — fixed in Phase 3 (c679bab)
+    2. bhn-security-events-collector.sh — fixed in Phase 3 (31f0303)
+    3. bhn-conntrack-collector.sh — diagnosed in Phase 3, fix deferred
+    4. pg_stat_statements — not investigated this session
+
+================================================================================
+PHASE 2 — COURTYARD COLLECTORS + CARD_CODE IDENTITY  (commit 9ac469c)
+================================================================================
+
+Driven by CC-SESSION-BRIEF-COURTYARD-COLLECTOR-2026-05-27.txt plus the
+operator's mid-session addition of BHN-CARD-CODE-SPEC-2026-05-27.txt (the
+card_code/slab_code system).
+
+Repo artifacts:
+  sql/card-id-resolver.sql                                           (new)
+  sql/card-code-system.sql                                           (new)
+  sql/collector-config-schema.sql                                    (edited)
+  n8n-workflows/pokemon/courtyard-bhn-sales-collector.json           (new)
+  n8n-workflows/pokemon/courtyard-bhn-listings-collector.json        (new)
+  n8n-workflows/pokemon/courtyard-bhn-arbitrage-signals.json         (new)
+  scripts/courtyard-historical-backfill.py                           (new)
+  infrastructure/docs/pokemonbhn/collectibles-data-standard.md       (edited)
+  BHN-CARD-CODE-SPEC-2026-05-27.txt + COURTYARD brief (added to repo)
+
+Pre-flight findings (before code):
+  - OpenSea v2 API now requires an x-api-key header for all reads
+    (brief claimed "free tier no key" — outdated). Workflows reference
+    placeholder credential id OPENSEA_API_KEY_PLACEHOLDER; operator binds
+    a real "OpenSea API Key" Header Auth credential at import time.
+    Memory: project_opensea_api_key_required.
+
+  - master_card_catalog.card_number stores '#NN' on all 1,354 rows
+    (data-standard §9 pending migration — fixed this session as Step 0B
+    of the card-code spec).
+
+What happened on LA:
+
+  Task 0 — card_id resolver:
+    Added card_id INTEGER FK columns to ebay_listings, sold_listings,
+    courtyard_listings, courtyard_sales, collector_crypt_sales,
+    tokenized_arbitrage_signals. Indexes on each.
+    Migrated master_card_catalog.card_number '#NN' → 'NN' (1354 rows).
+    Created resolve_card_id() PL/pgSQL function (3-attempt cascade:
+    set+number+edition, set+number, name+set+edition). GRANTed to
+    n8n_user, log_shipper, ehuser.
+    Backfill: sold_listings 609/651 = 93.5% resolved.
+                ebay_listings 0/2263 = 0% — root cause is the eBay scraper
+                writing set_name='Base' (drift) and card_name=full eBay
+                title. Live n8n eBay workflows need a writer fix.
+                Memory: project_ebay_scraper_data_quality.
+
+  Task 0+ — card_code / slab_code system:
+    set_code TEXT UNIQUE on master_set_catalog, populated 8 codes:
+      BST  Base Set                  GYH  Gym Heroes
+      FSL  Fossil                    GYC  Gym Challenge
+      JGL  Jungle                    WSP  Wizards Black Star Promos
+      TRK  Team Rocket               BOG  Best of Game
+    card_code TEXT UNIQUE on master_card_catalog, populated 1354/1354
+    with format SET-NNN-EDITION[-VARIANT]. Example: BST-004-1E,
+    BOG-006-NA-JMB, TRK-004-UN-WTC.
+    slab_code(card_code, grader, raw_grade) PL/pgSQL function (derived
+    on demand, never stored). Example: BST-004-1E-PSA-10.
+    Added card_code column to tokenized_arbitrage_signals for HORIZON
+    alert display.
+
+  collectibles-data-standard.md updated:
+    §1 fixed display-code example.
+    §2.1 (new) — card_code spec.
+    §2.2 (new) — slab_code spec.
+    §9 — bumped to 2026-05-27; flipped 3 rows ⏳ → ✅
+         (card_number bare, card_id on observations, card_code + slab_code).
+
+  Resolver sanity-tested across 11 scenarios:
+    Base Set #4 1E/UN/SH → distinct card_ids 409/408/410.
+    Team Rocket #4 1E/UN → distinct card_ids 2/1.
+    Normalizations work: '#4', '4/102', '1st Ed', 'SHADOWLESS' all map
+    correctly. Drifted set_name='Base' deliberately returns NULL
+    (system rejects drift, doesn't fuzzy-coerce).
+
+  Task 5 — collector_config additions:
+    Seeded 'Courtyard Sales' (cadence 0.5h, grace 2h) and 'Courtyard
+    Listings' (cadence 0.25h, grace 1h) in Collectibles domain.
+    Tightened PENDING UPDATE block with an `override_note IS NULL`
+    guard after a self-inflicted regression knocked 5 ACTIVE rows back
+    to PENDING — fixed in-place with explicit ACTIVE notes.
+    Memory: feedback_schema_reapply_guard.
+
+Schema gap caught in Phase 3 audit:
+  sql/tokenized-market-schema.sql was missing raw_payload columns on
+  courtyard_sales, courtyard_listings, collector_crypt_sales. The brief
+  required them; live schema didn't have them. Patched live and in repo
+  in commit 9228791.
+
+================================================================================
+PHASE 3 — BUG FIX SWEEP  (commits 9228791, c679bab, 31f0303)
+================================================================================
+
+Bug 1: tokenized observation tables missing raw_payload      (9228791)
+------------------------------------------------------------------
+Pre-flight dry-run on LA failed with:
+  ERROR: column "raw_payload" of relation "courtyard_sales" does not exist
+
+Audit agent in Phase 2 had reported raw_payload existed; live schema
+disagreed. Added via idempotent ALTER TABLE ... ADD COLUMN IF NOT
+EXISTS raw_payload JSONB on all three observation tables for shape
+parity per §10.2. Re-ran dry-run end-to-end:
+  courtyard_sales INSERT → card_id 409
+  courtyard_listings UPSERT → card_id 409
+  slab_code → BST-004-1E-PSA-10
+  arbitrage CTE → 0 candidates (correct; tables empty)
+
+Bug 2: bhn-vnstat-collector.sh malformed timestamps          (c679bab)
+------------------------------------------------------------------
+Two root causes:
+  (a) jq operator precedence — `array | map() + array | map() + ...`
+      bound | tighter than +, so three of four period-type arrays were
+      pipe-transformed away instead of concatenated.
+  (b) Null date handling on "top" entries where vnstat hadn't yet
+      recorded a top-day. jq's `@text` on null produced the literal
+      string "null", yielding the timestamp `null-null-1T00:00:00Z`,
+      rejected by PG.
+
+Fix: parenthesised each `(array | map(...))` block so + does array
+concat first; added `select(.d != null and .d.year != null and
+.d.month != null)` to drop incomplete entries.
+
+Secondary issue uncovered while testing the fix — `log_shipper` had
+INSERT but not UPDATE on node_bandwidth_stats. INSERT ... ON CONFLICT
+DO UPDATE requires both privileges. PG returned a misleading
+"permission denied for table" error. Granted UPDATE on 12 mutable
+infrastructure collector tables to log_shipper on LA:
+  node_bandwidth_stats, iptables_stats, container_stats,
+  pg_activity_snapshots, n8n_execution_stats, fail2ban_events,
+  dns_query_log, wg_peer_stats, connection_snapshots,
+  node_resource_stats, tor_relay_stats, proxy_request_logs.
+
+Verified: LA wrote 577 rows, NJ wrote 256 rows across hour/day/month/top
+buckets. Timestamps clean (2026-05-13 through 2026-05-27). Frankfurt
+still needs `apt install vnstat` (separate apt-level issue, not script).
+collector_config row 'Node Bandwidth (vnstat)' flipped to ACTIVE.
+
+Bug 3: bhn-security-events-collector.sh invalid inet         (31f0303)
+------------------------------------------------------------------
+Root cause: the three IP-extraction regexes (UFW SRC=, SSH "from", and
+fail2ban "Ban") used `[0-9.]+`, which matched malformed log entries
+like `SRC=0000` in UFW logs around 2026-05-24 19:25 UTC. PG rejected
+'0000'::inet, killing the batch INSERT, leaving the state file frozen
+at 2026-05-24T19:25:07. Cron kept firing for three days, silently
+failing each time.
+
+Fixes:
+  - Tightened all three regexes to require a real IPv4 shape:
+      ([0-9]{1,3}\.){3}[0-9]{1,3}
+  - Added a defensive valid_ipv4() helper invoked on each captured IP.
+    If something still slips through, the row inserts with source_ip
+    = NULL rather than killing the batch. Helper explicitly `return 0`
+    so a no-match doesn't fire `set -e`.
+
+IPv6 source IPs are not captured (regexes are IPv4-only). Same
+behaviour as before; adding IPv6 capture is a separate follow-up.
+
+Re-enabled /etc/cron.d/bhn-security-events (was renamed to .disabled-
+2026-05-27 during Phase 1 diagnosis). Single invocation drained the
+three-day backlog:
+  11,071 rows inserted (5,268 ufw_block / 60 ssh_failure / 14 fail2ban)
+  MAX(detected_at) caught up to 2026-05-27 04:45:06.
+collector_config row 'Suricata/CrowdSec' flipped from OUTAGE to ACTIVE.
+
+Memory updated: project_collector_script_bugs_2026_05_27.
+
+Bug 4: bhn-conntrack-collector.sh — diagnosed, NOT fixed
+------------------------------------------------------------------
+The earlier brief framed this as "rows landing since May 24 with zero
+metric columns". Reality: connection_snapshots table is **empty**.
+No rows from any node.
+
+Root cause: kernel built without `CONFIG_NF_CONNTRACK_PROCFS`. The
+nf_conntrack module is loaded and tracking (61 active connections via
+/proc/sys/net/netfilter/nf_conntrack_count), but the per-connection
+/proc/net/nf_conntrack interface the script reads doesn't exist on
+this kernel. Script's `[[ -r "$CONNTRACK_FILE" ]] || exit 0` guard
+correctly handles the absence — exits clean with no rows, deploy
+verify_run sees 0 delta, marks NO-DATA.
+
+Fix paths (any one — bigger scope than vnstat/security-events):
+  1. apt install conntrack-tools on each node; rewrite collector to
+     use `conntrack -L`. Closest to current design.
+  2. Rewrite to use `ss -tnH` (no install needed, more portable).
+  3. Drop per-connection detail, report aggregate stats only.
+
+Updated collector_config note with the kernel diagnosis. Decision
+deferred to next session.
+
+================================================================================
+LIVE LA STATE AT END OF SESSION
+================================================================================
+
+collector_config distribution (34 rows total):
+  ACTIVE (NULL=auto):                            ~23
+    + 10 always-healthy (Alpaca ETF, FRED, OpenWeather, NewsAPI, ...)
+    + 5  Phase 1 PASS (Iptables, fail2ban, Node Resources, Docker
+                       Stats, WireGuard Stats)
+    + 2  Phase 3 fixes (Node Bandwidth vnstat, Suricata/CrowdSec)
+    + 6  others
+  PENDING:                                       9
+    Conntrack Snapshots         (kernel config gap, Phase 3 diagnosis)
+    n8n Executions
+    CrowdSec                    (collector not wired)
+    HORIZON Tokens              (workflow stale)
+    Tinyproxy Requests          (Hillsboro-only; SSH wedged)
+    Tor Relay Stats             (cron not deployed on Frankfurt/Hillsboro)
+    PG Activity Snapshots       (pg_stat_statements extension missing)
+    Courtyard Sales             (awaiting operator n8n import)
+    Courtyard Listings          (awaiting operator n8n import)
+  MAINTENANCE:                                   1
+    DNS Query Log               (privacy logging disabled by policy)
+  OUTAGE (auto-computed from freshness):         ~5
+    EIA Energy Prices
+    USDA Agriculture
+    Finnhub Earnings
+    Finnhub Analysts
+    HORIZON Memory
+
+Tables receiving data after this session:
+  security_events       — backfilled +11,071 rows; cron live
+  node_bandwidth_stats  — fresh on LA (577 rows) + NJ (256 rows)
+  master_card_catalog   — card_code populated, card_number normalized
+  6 observation tables  — card_id FK columns added
+  db_size_log           — new table, 1 baseline row
+
+LA permission delta:
+  log_shipper gained INSERT on wg_peer_stats, tor_relay_stats.
+  log_shipper gained UPDATE on 12 mutable infrastructure tables.
+  log_shipper gained USAGE on 77 public sequences.
+  grafana_reader gained SELECT on 13 collector tables.
+  agent_reader gained SELECT on 29 tables (verify SQL).
+  n8n_user, log_shipper, ehuser, agent_reader gained EXECUTE on
+    resolve_card_id() and slab_code() functions.
+
+================================================================================
+MEMORY DELTA  (in ~/.claude/projects/.../memory/)
+================================================================================
+
+New entries:
+  project_la_no_repo_checkout              — stateless-scp deploy pattern
+  project_dual_security_collectors         — eh-*.py + bhn-*.sh both firing
+  project_opensea_api_key_required         — API key now required (brief stale)
+  project_ebay_scraper_data_quality        — set_name='Base', card_name=title
+  feedback_schema_reapply_guard            — override_note IS NULL guard pattern
+
+Updated:
+  project_collector_script_bugs_2026_05_27 — vnstat ✅, sec-events ✅,
+                                              conntrack diagnosed (kernel gap)
+
+================================================================================
+OPERATOR FOLLOW-UPS (queued for next session)
+================================================================================
+
+Courtyard go-live (highest leverage):
+  1. Get free OpenSea API key: https://docs.opensea.io/reference/api-keys
+  2. n8n: create Header Auth credential named "OpenSea API Key",
+     header `x-api-key`, value = the key.
+  3. Import three workflow JSONs from n8n-workflows/pokemon/courtyard-bhn-*.json
+     and bind their auth references to the new credential.
+  4. Activate each workflow.
+  5. After first PASSes, flip 'Courtyard Sales' + 'Courtyard Listings'
+     collector_config rows: status_override=NULL, override_note='Active — ...'
+  6. (Later) Run scripts/courtyard-historical-backfill.py with
+     POLYGONSCAN_API_KEY + OPENSEA_API_KEY env vars to backfill pre-
+     2026-05-27 sales.
+
+Infrastructure repairs:
+  - Frankfurt: apt install vnstat (the only remaining vnstat blocker).
+  - Conntrack collector: rewrite to use `ss` or install conntrack-tools.
+  - pg_stat_statements extension on eventhorizon: requires
+    postgresql.conf shared_preload_libraries change + PG restart.
+  - eh-security-collector.py vs bhn-security-events-collector.sh —
+    decide canonical writer; risk of duplicate rows if both stay live.
+
+eBay scraper (live n8n, not in repo):
+  - Fix set_name='Base' → 'Base Set' in the Parse & Filter Fields Code
+    node of each VINTAGE-* workflow.
+  - Fix card_name: stop assigning the full eBay title; parse out the
+    actual card name. Both bugs blocking ebay_listings card_id
+    resolution.
+
+HORIZON:
+  - Workflow re-import from repo (browser session required).
+  - Once imported and stable, flip HORIZON Tokens and HORIZON Memory
+    collector_config rows.
+
+================================================================================
+PATH POINTERS
+================================================================================
+
+Repo:          D:\GITHUB REPOSITORY\BLACKHOLE-NETWORK
+LA SSH:        root@10.8.0.1 (direct over WG when tunnel is healthy;
+               otherwise ProxyJump through FRA per reference_ssh_paths)
+LA deploy dir: /root/bhn-deploy-2026-05-27/{scripts,sql}
+PG DB:         eventhorizon (LA hub)
+PG SQL apply:  cat sql/foo.sql | ssh root@10.8.0.1 \
+                 'sudo -u postgres psql -d eventhorizon -v ON_ERROR_STOP=1'
+               (postgres user can't cd into /root; stdin pipe is the workaround)
+================================================================================
