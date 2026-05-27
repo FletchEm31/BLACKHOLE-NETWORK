@@ -62,6 +62,19 @@ json.dump(d,open(f,'w'))
 
 esc() { echo "${1//\'/\'\'}"; }
 
+# Validate that a captured token looks like an IPv4 address before letting it
+# reach an ::inet cast. Returns the IP echoed back on success, empty on
+# failure. Without this guard, malformed log lines (e.g. UFW emitting
+# 'SRC=0000' on some malformed packets, observed 2026-05-24) hit PG as
+# 'invalid input syntax for type inet: "0000"' and abort the whole batch.
+# IPv6 is intentionally not captured here (the regexes upstream are IPv4-only);
+# IPv6 source addresses currently land as NULL.
+valid_ipv4() {
+    local ip="$1"
+    [[ "$ip" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] && echo "$ip"
+    return 0   # never fail — set -e is on, non-match must not kill the run
+}
+
 flush_batch() {
     local values="$1"
     [[ -z "$values" ]] && return 0
@@ -85,7 +98,8 @@ if [[ -f "$UFW_LOG" ]]; then
         raw_ts=$(echo "$line" | awk '{print $1" "$2" "$3}')
         ts=$(date -d "$raw_ts" --iso-8601=seconds 2>/dev/null) || continue
         [[ "$ts" > "$since" ]] || continue
-        src_ip=$(echo "$line" | grep -oE 'SRC=[0-9.]+' | head -1 | cut -d= -f2 || true)
+        src_ip=$(echo "$line" | grep -oE 'SRC=([0-9]{1,3}\.){3}[0-9]{1,3}' | head -1 | cut -d= -f2 || true)
+        src_ip=$(valid_ipv4 "$src_ip")
         dst_port=$(echo "$line" | grep -oE 'DPT=[0-9]+' | head -1 | cut -d= -f2 || true)
         proto=$(echo "$line" | grep -oE 'PROTO=[A-Z]+' | head -1 | cut -d= -f2 || true)
         desc="UFW blocked ${proto:-?} from ${src_ip:-?} to port ${dst_port:-?}"
@@ -111,7 +125,8 @@ if [[ -f "$AUTH_LOG" ]]; then
         raw_ts=$(echo "$line" | awk '{print $1" "$2" "$3}')
         ts=$(date -d "$raw_ts" --iso-8601=seconds 2>/dev/null) || continue
         [[ "$ts" > "$since" ]] || continue
-        src_ip=$(echo "$line" | grep -oE 'from [0-9.]+' | head -1 | awk '{print $2}' || true)
+        src_ip=$(echo "$line" | grep -oE 'from ([0-9]{1,3}\.){3}[0-9]{1,3}' | head -1 | awk '{print $2}' || true)
+        src_ip=$(valid_ipv4 "$src_ip")
         user=$(echo "$line" | grep -oE '(for invalid user |for )[a-zA-Z0-9_-]+' | head -1 | awk '{print $NF}' || true)
         desc="SSH failure for user '${user:-?}' from ${src_ip:-?}"
         values+="('$ts'::timestamptz,$([ -n "$src_ip" ] && echo "'$src_ip'::inet" || echo "NULL"),'ssh_failure','$(esc "$desc")','logged','medium'),"
@@ -135,7 +150,8 @@ if [[ -f "$F2B_LOG" ]]; then
         raw_ts=$(echo "$line" | awk '{print $1" "$2}')
         ts=$(date -d "$raw_ts" --iso-8601=seconds 2>/dev/null) || continue
         [[ "$ts" > "$since" ]] || continue
-        src_ip=$(echo "$line" | grep -oE 'Ban [0-9.]+' | awk '{print $2}' || true)
+        src_ip=$(echo "$line" | grep -oE 'Ban ([0-9]{1,3}\.){3}[0-9]{1,3}' | awk '{print $2}' || true)
+        src_ip=$(valid_ipv4 "$src_ip")
         jail=$(echo "$line" | grep -oE '\[[a-zA-Z0-9_-]+\]' | head -1 | tr -d '[]' || true)
         desc="fail2ban banned ${src_ip:-?} in jail ${jail:-?}"
         values+="('$ts'::timestamptz,$([ -n "$src_ip" ] && echo "'$src_ip'::inet" || echo "NULL"),'fail2ban','$(esc "$desc")','banned','high'),"
