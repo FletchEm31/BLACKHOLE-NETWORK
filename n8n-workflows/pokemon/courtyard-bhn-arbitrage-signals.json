@@ -1,0 +1,68 @@
+{
+  "name": "COURTYARD-BHN | ARBITRAGE-SIGNALS",
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "content": "COURTYARD-BHN | ARBITRAGE-SIGNALS\n=====================================\nDetects cross-market spread opportunities — Courtyard NFT ask priced\nbelow the eBay 90-day sold average for the same card_id (graded slab class).\n\nSCHEDULE\n--------\nEvery 30 min at :05 / :35 (5 min after the listings collector at :00 / :30,\ngiving the latest Courtyard listings time to land before we query).\n\nLOGIC (single Postgres Execute Query, no code nodes)\n-----------------------------------------------------\n1. CTE courtyard_asks: for each card_id with an active listing seen in\n   the last 24h, take MIN(listed_price) as the current ask.\n2. CTE ebay_baseline: for each card_id with >=3 sold comps in the last\n   90 days, AVG(sold_price) as the baseline. HAVING n_comps >= 3 guards\n   against a single-sale fluke setting the benchmark.\n3. Candidates: JOIN on card_id, keep rows where ebay_90d_avg > courtyard_ask\n   AND the spread exceeds 10%.\n4. Dedup: skip if there's already an open (reviewed=FALSE) signal for the\n   same card_id detected in the last 24h.\n5. INSERT into tokenized_arbitrage_signals with computed signal_strength\n   ('weak' >10% / 'moderate' >20% / 'strong' >35% / 'critical' >50%),\n   estimated_profit (accounts for ~5% vault redemption + eBay fees),\n   card_code joined from master_card_catalog for human-readable display,\n   reviewed=FALSE, actioned=FALSE, expires_at = NOW + 7 days.\n\nSMS ALERT — DEFERRED\n--------------------\nThe session brief specifies a HORIZON Twilio SMS for strong/critical\nsignals. Twilio credentials are TBD (STATUS.md). When provisioned:\nadd a Postgres SELECT node here filtering signal_strength IN ('strong',\n'critical') AND detected_at > NOW() - INTERVAL '5 minutes' (this run's\nfresh signals), then a Twilio Send SMS node referencing the EH-Twilio-*\ncredentials. Until then, signals land in the DB with reviewed=FALSE —\noperator reviews via Grafana dashboard or direct query.\n\nDATA QUALITY GATES\n------------------\n- card_id IS NOT NULL on both sides — text-fuzzy joins are not used.\n  sold_listings 93.5% resolved as of 2026-05-27; courtyard sides depend\n  on resolve_card_id() success at ingest time.\n- HAVING COUNT(*) >= 3 on eBay baseline — single-sale outliers excluded.\n- 24h dedup window — same opportunity doesn't refire continuously.\n- 7-day expires_at — stale signals auto-age out for dashboard hygiene.",
+        "height": 920,
+        "width": 460
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-880, -580],
+      "id": "a3f4c5d6-e7f8-9012-abcd-3456789012cd",
+      "name": "Workflow Doc"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            { "field": "cronExpression", "expression": "0 5,35 * * * *" }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [-360, -260],
+      "id": "b3f4c5d6-e7f8-9012-abcd-3456789012cd",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH courtyard_asks AS (\n  SELECT card_id,\n         MIN(listed_price)                        AS courtyard_ask,\n         MAX(card_name)                            AS card_name,\n         MAX(set_name)                             AS set_name,\n         MAX(grader)                               AS grader,\n         MAX(grade)                                AS grade,\n         MAX(edition)                              AS edition,\n         MAX(print_variant)                        AS print_variant\n    FROM courtyard_listings\n   WHERE card_id IS NOT NULL\n     AND listed_price IS NOT NULL\n     AND listed_price > 0\n     AND COALESCE(listed_at, created_at) > NOW() - INTERVAL '24 hours'\n   GROUP BY card_id\n),\nebay_baseline AS (\n  SELECT card_id,\n         AVG(sold_price)::DECIMAL(10,2)            AS ebay_90d_avg,\n         COUNT(*)                                  AS n_comps\n    FROM sold_listings\n   WHERE card_id IS NOT NULL\n     AND sold_price IS NOT NULL\n     AND sold_price > 0\n     AND inserted_at > NOW() - INTERVAL '90 days'\n   GROUP BY card_id\n  HAVING COUNT(*) >= 3\n),\ncandidates AS (\n  SELECT c.*,\n         e.ebay_90d_avg,\n         e.n_comps,\n         ((e.ebay_90d_avg - c.courtyard_ask) / e.ebay_90d_avg * 100)::DECIMAL(6,2) AS spread_pct,\n         (e.ebay_90d_avg - c.courtyard_ask - c.courtyard_ask * 0.05)::DECIMAL(10,2) AS estimated_profit\n    FROM courtyard_asks c\n    JOIN ebay_baseline  e USING (card_id)\n   WHERE e.ebay_90d_avg > c.courtyard_ask\n     AND ((e.ebay_90d_avg - c.courtyard_ask) / e.ebay_90d_avg) > 0.10\n)\nINSERT INTO tokenized_arbitrage_signals (\n  card_id, card_code, card_name, set_name, grader, grade, edition, print_variant,\n  courtyard_ask, ebay_90d_avg, spread_pct, estimated_profit, signal_strength,\n  reviewed, actioned, expires_at, raw_payload\n)\nSELECT\n  cd.card_id,\n  mc.card_code,\n  cd.card_name,\n  cd.set_name,\n  cd.grader,\n  cd.grade,\n  cd.edition,\n  cd.print_variant,\n  cd.courtyard_ask,\n  cd.ebay_90d_avg,\n  cd.spread_pct,\n  cd.estimated_profit,\n  CASE\n    WHEN cd.spread_pct > 50 THEN 'critical'\n    WHEN cd.spread_pct > 35 THEN 'strong'\n    WHEN cd.spread_pct > 20 THEN 'moderate'\n    ELSE 'weak'\n  END AS signal_strength,\n  FALSE,\n  FALSE,\n  NOW() + INTERVAL '7 days',\n  jsonb_build_object(\n    'courtyard_ask',   cd.courtyard_ask,\n    'ebay_90d_avg',    cd.ebay_90d_avg,\n    'n_ebay_comps',    cd.n_comps,\n    'spread_pct',      cd.spread_pct,\n    'estimated_profit', cd.estimated_profit,\n    'slab_code',       slab_code(mc.card_code, cd.grader, cd.grade)\n  )\n  FROM candidates cd\n  LEFT JOIN master_card_catalog mc ON mc.id = cd.card_id\n WHERE NOT EXISTS (\n   SELECT 1 FROM tokenized_arbitrage_signals s\n    WHERE s.card_id = cd.card_id\n      AND s.reviewed = FALSE\n      AND s.detected_at > NOW() - INTERVAL '24 hours'\n )\nRETURNING id, card_code, signal_strength, spread_pct, estimated_profit;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [-140, -260],
+      "id": "c3f4c5d6-e7f8-9012-abcd-3456789012cd",
+      "name": "Detect + Dedup + Insert Signals",
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "postgres": { "id": "dQxOaWILJI9iNiQc", "name": "Postgres EventHorizon" }
+      },
+      "notes": "Single SQL statement: 3 CTEs (courtyard_asks, ebay_baseline, candidates) → INSERT ... WHERE NOT EXISTS dedup → RETURNING for visibility.\n\nRETURNING surfaces each new signal as an output item — useful for downstream SMS routing once Twilio is wired. The raw_payload jsonb includes the slab_code (BST-004-1E-PSA-10 format) for HORIZON alert templating."
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [[{ "node": "Detect + Dedup + Insert Signals", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "pinData": {},
+  "tags": [
+    { "name": "eventhorizon" },
+    { "name": "pokemonbhn" }
+  ]
+}

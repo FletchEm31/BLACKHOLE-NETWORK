@@ -76,9 +76,11 @@ INSERT INTO collector_config (source_name, table_name, domain, cadence_hours, gr
 ('Reconciliation Daemon',       'reconciliation_heartbeat','Trading',0.083,1,   NULL, NULL),  -- 5min
 
 -- COLLECTIBLES
-('CGC Pop Scraper',             'pop_reports',      'Collectibles',168,   24,   NULL, NULL),  -- weekly
-('eBay Sold Comps',             'sold_listings',    'Collectibles',720,   48,   NULL, NULL),  -- manual
-('eBay Active Listings',        'ebay_listings',    'Collectibles',720,   48,   NULL, NULL),  -- manual
+('CGC Pop Scraper',             'pop_reports',         'Collectibles',168,   24,   NULL, NULL),  -- weekly
+('eBay Sold Comps',             'sold_listings',       'Collectibles',720,   48,   NULL, NULL),  -- manual
+('eBay Active Listings',        'ebay_listings',       'Collectibles',720,   48,   NULL, NULL),  -- manual
+('Courtyard Sales',             'courtyard_sales',     'Collectibles', 0.5,   2,   NULL, NULL),  -- OpenSea every 30min
+('Courtyard Listings',          'courtyard_listings',  'Collectibles', 0.25,  1,   NULL, NULL),  -- OpenSea every 15min
 
 -- AI
 ('HORIZON Memory',              'memories',         'AI',          168,   48,   NULL, NULL),
@@ -183,13 +185,22 @@ UPDATE collector_config
            WHEN 'PG Activity Snapshots'   THEN 'Schema exists — LA-only cron never deployed'
            WHEN 'Tinyproxy Requests'      THEN 'Schema exists — Hillsboro-only; Hillsboro SSH wedged, deferred'
            WHEN 'Tor Relay Stats'         THEN 'Schema exists — cron never deployed on Frankfurt + Hillsboro'
+           WHEN 'Courtyard Sales'         THEN 'OpenSea n8n collector built 2026-05-27; awaiting operator import + API key provision'
+           WHEN 'Courtyard Listings'      THEN 'OpenSea n8n collector built 2026-05-27; awaiting operator import + API key provision'
        END,
        updated_at      = NOW()
+ -- Guard: only flip rows that are genuinely uninitialized. A row with a
+ -- non-NULL override_note has already been documented (auto-fill block above,
+ -- a previous PENDING flip, or a manual operator note) and is treated as
+ -- known-state — don't reset it. This is what keeps re-applies safe: PASS
+ -- collectors that were flipped to NULL+'Active — …' note survive.
  WHERE status_override IS NULL
+   AND override_note IS NULL
    AND source_name IN (
        'n8n Executions','CrowdSec','WireGuard Stats','Node Resources',
        'Docker Stats','fail2ban','HORIZON Tokens',
        'Iptables Counters','DNS Query Log','Node Bandwidth (vnstat)',
        'Conntrack Snapshots','PG Activity Snapshots',
-       'Tinyproxy Requests','Tor Relay Stats'
+       'Tinyproxy Requests','Tor Relay Stats',
+       'Courtyard Sales','Courtyard Listings'
    );

@@ -1,0 +1,118 @@
+{
+  "name": "COURTYARD-BHN | LISTINGS-COLLECTOR",
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "content": "COURTYARD-BHN | LISTINGS-COLLECTOR\n=====================================\nWrites active Courtyard NFT listings (Polygon) to eventhorizon.courtyard_listings.\nUpserts on item_id — price changes update the existing row + advance listed_at.\n\nSCHEDULE\n--------\nEvery 15 min at :00, :15, :30, :45. Higher cadence than sales because\nlisting prices churn faster than completed sales.\n\nWHY /events?event_type=listing INSTEAD OF /listings/collection/.../all\n--------------------------------------------------------------------\nOpenSea's dedicated /listings/collection/.../all endpoint returns price\n+ order data but NO NFT traits. Listing events from /events/ carry the\nfull nft.traits[] array — so we reuse the same parse logic as sales and\ndon't need a separate per-item enrichment fetch. Slight latency tradeoff\n(events lag bare listings by seconds to minutes) is acceptable for\narbitrage detection.\n\nFLOW\n----\n1. Schedule Trigger\n2. HTTP Request → OpenSea events API (event_type=listing, limit=50)\n3. Code: parse asset_events[] → courtyard_listings rows\n   (same normalization as sales collector — grader/set/edition/card_number)\n4. Postgres Execute Query → INSERT ... resolve_card_id() inline,\n   ON CONFLICT (item_id) DO UPDATE SET listed_price=EXCLUDED.listed_price,\n   listed_at=NOW(), raw_payload=EXCLUDED.raw_payload, card_id=EXCLUDED.card_id\n   — price refreshes are seen, dead listings age out via listed_at.\n\nFIELD MAPPING (deltas vs sales collector)\n-----------------------------------------\n  listed_price = price.current.value / 10^price.current.decimals (USDC)\n  sold_price = NULL\n  transaction_type = 'LISTING'\n  transaction_hash = NULL (listings are off-chain signatures)\n  listed_at = NOW() — refreshed on every upsert\n\nKNOWN GAPS\n----------\nSame as sales collector: OpenSea API key required (provision header credential).\nresolve_card_id() may return NULL on set_name drift — row inserts anyway.",
+        "height": 760,
+        "width": 460
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-880, -540],
+      "id": "a2f3c4d5-e6f7-8901-abcd-2345678901bc",
+      "name": "Workflow Doc"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            { "field": "cronExpression", "expression": "0 0,15,30,45 * * * *" }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [-360, -260],
+      "id": "b2f3c4d5-e6f7-8901-abcd-2345678901bc",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "url": "https://api.opensea.io/api/v2/events/collection/courtyard-nft",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "event_type", "value": "listing" },
+            { "name": "limit", "value": "50" }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Accept", "value": "application/json" }
+          ]
+        },
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [-140, -260],
+      "id": "c2f3c4d5-e6f7-8901-abcd-2345678901bc",
+      "name": "OpenSea Listing Events",
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "httpHeaderAuth": { "id": "OPENSEA_API_KEY_PLACEHOLDER", "name": "OpenSea API Key" }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse OpenSea listing events → courtyard_listings rows.\n// Same normalization logic as sales collector — only field semantics differ\n// (listed_price instead of sold_price, transaction_hash NULL, etc.).\n\nconst CANONICAL_SETS = {\n  'BASE': 'Base Set', 'BASE SET': 'Base Set', 'POKEMON BASE SET': 'Base Set',\n  'FOSSIL': 'Fossil', 'POKEMON FOSSIL': 'Fossil',\n  'JUNGLE': 'Jungle', 'POKEMON JUNGLE': 'Jungle',\n  'TEAM ROCKET': 'Team Rocket', 'POKEMON TEAM ROCKET': 'Team Rocket',\n  'GYM HEROES': 'Gym Heroes', 'POKEMON GYM HEROES': 'Gym Heroes',\n  'GYM CHALLENGE': 'Gym Challenge', 'POKEMON GYM CHALLENGE': 'Gym Challenge',\n  'WIZARDS BLACK STAR PROMOS': 'Wizards Black Star Promos', 'WBSP': 'Wizards Black Star Promos',\n  'BEST OF GAME': 'Best of Game', 'BOG': 'Best of Game'\n};\n\nfunction findAttr(traits, names) {\n  if (!Array.isArray(traits)) return null;\n  for (const name of names) {\n    const t = traits.find(x => (x.trait_type || '').toLowerCase() === name.toLowerCase());\n    if (t && t.value != null && String(t.value).trim() !== '') return String(t.value).trim();\n  }\n  return null;\n}\n\nfunction normalizeGrader(raw) {\n  if (!raw) return null;\n  const u = raw.toUpperCase();\n  if (u.includes('PSA')) return 'PSA';\n  if (u.includes('CGC')) return 'CGC';\n  if (u.includes('BGS') || u.includes('BECKETT')) return 'BGS';\n  if (u.includes('SGC')) return 'SGC';\n  return null;\n}\n\nfunction normalizeSet(raw) {\n  if (!raw) return null;\n  return CANONICAL_SETS[raw.trim().toUpperCase()] || null;\n}\n\nfunction normalizeEdition(raw) {\n  if (!raw) return 'N/A';\n  const u = raw.toUpperCase();\n  if (u.includes('1ST') || u.includes('FIRST')) return '1st Edition';\n  if (u.includes('SHADOW')) return 'Shadowless';\n  if (u.includes('UNLIM')) return 'Unlimited';\n  return 'N/A';\n}\n\nfunction normalizeCardNumber(raw) {\n  if (!raw) return null;\n  return String(raw).replace(/^#/, '').replace(/\\/\\d+$/, '').trim() || null;\n}\n\nconst out = [];\nconst payload = $input.first().json || {};\nconst events = payload.asset_events || [];\n\nfor (const ev of events) {\n  const nft = ev.nft || {};\n  const traits = nft.traits || [];\n\n  const grader = normalizeGrader(findAttr(traits, ['Grading Company', 'Grader', 'Grading', 'Authenticator']));\n  if (!grader) continue;\n\n  // Listing price — OpenSea events with event_type=listing carry payment.quantity\n  // representing the asking price (same shape as sale, different semantics).\n  let listed_price = null;\n  const payment = ev.payment || {};\n  if (payment.quantity != null && payment.decimals != null) {\n    listed_price = Number(payment.quantity) / Math.pow(10, Number(payment.decimals));\n  }\n\n  out.push({\n    json: {\n      item_id: nft.identifier ? String(nft.identifier) : null,\n      title: nft.name || null,\n      card_name: findAttr(traits, ['Card Name', 'Name', 'Card']) || nft.name || null,\n      grader,\n      grade: findAttr(traits, ['Grade', 'Card Grade']),\n      set_name: normalizeSet(findAttr(traits, ['Set Name', 'Set', 'Series'])),\n      edition: normalizeEdition(findAttr(traits, ['Edition', 'Print Edition'])),\n      print_variant: 'Standard',\n      card_number: normalizeCardNumber(findAttr(traits, ['Card Number', '#', 'Number'])),\n      listed_price,\n      seller_address: ev.seller || null,\n      seller_username: ev.seller || null,\n      listing_url: nft.opensea_url || (nft.permalink || null),\n      image_url: nft.image_url || nft.display_image_url || null,\n      item_creation_date: ev.event_timestamp ? new Date(ev.event_timestamp * 1000).toISOString() : null,\n      raw_payload: JSON.stringify(ev)\n    }\n  });\n}\n\nreturn out;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [80, -260],
+      "id": "d2f3c4d5-e6f7-8901-abcd-2345678901bc",
+      "name": "Parse & Normalize",
+      "notes": "Same normalization shape as sales collector. Skips non-graded NFTs.\nlisted_price = payment.quantity / 10^decimals (the asking price)."
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO courtyard_listings (\n  item_id, title, card_name, grader, grade, set_name, edition, print_variant,\n  card_number, listed_price, sold_price, currency, transaction_type,\n  seller_address, seller_username, platform, blockchain, nft_contract,\n  item_creation_date, image_url, listing_url, listed_at, raw_payload, card_id\n) VALUES (\n  $1, $2, $3, $4, $5, $6, $7, $8,\n  $9, $10, NULL, 'USDC', 'LISTING',\n  $11, $12, 'courtyard', 'polygon', '0x251be3a17af4892035c37ebf5890f4a4d889dcad',\n  $13, $14, $15, NOW(), $16::jsonb,\n  resolve_card_id($3, $6, $9, $7, $8)\n)\nON CONFLICT (item_id) DO UPDATE\n   SET listed_price = EXCLUDED.listed_price,\n       listed_at    = NOW(),\n       raw_payload  = EXCLUDED.raw_payload,\n       card_id      = COALESCE(EXCLUDED.card_id, courtyard_listings.card_id);",
+        "options": {
+          "queryReplacement": "={{ $json.item_id }},={{ $json.title }},={{ $json.card_name }},={{ $json.grader }},={{ $json.grade }},={{ $json.set_name }},={{ $json.edition }},={{ $json.print_variant }},={{ $json.card_number }},={{ $json.listed_price }},={{ $json.seller_address }},={{ $json.seller_username }},={{ $json.item_creation_date }},={{ $json.image_url }},={{ $json.listing_url }},={{ $json.raw_payload }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [320, -260],
+      "id": "e2f3c4d5-e6f7-8901-abcd-2345678901bc",
+      "name": "Upsert courtyard_listings",
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "postgres": { "id": "dQxOaWILJI9iNiQc", "name": "Postgres EventHorizon" }
+      },
+      "notes": "UPSERT semantics: new listings INSERT, repeat item_ids UPDATE listed_price + listed_at + raw_payload. card_id preserves any previously-resolved value (COALESCE) so a transient resolver miss on a re-fetch doesn't clear it."
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [[{ "node": "OpenSea Listing Events", "type": "main", "index": 0 }]]
+    },
+    "OpenSea Listing Events": {
+      "main": [[{ "node": "Parse & Normalize", "type": "main", "index": 0 }]]
+    },
+    "Parse & Normalize": {
+      "main": [[{ "node": "Upsert courtyard_listings", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "pinData": {},
+  "tags": [
+    { "name": "eventhorizon" },
+    { "name": "pokemonbhn" }
+  ]
+}

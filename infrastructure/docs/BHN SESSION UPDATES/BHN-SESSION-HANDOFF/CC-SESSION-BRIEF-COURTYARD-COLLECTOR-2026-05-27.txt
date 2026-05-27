@@ -1,0 +1,628 @@
+================================================================================
+CLAUDE CODE SESSION BRIEF — COURTYARD ON-CHAIN DATA COLLECTOR
+2026-05-27
+================================================================================
+
+READ FIRST: infrastructure/docs/BHN SESSION UPDATES/BHN-SESSION-HANDOFF/
+Read the most recent handoff doc before starting any work.
+
+================================================================================
+CONTEXT
+================================================================================
+
+Courtyard.io is a physical collectible marketplace on Polygon blockchain where
+graded Pokemon cards (PSA/CGC/BGS/SGC) are tokenized as NFTs, vaulted in
+Brink's, and traded on-chain. It is currently the #1 NFT collection globally
+by weekly sales volume ($7.82M week of Apr 20, 2026).
+
+The tables are already built in eventhorizon PostgreSQL (applied 2026-05-22):
+  - courtyard_listings    — active NFT listings (mutable, upsert)
+  - courtyard_sales       — completed sales (immutable, insert-only)
+  - tokenized_arbitrage_signals — cross-market opportunity flags
+
+All grants are in place:
+  - log_shipper: INSERT on courtyard_sales, INSERT+UPDATE on courtyard_listings
+  - n8n_user: INSERT+UPDATE on tokenized_arbitrage_signals
+  - grafana_reader, agent_reader, ehuser: SELECT on all
+
+Schema reference: sql/tokenized-market-schema.sql
+Data standard: infrastructure/docs/pokemonbhn/collectibles-data-standard.md §10
+
+CONTRACT ADDRESS (Polygon):
+  0x251be3a17af4892035c37ebf5890f4a4d889dcad
+
+================================================================================
+DATA SOURCE STRATEGY
+================================================================================
+
+USE OpenSea API (free tier) — NOT direct blockchain parsing.
+
+Why: OpenSea already indexes all Courtyard sales with structured metadata
+(card name, grade, grader, price in USDC, buyer/seller addresses, timestamps).
+Direct blockchain parsing requires decoding NFT metadata from IPFS token URIs
+which is significantly more complex.
+
+OpenSea API endpoint for Courtyard sales on Polygon:
+  GET https://api.opensea.io/api/v2/events/collection/courtyard-nft?event_type=sale
+
+OpenSea API endpoint for active Courtyard listings:
+  GET https://api.opensea.io/api/v2/listings/collection/courtyard-nft/all
+
+Free tier: no API key required for read-only endpoints (rate limited ~4 req/sec).
+To get a free API key for higher limits: https://docs.opensea.io/reference/api-keys
+
+IMPORTANT — NFT METADATA:
+Each Courtyard NFT token has attributes in the OpenSea response that contain
+the card details. The attributes typically include:
+  - "Card Name" or similar → card_name
+  - "Grading Company" → grader (map to CGC/PSA/BGS/SGC)
+  - "Grade" → grade (text, e.g. "10", "9.5", "PSA 10")
+  - "Set" or "Set Name" → set_name
+  - "Edition" → edition (map to controlled vocab)
+  - "Card Number" → card_number
+  - "Condition" → condition
+
+Always store raw_payload as JSONB in case attribute names change.
+
+PRICE:
+  - Sales: payment.quantity / 10^payment.decimals in USDC = sold_price
+  - Listings: price.current.value / 10^price.current.decimals in USDC = listed_price
+  - currency field = 'USDC'
+
+================================================================================
+TASK 0 — CARD_ID RESOLVER (PREREQUISITE — DO THIS FIRST)
+================================================================================
+
+Without card_id resolution, the arbitrage join is unreliable fuzzy text matching.
+This task must be completed before Task 4 (arbitrage signals) is meaningful.
+
+THE PROBLEM:
+  eBay title: "Dark Charizard 1st Edition Team Rocket CGC 10 GEM MINT"
+  Courtyard:  {Card Name: "Dark Charizard", Set: "Team Rocket", Edition: "1st Ed"}
+  
+  Without a shared key these are just two text blobs. The arbitrage join
+  requires both rows to resolve to the SAME master_card_catalog.id (card_id).
+
+MASTER CATALOG (already built — 637 cards / 1,354 variant rows):
+  master_card_catalog:
+  id  | card_name      | set_name    | card_number | edition      | print_variant
+  892 | Dark Charizard | Team Rocket | 4           | 1st Edition  | Standard
+  893 | Dark Charizard | Team Rocket | 4           | Unlimited    | Standard
+
+  card_id 892 = "1st Edition Dark Charizard from Team Rocket"
+  card_id 893 = "Unlimited Dark Charizard from Team Rocket"
+  Same physical card, different variants. Both resolve deterministically.
+
+IDENTITY MODEL (never fuse these three concepts):
+  card_id     = master_card_catalog.id — WHICH KIND of card (the variant)
+  cert_number = one physical graded slab — ONE SPECIFIC COPY
+  card_number = within-set number (field only, not a key, repeats per set)
+
+HOW THE RESOLVER WORKS:
+  Any incoming row (eBay, Courtyard, etc.) → parse to (set_name, card_number, edition)
+  → lookup master_card_catalog → card_id stored on the row
+  → arbitrage JOIN is just card_id = card_id, no text matching needed
+
+  If resolver fails → card_id = NULL, row still inserts, excluded from signals only
+
+STEP 0A — Add card_id column to observation tables:
+
+  sudo -u postgres psql -d eventhorizon -c "
+  ALTER TABLE ebay_listings
+    ADD COLUMN IF NOT EXISTS card_id INTEGER REFERENCES master_card_catalog(id);
+  ALTER TABLE sold_listings
+    ADD COLUMN IF NOT EXISTS card_id INTEGER REFERENCES master_card_catalog(id);
+  ALTER TABLE courtyard_listings
+    ADD COLUMN IF NOT EXISTS card_id INTEGER REFERENCES master_card_catalog(id);
+  ALTER TABLE courtyard_sales
+    ADD COLUMN IF NOT EXISTS card_id INTEGER REFERENCES master_card_catalog(id);
+  ALTER TABLE collector_crypt_sales
+    ADD COLUMN IF NOT EXISTS card_id INTEGER REFERENCES master_card_catalog(id);
+  CREATE INDEX IF NOT EXISTS ebay_listings_card_id_idx ON ebay_listings(card_id);
+  CREATE INDEX IF NOT EXISTS sold_listings_card_id_idx ON sold_listings(card_id);
+  CREATE INDEX IF NOT EXISTS courtyard_listings_card_id_idx ON courtyard_listings(card_id);
+  CREATE INDEX IF NOT EXISTS courtyard_sales_card_id_idx ON courtyard_sales(card_id);
+  "
+
+  NOTE: card_id is NULLABLE. Rows that can't be resolved still insert with
+  card_id = NULL. NEVER block an ingest because card_id can't be resolved.
+
+STEP 0B — Create the resolver function in PostgreSQL:
+
+  CREATE OR REPLACE FUNCTION resolve_card_id(
+    p_card_name     TEXT,
+    p_set_name      TEXT,
+    p_card_number   TEXT,
+    p_edition       TEXT DEFAULT NULL,
+    p_print_variant TEXT DEFAULT NULL
+  ) RETURNS INTEGER AS $$
+  DECLARE
+    v_id INTEGER;
+  BEGIN
+    -- Normalize card_number: strip #, drop /denominator, trim
+    p_card_number := regexp_replace(btrim(COALESCE(p_card_number,'')), '^#|/\d+$', '', 'g');
+
+    -- Normalize edition to canonical vocab
+    p_edition := CASE
+      WHEN p_edition ILIKE '1st%'     THEN '1st Edition'
+      WHEN p_edition ILIKE 'shadow%'  THEN 'Shadowless'
+      WHEN p_edition ILIKE 'unlim%'   THEN 'Unlimited'
+      ELSE COALESCE(p_edition, 'Unlimited')
+    END;
+
+    -- Attempt 1: exact match on set + card_number + edition (most reliable)
+    IF p_card_number != '' THEN
+      SELECT id INTO v_id FROM master_card_catalog
+      WHERE set_name = p_set_name
+        AND card_number = p_card_number
+        AND edition = p_edition
+      LIMIT 1;
+      IF v_id IS NOT NULL THEN RETURN v_id; END IF;
+    END IF;
+
+    -- Attempt 2: set + card_number only (edition unknown — take first match)
+    IF p_card_number != '' THEN
+      SELECT id INTO v_id FROM master_card_catalog
+      WHERE set_name = p_set_name
+        AND card_number = p_card_number
+      ORDER BY edition LIMIT 1;
+      IF v_id IS NOT NULL THEN RETURN v_id; END IF;
+    END IF;
+
+    -- Attempt 3: card_name + set_name + edition (no card_number available)
+    IF p_card_name IS NOT NULL AND p_set_name IS NOT NULL THEN
+      SELECT id INTO v_id FROM master_card_catalog
+      WHERE set_name = p_set_name
+        AND lower(card_name) = lower(p_card_name)
+        AND edition = p_edition
+      LIMIT 1;
+      IF v_id IS NOT NULL THEN RETURN v_id; END IF;
+    END IF;
+
+    -- No match — return NULL (row still inserts, excluded from arbitrage only)
+    RETURN NULL;
+  END;
+  $$ LANGUAGE plpgsql STABLE;
+
+  GRANT EXECUTE ON FUNCTION resolve_card_id TO n8n_user, log_shipper, ehuser;
+
+STEP 0C — Backfill existing rows:
+
+  -- Backfill sold_listings (has set_name + card_name)
+  UPDATE sold_listings SET card_id = resolve_card_id(card_name, set_name, NULL, NULL, NULL)
+  WHERE card_id IS NULL AND set_name IS NOT NULL;
+
+  -- Backfill ebay_listings
+  UPDATE ebay_listings SET card_id = resolve_card_id(card_name, set_name, NULL, NULL, NULL)
+  WHERE card_id IS NULL AND set_name IS NOT NULL;
+
+  -- Check resolution rate — target >80% before proceeding to Task 4
+  SELECT tbl, total, resolved,
+         ROUND(resolved::numeric / NULLIF(total,0) * 100, 1) AS pct_resolved
+  FROM (
+    SELECT 'ebay_listings' AS tbl, COUNT(*) AS total, COUNT(card_id) AS resolved FROM ebay_listings
+    UNION ALL
+    SELECT 'sold_listings', COUNT(*), COUNT(card_id) FROM sold_listings
+  ) x;
+
+  If resolution rate is below 80%: investigate which set_name/card_name values
+  fail to match. Common causes: set_name mismatch (e.g. "Pokemon Base Set" vs
+  "Base Set"), missing card_number, edition normalization gaps. Fix the resolver
+  logic before proceeding.
+
+STEP 0D — Wire resolver into Courtyard ingest (Tasks 1 & 2):
+
+  In each Courtyard n8n workflow, after parsing card attributes, add a
+  Postgres query step that calls resolve_card_id() and returns card_id
+  to include in the INSERT payload.
+
+  n8n Postgres node query:
+    SELECT resolve_card_id(
+      '{{ $json.card_name }}',
+      '{{ $json.set_name }}',
+      '{{ $json.card_number }}',
+      '{{ $json.edition }}',
+      '{{ $json.print_variant }}'
+    ) AS card_id
+
+  Store the result on the item as card_id. If NULL — insert anyway.
+  Never skip a row because card_id is NULL.
+
+STEP 0E — Update tokenized_arbitrage_signals to join on card_id:
+
+  ALTER TABLE tokenized_arbitrage_signals
+    ADD COLUMN IF NOT EXISTS card_id INTEGER REFERENCES master_card_catalog(id);
+
+  Once card_id is populated on both ebay_listings and courtyard_listings,
+  the arbitrage query in Task 4 joins on card_id instead of fuzzy text:
+
+    JOIN ebay_listings e ON e.card_id = c.card_id  -- exact, reliable
+    -- instead of: ON lower(e.card_name) LIKE lower(c.card_name)  -- fragile
+
+================================================================================
+TASK 1 — BUILD THE COURTYARD SALES COLLECTOR (n8n workflow)
+================================================================================
+
+Build an n8n workflow: COURTYARD-BHN | SALES-COLLECTOR
+
+Schedule: Every 30 minutes (cron: 0 */30 * * * *)
+Tags: EventHorizon, PokemonBHN
+
+FLOW:
+  1. Schedule Trigger
+  2. HTTP Request → OpenSea sales API (paginate until no more results or
+     until we hit a sale we've already seen via transaction_hash dedup)
+  3. Filter → Pokemon cards only
+     (check attributes for card game type OR filter by known grader codes
+     PSA/CGC/BGS/SGC in the grader attribute)
+  4. Parse & Map Fields → extract card_name, grader, grade, set_name,
+     edition, card_number, sold_price, transaction_hash, buyer/seller
+     addresses, listing_url, image_url, item_id (token_id as string)
+  5. Dedup Check → SELECT COUNT(*) FROM courtyard_sales
+     WHERE item_id = $item_id AND transaction_hash = $tx_hash
+     (skip if already exists)
+  6. Insert into courtyard_sales (Postgres EventHorizon credential)
+     Operation: Insert
+     Table: courtyard_sales
+     On conflict: skip (item_id UNIQUE)
+
+PAGINATION:
+  OpenSea returns cursor-based pagination (next param). Keep fetching pages
+  until either:
+  a) No more results (empty array)
+  b) All sales on the page already exist in courtyard_sales (dedup check)
+  c) 50 pages max per run (safety limit — prevents runaway)
+
+FIELD MAPPING (OpenSea response → courtyard_sales columns):
+  item_id             = event.nft.identifier (token ID as text)
+  title               = event.nft.name
+  card_name           = parse from NFT attributes "Card Name" attribute
+  grader              = parse from NFT attributes, normalize to CGC/PSA/BGS/SGC
+  grade               = parse from NFT attributes "Grade" (keep as TEXT)
+  set_name            = parse from NFT attributes "Set Name" or "Set"
+  edition             = parse from NFT attributes, map to controlled vocab:
+                        '1st Edition' | 'Unlimited' | 'Shadowless' | 'N/A'
+  card_number         = parse from NFT attributes "Card Number" or "#"
+  listing_url         = event.nft.permalink (OpenSea listing URL)
+  image_url           = event.nft.image_url
+  sold_price          = payment.quantity / 10^payment.decimals (USDC)
+  listed_price        = NULL (not available on sales events)
+  currency            = 'USDC'
+  transaction_type    = 'SALE'
+  transaction_hash    = event.transaction
+  seller_address      = event.seller
+  buyer_address       = event.buyer
+  seller_username     = event.seller (wallet address — no username on-chain)
+  platform            = 'courtyard'
+  blockchain          = 'polygon'
+  sale_type           = 'peer_to_peer' (default for marketplace sales)
+  nft_contract        = '0x251be3a17af4892035c37ebf5890f4a4d889dcad'
+  item_creation_date  = event.closing_date (sale timestamp)
+  listed_at           = NULL
+  created_at          = NOW()
+  raw_payload         = full event JSON as JSONB
+
+  -- Always NULL for tokenized (per data standard §10.2):
+  shipping, bid_count, current_bid, obo_available, obo_min_price,
+  seller_feedback, seller_feedback_pct, returns_accepted
+
+================================================================================
+TASK 2 — BUILD THE COURTYARD LISTINGS COLLECTOR (n8n workflow)
+================================================================================
+
+Build an n8n workflow: COURTYARD-BHN | LISTINGS-COLLECTOR
+
+Schedule: Every 15 minutes (cron: 0 */15 * * * *)
+Tags: EventHorizon, PokemonBHN
+
+FLOW: Same structure as sales collector but hitting the listings endpoint.
+
+  1. Schedule Trigger
+  2. HTTP Request → OpenSea listings API
+  3. Filter → Pokemon/graded cards only
+  4. Parse & Map Fields
+  5. Upsert into courtyard_listings
+     Operation: Insert or Update
+     Table: courtyard_listings
+     Match on: item_id
+     (listings change price — update listed_price, last_seen_at)
+
+FIELD MAPPING (listings → courtyard_listings):
+  Same as sales above, but:
+  listed_price        = price.current.value / 10^price.current.decimals
+  sold_price          = NULL (not yet sold)
+  transaction_type    = 'LISTING'
+  last_seen_at        = NOW()
+
+================================================================================
+TASK 3 — HISTORICAL BACKFILL (one-time script)
+================================================================================
+
+OpenSea only returns recent sales via the events endpoint. For historical sales
+beyond what the paginator can reach, query on-chain directly via PolygonScan:
+
+  GET https://api.polygonscan.com/api?module=account&action=tokennfttx
+      &contractaddress=0x251be3a17af4892035c37ebf5890f4a4d889dcad
+      &page=1&offset=100&sort=desc&apikey=YourApiKeyToken
+
+PolygonScan free API key: https://polygonscan.com/apis
+Rate limit: 5 calls/sec on free tier.
+
+This gives transfer events (from/to addresses + tokenId + timestamp) but NOT
+price. Price for historical sales must come from OpenSea historical events
+endpoint or be left NULL with transaction_hash populated for later enrichment.
+
+Build as a one-time Python script (not n8n):
+  scripts/courtyard-historical-backfill.py
+
+The script should:
+  1. Pull all Transfer events from PolygonScan for the Courtyard contract
+  2. For each transfer that is a sale (from != null address, to != null address,
+     and not a mint), attempt to get price from OpenSea events API by tx hash
+  3. Insert into courtyard_sales with sold_price = NULL where price unavailable
+  4. Track progress in a state file so it can be resumed
+
+NOTE: This is a best-effort backfill. NULL sold_price rows are still valuable
+for ownership history and will be enriched as data becomes available.
+
+================================================================================
+TASK 4 — ARBITRAGE SIGNAL GENERATOR (n8n workflow)
+================================================================================
+
+Build an n8n workflow: COURTYARD-BHN | ARBITRAGE-SIGNALS
+
+Schedule: Every 30 minutes (fires after listings collector runs)
+Tags: EventHorizon, PokemonBHN
+
+LOGIC:
+  For each active Courtyard listing, check if the same card is cheaper on
+  Courtyard than on eBay (or vice versa).
+
+  Query 1 — Courtyard ask prices (active listings):
+    SELECT card_name, grader, grade, edition, set_name,
+           MIN(listed_price) AS courtyard_ask
+    FROM courtyard_listings
+    WHERE listed_at > NOW() - INTERVAL '24 hours'
+    GROUP BY card_name, grader, grade, edition, set_name
+
+  Query 2 — eBay 90-day average sold price:
+    SELECT card_name, grader, grade,
+           AVG(listed_price) AS ebay_90d_avg,
+           MIN(listed_price) AS ebay_current_ask
+    FROM sold_listings
+    WHERE inserted_at > NOW() - INTERVAL '90 days'
+    GROUP BY card_name, grader, grade
+
+  JOIN on (card_name, grader, grade) — fuzzy match acceptable
+
+  Signal fires when:
+    spread_pct = ((ebay_90d_avg - courtyard_ask) / ebay_90d_avg) * 100 > 10%
+
+  Signal strength:
+    > 10%  = 'weak'
+    > 20%  = 'moderate'
+    > 35%  = 'strong'
+    > 50%  = 'critical'
+
+  estimated_profit = ebay_90d_avg - courtyard_ask - (courtyard_ask * 0.05)
+    (5% fee estimate for vault redemption + eBay selling fees)
+
+  INSERT INTO tokenized_arbitrage_signals (only if no open signal exists
+  for the same card/grader/grade in the last 24h):
+    ON CONFLICT: skip if reviewed = FALSE and detected_at > NOW() - 24h
+
+HORIZON ALERT:
+  After inserting a signal with strength = 'strong' or 'critical':
+  Send SMS to operator via Twilio: 
+    "ARBITRAGE ALERT: [card_name] [grader] [grade] — 
+     Courtyard ask $[courtyard_ask] vs eBay avg $[ebay_90d_avg] 
+     (+[spread_pct]%). Est. profit: $[estimated_profit]"
+
+================================================================================
+TASK 5 — ADD TO GRAFANA DATA HEALTH DASHBOARD
+================================================================================
+
+Add Courtyard sources to collector_config in PostgreSQL:
+
+  INSERT INTO collector_config 
+    (source_name, table_name, domain, cadence_hours, grace_hours, 
+     status_override, override_note)
+  VALUES
+    ('Courtyard Sales', 'courtyard_sales', 'Collectibles', 0.5, 2, 
+     'pending', 'OpenSea API collector not yet built'),
+    ('Courtyard Listings', 'courtyard_listings', 'Collectibles', 0.25, 1,
+     'pending', 'OpenSea API collector not yet built')
+  ON CONFLICT (source_name) DO NOTHING;
+
+After workflows are deployed and verified, flip to NULL:
+  UPDATE collector_config SET status_override = NULL, override_note = NULL
+  WHERE source_name IN ('Courtyard Sales', 'Courtyard Listings');
+
+================================================================================
+DATA ORGANIZATION — REPO STRUCTURE (READ THIS FIRST)
+================================================================================
+
+AUTHORITATIVE DOCS — read these before touching any schema or data:
+  infrastructure/docs/pokemonbhn/collectibles-data-standard.md  ← THE LAW
+  README.md (PokemonBHN section)
+  sql/tokenized-market-schema.sql
+
+REPO STRUCTURE:
+  sql/                              All schema SQL files
+    tokenized-market-schema.sql     Courtyard + Collector Crypt + arbitrage signals
+    pokemonbhn-master-set-catalog-schema.sql
+    ebay-listings-alterations.sql   Enrichment columns added 2026-05-22
+  infrastructure/
+    scrapers/                       cgc-pop-scrape.js, psa-pop-scrape.js, cgc-pop-load.js
+    docs/pokemonbhn/                collectibles-data-standard.md (authoritative)
+    grafana/dashboards/             Grafana JSON dashboard files
+  n8n-workflows/pokemon/            All Pokemon n8n workflow JSONs
+
+DATABASE (eventhorizon on LA):
+  Dimension tables (authorities — source of truth):
+    master_card_catalog     637 distinct cards / 1,354 variant rows (8 WOTC sets)
+                            set_name FK-bound to master_set_catalog
+                            active=true = in scraper queue
+    master_set_catalog      8 sets: Base Set, Fossil, Jungle, Team Rocket,
+                            Gym Heroes, Gym Challenge, Wizards Black Star Promos,
+                            Best of Game — with PSA heading mappings
+    master_grade_catalog    88 grade labels: CGC(25) / PSA(20) / BGS(21) / SGC(22)
+    master_grading_criteria_catalog  22 rows
+    seller_profiles         cross-platform seller dimension
+
+  Fact tables (observations):
+    sold_listings           eBay sold comps — HARD FK on grade
+    ebay_listings           eBay active listings — soft validate
+    pop_reports             CGC/PSA population counts — HARD FK on grade
+    courtyard_listings      Active Courtyard NFT listings (THIS SESSION)
+    courtyard_sales         Completed Courtyard sales (THIS SESSION)
+    collector_crypt_sales   Solana/Collector Crypt sales (future)
+
+  Signal tables:
+    tokenized_arbitrage_signals   Cross-market opportunity flags (THIS SESSION)
+    filter_rejections             n8n workflow filter chain rejects
+
+  Control tables:
+    ebay_watchlist          Sniper buy-criteria config
+
+EXISTING DATA BEING COLLECTED (as of 2026-05-27):
+  Source                    Table               Method              Status
+  ────────────────────────────────────────────────────────────────────────
+  eBay active auctions      ebay_listings       n8n HTTP/eBay API   LIVE (PSA/CGC/BGS/SGC)
+  eBay sold comps           sold_listings       n8n HTTP/eBay API   LIVE (some NULL rows - known bug)
+  CGC pop reports           pop_reports         cgc-pop-scrape.js   LIVE (weekly, LA cron)
+  PSA pop reports           pop_reports         psa-pop-scrape.js   BUILT (residential box only)
+  eBay filter rejects       filter_rejections   n8n inline          LIVE
+
+EXISTING n8n WORKFLOWS (in n8n-workflows/pokemon/):
+  POKEMON-BHN | VINTAGE-PSA          PSA graded auctions (every 30min at :00/:30)
+  POKEMON-BHN | VINTAGE-CGC          CGC graded auctions
+  POKEMON-BHN | VINTAGE-BGS          BGS graded auctions
+  POKEMON-BHN | VINTAGE-SGC          SGC graded auctions
+  POKEMON-BHN | VINTAGE-PSA-UNLIMITED PSA unlimited editions (every 30min at :15/:45)
+  POKEMON-BHN | VINTAGE-CGC-UNLIMITED CGC unlimited editions
+  POKEMON-BHN | VINTAGE-BGS-UNLIMITED BGS unlimited editions
+  POKEMON-BHN | VINTAGE-SGC-UNLIMITED SGC unlimited editions
+
+  All 8 workflows: Tags = EventHorizon + PokemonBHN
+  Credentials used: Postgres EventHorizon (n8n_user), Header Auth (eBay bearer token)
+  Filter chain: LANGUAGE → GRADE (7+) → SET → BID COUNT (≤2) → SELLER FEEDBACK (≥98%)
+  On filter reject: FILTER REJECTION RUNOFF → filter_rejections table
+
+NAMING CONVENTIONS (STRICT — violations cause FK/CHECK failures):
+  set_name:       Exact strings only — 'Base Set', 'Fossil', 'Jungle', 'Team Rocket',
+                  'Gym Heroes', 'Gym Challenge', 'Wizards Black Star Promos', 'Best of Game'
+  card_number:    Bare integer as TEXT — '4' not '#4' not '4/102'
+  edition:        '1st Edition' | 'Unlimited' | 'Shadowless' | 'N/A'
+                  NEVER '1st Ed', NEVER '1st edition' (case matters)
+  print_variant:  'Standard' | 'Holo' | 'Error' | 'No Symbol' | 'W Stamp' | 'Winner'
+                  | 'Jumbo' | 'Prerelease' | 'Gold Border' | 'Red Cheeks' | 'WB Movie'
+                  | 'Nintendo Power' | 'WOTC' | '1999-2000 Copyright'
+  grader:         'CGC' | 'PSA' | 'BGS' | 'SGC' — codes only, never full descriptors
+  grade:          Verbatim raw_label TEXT matching master_grade_catalog
+                  e.g. 'Gem Mint 10', 'PSA 10', 'Pristine 10' — NOT numeric 10
+  card_id:        Surrogate FK to master_card_catalog.id — use for joins, never mint parallel keys
+  cert_number:    Physical slab ID — distinct from card_id (one card_id → many cert_numbers)
+
+IDENTITY MODEL (three concepts that must NEVER fuse):
+  card_id     = master_card_catalog.id (which kind of card)
+  cert_number = one physical graded slab
+  card_number = within-set number (a field, not a key — repeats per set)
+
+CHANGE CONTROL:
+  Adding a new set_name, edition, print_variant, grade label, or grader:
+  → Add to the relevant master_* authority table FIRST
+  → Only then can fact rows use it (FK/CHECK enforces this)
+  → Update collectibles-data-standard.md §9 conformance table
+
+================================================================================
+DATA STANDARD COMPLIANCE NOTES
+================================================================================
+
+Per collectibles-data-standard.md §10:
+
+1. grade field is TEXT — never NUMERIC. Verbatim raw_label matching master_grade_catalog.
+   Courtyard may return '10' or 'PSA 10' — normalize to match the label in master_grade_catalog
+   for the relevant grader. If the label doesn't exist in master_grade_catalog, do NOT insert —
+   log to grade_reject_log (or skip with a console warning until grade_reject_log is built).
+
+2. grader field: codes only — CGC, PSA, BGS, SGC.
+   Map any descriptors: 'Professional Sports Authenticator' → 'PSA'
+   Courtyard NFT attributes may spell it differently — normalize before insert.
+
+3. edition controlled vocab: '1st Edition' | 'Unlimited' | 'Shadowless' | 'N/A'
+   Courtyard NFT attributes may say '1st Ed' → normalize to '1st Edition'
+   If edition is missing from NFT metadata → default to 'N/A'
+
+4. print_variant controlled vocab — see naming conventions above.
+   If print_variant missing from NFT metadata → default to 'Standard'
+   Both edition and print_variant are NOT NULL (required by schema).
+
+5. item_id: use the NFT token ID as a string (not BIGINT — token IDs can
+   be very large numbers beyond INT range)
+
+6. All money in USDC (USD-pegged). currency = 'USDC'. Use sold_price for
+   cross-market comparison per §10.5. listed_price = ask, sold_price = realized.
+
+7. NULL vs 0: never silently zero a missing value. NULL means absent.
+   0 means free/zero. Never mix them.
+
+8. set_name: must match one of the 8 canonical strings exactly.
+   Courtyard NFT metadata may say 'Pokemon Base Set' → normalize to 'Base Set'.
+   If the set doesn't map to a known set_name → set set_name = NULL (not a fake value).
+
+9. card_number: bare integer as TEXT. Strip '#', drop '/102' denominator.
+   If unknown → NULL.
+
+10. platform = 'courtyard', blockchain = 'polygon' — hardcoded, not from API response.
+    These are CHECK-constrained on the table.
+
+================================================================================
+TESTING BEFORE DEPLOY
+================================================================================
+
+Before deploying the workflows, manually test the OpenSea API:
+
+  curl "https://api.opensea.io/api/v2/events/collection/courtyard-nft?event_type=sale&limit=5" \
+    -H "Accept: application/json"
+
+Verify:
+  - Response contains sale events
+  - NFT attributes contain card name/grade/grader fields
+  - Payment amount is in USDC (check payment.symbol = 'USDC')
+  - transaction field contains the Polygon tx hash
+
+If OpenSea rate limits without an API key, get a free key at:
+  https://docs.opensea.io/reference/api-keys
+
+================================================================================
+SUCCESS CRITERIA
+================================================================================
+
+Session complete when:
+  1. COURTYARD-BHN | SALES-COLLECTOR deployed and Published in n8n
+  2. COURTYARD-BHN | LISTINGS-COLLECTOR deployed and Published in n8n
+  3. COURTYARD-BHN | ARBITRAGE-SIGNALS deployed and Published in n8n
+  4. At least 10 rows in courtyard_sales after first run
+  5. At least 10 rows in courtyard_listings after first run
+  6. collector_config updated with both Courtyard sources
+  7. Verify row count:
+       SELECT COUNT(*) FROM courtyard_sales;
+       SELECT COUNT(*) FROM courtyard_listings;
+       SELECT COUNT(*) FROM tokenized_arbitrage_signals;
+
+================================================================================
+COMMIT TEMPLATE
+================================================================================
+
+Summary: feat: Courtyard on-chain data collectors + arbitrage signal engine
+
+Description:
+- COURTYARD-BHN | SALES-COLLECTOR n8n workflow (OpenSea API, every 30min)
+- COURTYARD-BHN | LISTINGS-COLLECTOR n8n workflow (OpenSea API, every 15min)
+- COURTYARD-BHN | ARBITRAGE-SIGNALS n8n workflow (spread detection, every 30min)
+- collector_config rows for Courtyard Sales + Courtyard Listings
+- Populates courtyard_sales, courtyard_listings, tokenized_arbitrage_signals
+- Contract: 0x251be3a17af4892035c37ebf5890f4a4d889dcad (Polygon)
+- Tables pre-built 2026-05-22, grants already in place
+================================================================================

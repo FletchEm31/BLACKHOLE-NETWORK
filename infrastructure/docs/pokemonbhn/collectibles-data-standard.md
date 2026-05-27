@@ -6,7 +6,7 @@ written and maintained by Claude Code from the **live `eventhorizon` DB**. Where
 (the `PokemonBHN_*` planning set, the retired `BHN-*` docs) disagrees with this file, **this file
 wins**; where this file disagrees with the live DB, **the live DB wins** and this file is corrected.
 
-Last verified against the live DB: **2026-05-21** (see [§9 Conformance status](#9-conformance-status)).
+Last verified against the live DB: **2026-05-27** (see [§9 Conformance status](#9-conformance-status)).
 
 PokemonBHN is one of three data domains (PokemonBHN, FinancialBHN, SecurityBHN) inside the
 **BLACKHOLE-NETWORK** repo, over shared infra (HORIZON, WireGuard, PostgreSQL, n8n).
@@ -56,7 +56,9 @@ Unlike the `master_*` authorities (externally curated), derived dimensions are *
 | `card_number` | within-set number (a **field**, not a key) | all tables | repeats per set |
 
 Observations should resolve to `card_id` (the dumb surrogate). Do **not** encode meaning into the
-key (no smart keys); a readable code like `BAS-004-1E-HOLO` is **derived for display only**.
+key (no smart keys); the **`card_code`** (e.g. `BST-004-1E`) and derived **`slab_code`** (e.g.
+`BST-004-1E-PSA-10`) are human-readable identifiers **for display only** — they are never used as
+join keys. See [§2.1](#21-card_code--display-identifier) and [§2.2](#22-slab_code--derived-identifier).
 
 ---
 
@@ -66,6 +68,52 @@ key (no smart keys); a readable code like `BAS-004-1E-HOLO` is **derived for dis
   (Internal objects `card_catalog_id_seq` / `card_catalog_pkey` retain pre-rename names; harmless.)
 - Card identity is the composite **`(set_name, card_number, edition, print_variant)`**, surfaced as `card_id`.
 - `card_number` alone is **not** unique — a `4` exists in every set.
+
+### 2.1 `card_code` — display identifier
+
+A stored human-readable label on every `master_card_catalog` row. Lives at
+`master_card_catalog.card_code` (TEXT, UNIQUE), added 2026-05-27. **Display / label only —
+never use as a join key.** All joins remain on `card_id` (integer).
+
+Format: `SET_CODE-NNN-EDITION_CODE[-VARIANT_CODE]`
+
+- `SET_CODE` — 3 letters per set (column `master_set_catalog.set_code`, UNIQUE):
+  `BST` Base Set · `FSL` Fossil · `JGL` Jungle · `TRK` Team Rocket · `GYH` Gym Heroes ·
+  `GYC` Gym Challenge · `WSP` Wizards Black Star Promos · `BOG` Best of Game.
+- `NNN` — `card_number` zero-padded to 3 digits (`4 → 004`, `132 → 132`).
+- `EDITION_CODE` — `1E` 1st Edition · `SH` Shadowless · `UN` Unlimited · `NA` N/A (promos).
+- `VARIANT_CODE` (optional, omitted when `print_variant='Standard'`):
+  `HOL` Holo · `ERR` Error · `NOS` No Symbol · `WST` W Stamp · `WIN` Winner · `JMB` Jumbo ·
+  `PRE` Prerelease · `GLB` Gold Border · `RCK` Red Cheeks · `WBM` WB Movie · `NTP` Nintendo Power ·
+  `WTC` WOTC · `C99` 1999-2000 Copyright.
+
+Examples: `BST-004-1E` (Base Set #4 Charizard 1st Edition), `BST-058-1E-ERR` (Base Set #58 Potion
+1st Edition Error print), `TRK-004-UN` (Team Rocket #4 Dark Charizard Unlimited), `BOG-001-NA-WIN`
+(Best of Game #1 Winner).
+
+The full populate logic lives in [`sql/card-code-system.sql`](../../../sql/card-code-system.sql).
+Future sets (Neo Genesis etc.) get their own 3-letter `set_code` when added to `master_set_catalog`.
+
+### 2.2 `slab_code` — derived identifier
+
+Identifies one **graded** card variant — `card_code` + grader + numeric grade. **Never stored** —
+always derived on demand via `slab_code(p_card_code, p_grader, p_grade)` (PL/pgSQL function,
+`STABLE`, granted to `n8n_user`, `log_shipper`, `ehuser`, `agent_reader`).
+
+Format: `CARD_CODE-GRADER-NUMERIC_GRADE`
+
+- Grader: `PSA` · `CGC` · `BGS` · `SGC` (codes only per [§3.4](#34-grader--codes-only)).
+- Numeric grade: looked up via `master_grade_catalog.numeric_grade` from `(grader, raw_label)`.
+  Returns NULL if the `(grader, grade)` pair doesn't resolve.
+- Note: distinct raw_labels with the same `numeric_grade` collapse — e.g. CGC `Gem Mint 10`,
+  `Pristine 10`, and `10` all yield `…-CGC-10`. The slab_code is a comparison key for
+  cross-platform overlap; if the tier distinction matters, use the raw_label directly.
+
+Examples: `BST-004-1E-PSA-10` · `BST-004-SH-CGC-10` · `TRK-004-1E-BGS-9.5`.
+
+Used for HORIZON alert payloads and arbitrage signal display — see
+[`tokenized_arbitrage_signals.card_code`](#106-tokenized_arbitrage_signals--signal-table) (added
+2026-05-27 for in-row labelling; the slab_code itself is composed at alert time).
 
 ---
 
@@ -168,7 +216,7 @@ worse than nothing.
 
 ---
 
-## 9. Conformance status (target vs. live, 2026-05-21)
+## 9. Conformance status (target vs. live, 2026-05-27)
 
 | Item | Standard (target) | Live state |
 |------|-------------------|------------|
@@ -176,13 +224,15 @@ worse than nothing.
 | `master_card_catalog` editions | full canonical (637 cards / 1,354 rows) | ✅ audited complete |
 | grade FK on `pop_reports`/`sold_listings` | hard FK | ✅ in place |
 | `sold_listings.grade` | text raw_label | ✅ migrated |
-| `card_number` bare | §3.2 | ⏳ catalog stores `#NN` (1,354/1,354) — **strip-`#` migration pending** |
+| `card_number` bare | §3.2 | ✅ migrated 2026-05-27 — `#` stripped from all 1,354 catalog rows via `sql/card-id-resolver.sql` |
 | variant SPLIT | `edition` + `print_variant` | ✅ done 2026-05-21 — split live + parity-verified; legacy `variant` retained (trigger-bridged) pending consumer migration; 1 dedup resolved (TR #5 Holo/Unlimited) |
 | `master_set_catalog` | §1 / §3.3 | ✅ built 2026-05-21 — 8 sets, legal_editions + PSA headings; `set_name` FK-bound; DDL in `sql/` |
 | `grade_reject_log` + staging-filter | §4 | ⏳ **not built** (loaders are all-or-nothing) |
 | `ebay_listings` columns/FK | `edition`,`card_number`,`grade_tier` + soft validate | ⏳ missing 3 cols; `grade` is `numeric`; no FK; `grader` has descriptors |
 | `pop_reports.card_set` | rename to `set_name` | ⏳ pending |
-| `card_id` on observations | FK to `master_card_catalog.id` | ⏳ observations join on text today |
+| `card_id` on observations | FK to `master_card_catalog.id` | ✅ added 2026-05-27 to `ebay_listings`, `sold_listings`, `courtyard_listings`, `courtyard_sales`, `collector_crypt_sales`, `tokenized_arbitrage_signals` via `sql/card-id-resolver.sql`. `resolve_card_id()` PL/pgSQL function granted to `n8n_user`/`log_shipper`/`ehuser`. Backfill: sold_listings 93.5% resolved (609/651); ebay_listings 0% — known data-quality issue (set_name='Base' drift, card_name NULL) tracked separately. |
+| `card_code` display identifier | §2.1 | ✅ added 2026-05-27 — `set_code` on `master_set_catalog` (8 codes, UNIQUE) + `card_code` on `master_card_catalog` (1,354/1,354 populated, UNIQUE) via `sql/card-code-system.sql` |
+| `slab_code()` derived identifier | §2.2 | ✅ added 2026-05-27 — PL/pgSQL function `slab_code(card_code, grader, grade)` granted to `n8n_user`/`log_shipper`/`ehuser`/`agent_reader`; never stored |
 | `courtyard_listings`, `courtyard_sales`, `collector_crypt_sales`, `tokenized_arbitrage_signals` | day-one compliant per [§10](#10-tokenized-market-stream) | ✅ created 2026-05-22 with edition+print_variant NOT NULL, grader/edition/print_variant CHECK, grade TEXT, sold_price separate from listed_price |
 | `seller_profiles` | cross-platform seller dimension per [§11](#11-seller-profile-dimension) | ✅ created 2026-05-22; UNIQUE (seller_username, platform); self-ref `linked_seller_id` (INT references BIGINT - implicit cast at FK lookup, low-impact precision drift) |
 | `ebay_listings` enrichment cols | observation-history + slab-identity + demand columns | ✅ added 2026-05-22: `auction_end_time`, `first_seen_at`, `last_seen_at`, `original_item_id`, `relist_count INT DEFAULT 0`, `original_listed_at`, `cert_number`, `location`, `watchers`. `obo_min_price` preserved as legacy NUMERIC (operator spec asked for DECIMAL(10,2); operationally equivalent; rewrite scheduled separately) |

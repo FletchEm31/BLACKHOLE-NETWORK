@@ -1,0 +1,293 @@
+================================================================================
+POKEMONBHN — CARD CODE & SLAB CODE SPECIFICATION
+2026-05-27
+================================================================================
+
+AUTHORITATIVE DOC: infrastructure/docs/pokemonbhn/collectibles-data-standard.md
+This spec EXTENDS the data standard — it does not override it.
+After Claude Code implements this, the data standard §1/§2 must be updated
+to reference card_code and slab_code.
+
+================================================================================
+OVERVIEW
+================================================================================
+
+Two human-readable codes are derived from master_card_catalog data:
+
+  card_code   Identifies a card VARIANT (set + number + edition + print_variant)
+              Lives on master_card_catalog as a stored generated column
+              Used for: display, Grafana labels, pop reports, cross-grader comparison
+              Example: BST-004-1E
+
+  slab_code   Identifies a GRADED card (card_code + grader + grade)
+              Derived on the fly — NOT stored (always computable from its parts)
+              Used for: arbitrage signals, HORIZON alerts, price comparison
+              Example: BST-004-1E-PSA-10
+
+The integer card_id remains the actual database FK. card_code is display only.
+Never use card_code as a join key — always join on card_id (integer).
+
+================================================================================
+PART 1 — SET CODES
+================================================================================
+
+One 3-letter code per set. Chosen to be memorable, unambiguous, and non-colliding.
+
+  SET_CODE | set_name                    | release_year | cards | is_promo
+  ---------|-----------------------------|--------------|-------|----------
+  BST      | Base Set                    | 1999         | 102   | false
+  FSL      | Fossil                      | 1999         | 62    | false
+  JGL      | Jungle                      | 1999         | 64    | false
+  TRK      | Team Rocket                 | 2000         | 83    | false
+  GYH      | Gym Heroes                  | 2000         | 132   | false
+  GYC      | Gym Challenge               | 2000         | 132   | false
+  WSP      | Wizards Black Star Promos   | 1999         | 53    | true
+  BOG      | Best of Game                | 2002         | 9     | true
+
+Add set_code column to master_set_catalog:
+  ALTER TABLE master_set_catalog ADD COLUMN IF NOT EXISTS set_code TEXT UNIQUE;
+  UPDATE master_set_catalog SET set_code = 'BST' WHERE set_name = 'Base Set';
+  UPDATE master_set_catalog SET set_code = 'FSL' WHERE set_name = 'Fossil';
+  UPDATE master_set_catalog SET set_code = 'JGL' WHERE set_name = 'Jungle';
+  UPDATE master_set_catalog SET set_code = 'TRK' WHERE set_name = 'Team Rocket';
+  UPDATE master_set_catalog SET set_code = 'GYH' WHERE set_name = 'Gym Heroes';
+  UPDATE master_set_catalog SET set_code = 'GYC' WHERE set_name = 'Gym Challenge';
+  UPDATE master_set_catalog SET set_code = 'WSP' WHERE set_name = 'Wizards Black Star Promos';
+  UPDATE master_set_catalog SET set_code = 'BOG' WHERE set_name = 'Best of Game';
+
+Future sets (Neo Genesis, Neo Discovery etc.) get their own 3-letter codes
+when added to master_set_catalog. Format: NGN, NDC, NRV, NDS etc.
+
+================================================================================
+PART 2 — EDITION CODES
+================================================================================
+
+  EDITION_CODE | edition
+  -------------|-------------
+  1E           | 1st Edition
+  SH           | Shadowless
+  UN           | Unlimited
+  NA           | N/A (promos)
+
+================================================================================
+PART 3 — PRINT VARIANT CODES
+================================================================================
+
+print_variant only appears in card_code when it is NOT 'Standard'.
+Standard is the default and is OMITTED from the code (keeps codes clean).
+
+  VARIANT_CODE | print_variant
+  -------------|---------------
+  (omitted)    | Standard       ← default, never shown
+  HOL          | Holo
+  ERR          | Error
+  NOS          | No Symbol
+  WST          | W Stamp
+  WIN          | Winner
+  JMB          | Jumbo
+  PRE          | Prerelease
+  GLB          | Gold Border
+  RCK          | Red Cheeks
+  WBM          | WB Movie
+  NTP          | Nintendo Power
+  WTC          | WOTC
+  C99          | 1999-2000 Copyright
+
+================================================================================
+PART 4 — CARD_CODE FORMAT
+================================================================================
+
+Format: [SET_CODE]-[CARD_NUMBER_ZERO_PADDED_3]-[EDITION_CODE]
+        [SET_CODE]-[CARD_NUMBER_ZERO_PADDED_3]-[EDITION_CODE]-[VARIANT_CODE]
+
+Rules:
+  - card_number zero-padded to 3 digits: 4 → 004, 26 → 026, 132 → 132
+  - print_variant OMITTED when Standard (the default)
+  - print_variant INCLUDED when non-Standard (appended after edition code)
+  - Separator: hyphen (-) throughout
+  - All uppercase
+
+Examples:
+  BST-004-1E         Base Set #4 Charizard, 1st Edition, Standard print
+  BST-004-SH         Base Set #4 Charizard, Shadowless, Standard print
+  BST-004-UN         Base Set #4 Charizard, Unlimited, Standard print
+  BST-058-1E-ERR     Base Set #58 Potion, 1st Edition, Error print
+  TRK-004-1E         Team Rocket #4 Dark Charizard, 1st Edition
+  TRK-004-UN         Team Rocket #4 Dark Charizard, Unlimited
+  JGL-001-1E         Jungle #1 Clefable, 1st Edition
+  WSP-026-NA         Wizards Black Star Promos #26 Mewtwo, N/A edition
+  BOG-001-NA-WIN     Best of Game #1, N/A edition, Winner print
+
+SQL to generate card_code (add as stored generated column on master_card_catalog):
+
+  -- First add set_code to master_card_catalog via JOIN with master_set_catalog
+  -- Then generate card_code:
+
+  ALTER TABLE master_card_catalog ADD COLUMN IF NOT EXISTS card_code TEXT;
+
+  UPDATE master_card_catalog mc
+  SET card_code = CONCAT(
+    ms.set_code,
+    '-',
+    LPAD(
+      regexp_replace(mc.card_number, '^#', ''),  -- strip # during transition
+      3, '0'
+    ),
+    '-',
+    CASE mc.edition
+      WHEN '1st Edition' THEN '1E'
+      WHEN 'Shadowless'  THEN 'SH'
+      WHEN 'Unlimited'   THEN 'UN'
+      WHEN 'N/A'         THEN 'NA'
+    END,
+    CASE mc.print_variant
+      WHEN 'Standard'           THEN ''
+      WHEN 'Holo'               THEN '-HOL'
+      WHEN 'Error'              THEN '-ERR'
+      WHEN 'No Symbol'          THEN '-NOS'
+      WHEN 'W Stamp'            THEN '-WST'
+      WHEN 'Winner'             THEN '-WIN'
+      WHEN 'Jumbo'              THEN '-JMB'
+      WHEN 'Prerelease'         THEN '-PRE'
+      WHEN 'Gold Border'        THEN '-GLB'
+      WHEN 'Red Cheeks'         THEN '-RCK'
+      WHEN 'WB Movie'           THEN '-WBM'
+      WHEN 'Nintendo Power'     THEN '-NTP'
+      WHEN 'WOTC'               THEN '-WTC'
+      WHEN '1999-2000 Copyright' THEN '-C99'
+      ELSE ''
+    END
+  )
+  FROM master_set_catalog ms
+  WHERE mc.set_name = ms.set_name;
+
+  -- Add UNIQUE constraint
+  ALTER TABLE master_card_catalog ADD CONSTRAINT master_card_catalog_card_code_uq UNIQUE (card_code);
+
+  -- Verify: every row should have a card_code after this
+  SELECT COUNT(*) FROM master_card_catalog WHERE card_code IS NULL;
+  -- Expected: 0
+
+================================================================================
+PART 5 — SLAB_CODE FORMAT
+================================================================================
+
+Format: [CARD_CODE]-[GRADER]-[GRADE_NUMERIC]
+
+Rules:
+  - CARD_CODE is the card_code from master_card_catalog
+  - GRADER is the 3-4 letter code: PSA, CGC, BGS, SGC
+  - GRADE_NUMERIC is the numeric grade value (not the full raw_label)
+    PSA 10 → 10
+    CGC Gem Mint 10 → 10
+    BGS Pristine 10 → 10
+    PSA 9.5 → 9.5
+    CGC Mint+ 9.5 → 9.5
+  - Separator: hyphen (-) throughout
+  - All uppercase
+
+Examples:
+  BST-004-1E-PSA-10      Base Set #4 Charizard 1st Ed, PSA 10
+  BST-004-1E-CGC-10      Base Set #4 Charizard 1st Ed, CGC Gem Mint 10
+  BST-004-1E-BGS-10      Base Set #4 Charizard 1st Ed, BGS Pristine 10
+  BST-004-1E-SGC-10      Base Set #4 Charizard 1st Ed, SGC 10
+  BST-004-SH-PSA-9       Base Set #4 Charizard Shadowless, PSA 9
+  BST-004-SH-CGC-9.5     Base Set #4 Charizard Shadowless, CGC Mint+ 9.5
+  TRK-004-1E-PSA-10      Team Rocket #4 Dark Charizard 1st Ed, PSA 10
+  TRK-004-UN-BGS-8.5     Team Rocket #4 Dark Charizard Unlimited, BGS 8.5
+  WSP-026-NA-PSA-10      Wizards Promos #26 Mewtwo, PSA 10
+
+slab_code is NEVER stored — always derived:
+  card_code || '-' || grader || '-' || numeric_grade
+
+SQL function to derive slab_code on demand:
+  CREATE OR REPLACE FUNCTION slab_code(
+    p_card_code TEXT,
+    p_grader    TEXT,
+    p_grade     TEXT   -- raw_label from master_grade_catalog
+  ) RETURNS TEXT AS $$
+  DECLARE
+    v_numeric TEXT;
+  BEGIN
+    -- Extract numeric grade from master_grade_catalog
+    SELECT numeric_grade::TEXT INTO v_numeric
+    FROM master_grade_catalog
+    WHERE grader = p_grader AND raw_label = p_grade;
+
+    IF v_numeric IS NULL THEN RETURN NULL; END IF;
+    RETURN p_card_code || '-' || p_grader || '-' || v_numeric;
+  END;
+  $$ LANGUAGE plpgsql STABLE;
+
+  GRANT EXECUTE ON FUNCTION slab_code TO n8n_user, log_shipper, ehuser, agent_reader;
+
+Usage example in arbitrage query:
+  SELECT
+    slab_code(mc.card_code, e.grader, e.grade) AS slab_id,
+    mc.card_code,
+    mc.card_name,
+    e.listed_price AS ebay_ask,
+    c.listed_price AS courtyard_ask,
+    ROUND(((e.listed_price - c.listed_price) / e.listed_price * 100)::numeric, 1) AS spread_pct
+  FROM master_card_catalog mc
+  JOIN ebay_listings e   ON e.card_id = mc.id
+  JOIN courtyard_listings c ON c.card_id = mc.id AND c.grader = e.grader AND c.grade = e.grade
+  WHERE e.listed_price > c.listed_price
+  ORDER BY spread_pct DESC;
+
+HORIZON alert format using slab_code:
+  "ARBITRAGE: BST-004-1E-PSA-10 — Courtyard $800 vs eBay avg $1,200 (+33%). Est profit: $356."
+
+================================================================================
+PART 6 — IMPLEMENTATION ORDER FOR CLAUDE CODE
+================================================================================
+
+Do these in order — each step is a prerequisite for the next:
+
+  STEP 1: Add set_code to master_set_catalog (8 UPDATEs)
+  STEP 2: Strip # from master_card_catalog.card_number (1,354 UPDATEs) — Option 3 from CC
+  STEP 3: Add card_code column to master_card_catalog + populate + UNIQUE constraint
+  STEP 4: Add slab_code() function to PostgreSQL
+  STEP 5: Verify — SELECT card_code, card_name, set_name FROM master_card_catalog LIMIT 20
+          Should look like: BST-001-1E | Alakazam | Base Set
+  STEP 6: Add card_code to tokenized_arbitrage_signals for display in alerts
+  STEP 7: Update resolve_card_id() to also return card_code (or derive it post-lookup)
+  STEP 8: Update collectibles-data-standard.md §1/§2 to document card_code + slab_code
+
+DO NOT:
+  - Use card_code as a FK/join key — always join on card_id (integer)
+  - Store slab_code anywhere — always derive it
+  - Generate card_code without first stripping # from card_number (wrong padding)
+
+================================================================================
+PART 7 — FUTURE SETS
+================================================================================
+
+When Neo Genesis, Neo Discovery etc. are added to master_set_catalog,
+assign the next available 3-letter code and add it here.
+
+Proposed future codes:
+  NGN = Neo Genesis
+  NDC = Neo Discovery
+  NRV = Neo Revelation
+  NDS = Neo Destiny
+  LND = Legendary Collection
+  EXP = Expedition Base Set (e-Card era)
+
+These are PROPOSED only — finalize when sets are added.
+
+================================================================================
+COMMIT TEMPLATE
+================================================================================
+
+Summary: feat: card_code + slab_code identity system on master_card_catalog
+
+Description:
+- Add set_code column to master_set_catalog (BST/FSL/JGL/TRK/GYH/GYC/WSP/BOG)
+- Strip # from master_card_catalog.card_number (1,354 rows — §9 pending migration)
+- Add card_code generated column to master_card_catalog (BST-004-1E format)
+- Add slab_code() PostgreSQL function (card_code + grader + numeric grade)
+- card_code is display/label only — card_id (integer) remains the join key
+- slab_code is never stored — always derived
+- Update collectibles-data-standard.md §1/§2 with card_code + slab_code docs
+================================================================================
