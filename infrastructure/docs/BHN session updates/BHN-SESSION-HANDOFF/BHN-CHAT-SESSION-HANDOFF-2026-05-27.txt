@@ -1,0 +1,371 @@
+================================================================================
+BHN SESSION HANDOFF — 2026-05-27 (CHAT SESSION)
+================================================================================
+Session type:     Planning, research, architecture design
+Claude instance:  Claude Sonnet 4.6 (claude.ai Project)
+Companion:        Claude Code session (see BHN-SESSION-HANDOFF-2026-05-27.txt
+                  in this folder for the Claude Code recap)
+================================================================================
+
+
+================================================================================
+SECTION 1 — SESSION OVERVIEW
+================================================================================
+
+This was a long dual-track session. Claude Code ran parallel to this chat,
+handling infrastructure and code execution. This chat handled architecture
+design, research, and documentation production.
+
+PRIMARY OUTPUTS THIS SESSION:
+  1. Graded Pokemon Card Arbitrage Memorandum (Word doc, research-backed)
+  2. Card Code Spec (card_code + slab_code system)
+  3. Market Data Standard — Part 1 (core schema)
+  4. Market Data Standard — Part 2 (fees + cost estimation + price history)
+  5. Market Data Standard — Part 3 (arbitrage positions + P&L)
+  6. Courtyard on-chain collector brief (updated with Task 0 — card_id resolver)
+  7. Updated schema standardization document
+
+All output files in /mnt/user-data/outputs/ and need to be committed to repo.
+
+
+================================================================================
+SECTION 2 — CLAUDE CODE SESSION RECAP (what was deployed tonight)
+================================================================================
+
+4 commits pushed to origin/main:
+
+  fdecc35  feat: collector_config PENDING status + 2026-05-27 collection audit
+  9ac469c  feat: Courtyard on-chain collectors + card_id/card_code identity system
+  9228791  fix(sql): add raw_payload JSONB to tokenized observation tables
+  c679bab  fix(vnstat): malformed timestamps + UPSERT permission gap
+  31f0303  fix(security-events): tighten IPv4 regex + validate before inet cast
+
+LIVE ON LA (confirmed working):
+  master_card_catalog: 1,354 card_codes populated (BST-004-1E format)
+  master_set_catalog: set_code added (BST/FSL/JGL/TRK/GYH/GYC/WSP/BOG)
+  resolve_card_id() PL/pgSQL function: live, 93.5% resolution on sold_listings
+  slab_code() function: live
+  card_id FK columns: added to 6 observation tables with indexes
+  raw_payload JSONB: added to courtyard_sales + courtyard_listings
+  security_events: 11,071 row backlog cleared, cron re-enabled, ACTIVE
+  node_bandwidth_stats: 577 (LA) + 256 (NJ) rows, ACTIVE
+  log_shipper: UPDATE granted on 12 mutable collector tables
+
+COMMITTED BUT NOT YET DEPLOYED (awaiting operator actions):
+  3 Courtyard n8n workflow JSONs (need OpenSea API key first)
+  scripts/courtyard-historical-backfill.py (needs POLYGONSCAN + OPENSEA keys)
+  BHN-SESSION-HANDOFF-2026-05-27.txt (commit blocked by classifier outage)
+
+
+================================================================================
+SECTION 3 — OPERATOR ACTIONS REQUIRED (priority order)
+================================================================================
+
+IMMEDIATE (unblocks Courtyard data collection):
+  1. Commit handoff doc manually:
+     cd "D:\GITHUB REPOSITORY\BLACKHOLE-NETWORK"
+     git add "infrastructure/docs/BHN session updates/BHN-SESSION-HANDOFF/BHN-SESSION-HANDOFF-2026-05-27.txt"
+     git commit -m "docs(handoff): BHN session recap for 2026-05-27"
+     git push
+
+  2. Get OpenSea free API key: https://docs.opensea.io/reference/api-keys
+
+  3. Create n8n Header Auth credential:
+     Name: "OpenSea API Key"
+     Header: x-api-key
+     Value: [your key]
+
+  4. Import 3 Courtyard workflow JSONs from n8n-workflows/pokemon/courtyard-bhn-*.json
+     Wire Header Auth credential to each workflow
+     Activate all 3
+
+  5. After first successful run:
+     Flip collector_config for Courtyard Sales + Courtyard Listings
+     from PENDING to NULL with override_note = 'Active — first run verified'
+
+  6. Commit the 3 new standardization docs to repo:
+     infrastructure/docs/pokemonbhn/BHN-MARKET-DATA-STANDARD-PART1-CORE-SCHEMA.txt
+     infrastructure/docs/pokemonbhn/BHN-MARKET-DATA-STANDARD-PART2-FEES-AND-PRICING.txt
+     infrastructure/docs/pokemonbhn/BHN-MARKET-DATA-STANDARD-PART3-ARBITRAGE-AND-PNL.txt
+
+NEXT SESSION:
+  7. Fix eBay scraper set_name='Base' → 'Base Set' normalization bug (860 rows)
+  8. Fix eBay scraper card_name = full title bug (affects card_id resolver)
+  9. HORIZON workflow re-import (still identifying as "Nathan")
+  10. Twilio account reactivation (suspended — check balance)
+
+PENDING (dedicated sessions each):
+  11. Schema restructure (bids/asks/transactions rename) — use Part 1-3 docs
+  12. Frankfurt apt install vnstat
+  13. Conntrack collector rewrite (use conntrack -L or ss)
+  14. pg_stat_statements extension (needs PostgreSQL restart — plan carefully)
+  15. Hillsboro SSH fix → LA egress lockdown via tinyproxy
+
+
+================================================================================
+SECTION 4 — ARCHITECTURE DECISIONS MADE THIS SESSION
+================================================================================
+
+CARD IDENTITY SYSTEM (implemented tonight by Claude Code):
+  card_code  = BST-004-1E   (stored on master_card_catalog)
+               Format: [SET_CODE]-[CARD_NUMBER_PADDED_3]-[EDITION_CODE]
+               Print variant appended only when non-Standard (e.g. BST-058-1E-ERR)
+  slab_code  = BST-004-1E-PSA-10   (derived, never stored)
+               Format: [CARD_CODE]-[GRADER]-[GRADE_NUMERIC]
+  card_id    = integer PK — always the join key, never card_code
+
+SCHEMA RESTRUCTURE — APPROVED NAMING CONVENTION (not yet implemented):
+  [market]_bids          — open buy orders / offers / OBO
+  [market]_asks          — active + historical sell listings with outcome tracking
+  [market]_transactions  — completed sales (immutable)
+
+  Markets: ebay, courtyard, collector_crypt
+
+  OLD → NEW:
+    ebay_listings        → ebay_asks
+    sold_listings        → ebay_transactions
+    courtyard_listings   → courtyard_asks
+    courtyard_sales      → courtyard_transactions
+    collector_crypt_sales → collector_crypt_transactions
+
+  NEW TABLES TO CREATE:
+    ebay_bids, courtyard_bids, collector_crypt_bids
+    collector_crypt_asks
+    order_price_history  (bid + ask price changes, all markets)
+    fee_schedule         (platform rate reference)
+    arbitrage_positions  (full trade lifecycle + P&L)
+
+  BACK-COMPAT VIEWS: maintain for all renames until n8n workflows migrated
+
+THREE-WAY COST COMPARISON (approved, not yet implemented):
+  MARKET   = published platform rate from fee_schedule
+  ESTIMATED = pre-trade projection from estimate_trade_costs()
+  ACTUAL   = what was actually charged post-trade
+
+  All three tracked on arbitrage_positions per cost line item.
+  Deltas: market→est, est→actual, market→actual
+  Purpose: calibrate estimates over time, track promo savings
+
+POSTGRESQL SCHEMA SEPARATION (deferred — do AFTER bids/asks/transactions rename):
+  Proposed 4-schema structure:
+    pokemon   — all card market tables
+    financial — market data, macro, trading
+    infra     — security, node stats, collectors
+    horizon   — memories, chat, agent state
+  Current: all tables in public schema
+  Action: revisit after schema restructure is stable
+
+NJ NODE FOR POKEMON ARBITRAGE (approved, not yet moved):
+  Pokemon arbitrage engine should run on NJ (East Coast) not LA (West Coast)
+  Courtyard vault: Delaware | eBay: East Coast | Collector Crypt: Delaware
+  NJ → these endpoints: single-digit ms latency vs 60-80ms from LA
+  Pattern: NJ executes, LA stores (same as financial trading stack)
+  Action: Move n8n collectors + arbitrage signal workflows to NJ in future session
+
+
+================================================================================
+SECTION 5 — MARKET RESEARCH FINDINGS (verified this session)
+================================================================================
+
+TOP 3 TOKENIZED CARD MARKETPLACES:
+  1. Collector Crypt (Solana)    ~$165M volume April 2026, 130K+ cards, 2% seller fee
+  2. Courtyard (Polygon)         ~$31M/mo ($7.82M/wk), 459K NFTs, 0% marketplace fee
+  3. Magic Eden (multi-chain)    ~$15M/30d total NFTs (Collector Crypt front-end for Pokemon)
+
+IMPORTANT: Magic Eden does NOT vault cards. It's a marketplace layer on top of
+Collector Crypt's Solana tokens. Two physical custody chains, not three:
+  Chain 1: Courtyard → Brink's vault (Delaware) → Polygon NFT
+  Chain 2: Collector Crypt → Delaware vault → Solana NFT → also trades on Magic Eden
+
+API CAPABILITIES CONFIRMED:
+  Courtyard (OpenSea v2 API):
+    GET /listings/collection/courtyard-nft/all        — asks
+    GET /offers/collection/courtyard-nft/all          — bids
+    GET /events/collection/courtyard-nft?event_type=sale — transactions
+    GET /offers/collection/{slug}/nfts/{id}/best      — best offer per token
+    POST /offers                                        — place buy offers
+    POST /listings                                      — create sell listings
+    Rate limit: free tier, key required (401 without)
+
+  Collector Crypt (Magic Eden Solana API):
+    Listings, bids, activity endpoints confirmed
+    GET bids endpoint: docs.magiceden.io/reference/getordersbidsv6
+    Rate limit: 120 QPM free, no key required (attribution requested)
+
+  eBay:
+    Asks + transactions: fully available (existing collectors)
+    Bids (OBO): YOUR OWN LISTINGS ONLY via Trading API
+    Cannot see other sellers' received offers — fundamental platform limitation
+
+VERIFIED FEE STRUCTURES:
+  Courtyard:       0% marketplace fee | $2 redemption handling | FedEx shipping at cost
+  Collector Crypt: 2% total (1% platform + 1% royalty)
+  eBay:            13.25% FVF + 2.9% processing + $0.40/order = ~15.5% effective
+                   50% FVF promo on $1,000+ cards (periodic, not permanent)
+                   Authenticity Guarantee mandatory at $250+ ($12-22 buyer fee)
+
+
+================================================================================
+SECTION 6 — DOCUMENTS PRODUCED THIS SESSION
+================================================================================
+
+All documents need to be saved to repo. Suggested locations:
+
+REPO LOCATION: infrastructure/docs/pokemonbhn/
+
+  BHN-MARKET-DATA-STANDARD-PART1-CORE-SCHEMA.txt
+    Schema standard for [market]_bids, _asks, _transactions tables.
+    Universal columns, outcome CHECK constraints per market,
+    data availability by platform, migration path, back-compat views.
+
+  BHN-MARKET-DATA-STANDARD-PART2-FEES-AND-PRICING.txt
+    fee_schedule table + seed data (all verified rates).
+    estimate_trade_costs() function spec.
+    order_price_history table (bid + ask tracking).
+    Estimated cost columns on tokenized_arbitrage_signals.
+    Market-rate estimate columns on transactions.
+
+  BHN-MARKET-DATA-STANDARD-PART3-ARBITRAGE-AND-PNL.txt
+    arbitrage_positions table (full ~75 columns).
+    Three-way cost comparison (market/est/actual x 6 line items).
+    Deltas and rollup totals.
+    Risk management fields.
+    Calibration queries.
+    HORIZON P&L reporting format.
+
+  BHN-GRADED-POKEMON-CARD-ARBITRAGE-MEMORANDUM-2026-05-27.docx
+    11-section financial memorandum. Research-backed, every number verified.
+    Sections: Executive Summary, Market Overview, Marketplace Analysis,
+    Fee Structure, Arbitrage Strategy, Data Collection, Execution Framework,
+    Risk Analysis, Financial Model, Technology, Appendix (sources).
+
+  CC-SESSION-BRIEF-COURTYARD-COLLECTOR-2026-05-27.txt
+    Updated Courtyard collector brief (now includes Task 0 — card_id resolver
+    as prerequisite before Tasks 1-5).
+
+  BHN-CARD-CODE-SPEC-2026-05-27.txt
+    card_code + slab_code system spec.
+    Set codes, edition codes, print variant codes.
+    SQL to generate, UNIQUE constraint, slab_code() function.
+    Implementation order for Claude Code.
+
+
+================================================================================
+SECTION 7 — OUTSTANDING BUGS & KNOWN ISSUES
+================================================================================
+
+CONFIRMED BUG — eBay scraper set_name normalization:
+  set_name = 'Base' not 'Base Set' in ebay_listings
+  Affects 860 rows. resolve_card_id() returns NULL for all of them.
+  Fix: in n8n Parse & Filter Fields node, add normalization map:
+    'Base' → 'Base Set', 'Fossil' → 'Fossil', etc.
+  Impact: ebay_listings card_id resolution = 0% until fixed.
+
+CONFIRMED BUG — eBay scraper card_name:
+  card_name stores full eBay title not parsed card name
+  Affects resolver fallback path (Attempt 3 uses card_name + set_name)
+  Fix: add title parsing to extract card name from structured eBay title
+
+KNOWN GAP — conntrack collector:
+  Kernel built without CONFIG_NF_CONNTRACK_PROCFS
+  /proc/net/nf_conntrack does not exist despite module being loaded
+  61 active connections tracked in kernel but not readable via script
+  Fix paths: rewrite to use conntrack -L (requires conntrack-tools) or ss
+
+KNOWN GAP — pg_stat_statements:
+  Extension not enabled on eventhorizon PostgreSQL
+  Requires: shared_preload_libraries in postgresql.conf + PG restart
+  PG restart is disruptive — plan carefully, do in dedicated session
+
+DEFERRED — Frankfurt vnstat:
+  vnstat not installed on Frankfurt VPS
+  Fix: ssh frankfurt; apt install vnstat
+
+DEFERRED — Hillsboro SSH:
+  Hillsboro SSH is wedged — cannot connect
+  Blocks: LA egress lockdown via tinyproxy
+  Must fix before attempting egress lockdown
+
+DEFERRED — Dual security collectors:
+  bhn-security-events-collector.sh (cron-based, fixed tonight)
+  /usr/local/bin/eh-security-collector.py (Python, status unknown)
+  Need to investigate if both are writing to security_events simultaneously
+
+DEFERRED — HORIZON workflow re-import:
+  bhn-horizon.json not re-imported since May 23
+  HORIZON currently identifying as "Nathan" (stale workflow)
+  Fix: open n8n UI, import bhn-horizon.json, re-wire credentials
+
+
+================================================================================
+SECTION 8 — COLLECTOR STATUS (as of session end)
+================================================================================
+
+ACTIVE (23):
+  Iptables Drops (LA, NJ, Frankfurt)
+  fail2ban Events (LA, NJ, Frankfurt)
+  Node Resource Stats (LA, NJ, Frankfurt)
+  Docker Stats (LA, NJ, Frankfurt)
+  WireGuard Stats (LA, NJ, Frankfurt)
+  Node Bandwidth Stats — vnstat (LA, NJ) [fixed tonight]
+  Suricata IDS Events (LA) [fixed tonight]
+  CrowdSec Decisions (LA) [fixed tonight]
+
+PENDING (9 — awaiting operator action or bug fix):
+  n8n Executions              — pg_stat_statements needed
+  CrowdSec Agent Health       — dependency on above
+  HORIZON Tokens              — HORIZON workflow stale
+  Tinyproxy (Hillsboro)       — Hillsboro SSH wedged
+  Tor Relay Stats             — not configured
+  PG Activity Snapshots       — pg_stat_statements needed
+  Conntrack Snapshots         — kernel CONFIG gap
+  Courtyard Sales             — awaiting n8n import + OpenSea key
+  Courtyard Listings          — awaiting n8n import + OpenSea key
+
+MAINTENANCE (1):
+  DNS Query Log               — disabled by policy (privacy — re-enable only
+                                 in controlled testing, never with real users)
+
+
+================================================================================
+SECTION 9 — NEXT SESSION RECOMMENDATIONS
+================================================================================
+
+NEXT SESSION (focused, 2-3 hours):
+  Name:  eBay Scraper Fixes + HORIZON Re-import
+  Tasks:
+    1. Fix eBay scraper set_name normalization bug (860 rows affected)
+    2. Fix eBay scraper card_name parsing (full title → parsed name)
+    3. Re-import bhn-horizon.json into n8n (re-wire credentials)
+    4. Verify HORIZON identifies correctly and can query financial tables
+    5. Re-activate Twilio (check account balance)
+
+FUTURE SESSION (dedicated schema work):
+  Name:  Market Data Schema Restructure
+  Inputs: Parts 1-3 of the market data standard
+  Tasks (in order — do not skip steps):
+    1. Read collectibles-data-standard.md
+    2. Read all 3 standard docs
+    3. Create new tables (bids, asks for CC, order_price_history, fee_schedule,
+       arbitrage_positions)
+    4. Rename existing tables with back-compat views
+    5. Add outcome + demand columns to _asks tables
+    6. Add cost basis + market_est columns to _transactions tables
+    7. Update all n8n workflows to use new table names
+    8. Drop back-compat views once consumers verified migrated
+    9. Update collectibles-data-standard.md
+
+FUTURE SESSION (infrastructure):
+  Name:  Hillsboro SSH Fix + LA Egress Lockdown
+  Tasks:
+    1. Fix Hillsboro SSH (investigate sshd status, firewall, key issues)
+    2. Verify tinyproxy running on Hillsboro (curl --proxy 10.8.0.6:8888)
+    3. Run LA egress lockdown scripts in order per README
+    4. Verify LA outbound traffic exits via Hillsboro (5.78.94.237)
+
+================================================================================
+END OF HANDOFF — 2026-05-27 CHAT SESSION
+================================================================================
+Next handoff: BHN-SESSION-HANDOFF-[DATE].txt
+Authored by: Claude Sonnet 4.6 (claude.ai Project — BHN Project)
+================================================================================
