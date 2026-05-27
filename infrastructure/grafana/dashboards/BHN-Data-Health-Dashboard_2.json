@@ -1,0 +1,1139 @@
+{
+  "uid": "bhn-data-health",
+  "title": "BHN \u2014 Data Health",
+  "description": "Data layer: storage, collector freshness, row counts, and volume trends across all eventhorizon domains. The freshness table catches dead collectors the moment they stop writing.",
+  "tags": [
+    "bhn",
+    "data",
+    "freshness",
+    "storage",
+    "health"
+  ],
+  "timezone": "utc",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5m",
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "domain",
+        "type": "custom",
+        "label": "Domain",
+        "query": "all,market,macro,trading,security,collectibles,ai",
+        "current": {
+          "text": "all",
+          "value": "all"
+        },
+        "options": [
+          {
+            "text": "all",
+            "value": "all",
+            "selected": true
+          },
+          {
+            "text": "market",
+            "value": "market",
+            "selected": false
+          },
+          {
+            "text": "macro",
+            "value": "macro",
+            "selected": false
+          },
+          {
+            "text": "trading",
+            "value": "trading",
+            "selected": false
+          },
+          {
+            "text": "security",
+            "value": "security",
+            "selected": false
+          },
+          {
+            "text": "collectibles",
+            "value": "collectibles",
+            "selected": false
+          },
+          {
+            "text": "ai",
+            "value": "ai",
+            "selected": false
+          }
+        ],
+        "multi": false,
+        "includeAll": false
+      }
+    ]
+  },
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 100,
+      "title": "\u2500\u2500 STORAGE OVERVIEW",
+      "type": "row"
+    },
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "PostgreSQL DB Size",
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 0,
+        "y": 1
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT pg_database_size('eventhorizon') AS value"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "none",
+        "graphMode": "none"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          }
+        }
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Total Tables",
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 4,
+        "y": 1
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT COUNT(*) AS value FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "none",
+        "graphMode": "none"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          }
+        }
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Total Rows (all tables)",
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 8,
+        "y": 1
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT SUM(n_live_tup) AS value FROM pg_stat_user_tables"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "none",
+        "graphMode": "none"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          }
+        }
+      }
+    },
+    {
+      "id": 4,
+      "type": "gauge",
+      "title": "NVMe Hot (/mnt/eh-nvme-hot)",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 1
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT used_pct AS value FROM node_disk_stats WHERE mount_point = '/mnt/eh-nvme-hot' ORDER BY measured_at DESC LIMIT 1"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 70
+              },
+              {
+                "color": "red",
+                "value": 85
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        }
+      }
+    },
+    {
+      "id": 5,
+      "type": "gauge",
+      "title": "HDD Cold (/mnt/eh-hdd-cold)",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 1
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT used_pct AS value FROM node_disk_stats WHERE mount_point = '/mnt/eh-hdd-cold' ORDER BY measured_at DESC LIMIT 1"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 70
+              },
+              {
+                "color": "red",
+                "value": 85
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        }
+      }
+    },
+    {
+      "id": 6,
+      "type": "table",
+      "title": "Top 15 Tables by Disk Usage",
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 5
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT s.relname AS \"Table\", pg_size_pretty(pg_total_relation_size(s.relid)) AS \"Total Size\", pg_size_pretty(pg_relation_size(s.relid)) AS \"Table Size\", pg_size_pretty(pg_total_relation_size(s.relid) - pg_relation_size(s.relid)) AS \"Index Size\", s.n_live_tup AS \"Live Rows\", pg_total_relation_size(s.relid) AS size_bytes FROM pg_stat_user_tables s ORDER BY pg_total_relation_size(s.relid) DESC LIMIT 15"
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": false
+        },
+        "sortBy": [
+          {
+            "displayName": "size_bytes",
+            "desc": true
+          }
+        ]
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Live Rows"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "size_bytes"
+            },
+            "properties": [
+              {
+                "id": "custom.hidden",
+                "value": true
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 15
+      },
+      "id": 101,
+      "title": "\u2500\u2500 DATA FRESHNESS \u2014 Collector Health",
+      "type": "row"
+    },
+    {
+      "id": 10,
+      "type": "stat",
+      "title": "Dead Collectors",
+      "description": "Sources with last record older than their expected cadence threshold. Any value > 0 = immediate attention required.",
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 0,
+        "y": 16
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT COUNT(*) AS value FROM (\n  SELECT MAX(fetched_at) AS t FROM macro_daily HAVING MAX(fetched_at) < NOW() - INTERVAL '3 days'\n  UNION ALL\n  SELECT MAX(date::timestamptz) FROM market_daily HAVING MAX(date::timestamptz) < NOW() - INTERVAL '4 days'\n  UNION ALL\n  SELECT MAX(measured_at) FROM energy_prices HAVING MAX(measured_at) < NOW() - INTERVAL '14 days'\n  UNION ALL\n  SELECT MAX(measured_at) FROM agriculture_prices HAVING MAX(measured_at) < NOW() - INTERVAL '30 days'\n  UNION ALL\n  SELECT MAX(fetched_at) FROM weather_snapshots HAVING MAX(fetched_at) < NOW() - INTERVAL '2 days'\n  UNION ALL\n  SELECT MAX(detected_at) FROM security_events HAVING MAX(detected_at) < NOW() - INTERVAL '2 hours'\n  UNION ALL\n  SELECT MAX(scraped_at) FROM pop_reports HAVING MAX(scraped_at) < NOW() - INTERVAL '14 days'\n) dead"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "background",
+        "graphMode": "none"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        }
+      }
+    },
+    {
+      "id": 11,
+      "type": "stat",
+      "title": "Newest Data Point",
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 4,
+        "y": 16
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT EXTRACT(EPOCH FROM MAX(detected_at)) * 1000 AS value FROM security_events"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "none",
+        "graphMode": "none"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "dateTimeFromNow",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          }
+        }
+      }
+    },
+    {
+      "id": 12,
+      "type": "stat",
+      "title": "Oldest Data Point",
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 8,
+        "y": 16
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT EXTRACT(EPOCH FROM MIN(date::timestamptz)) * 1000 AS value FROM macro_daily"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "none",
+        "graphMode": "none"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "dateTimeAsIso",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          }
+        }
+      }
+    },
+    {
+      "id": 13,
+      "type": "stat",
+      "title": "Security Events / Hour (24h avg)",
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 12,
+        "y": 16
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT ROUND(COUNT(*) / 24.0, 1) AS value FROM security_events WHERE detected_at > NOW() - INTERVAL '24 hours'"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "none",
+        "graphMode": "none"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          }
+        }
+      }
+    },
+    {
+      "id": 14,
+      "type": "stat",
+      "title": "Market Rows Ingested (7d)",
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 16,
+        "y": 16
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT COUNT(*) AS value FROM market_daily WHERE date > NOW() - INTERVAL '7 days'"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "none",
+        "graphMode": "none"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          }
+        }
+      }
+    },
+    {
+      "id": 15,
+      "type": "stat",
+      "title": "Pop Reports (total)",
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 20,
+        "y": 16
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT COUNT(*) AS value FROM pop_reports"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "none",
+        "graphMode": "none"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          }
+        }
+      }
+    },
+    {
+      "id": 16,
+      "type": "table",
+      "title": "Collector Freshness \u2014 All Sources",
+      "description": "Status auto-computed per source cadence. ACTIVE = within expected window. OUTAGE = past cadence + grace. MAINTENANCE = manually set. To flag: UPDATE collector_config SET status_override = 'maintenance', override_note = 'reason' WHERE source_name = '...'",
+      "gridPos": {
+        "h": 14,
+        "w": 24,
+        "x": 0,
+        "y": 20
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT\n  f.domain AS \"Domain\",\n  f.source AS \"Source\",\n  f.table_name AS \"Table\",\n  f.last_record AS \"Last Record\",\n  ROUND(EXTRACT(EPOCH FROM (NOW() - f.last_record)) / 3600, 1) AS \"Hours Ago\",\n  f.cadence AS \"Cadence\",\n  COALESCE(c.override_note, '') AS \"Note\",\n  CASE\n    WHEN c.status_override = 'maintenance' THEN 'MAINTENANCE'\n    WHEN f.last_record IS NULL THEN 'OUTAGE'\n    WHEN EXTRACT(EPOCH FROM (NOW() - f.last_record)) / 3600 <= (COALESCE(c.cadence_hours, 48) + COALESCE(c.grace_hours, 6)) THEN 'ACTIVE'\n    ELSE 'OUTAGE'\n  END AS \"Status\"\nFROM (\n  SELECT 'Macro' AS domain, 'FRED (macro_daily)' AS source, 'macro_daily' AS table_name, MAX(fetched_at) AS last_record, 'Daily 17:00 ET' AS cadence FROM macro_daily\n  UNION ALL SELECT 'Market', 'Alpaca ETF (market_daily)', 'market_daily', MAX(date::timestamptz), 'Daily 16:30 ET (weekdays)' FROM market_daily\n  UNION ALL SELECT 'Market', 'Regime Classifier', 'market_regimes', MAX(date::timestamptz), 'Daily 17:15 ET' FROM market_regimes\n  UNION ALL SELECT 'Market', 'Sentiment Collector', 'market_sentiment', MAX(date::timestamptz), 'Daily 17:30 ET' FROM market_sentiment\n  UNION ALL SELECT 'Market', 'Finnhub Earnings', 'earnings_data', MAX(measured_at), 'Monthly' FROM earnings_data\n  UNION ALL SELECT 'Market', 'Finnhub Analysts', 'analyst_data', MAX(measured_at), 'Monthly' FROM analyst_data\n  UNION ALL SELECT 'Energy', 'EIA Energy Prices', 'energy_prices', MAX(measured_at), 'Weekly' FROM energy_prices\n  UNION ALL SELECT 'Agriculture', 'USDA Agriculture', 'agriculture_prices', MAX(measured_at), 'Monthly' FROM agriculture_prices\n  UNION ALL SELECT 'Weather', 'OpenWeather', 'weather_snapshots', MAX(fetched_at), 'Hourly' FROM weather_snapshots\n  UNION ALL SELECT 'News', 'NewsAPI', 'news_articles', MAX(fetched_at), 'Every 30min' FROM news_articles\n  UNION ALL SELECT 'Security', 'Suricata/CrowdSec', 'security_events', MAX(detected_at), 'Continuous' FROM security_events\n  UNION ALL SELECT 'Security', 'fail2ban', 'fail2ban_events', MAX(timestamp), 'Continuous' FROM fail2ban_events\n  UNION ALL SELECT 'Security', 'CrowdSec', 'crowdsec_decisions', MAX(measured_at), 'Continuous' FROM crowdsec_decisions\n  UNION ALL SELECT 'Trading', 'Alpaca Paper Trades', 'paper_trades', MAX(created_at), 'Market hours' FROM paper_trades\n  UNION ALL SELECT 'Trading', 'Strategy Signals', 'signals_log', MAX(evaluated_at), 'Market hours' FROM signals_log\n  UNION ALL SELECT 'Trading', 'Reconciliation Daemon', 'reconciliation_heartbeat', MAX(beat_at), 'Every 5min (NJ)' FROM reconciliation_heartbeat\n  UNION ALL SELECT 'Collectibles', 'CGC Pop Scraper', 'pop_reports', MAX(scraped_at), 'Weekly Sun 03:00 UTC' FROM pop_reports\n  UNION ALL SELECT 'Collectibles', 'eBay Sold Comps', 'sold_listings', MAX(inserted_at), 'Manual / n8n' FROM sold_listings\n  UNION ALL SELECT 'Collectibles', 'eBay Active Listings', 'ebay_listings', MAX(last_seen_at), 'Manual / n8n' FROM ebay_listings\n  UNION ALL SELECT 'AI', 'HORIZON Memory', 'memories', MAX(created_at), 'On conversation' FROM memories\n  UNION ALL SELECT 'AI', 'HORIZON Tokens', 'agent_token_log', MAX(occurred_at), 'On conversation' FROM agent_token_log\n  UNION ALL SELECT 'Infrastructure', 'WireGuard Stats', 'wg_peer_stats', MAX(measured_at), 'Every 5min' FROM wg_peer_stats\n  UNION ALL SELECT 'Infrastructure', 'Node Resources', 'node_resource_stats', MAX(measured_at), 'Every 5min' FROM node_resource_stats\n  UNION ALL SELECT 'Infrastructure', 'Docker Stats', 'container_stats', MAX(measured_at), 'Every 5min' FROM container_stats\n  UNION ALL SELECT 'Infrastructure', 'n8n Executions', 'n8n_execution_stats', MAX(started_at), 'Every 5min' FROM n8n_execution_stats\n) f\nLEFT JOIN collector_config c ON c.source_name = f.source\nORDER BY\n  CASE\n    WHEN c.status_override = 'maintenance' THEN 2\n    WHEN f.last_record IS NULL THEN 1\n    WHEN EXTRACT(EPOCH FROM (NOW() - f.last_record)) / 3600 > (COALESCE(c.cadence_hours,48) + COALESCE(c.grace_hours,6)) THEN 1\n    ELSE 3\n  END ASC,\n  EXTRACT(EPOCH FROM (NOW() - f.last_record)) DESC NULLS FIRST"
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": false
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Last Record"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "dateTimeFromNow"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Hours Ago"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "h"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Status"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "basic"
+                }
+              },
+              {
+                "id": "custom.width",
+                "value": 150
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "ACTIVE": {
+                        "color": "green",
+                        "index": 0,
+                        "text": "\u25cf ACTIVE"
+                      },
+                      "MAINTENANCE": {
+                        "color": "yellow",
+                        "index": 1,
+                        "text": "\u26a0 MAINTENANCE"
+                      },
+                      "OUTAGE": {
+                        "color": "red",
+                        "index": 2,
+                        "text": "\u2715 OUTAGE"
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Note"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 200
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 34
+      },
+      "id": 102,
+      "title": "\u2500\u2500 ROW COUNTS BY DOMAIN",
+      "type": "row"
+    },
+    {
+      "id": 20,
+      "type": "barchart",
+      "title": "Row Counts by Table (key tables)",
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 35
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT table_name AS \"Table\", row_count AS \"Rows\" FROM (\n  SELECT 'market_daily' AS table_name, COUNT(*) AS row_count FROM market_daily\n  UNION ALL SELECT 'macro_daily', COUNT(*) FROM macro_daily\n  UNION ALL SELECT 'market_regimes', COUNT(*) FROM market_regimes\n  UNION ALL SELECT 'market_sentiment', COUNT(*) FROM market_sentiment\n  UNION ALL SELECT 'earnings_data', COUNT(*) FROM earnings_data\n  UNION ALL SELECT 'analyst_data', COUNT(*) FROM analyst_data\n  UNION ALL SELECT 'energy_prices', COUNT(*) FROM energy_prices\n  UNION ALL SELECT 'agriculture_prices', COUNT(*) FROM agriculture_prices\n  UNION ALL SELECT 'news_articles', COUNT(*) FROM news_articles\n  UNION ALL SELECT 'weather_snapshots', COUNT(*) FROM weather_snapshots\n  UNION ALL SELECT 'security_events', COUNT(*) FROM security_events\n  UNION ALL SELECT 'anomalies', COUNT(*) FROM anomalies\n  UNION ALL SELECT 'fail2ban_events', COUNT(*) FROM fail2ban_events\n  UNION ALL SELECT 'paper_trades', COUNT(*) FROM paper_trades\n  UNION ALL SELECT 'signals_log', COUNT(*) FROM signals_log\n  UNION ALL SELECT 'pop_reports', COUNT(*) FROM pop_reports\n  UNION ALL SELECT 'sold_listings', COUNT(*) FROM sold_listings\n  UNION ALL SELECT 'ebay_listings', COUNT(*) FROM ebay_listings\n  UNION ALL SELECT 'memories', COUNT(*) FROM memories\n  UNION ALL SELECT 'wg_peer_stats', COUNT(*) FROM wg_peer_stats\n  UNION ALL SELECT 'node_resource_stats', COUNT(*) FROM node_resource_stats\n) t ORDER BY row_count DESC"
+        }
+      ],
+      "options": {
+        "xField": "Table",
+        "orientation": "horizontal",
+        "legend": {
+          "displayMode": "none"
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 80
+          }
+        }
+      }
+    },
+    {
+      "id": 21,
+      "type": "table",
+      "title": "All Tables \u2014 Rows, Size, Growth",
+      "gridPos": {
+        "h": 14,
+        "w": 24,
+        "x": 0,
+        "y": 45
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT s.relname AS \"Table\", s.n_live_tup AS \"Live Rows\", pg_size_pretty(pg_total_relation_size(s.relid)) AS \"Disk Size\", s.n_tup_ins AS \"Total Inserts\", s.n_tup_upd AS \"Updates\", s.n_tup_del AS \"Deletes\", (s.n_tup_ins - s.n_tup_del) AS \"Net Growth\", pg_total_relation_size(s.relid) AS size_bytes FROM pg_stat_user_tables s ORDER BY s.n_live_tup DESC"
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": false
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Live Rows"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Total Inserts"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Net Growth"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "size_bytes"
+            },
+            "properties": [
+              {
+                "id": "custom.hidden",
+                "value": true
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Net Growth"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "basic"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "red",
+                      "value": null
+                    },
+                    {
+                      "color": "green",
+                      "value": 0
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 59
+      },
+      "id": 103,
+      "title": "\u2500\u2500 VOLUME TRENDS",
+      "type": "row"
+    },
+    {
+      "id": 30,
+      "type": "timeseries",
+      "title": "Security Events \u2014 Daily Volume (90 days)",
+      "description": "Sudden spike = anomaly or scan campaign. Flatline = collector died.",
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 60
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawSql": "SELECT DATE_TRUNC('day', detected_at) AS time, COUNT(*) AS \"Events / Day\" FROM security_events WHERE detected_at > NOW() - INTERVAL '90 days' GROUP BY 1 ORDER BY 1"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "red"
+          },
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 20,
+            "drawStyle": "bars",
+            "barAlignment": 0,
+            "spanNulls": false
+          }
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      }
+    },
+    {
+      "id": 31,
+      "type": "timeseries",
+      "title": "Daily Ingest Rate by Domain (last 30 days)",
+      "description": "Heartbeat of your data operation. Gaps = dead collector. Market gaps on weekends = expected.",
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 69
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawSql": "SELECT DATE_TRUNC('day', date::timestamptz) AS time, 'market' AS metric, COUNT(*) AS rows FROM market_daily WHERE date > NOW() - INTERVAL '30 days' GROUP BY 1, 2 ORDER BY 1"
+        },
+        {
+          "refId": "B",
+          "format": "time_series",
+          "rawSql": "SELECT DATE_TRUNC('day', fetched_at) AS time, 'macro' AS metric, COUNT(*) AS rows FROM macro_daily WHERE fetched_at > NOW() - INTERVAL '30 days' GROUP BY 1, 2 ORDER BY 1"
+        },
+        {
+          "refId": "C",
+          "format": "time_series",
+          "rawSql": "SELECT DATE_TRUNC('day', detected_at) AS time, 'security' AS metric, COUNT(*) AS rows FROM security_events WHERE detected_at > NOW() - INTERVAL '30 days' GROUP BY 1, 2 ORDER BY 1"
+        },
+        {
+          "refId": "D",
+          "format": "time_series",
+          "rawSql": "SELECT DATE_TRUNC('day', scraped_at) AS time, 'pop_reports' AS metric, COUNT(*) AS rows FROM pop_reports WHERE scraped_at > NOW() - INTERVAL '30 days' GROUP BY 1, 2 ORDER BY 1"
+        },
+        {
+          "refId": "E",
+          "format": "time_series",
+          "rawSql": "SELECT DATE_TRUNC('day', scraped_at) AS time, 'sold_comps' AS metric, COUNT(*) AS rows FROM sold_listings WHERE scraped_at > NOW() - INTERVAL '30 days' GROUP BY 1, 2 ORDER BY 1"
+        },
+        {
+          "refId": "F",
+          "format": "time_series",
+          "rawSql": "SELECT DATE_TRUNC('day', created_at) AS time, 'paper_trades' AS metric, COUNT(*) AS rows FROM paper_trades WHERE created_at > NOW() - INTERVAL '30 days' GROUP BY 1, 2 ORDER BY 1"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "spanNulls": false
+          }
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "sum",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 32,
+      "type": "timeseries",
+      "title": "fail2ban Bans \u2014 Daily (30 days)",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 78
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawSql": "SELECT DATE_TRUNC('day', timestamp) AS time, COUNT(*) AS \"Bans / Day\" FROM fail2ban_events WHERE action = 'ban' AND timestamp > NOW() - INTERVAL '30 days' GROUP BY 1 ORDER BY 1"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "orange"
+          },
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 15,
+            "drawStyle": "bars"
+          }
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      }
+    },
+    {
+      "id": 33,
+      "type": "text",
+      "title": "\u26a0 DB Size Over Time \u2014 Setup Required",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 78
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "## DB Size History Not Yet Available\n\nTo enable the DB size-over-time chart, run this on **PC LA CONSOLE** once:\n\n```sql\nCREATE TABLE IF NOT EXISTS db_size_log (\n    recorded_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),\n    size_bytes   BIGINT NOT NULL\n);\nGRANT SELECT ON db_size_log TO grafana_reader;\n```\n\nThen add a cron on LA to log it nightly:\n\n```bash\necho \"0 0 * * * root sudo -u postgres psql -d eventhorizon -c \\\"INSERT INTO db_size_log (size_bytes) VALUES (pg_database_size('eventhorizon'));\\\"\" >> /etc/cron.d/bhn-db-size\n```\n\nOnce data accumulates, replace this panel with a time-series chart."
+      }
+    }
+  ]
+}

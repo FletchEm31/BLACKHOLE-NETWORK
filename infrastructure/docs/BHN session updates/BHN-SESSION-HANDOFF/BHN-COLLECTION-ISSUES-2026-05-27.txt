@@ -1,0 +1,209 @@
+================================================================================
+BHN COLLECTION ISSUES — DATA HEALTH AUDIT
+2026-05-27
+================================================================================
+
+Snapshot of every collector / data source on BHN at the time of the 2026-05-27
+audit. Source of truth for the override_note values seeded in
+sql/collector-config-schema.sql. Each section groups sources by failure mode
+so the Data Health dashboard reflects reality, not "everything red".
+
+Companion docs:
+  - CC-SESSION-BRIEF-COLLECTION-DEPLOY-2026-05-27.txt   (session brief)
+  - sql/collector-config-schema.sql                     (notes seeded from here)
+
+================================================================================
+SECTION 1 — INFRASTRUCTURE COLLECTORS NEVER DEPLOYED
+================================================================================
+
+Scripts exist in scripts/. Schemas exist in eventhorizon. Cron entries were
+never created on the nodes. No rows have ever been written.
+
+  source_name                 table                   nodes
+  ─────────────────────────── ─────────────────────── ──────────────────────
+  Node Resources              node_resource_stats     LA + Frankfurt + Hillsboro + NJ
+  Docker Stats                container_stats         LA
+  WireGuard Stats             wg_peer_stats           LA
+  fail2ban                    fail2ban_events         LA + Frankfurt + Hillsboro + NJ
+  Node Bandwidth (vnstat)     node_bandwidth_stats    LA + Frankfurt + Hillsboro + NJ
+  Iptables Counters           iptables_stats          LA + Frankfurt + Hillsboro + NJ
+  DNS Query Log               dns_query_log           LA + Frankfurt + Hillsboro + NJ
+  Conntrack Snapshots         connection_snapshots    LA  (see Section 3 caveat)
+  PG Activity Snapshots       pg_activity_snapshots   LA
+  Tinyproxy Requests          proxy_request_logs      Hillsboro
+  Tor Relay Stats             tor_relay_stats         Frankfurt + Hillsboro
+  n8n Executions              n8n_execution_stats     LA — no SQLite→PG bridge built
+                                                       (1.18 GB n8n SQLite sits unsynced)
+
+All eleven flagged PENDING in collector_config so the Data Health dashboard
+shows blue/grey instead of red OUTAGE.
+
+================================================================================
+SECTION 2 — COLLECTORS THAT STOPPED
+================================================================================
+
+Were writing rows, then died at a specific point. No PENDING flag — leave
+status_override NULL so the freshness query auto-computes them to OUTAGE.
+
+  Suricata/CrowdSec  →  security_events
+      Clean cutoff 2026-05-24 19:25 UTC. Suricata daemon itself is running and
+      healthy on LA; only the collector script bhn-security-events-collector.sh
+      stopped. The collector is NOT in bhn-deploy-all-collectors.sh COLLECTOR_META
+      — restart is a manual step (see session brief Task 5).
+
+  EIA Energy Prices  →  energy_prices
+      Stale 12+ days. Weekly cadence — fetcher stalled, API debugging pending.
+
+  USDA Agriculture   →  agriculture_prices
+      Dead since January 2026 (~5 months). USDA changed an API endpoint at the
+      start of the year, suspected root cause but unconfirmed.
+
+  Finnhub Earnings   →  earnings_data
+  Finnhub Analysts   →  analyst_data
+      Both stale 10–19 days. Same fetcher cluster, single point of failure.
+
+  crypto_market_data
+  prediction_market_data
+  alpaca_news
+      Dead since 2026-05-13. Root cause from the CC2 audit (2026-05-23):
+      10 /etc/cron.d/<name> files end with `.sh` instead of `.sh\n` — cron
+      silently ignores them. NOT seeded in collector_config yet; pending
+      separate fix.
+
+  crowdsec_decisions
+      No rows ever written despite CrowdSec running on LA. Bucket-output
+      collector was never wired. Flagged PENDING (Section 1) because the
+      failure mode is "never deployed", not "stopped".
+
+  agent_token_log  (HORIZON Tokens)
+      HORIZON workflow is broken (see Section 5). Token logging halted with
+      the workflow. Flagged PENDING (Section 1) because the upstream needs
+      reimport before logging resumes.
+
+================================================================================
+SECTION 3 — DATA QUALITY ISSUES
+================================================================================
+
+Rows are landing, but the content is wrong. Not "broken" enough to flag the
+collector down, but the dashboard / downstream consumers see misleading data.
+
+  connection_snapshots
+      period_start / period_end timestamps are writing correctly, but every
+      metric column (sessions, bytes_orig, bytes_reply, packets_orig,
+      packets_reply, event counts) is zero since 2026-05-24. conntrack data
+      is not being read correctly — either /proc/net/nf_conntrack is empty
+      (kernel module not loaded) or the parser is silently failing.
+      Verification step after deploy:
+        wc -l < /proc/net/nf_conntrack    # expect >> 0
+        modprobe nf_conntrack              # if zero
+
+  sold_listings
+  ebay_listings
+      Large chunks of NULL skeleton rows. The eBay scraper is inserting empty
+      records when an API call returns empty or errors, instead of skipping.
+      Data is "writing" so freshness looks green, but the content is junk.
+      Out of scope this session — separate cleanup pass needed.
+
+================================================================================
+SECTION 4 — PERMISSION ISSUES (FIXED THIS SESSION)
+================================================================================
+
+grafana_reader lacked SELECT on eight tables — Data Health dashboard panels
+were erroring on permission denied, not on missing data. All granted earlier
+in this session:
+
+  ebay_listings
+  sold_listings
+  n8n_execution_stats
+  crowdsec_decisions
+  container_stats
+  node_resource_stats
+  wg_peer_stats
+  fail2ban_events
+
+Deploy step still re-runs the full GRANT block (idempotent) plus the new
+tables the deploy introduces — see session brief Task 4.
+
+================================================================================
+SECTION 5 — HORIZON
+================================================================================
+
+  Workflow never re-imported after the 2026-05-23 session.
+  Still identifying as "Nathan" (old persona name).
+  Erroring every ~2 minutes — 234 failed executions accumulated as of audit.
+  Zero awareness of financial/trading tables (semantic memory not refreshed).
+
+Impact on Data Health:
+  - HORIZON Tokens (agent_token_log) — flagged PENDING, awaiting re-import
+  - HORIZON Memory (memories)        — override_note flags workflow-stale
+                                       state; status auto-computes from
+                                       freshness
+
+Out of scope this session — re-import requires a browser session over VPN
+and is operator-driven.
+
+================================================================================
+SECTION 6 — GRAFANA DASHBOARD
+================================================================================
+
+  Row counts bar chart still erroring. Specific error message not captured
+  yet; capture from the panel inspector next time the dashboard is opened.
+
+  Dashboard folder layout is disorganized — some dashboards live in the
+  EventHorizon folder, others at root. Reorg out of scope this session.
+
+  collector_config previously only accepted NULL / 'maintenance' — so
+  never-deployed sources showed as OUTAGE alongside genuinely-broken ones.
+  Fixed in sql/collector-config-schema.sql this session: PENDING value
+  added, CHECK constraint corrected (NULL handling was a no-op), every row
+  now has a populated override_note.
+
+================================================================================
+SECTION 7 — MISSING INFRASTRUCTURE
+================================================================================
+
+  db_size_log table does not exist. No way to track PG database growth over
+  time, no way to project when disk fills. Created this session (LA-only,
+  nightly cron 00:00 UTC) — see session brief Task 5.
+
+================================================================================
+HEALTHY COLLECTORS (for completeness)
+================================================================================
+
+Recorded as override_note='Active — …' in collector_config. No action needed,
+listed so the audit covers all 31 seeded sources.
+
+  Alpaca ETF (market_daily)       weekday equity close pulls
+  Regime Classifier               daily regime classification
+  Sentiment Collector             daily sentiment aggregation
+  FRED (macro_daily)              daily FRED macro pulls
+  OpenWeather                     hourly weather snapshots
+  NewsAPI                         30-minute news pulls
+  Alpaca Paper Trades             paper trades sync
+  Strategy Signals                strategy signal log
+  Reconciliation Daemon           5-min reconciliation heartbeat
+  CGC Pop Scraper                 weekly CGC pop report scrape (LA cron)
+
+================================================================================
+EXPECTED DATA HEALTH STATE AFTER 2026-05-27 SESSION
+================================================================================
+
+ACTIVE (green) — 10 healthy sources above
+                 + every Section 1 source whose collector lands data after
+                   bhn-deploy-all-collectors.sh runs against its node
+
+PENDING (blue/grey) — Section 1 sources that remain undeployed:
+                 Tinyproxy Requests (Hillsboro skipped — SSH wedged)
+                 HORIZON Tokens     (workflow re-import deferred)
+                 CrowdSec           (collector wiring deferred)
+
+OUTAGE (red) — Section 2 dead clusters:
+                 Suricata/CrowdSec  (until manual restart, brief Task 5)
+                 EIA Energy Prices
+                 USDA Agriculture
+                 Finnhub Earnings
+                 Finnhub Analysts
+
+MAINTENANCE (yellow) — none currently flagged
+
+================================================================================

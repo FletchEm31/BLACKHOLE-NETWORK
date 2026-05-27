@@ -1,0 +1,235 @@
+================================================================================
+CLAUDE CODE SESSION BRIEF — BHN COLLECTION INFRASTRUCTURE
+2026-05-27
+================================================================================
+
+READ FIRST: infrastructure/docs/BHN SESSION UPDATES/BHN-SESSION-HANDOFF/
+Read the most recent handoff doc before starting any work.
+
+================================================================================
+CONTEXT — WHAT'S BROKEN AND WHY
+================================================================================
+
+We did a full audit of BHN's data collection pipeline today. The Grafana Data
+Health dashboard is live and showing the real picture: most infrastructure
+collectors are either never deployed or stopped. The tables exist in PostgreSQL
+(eventhorizon on LA, 10.8.0.1), the collector scripts exist in the repo, but
+the cron jobs were never wired up on the nodes.
+
+Additionally, the Grafana collector_config table (which drives the status
+column on the Data Health dashboard) needs a new PENDING status so we can
+distinguish between:
+  - ACTIVE   = collecting, within cadence (green)
+  - OUTAGE   = was collecting, now stopped (red)
+  - MAINTENANCE = intentionally paused (yellow)
+  - PENDING  = schema exists, collector never deployed (blue/grey)
+
+Right now PENDING sources show as OUTAGE which is misleading.
+
+================================================================================
+TASK 1 — collector_config: add PENDING status
+================================================================================
+
+File: sql/collector-config-schema.sql
+
+1. ALTER the CHECK constraint on status_override to allow 'pending':
+   Currently: CHECK (status_override IN (NULL, 'maintenance'))
+   Change to:  CHECK (status_override IN ('maintenance', 'pending'))
+   Note: NULL check constraints don't work like that in PG — the correct
+   syntax is: CHECK (status_override IS NULL OR status_override IN ('maintenance', 'pending'))
+
+2. Seed the known PENDING sources by adding UPDATE statements at the bottom
+   of the SQL file (after the INSERT block) to set status_override = 'pending'
+   for collectors that have never been deployed:
+
+   Sources to mark PENDING (schema exists, no cron, never collected):
+     - 'n8n Executions'        (n8n_execution_stats — SQLite→PG bridge not built)
+     - 'CrowdSec'              (crowdsec_decisions — collector not wired)
+     - 'WireGuard Stats'       (wg_peer_stats — cron not deployed)
+     - 'Node Resources'        (node_resource_stats — cron not deployed)
+     - 'Docker Stats'          (container_stats — cron not deployed)
+     - 'fail2ban'              (fail2ban_events — cron not deployed)
+     - 'HORIZON Tokens'        (agent_token_log — HORIZON workflow broken)
+
+   These were COLLECTING but stopped — leave as NULL (auto-computes to OUTAGE):
+     - 'Suricata/CrowdSec'     (security_events — stopped May 24 19:25 UTC)
+     - 'EIA Energy Prices'     (energy_prices — stale 12+ days)
+     - 'USDA Agriculture'      (agriculture_prices — dead since January)
+
+3. The UPDATE block should use ON CONFLICT logic — i.e. only set pending if
+   status_override IS NULL (don't overwrite an existing maintenance flag):
+   UPDATE collector_config
+   SET status_override = 'pending'
+   WHERE source_name IN (...)
+   AND status_override IS NULL;
+
+Apply on LA after editing:
+   scp sql/collector-config-schema.sql root@10.8.0.1:/tmp/
+   ssh root@10.8.0.1 "sudo -u postgres psql -d eventhorizon -f /tmp/collector-config-schema.sql"
+
+================================================================================
+TASK 2 — deploy infrastructure collectors
+================================================================================
+
+The master deploy script already exists: scripts/bhn-deploy-all-collectors.sh
+
+It handles: scp to node, chmod, write env file, write cron.d entry, test run,
+verify ≥1 row in PG. Modes: deploy / test / status.
+
+COLLECTOR INVENTORY (from COLLECTOR_META in the script):
+  LA node:        vnstat, iptables, docker-stats, pg-stats, n8n-stats,
+                  fail2ban, dns-log, wg-stats, conntrack, resource-stats
+  Frankfurt:      vnstat, iptables, fail2ban, dns-log, conntrack,
+                  resource-stats, tor-stats
+  Hillsboro:      vnstat, iptables, fail2ban, dns-log, conntrack,
+                  resource-stats, tor-stats, proxy-log
+  NJ:             vnstat, iptables, fail2ban, dns-log, conntrack, resource-stats
+
+KNOWN ISSUE — Hillsboro SSH hangs:
+  Do NOT include Hillsboro in the deploy run. Use --skip-nodes Hillsboro.
+  Hillsboro SSH hangs are a known issue, diagnose separately.
+
+DEPLOY STEPS:
+  From PC LA CONSOLE (SSH to LA hub at 10.8.0.1):
+
+  # Navigate to scripts directory
+  cd /opt/bhn/scripts   (or wherever the repo is checked out on LA)
+
+  # Check current status first
+  bash bhn-deploy-all-collectors.sh status --skip-nodes Hillsboro
+
+  # Deploy to all nodes except Hillsboro
+  bash bhn-deploy-all-collectors.sh deploy --skip-nodes Hillsboro
+
+  # Verify after deploy
+  bash bhn-deploy-all-collectors.sh test --skip-nodes Hillsboro
+
+IMPORTANT — log_shipper DSN:
+  The script uses: postgresql://log_shipper:BHN-LogShipper-2026@10.8.0.1/eventhorizon
+  If log_shipper is missing INSERT on any table, the deploy will PASS but
+  verify_run will fail with exit=2. Fix with GRANT on LA, not in the script.
+
+KNOWN PERMISSION GAPS (grant these before deploying if needed):
+  sudo -u postgres psql -d eventhorizon -c "
+  GRANT INSERT ON wg_peer_stats TO log_shipper;
+  GRANT INSERT ON tor_relay_stats TO log_shipper;
+  GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO log_shipper;"
+
+SECURITY_EVENTS SPECIAL CASE:
+  security_events stopped at 2026-05-24 19:25 UTC — clean cutoff.
+  Suricata itself is running (confirmed). The collector script stopped.
+  After deploy, verify it restarts:
+  sudo -u postgres psql -d eventhorizon -c "SELECT MAX(detected_at) FROM security_events;"
+  Should be within last 5 minutes after deploy. If not, check:
+  journalctl -u cron | grep security
+  cat /var/log/syslog | grep bhn-security
+
+CONNECTION_SNAPSHOTS SPECIAL CASE:
+  Table is writing rows but all metric columns are zero since May 24.
+  (period_start/end timestamps writing correctly, sessions/bytes/events = 0)
+  After deploy, check if bhn-conntrack-collector.sh is reading conntrack correctly:
+  conntrack -L 2>/dev/null | wc -l   (should return rows if conntrack is active)
+  If zero, conntrack kernel module may need loading:
+  modprobe nf_conntrack
+
+N8N-STATS SPECIAL CASE:
+  bhn-n8n-stats-collector.sh reads from n8n's SQLite DB at:
+  /home/node/.n8n/database.sqlite  (inside Docker container)
+  The collector needs to copy this out or mount it. The SQLite file is 1.18GB.
+  Check how the collector handles this — it may need the Docker socket or a
+  volume mount. Verify the approach before deploying.
+
+================================================================================
+TASK 3 — after deploy, update collector_config PENDING → NULL
+================================================================================
+
+After each collector is successfully deployed and verified (≥1 row in PG),
+update its status_override back to NULL so it auto-computes from freshness:
+
+  sudo -u postgres psql -d eventhorizon -c "
+  UPDATE collector_config
+  SET status_override = NULL, updated_at = NOW()
+  WHERE source_name = '<source_name>';"
+
+Do this one at a time as each collector passes verification, not all at once.
+
+================================================================================
+TASK 4 — verify grafana_reader permissions on all collector tables
+================================================================================
+
+After deploy, the Grafana Data Health dashboard needs SELECT on every table
+the collectors write to. Run this to catch any missing grants:
+
+  sudo -u postgres psql -d eventhorizon -f sql/horizon-agent-reader-grants-verify.sql
+
+Also run manually for grafana_reader specifically:
+  sudo -u postgres psql -d eventhorizon -c "
+  GRANT SELECT ON
+    wg_peer_stats, node_resource_stats, container_stats,
+    fail2ban_events, security_events, connection_snapshots,
+    iptables_stats, node_bandwidth_stats, dns_query_log,
+    n8n_execution_stats, pg_activity_snapshots,
+    proxy_request_logs, tor_relay_stats
+  TO grafana_reader;"
+
+================================================================================
+TASK 5 — db_size_log table (quick win, 2 minutes)
+================================================================================
+
+Create the table and cron for DB size history tracking:
+
+  sudo -u postgres psql -d eventhorizon -c "
+  CREATE TABLE IF NOT EXISTS db_size_log (
+    recorded_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    size_bytes   BIGINT NOT NULL
+  );
+  GRANT SELECT ON db_size_log TO grafana_reader, agent_reader, ehuser;"
+
+  echo "0 0 * * * root sudo -u postgres psql -d eventhorizon -c \"INSERT INTO db_size_log (size_bytes) VALUES (pg_database_size('eventhorizon'));\"" \
+    > /etc/cron.d/bhn-db-size-log
+
+This enables the DB size over time chart on the Data Health dashboard.
+
+================================================================================
+OUT OF SCOPE FOR THIS SESSION
+================================================================================
+
+These are tracked but NOT part of this session:
+  - HORIZON workflow re-import (requires browser session on VPN, manual work)
+  - agriculture_prices / energy_prices dead collector fixes (API debugging)
+  - crypto_market_data / alpaca_news fixes (separate session)
+  - ebay/sold_listings NULL row cleanup (data quality)
+  - Frankfurt MASQUERADE routing fix
+  - Hillsboro SSH hang diagnosis
+
+================================================================================
+SUCCESS CRITERIA
+================================================================================
+
+Session is complete when:
+  1. bhn-deploy-all-collectors.sh status shows PASS for LA, Frankfurt, NJ
+  2. PG tables have fresh data (within last 10 min):
+     node_resource_stats, container_stats, wg_peer_stats,
+     fail2ban_events, node_bandwidth_stats
+  3. security_events has data after 2026-05-24 19:25 UTC
+  4. collector_config PENDING sources updated correctly
+  5. grafana_reader has SELECT on all new tables
+  6. db_size_log table created + cron deployed
+  7. Commit all changes to repo with proper Summary + Description
+
+================================================================================
+COMMIT TEMPLATE
+================================================================================
+
+Summary: Deploy infrastructure collectors + collector_config PENDING status
+
+Description:
+- Deploy bhn-deploy-all-collectors.sh to LA, Frankfurt, NJ (skip Hillsboro)
+- Verify ≥1 row per collector per node in eventhorizon PG
+- Add PENDING status to collector_config schema for never-deployed sources
+- Seed PENDING for: n8n_execution_stats, crowdsec_decisions, wg_peer_stats,
+  node_resource_stats, container_stats, fail2ban_events, agent_token_log
+- Create db_size_log table + nightly cron
+- Grant grafana_reader SELECT on all collector tables
+- Update collector_config PENDING → NULL for verified collectors
+================================================================================

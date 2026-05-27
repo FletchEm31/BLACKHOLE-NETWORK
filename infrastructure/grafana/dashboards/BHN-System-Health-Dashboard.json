@@ -1,0 +1,516 @@
+{
+  "uid": "bhn-system-health",
+  "title": "BHN \u2014 System Health",
+  "description": "Infrastructure layer: CPU, RAM, swap, disk, network I/O, WireGuard peers, security events. Data from node_resource_stats, node_disk_stats, node_bandwidth_stats, wg_peer_stats, fail2ban_events, crowdsec_decisions.",
+  "tags": ["bhn", "system", "health", "infrastructure"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "1m",
+  "time": { "from": "now-3h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "node",
+        "type": "query",
+        "label": "Node",
+        "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+        "query": "SELECT DISTINCT node_name FROM node_resource_stats ORDER BY 1",
+        "refresh": 2,
+        "multi": false,
+        "includeAll": false,
+        "sort": 1,
+        "current": {}
+      }
+    ]
+  },
+  "panels": [
+
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 100,
+      "title": "\u2500\u2500 LIVE STATS",
+      "type": "row"
+    },
+
+    {
+      "id": 1, "type": "stat",
+      "title": "CPU %",
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 1 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "targets": [{ "refId": "A", "format": "table",
+        "rawSql": "SELECT cpu_pct AS value FROM node_resource_stats WHERE node_name = '$node' ORDER BY measured_at DESC LIMIT 1" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "area", "textMode": "auto" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent", "min": 0, "max": 100,
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null },
+            { "color": "yellow", "value": 60 },
+            { "color": "red", "value": 85 }
+          ]},
+          "color": { "mode": "thresholds" }
+        }
+      }
+    },
+
+    {
+      "id": 2, "type": "stat",
+      "title": "RAM Used %",
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 1 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "targets": [{ "refId": "A", "format": "table",
+        "rawSql": "SELECT ROUND((mem_used_mb::numeric / NULLIF(mem_total_mb,0)) * 100, 1) AS value FROM node_resource_stats WHERE node_name = '$node' ORDER BY measured_at DESC LIMIT 1" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "area", "textMode": "auto" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent", "min": 0, "max": 100,
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null },
+            { "color": "yellow", "value": 70 },
+            { "color": "red", "value": 90 }
+          ]},
+          "color": { "mode": "thresholds" }
+        }
+      }
+    },
+
+    {
+      "id": 3, "type": "stat",
+      "title": "RAM Available",
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 1 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "targets": [{ "refId": "A", "format": "table",
+        "rawSql": "SELECT mem_available_mb * 1048576 AS value FROM node_resource_stats WHERE node_name = '$node' ORDER BY measured_at DESC LIMIT 1" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none", "textMode": "auto" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "red", "value": null },
+            { "color": "yellow", "value": 209715200 },
+            { "color": "green", "value": 524288000 }
+          ]},
+          "color": { "mode": "thresholds" }
+        }
+      }
+    },
+
+    {
+      "id": 4, "type": "stat",
+      "title": "Swap Used %",
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 1 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "targets": [{ "refId": "A", "format": "table",
+        "rawSql": "SELECT ROUND((swap_used_mb::numeric / NULLIF(swap_total_mb,0)) * 100, 1) AS value FROM node_resource_stats WHERE node_name = '$node' ORDER BY measured_at DESC LIMIT 1" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "area", "textMode": "auto" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent", "min": 0, "max": 100,
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null },
+            { "color": "yellow", "value": 50 },
+            { "color": "red", "value": 80 }
+          ]},
+          "color": { "mode": "thresholds" }
+        }
+      }
+    },
+
+    {
+      "id": 5, "type": "stat",
+      "title": "Uptime",
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 1 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "targets": [{ "refId": "A", "format": "table",
+        "rawSql": "SELECT uptime_s AS value FROM node_resource_stats WHERE node_name = '$node' ORDER BY measured_at DESC LIMIT 1" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "none", "graphMode": "none", "textMode": "auto" },
+      "fieldConfig": { "defaults": { "unit": "s", "color": { "mode": "fixed", "fixedColor": "blue" } } }
+    },
+
+    {
+      "id": 6, "type": "stat",
+      "title": "Processes",
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 1 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "targets": [{ "refId": "A", "format": "table",
+        "rawSql": "SELECT proc_count AS value FROM node_resource_stats WHERE node_name = '$node' ORDER BY measured_at DESC LIMIT 1" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "none", "graphMode": "none", "textMode": "auto" },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "fixed", "fixedColor": "text" } } }
+    },
+
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 },
+      "id": 101,
+      "title": "\u2500\u2500 CPU & MEMORY",
+      "type": "row"
+    },
+
+    {
+      "id": 10, "type": "timeseries",
+      "title": "CPU %",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "targets": [{ "refId": "A", "format": "time_series",
+        "rawSql": "SELECT measured_at AS time, cpu_pct AS \"CPU %\" FROM node_resource_stats WHERE node_name = '$node' AND $__timeFilter(measured_at) ORDER BY 1" }],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent", "min": 0, "max": 100,
+          "custom": { "lineWidth": 2, "fillOpacity": 15, "spanNulls": true },
+          "color": { "mode": "fixed", "fixedColor": "blue" },
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null }, { "color": "yellow", "value": 60 }, { "color": "red", "value": 85 }
+          ]}
+        }
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "single" } }
+    },
+
+    {
+      "id": 11, "type": "timeseries",
+      "title": "Memory Used %",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "targets": [{ "refId": "A", "format": "time_series",
+        "rawSql": "SELECT measured_at AS time, ROUND((mem_used_mb::numeric / NULLIF(mem_total_mb,0)) * 100, 1) AS \"RAM Used %\", ROUND((swap_used_mb::numeric / NULLIF(swap_total_mb,0)) * 100, 1) AS \"Swap Used %\" FROM node_resource_stats WHERE node_name = '$node' AND $__timeFilter(measured_at) ORDER BY 1" }],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent", "min": 0, "max": 100,
+          "custom": { "lineWidth": 2, "fillOpacity": 10, "spanNulls": true }
+        }
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+
+    {
+      "id": 12, "type": "timeseries",
+      "title": "Load Average (1m / 5m / 15m)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 14 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "targets": [{ "refId": "A", "format": "time_series",
+        "rawSql": "SELECT measured_at AS time, load_1m AS \"1m\", load_5m AS \"5m\", load_15m AS \"15m\" FROM node_resource_stats WHERE node_name = '$node' AND $__timeFilter(measured_at) ORDER BY 1" }],
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "lineWidth": 2, "fillOpacity": 5, "spanNulls": true },
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null }, { "color": "yellow", "value": 1.5 }, { "color": "red", "value": 2.0 }
+          ]}
+        }
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+
+    {
+      "id": 13, "type": "timeseries",
+      "title": "Swap Used (MB)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 14 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "targets": [{ "refId": "A", "format": "time_series",
+        "rawSql": "SELECT measured_at AS time, swap_used_mb * 1048576 AS \"Swap Used\" FROM node_resource_stats WHERE node_name = '$node' AND $__timeFilter(measured_at) ORDER BY 1" }],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "custom": { "lineWidth": 2, "fillOpacity": 15, "spanNulls": true },
+          "color": { "mode": "fixed", "fixedColor": "orange" }
+        }
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "single" } }
+    },
+
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 22 },
+      "id": 102,
+      "title": "\u2500\u2500 DISK STORAGE",
+      "type": "row"
+    },
+
+    {
+      "id": 20, "type": "gauge",
+      "title": "/ (root)",
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 23 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "targets": [{ "refId": "A", "format": "table",
+        "rawSql": "SELECT used_pct AS value FROM node_disk_stats WHERE node_name = '$node' AND mount_point = '/' ORDER BY measured_at DESC LIMIT 1" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "showThresholdLabels": false, "showThresholdMarkers": true },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent", "min": 0, "max": 100,
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null }, { "color": "yellow", "value": 70 }, { "color": "red", "value": 90 }
+          ]},
+          "color": { "mode": "thresholds" }
+        }
+      }
+    },
+
+    {
+      "id": 21, "type": "gauge",
+      "title": "NVMe Hot (/mnt/eh-nvme-hot)",
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 23 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "targets": [{ "refId": "A", "format": "table",
+        "rawSql": "SELECT used_pct AS value FROM node_disk_stats WHERE node_name = '$node' AND mount_point = '/mnt/eh-nvme-hot' ORDER BY measured_at DESC LIMIT 1" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "showThresholdLabels": false, "showThresholdMarkers": true },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent", "min": 0, "max": 100,
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null }, { "color": "yellow", "value": 70 }, { "color": "red", "value": 90 }
+          ]},
+          "color": { "mode": "thresholds" }
+        }
+      }
+    },
+
+    {
+      "id": 22, "type": "gauge",
+      "title": "HDD Cold (/mnt/eh-hdd-cold)",
+      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 23 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "targets": [{ "refId": "A", "format": "table",
+        "rawSql": "SELECT used_pct AS value FROM node_disk_stats WHERE node_name = '$node' AND mount_point = '/mnt/eh-hdd-cold' ORDER BY measured_at DESC LIMIT 1" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "showThresholdLabels": false, "showThresholdMarkers": true },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent", "min": 0, "max": 100,
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null }, { "color": "yellow", "value": 70 }, { "color": "red", "value": 90 }
+          ]},
+          "color": { "mode": "thresholds" }
+        }
+      }
+    },
+
+    {
+      "id": 23, "type": "table",
+      "title": "All Mount Points (latest)",
+      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 23 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "targets": [{ "refId": "A", "format": "table",
+        "rawSql": "SELECT DISTINCT ON (mount_point) mount_point, filesystem, ROUND(used_kb / 1048576.0, 2) AS used_gb, ROUND(total_kb / 1048576.0, 2) AS total_gb, used_pct FROM node_disk_stats WHERE node_name = '$node' ORDER BY mount_point, measured_at DESC" }],
+      "options": { "showHeader": true, "footer": { "show": false } },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto" } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "used_pct" },
+            "properties": [
+              { "id": "unit", "value": "percent" },
+              { "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "gradient" } },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [
+                { "color": "green", "value": null }, { "color": "yellow", "value": 70 }, { "color": "red", "value": 90 }
+              ]}}
+            ]
+          },
+          { "matcher": { "id": "byName", "options": "used_gb" }, "properties": [{ "id": "unit", "value": "GB" }] },
+          { "matcher": { "id": "byName", "options": "total_gb" }, "properties": [{ "id": "unit", "value": "GB" }] }
+        ]
+      }
+    },
+
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 29 },
+      "id": 103,
+      "title": "\u2500\u2500 NETWORK I/O (vnstat hourly totals)",
+      "type": "row"
+    },
+
+    {
+      "id": 30, "type": "timeseries",
+      "title": "enp1s0 — Public Interface (RX / TX)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 30 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "targets": [
+        { "refId": "A", "format": "time_series",
+          "rawSql": "SELECT period_start AS time, rx_bytes AS \"RX\" FROM node_bandwidth_stats WHERE node_name = '$node' AND interface = 'enp1s0' AND period_type = 'hour' AND $__timeFilter(period_start) ORDER BY 1" },
+        { "refId": "B", "format": "time_series",
+          "rawSql": "SELECT period_start AS time, -tx_bytes AS \"TX\" FROM node_bandwidth_stats WHERE node_name = '$node' AND interface = 'enp1s0' AND period_type = 'hour' AND $__timeFilter(period_start) ORDER BY 1" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "custom": { "lineWidth": 2, "fillOpacity": 20, "spanNulls": false, "drawStyle": "bars", "barAlignment": 0 }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "RX" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } }] },
+          { "matcher": { "id": "byName", "options": "TX" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }] }
+        ]
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+
+    {
+      "id": 31, "type": "timeseries",
+      "title": "wg0 — WireGuard Tunnel (RX / TX)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 30 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "targets": [
+        { "refId": "A", "format": "time_series",
+          "rawSql": "SELECT period_start AS time, rx_bytes AS \"RX\" FROM node_bandwidth_stats WHERE node_name = '$node' AND interface = 'wg0' AND period_type = 'hour' AND $__timeFilter(period_start) ORDER BY 1" },
+        { "refId": "B", "format": "time_series",
+          "rawSql": "SELECT period_start AS time, -tx_bytes AS \"TX\" FROM node_bandwidth_stats WHERE node_name = '$node' AND interface = 'wg0' AND period_type = 'hour' AND $__timeFilter(period_start) ORDER BY 1" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "custom": { "lineWidth": 2, "fillOpacity": 20, "spanNulls": false, "drawStyle": "bars", "barAlignment": 0 }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "RX" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "blue" } }] },
+          { "matcher": { "id": "byName", "options": "TX" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "orange" } }] }
+        ]
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 38 },
+      "id": 104,
+      "title": "\u2500\u2500 WIREGUARD PEERS",
+      "type": "row"
+    },
+
+    {
+      "id": 40, "type": "table",
+      "title": "WireGuard Peers — Current Status",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 39 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "targets": [{ "refId": "A", "format": "table",
+        "rawSql": "SELECT DISTINCT ON (peer_ip) peer_label AS \"Peer\", peer_ip AS \"Tunnel IP\", endpoint AS \"Endpoint\", latest_handshake AS \"Last Handshake\", ROUND(EXTRACT(EPOCH FROM (NOW() - latest_handshake)) / 60, 1) AS \"Handshake Age (min)\", bytes_received AS \"RX Bytes\", bytes_sent AS \"TX Bytes\" FROM wg_peer_stats ORDER BY peer_ip, measured_at DESC" }],
+      "options": { "showHeader": true, "footer": { "show": false }, "sortBy": [{ "displayName": "Peer", "desc": false }] },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto" } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Handshake Age (min)" },
+            "properties": [
+              { "id": "unit", "value": "m" }, { "id": "decimals", "value": 1 },
+              { "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "basic" } },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [
+                { "color": "green", "value": null },
+                { "color": "yellow", "value": 3 },
+                { "color": "red", "value": 10 }
+              ]}}
+            ]
+          },
+          { "matcher": { "id": "byName", "options": "Last Handshake" }, "properties": [{ "id": "unit", "value": "dateTimeFromNow" }] },
+          { "matcher": { "id": "byName", "options": "RX Bytes" }, "properties": [{ "id": "unit", "value": "bytes" }] },
+          { "matcher": { "id": "byName", "options": "TX Bytes" }, "properties": [{ "id": "unit", "value": "bytes" }] }
+        ]
+      }
+    },
+
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 47 },
+      "id": 105,
+      "title": "\u2500\u2500 SECURITY EVENTS",
+      "type": "row"
+    },
+
+    {
+      "id": 50, "type": "stat",
+      "title": "fail2ban Bans (24h)",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 48 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "targets": [{ "refId": "A", "format": "table",
+        "rawSql": "SELECT COUNT(*) AS value FROM fail2ban_events WHERE action = 'ban' AND timestamp > NOW() - INTERVAL '24 hours'" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null }, { "color": "yellow", "value": 5 }, { "color": "red", "value": 20 }
+          ]},
+          "color": { "mode": "thresholds" }
+        }
+      }
+    },
+
+    {
+      "id": 51, "type": "stat",
+      "title": "CrowdSec Decisions (24h)",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 48 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "targets": [{ "refId": "A", "format": "table",
+        "rawSql": "SELECT COUNT(*) AS value FROM crowdsec_decisions WHERE created_at > NOW() - INTERVAL '24 hours'" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null }, { "color": "yellow", "value": 10 }, { "color": "red", "value": 50 }
+          ]},
+          "color": { "mode": "thresholds" }
+        }
+      }
+    },
+
+    {
+      "id": 52, "type": "stat",
+      "title": "Security Events (24h)",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 48 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "targets": [{ "refId": "A", "format": "table",
+        "rawSql": "SELECT COUNT(*) AS value FROM security_events WHERE detected_at > NOW() - INTERVAL '24 hours'" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null }, { "color": "yellow", "value": 100 }, { "color": "red", "value": 1000 }
+          ]},
+          "color": { "mode": "thresholds" }
+        }
+      }
+    },
+
+    {
+      "id": 53, "type": "stat",
+      "title": "Active CrowdSec Bans",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 48 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "targets": [{ "refId": "A", "format": "table",
+        "rawSql": "SELECT COUNT(*) AS value FROM crowdsec_decisions WHERE (expires_at IS NULL OR expires_at > NOW()) AND type = 'ban'" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 10 }
+          ]},
+          "color": { "mode": "thresholds" }
+        }
+      }
+    },
+
+    {
+      "id": 54, "type": "table",
+      "title": "Recent fail2ban Events",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 52 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "targets": [{ "refId": "A", "format": "table",
+        "rawSql": "SELECT timestamp AS \"Time\", ip AS \"IP\", jail AS \"Jail\", action AS \"Action\", node_name AS \"Node\" FROM fail2ban_events WHERE $__timeFilter(timestamp) ORDER BY timestamp DESC LIMIT 50" }],
+      "options": { "showHeader": true, "footer": { "show": false } },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto" } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Time" }, "properties": [{ "id": "unit", "value": "dateTimeFromNow" }] },
+          { "matcher": { "id": "byName", "options": "Action" },
+            "properties": [
+              { "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "basic" } },
+              { "id": "mappings", "value": [{ "type": "value", "options": {
+                "ban":   { "color": "red",   "index": 0 },
+                "unban": { "color": "green", "index": 1 }
+              }}]}
+            ]
+          }
+        ]
+      }
+    }
+
+  ]
+}
