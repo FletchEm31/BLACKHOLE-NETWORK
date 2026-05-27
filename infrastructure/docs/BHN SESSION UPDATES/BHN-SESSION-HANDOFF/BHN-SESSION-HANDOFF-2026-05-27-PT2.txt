@@ -1,0 +1,386 @@
+================================================================================
+BHN SESSION HANDOFF — 2026-05-27 (PT2)
+Claude Code, Market Data Standard v2 — schema migration
+================================================================================
+
+Continuation of 2026-05-27 (see BHN-SESSION-HANDOFF-2026-05-27.txt for the
+morning Claude Code session, BHN-CHAT-SESSION-HANDOFF-2026-05-27.txt for the
+parallel chat session that authored the spec).
+
+Inputs to this session (all committed earlier today, untracked at start):
+  infrastructure/docs/BHN session updates/BHN-SESSION-HANDOFF/
+    BHN-MARKET-DATA-STANDARD-PART1-CORE-SCHEMA.txt
+    BHN-MARKET-DATA-STANDARD-PART2-FEES-AND-PRICING.txt
+    BHN-MARKET-DATA-STANDARD-PART3-ARBITRAGE-AND-PNL.txt
+
+0 commits pushed (work is staged on PC only — operator must commit + apply
+to LA. SQL is idempotent; ALL files are CREATE/ALTER ... IF NOT EXISTS).
+
+================================================================================
+WHAT THIS SESSION DID
+================================================================================
+
+Implemented the SQL half of the v2 Market Data Standard. n8n workflow
+rewrites are explicitly OUT OF SCOPE — back-compat views keep every existing
+consumer green until the operator manually migrates each one.
+
+Files created (all under D:\GITHUB REPOSITORY\BLACKHOLE-NETWORK\):
+
+  sql/market-data-standard-01-renames.sql
+    - ALTER ebay_listings IN PLACE → add 13 columns + 5 CHECK constraints
+      (card_code, card_number, edition, print_variant, platform, final_price,
+       ended_at, days_listed, outcome, views, best_offer_received,
+       previous_ask_price, raw_payload), then RENAME TO ebay_asks.
+    - ALTER sold_listings → add 37 columns (identity, sale_type, actual fees,
+      shipping/handling, cost basis, totals, market-rate estimates), then
+      RENAME TO ebay_transactions.
+    - ALTER courtyard_listings → add 12 columns (final/ended/days, outcome,
+      demand signals, relist tracking, card_code, last_seen_at), then
+      RENAME TO courtyard_asks.
+    - ALTER courtyard_sales → add 30 fee/cost columns, broaden sale_type
+      vocab to v2 (drop old peer_to_peer/buyback/gacha CHECK, add the 5-value
+      fixed_price/auction/offer_accepted/buyback/peer_to_peer CHECK), then
+      RENAME TO courtyard_transactions.
+    - ALTER collector_crypt_sales → same as courtyard_sales above, RENAME TO
+      collector_crypt_transactions.
+    - Each rename also renames the matching _id_seq, _pkey, _card_id_idx so
+      nothing carries the old name forward.
+
+  sql/market-data-standard-02-new-tables.sql
+    7 new tables, all under public schema, all idempotent:
+      ebay_bids                   (Best Offer / OBO on YOUR listings only)
+      courtyard_bids              (OpenSea Offers API)
+      collector_crypt_bids        (Magic Eden Bids API)
+      collector_crypt_asks        (Magic Eden Listings API — first time)
+      order_price_history         (bid+ask change log across all 3 markets)
+      fee_schedule                (platform fee reference, seeded in step 03)
+      arbitrage_positions         (~75 cols — full trade lifecycle, three-way
+                                   cost accounting, risk mgmt, P&L)
+    All universal columns per Part 1 §1 (card_id FK, card_code, card_name,
+    set_name, card_number, grader, grade, edition NOT NULL DEFAULT 'N/A',
+    print_variant NOT NULL DEFAULT 'Standard', platform, currency, created_at,
+    raw_payload JSONB). Per-market CHECK constraints. Indexes per spec.
+    Grants: log_shipper INSERT, n8n_user INSERT/UPDATE, agent_reader +
+    grafana_reader + ehuser SELECT, sequence USAGE matched.
+
+  sql/market-data-standard-03-fee-schedule-seed.sql
+    19 verified fee rows from Part 2 §1 (all 2026-05-27):
+      courtyard      x6  (0% marketplace, $2 redemption, $12 dom/$35 intl
+                         shipping, ~$0.01 polygon gas buy+sell)
+      collector_crypt x3 (1% platform + 1% royalty = 2%, ~$0.002 solana gas)
+      ebay non-store  x8 (13.25% FVF + 2.35% above $7,500, 2.9% processing,
+                         $0.30/$0.40 per-order, $17 AG midpoint, $8 shipping,
+                         50% FVF promo on $1K+ — expired 2026-05-04, retained
+                         for historical reference per spec)
+      ebay basic-store x2 (12.35% FVF + 2.35% above $2,500)
+    Keyed on (market, fee_name, effective_date) with ON CONFLICT DO NOTHING.
+    Re-apply is safe — adds new rows only when effective_date advances.
+
+  sql/market-data-standard-04-estimate-fn.sql
+    estimate_trade_costs(buy_mkt, sell_mkt, buy_price, sell_price, direction)
+      RETURNS TABLE (buy_fees_est, sell_fees_est, shipping_est, redemption_est,
+                     tokenization_est, gas_est, total_costs_est,
+                     net_profit_est, roi_est_pct, is_profitable).
+      Reads fee_schedule, applies threshold filters, respects promo expiry,
+      adds direction-specific physical-movement costs (redemption + shipping
+      for *_to_ebay, shipping + tokenization for ebay_to_*, neither for
+      within-platform). Default min profit threshold $25. STABLE. Granted
+      EXECUTE to n8n_user, agent_reader, ehuser.
+    + ALTER tokenized_arbitrage_signals to add 10 estimate columns
+      (est_buy_fees, est_sell_fees, est_shipping, est_redemption,
+       est_tokenization, est_gas, est_total_costs, est_net_profit,
+       est_roi_pct, is_profitable_est) so signals carry their own
+       profitability projection per Part 2 §4.
+
+  sql/market-data-standard-05-backcompat-views.sql
+    5 auto-updatable views under the old names:
+      ebay_listings           → ebay_asks
+      sold_listings           → ebay_transactions
+      courtyard_listings      → courtyard_asks
+      courtyard_sales         → courtyard_transactions
+      collector_crypt_sales   → collector_crypt_transactions
+    Grants mirror the underlying tables (SELECT to readers, INSERT/UPDATE to
+    log_shipper). DO NOT DROP in this migration — operator drops each one
+    individually after `grep -r "<old_name>" n8n-workflows/ scripts/`
+    returns empty AND each affected workflow is re-tested. Precedent:
+    `card_catalog` view kept after master_card_catalog rename.
+
+Modified:
+  infrastructure/docs/pokemonbhn/collectibles-data-standard.md
+    Added §12 (v2 renames + new tables + universal column shape + per-market
+    outcome/sale_type/offer_type/status vocabs) and §13 (fee_schedule,
+    estimate_trade_costs(), three-way cost accounting, market-rate estimates
+    on third-party transactions, migration file index).
+    Per feedback_repo_sole_writer: targeted merge against live HEAD, not a
+    blind overwrite of §10–§11.
+
+================================================================================
+PRE-APPLY CHECK (do not skip)
+================================================================================
+
+The new CHECK constraints in step 01 will REJECT existing rows that don't
+match the controlled vocabularies. Run these on LA before applying step 01;
+any non-empty result is a row that must be normalized first.
+
+  -- 1. Non-canonical grader values
+  SELECT DISTINCT grader FROM ebay_listings
+   WHERE grader IS NOT NULL
+     AND grader NOT IN ('CGC','PSA','BGS','SGC');
+  -- Same for sold_listings.
+
+  -- 2. Non-canonical edition values (if any exist today — table didn't
+  --    have this column before tonight, so existing rows will all default
+  --    to 'N/A', which IS allowed. Listed here only for completeness.)
+  SELECT DISTINCT edition FROM ebay_listings
+   WHERE edition NOT IN ('1st Edition','Unlimited','Shadowless','N/A');
+
+  -- 3. courtyard_sales / collector_crypt_sales sale_type — old CHECK
+  --    allowed 'peer_to_peer','buyback','gacha'. Step 01 broadens to the
+  --    v2 5-value set (fixed_price, auction, offer_accepted, buyback,
+  --    peer_to_peer). 'gacha' is being DROPPED from the allowed set. If
+  --    any row has sale_type='gacha', the new CHECK will reject. Check:
+  SELECT 'courtyard_sales' AS tbl, sale_type, COUNT(*) FROM courtyard_sales
+   WHERE sale_type='gacha' GROUP BY sale_type
+  UNION ALL
+  SELECT 'collector_crypt_sales', sale_type, COUNT(*) FROM collector_crypt_sales
+   WHERE sale_type='gacha' GROUP BY sale_type;
+  -- If 0 rows: safe. If any rows: decide UPDATE to peer_to_peer or new
+  -- vocab value before applying step 01.
+
+If all three queries return zero rows, the migration is shape-safe and
+step 01 will apply cleanly.
+
+================================================================================
+APPLY ORDER ON LA
+================================================================================
+
+Per project_la_no_repo_checkout, LA has no git checkout. Stateless scp deploy
+into /root/bhn-deploy-2026-05-27/sql/, then pipe each file via stdin into
+psql (postgres user can't cd into /root).
+
+Order is fixed by the operator's rule: renames before new tables; views
+before any n8n change; fee_schedule seeded immediately after creation.
+
+  cd "D:\GITHUB REPOSITORY\BLACKHOLE-NETWORK"
+
+  scp sql/market-data-standard-0{1,2,3,4,5}-*.sql \
+      root@10.8.0.1:/root/bhn-deploy-2026-05-27/sql/
+
+  for n in 01 02 03 04 05; do
+    cat sql/market-data-standard-${n}-*.sql | \
+      ssh root@10.8.0.1 'sudo -u postgres psql -d eventhorizon -v ON_ERROR_STOP=1'
+  done
+
+Each file is BEGIN/COMMIT wrapped. If any single file errors, the others
+are not affected (no cross-file state). Re-running a successfully-applied
+file is a no-op (IF NOT EXISTS / ON CONFLICT DO NOTHING / OR REPLACE).
+
+================================================================================
+POST-APPLY VERIFICATION
+================================================================================
+
+Run these after all five files apply cleanly:
+
+  -- A. Tables renamed and new ones present
+  \dt ebay_asks ebay_transactions ebay_bids
+  \dt courtyard_asks courtyard_transactions courtyard_bids
+  \dt collector_crypt_asks collector_crypt_transactions collector_crypt_bids
+  \dt order_price_history fee_schedule arbitrage_positions
+
+  -- B. Back-compat views work
+  SELECT COUNT(*) FROM ebay_listings;     -- should equal ebay_asks count
+  SELECT COUNT(*) FROM sold_listings;     -- should equal ebay_transactions
+
+  -- C. fee_schedule seeded
+  SELECT market, COUNT(*) FROM fee_schedule GROUP BY market ORDER BY market;
+  -- Expected:  collector_crypt=3, courtyard=6, ebay=10  (19 total)
+
+  -- D. estimate_trade_costs() returns sensible numbers
+  SELECT * FROM estimate_trade_costs('courtyard','ebay',800,1100,'courtyard_to_ebay');
+  -- Should look roughly like the Part 2 §4 worked example:
+  --   sell_fees ~ $150 (13.25% FVF + 2.9% processing)
+  --   shipping ~ $8, redemption ~ $2, gas ~ $0.02
+  --   total ~ $170, net ~ +$121, roi ~ 15%, is_profitable=TRUE
+
+  -- E. tokenized_arbitrage_signals gained 10 est_ columns
+  \d tokenized_arbitrage_signals  -- look for est_total_costs, is_profitable_est
+
+  -- F. Map remaining consumers of the old names — the operator's drop-the-
+  --    views checklist
+  grep -rl "ebay_listings\|sold_listings\|courtyard_listings\|courtyard_sales\|collector_crypt_sales" \
+       n8n-workflows/ scripts/ infrastructure/
+
+================================================================================
+OUT OF SCOPE (explicitly deferred)
+================================================================================
+
+Tonight's migration covers the schema half. Each of these is a separate
+piece of work and was NOT touched:
+
+  - n8n workflow rewrites off the back-compat views. Workflows currently
+    referencing ebay_listings / sold_listings / courtyard_listings /
+    courtyard_sales / collector_crypt_sales keep working unchanged. Each
+    one must be re-pointed at the new table name and re-tested before its
+    back-compat view can be dropped.
+      Affected workflows (per Explore inventory earlier today):
+        n8n-workflows/pokemon/courtyard-bhn-listings-collector.json
+        n8n-workflows/pokemon/courtyard-bhn-sales-collector.json
+        n8n-workflows/pokemon/pokemon-bhn-vintage-{bgs,bgs-unlimited,cgc,
+                       cgc-unlimited,psa,psa-unlimited,sgc,sgc-unlimited}.json
+        n8n-workflows/pokemon/courtyard-bhn-arbitrage-signals.json
+      Collector script: scripts/courtyard-historical-backfill.py (writes
+        through courtyard_sales view).
+
+  - HORIZON SMS wiring of the new signal/estimate columns and the P&L
+    queries (Part 2 §4, Part 3 §5). Spec is in the txt files; HORIZON
+    workflow re-import is a separate operator action already queued in
+    the morning handoff.
+
+  - Calibration cron (Part 3 §4). Query is in the spec; scheduling is
+    later, after arbitrage_positions has real trade data to calibrate
+    against.
+
+  - Trading stack / financial schema / PG 18 — confirmed unrelated to
+    this work per operator clarification.
+
+================================================================================
+NOTES ON DESIGN CHOICES
+================================================================================
+
+  1. Renames done via ALTER-then-RENAME (operator-confirmed). Preserves
+     data, single transaction per table, PK/seq/index renames all carry
+     through. Avoided the "build fresh + INSERT SELECT + DROP old" approach
+     because it would risk dropped writes during the rename window.
+
+  2. card_id FK was already wired by sql/card-id-resolver.sql earlier today
+     across all 5 tables affected. Skipped re-adding it in step 01.
+
+  3. courtyard_sales / collector_crypt_sales sale_type CHECK is the only
+     constraint being NARROWED-then-WIDENED. Old CHECK ('peer_to_peer',
+     'buyback','gacha') is dropped and replaced with the v2 5-value set.
+     'gacha' is no longer in the allowed list — see the pre-apply check
+     above for the verification query.
+
+  4. fee_schedule unique key is (market, fee_name, effective_date). This
+     lets a single fee_name carry multiple historical rates as platforms
+     change — INSERT a new row with a later effective_date and let queries
+     filter by it. Expired promos (e.g. the eBay FVF 50% promo with
+     promo_expires_at='2026-05-04') are kept in the table for historical
+     reference per spec.
+
+  5. estimate_trade_costs() uses the spec's default $25 minimum-profit
+     threshold for the is_profitable flag. Configurable in code if HORIZON
+     needs a different threshold; not surfaced as a parameter today to keep
+     the function signature stable.
+
+  6. arbitrage_positions has signal_id REFERENCES tokenized_arbitrage_signals(id).
+     This is the only FK between v2 tables — the rest stay soft-keyed by
+     card_id only, per the existing data-standard §4 enforcement tiers.
+
+================================================================================
+COMMIT GUIDANCE (per feedback_commit_format)
+================================================================================
+
+Two logical groups for the operator to commit:
+
+  Commit 1 — the SQL migration files:
+    git add sql/market-data-standard-01-renames.sql \
+            sql/market-data-standard-02-new-tables.sql \
+            sql/market-data-standard-03-fee-schedule-seed.sql \
+            sql/market-data-standard-04-estimate-fn.sql \
+            sql/market-data-standard-05-backcompat-views.sql
+    Summary: feat(sql): Market Data Standard v2 — renames + new tables +
+             fee_schedule + estimate_trade_costs()
+    Body:    5 idempotent SQL files implementing the v2 spec (Part 1/2/3
+             txt files in BHN-SESSION-HANDOFF/). Renames 5 tables to the
+             [market]_{asks,transactions} pattern; adds 7 new tables
+             (bids x 3, collector_crypt_asks, order_price_history,
+             fee_schedule, arbitrage_positions); seeds 19 verified fee
+             rows; adds estimate_trade_costs() reading fee_schedule;
+             extends tokenized_arbitrage_signals with 10 est_ cols.
+             Back-compat views under the old names keep n8n + collectors
+             green. Apply on LA via stateless scp + stdin-pipe psql,
+             order 01→05.
+
+  Commit 2 — the spec source docs + authoritative-standard merge:
+    git add "infrastructure/docs/BHN session updates/BHN-SESSION-HANDOFF/BHN-MARKET-DATA-STANDARD-PART1-CORE-SCHEMA.txt" \
+            "infrastructure/docs/BHN session updates/BHN-SESSION-HANDOFF/BHN-MARKET-DATA-STANDARD-PART2-FEES-AND-PRICING.txt" \
+            "infrastructure/docs/BHN session updates/BHN-SESSION-HANDOFF/BHN-MARKET-DATA-STANDARD-PART3-ARBITRAGE-AND-PNL.txt" \
+            infrastructure/docs/pokemonbhn/collectibles-data-standard.md
+    Summary: docs(pokemonbhn): merge v2 Market Data Standard into the
+             authoritative collectibles-data-standard.md (§12, §13)
+    Body:    Adds the three Part txt files (the change log) and merges
+             the steady-state shape into collectibles-data-standard.md
+             as §12 (renames + new tables + universal columns + per-
+             market vocabularies) and §13 (fee_schedule + estimate_trade_costs()
+             + three-way cost accounting + market-rate estimates on
+             observed third-party transactions). Per feedback_repo_sole_writer:
+             targeted merge against live HEAD, not a blind overwrite.
+
+  Commit 3 — this handoff:
+    git add "infrastructure/docs/BHN session updates/BHN-SESSION-HANDOFF/BHN-SESSION-HANDOFF-2026-05-27-PT2.txt"
+    Summary: docs(handoff): 2026-05-27 PT2 — Market Data Standard v2 migration
+    Body:    Records tonight's Claude Code session: SQL migration files +
+             doc merge + pre-apply checks + LA apply order + post-apply
+             verification + commit guidance. Companion to
+             BHN-SESSION-HANDOFF-2026-05-27.txt (morning) and
+             BHN-CHAT-SESSION-HANDOFF-2026-05-27.txt (chat).
+
+The infrastructure/la-egress-lockdown/ufw-rewrite.sh change in the working
+tree is from a separate workstream (Hillsboro/LA egress lockdown — see
+project_hillsboro_ssh_wedged + project_la_egress_isolation). Not touched
+this session; commit separately when that thread resumes.
+
+================================================================================
+OPERATOR FOLLOW-UPS QUEUED
+================================================================================
+
+This session adds two items to the queue. Everything from morning still
+applies (see BHN-SESSION-HANDOFF-2026-05-27.txt §"OPERATOR FOLLOW-UPS").
+
+  A. Apply the 5-file migration to LA (this session's primary output).
+     - Run the pre-apply check queries first.
+     - Pipe files 01→05 via stdin psql.
+     - Run the post-apply verification block.
+
+  B. n8n workflow migration off the back-compat views — one workflow at a
+     time, each followed by a `grep` to confirm zero remaining references
+     to that view's old name, then DROP the view. Affected workflow list
+     in "OUT OF SCOPE" above. This is the only thing keeping the views
+     alive — operator gates the drops.
+
+================================================================================
+MEMORY DELTA  (in ~/.claude/projects/.../memory/)
+================================================================================
+
+No new memories from this session — all the relevant patterns and
+constraints were already in memory from earlier today:
+  - project_la_no_repo_checkout              (deploy pattern)
+  - feedback_schema_reapply_guard            (idempotent UPDATE pattern)
+  - project_card_catalog_queue               (back-compat view precedent)
+  - feedback_repo_sole_writer                (targeted-merge rule)
+  - feedback_commit_format                   (Summary + body convention)
+
+================================================================================
+PATH POINTERS
+================================================================================
+
+Repo:                 D:\GITHUB REPOSITORY\BLACKHOLE-NETWORK
+Spec source:          infrastructure/docs/BHN session updates/BHN-SESSION-HANDOFF/
+                        BHN-MARKET-DATA-STANDARD-PART{1,2,3}-*.txt
+Authoritative doc:    infrastructure/docs/pokemonbhn/collectibles-data-standard.md
+                        (§12 + §13 carry the steady-state shape)
+SQL migration files:  sql/market-data-standard-0{1,2,3,4,5}-*.sql
+LA SSH:               root@10.8.0.1 (direct over WG; ProxyJump via FRA if
+                        tunnel is broken — see reference_ssh_paths)
+LA deploy dir:        /root/bhn-deploy-2026-05-27/sql/  (scp target)
+PG DB:                eventhorizon  (LA hub)
+PG apply pattern:     cat sql/file.sql | ssh root@10.8.0.1 \
+                        'sudo -u postgres psql -d eventhorizon -v ON_ERROR_STOP=1'
+                      (postgres user can't cd into /root — stdin pipe required)
+Plan file:            C:\Users\fletc\.claude\plans\please-see-the-market-data-standard-fizzy-torvalds.md
+                        (the approved plan this session executed)
+
+================================================================================
+END OF HANDOFF — 2026-05-27 PT2 (CLAUDE CODE)
+================================================================================
