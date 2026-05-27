@@ -13,8 +13,15 @@ Inputs to this session (all committed earlier today, untracked at start):
     BHN-MARKET-DATA-STANDARD-PART2-FEES-AND-PRICING.txt
     BHN-MARKET-DATA-STANDARD-PART3-ARBITRAGE-AND-PNL.txt
 
-0 commits pushed (work is staged on PC only — operator must commit + apply
-to LA. SQL is idempotent; ALL files are CREATE/ALTER ... IF NOT EXISTS).
+5 commits pushed (this number updated after the addendum below). All
+migration files (01–06) applied to LA in this session. Idempotent;
+re-applies are no-ops.
+
+  e924b59  docs(pokemonbhn): patch §13 — fee_schedule.tier + 6-param signature
+  867ad41  fix(sql): step 06 — fee_schedule tier column + tier-aware fn
+  66a94df  docs(handoff): 2026-05-27 PT2 (this file — original version)
+  922bff4  docs(pokemonbhn): merge v2 Market Data Standard into §12, §13
+  11c5fc7  feat(sql): Market Data Standard v2 — steps 01–05
 
 ================================================================================
 WHAT THIS SESSION DID
@@ -380,6 +387,305 @@ PG apply pattern:     cat sql/file.sql | ssh root@10.8.0.1 \
                       (postgres user can't cd into /root — stdin pipe required)
 Plan file:            C:\Users\fletc\.claude\plans\please-see-the-market-data-standard-fizzy-torvalds.md
                         (the approved plan this session executed)
+
+================================================================================
+ADDENDUM — APPLICATION TO LA + STEP 06 (FVF TIER FIX)
+================================================================================
+
+After the original handoff above was written, the operator authorized
+applying all five SQL files to LA. Two issues surfaced during application
+that required follow-up work; both are now resolved on LA and committed.
+
+──────────────────────────────────────────────────────────────────────────────
+A. sold_listings.sale_type pre-existed with non-canonical values
+──────────────────────────────────────────────────────────────────────────────
+
+The pre-apply check (graders + edition + sale_type='gacha' on the tokenized
+tables) all returned 0 rows — the migration looked shape-safe. Step 01
+applied cleanly through 21 ALTER TABLEs, then errored on:
+
+    ERROR: check constraint "sold_listings_sale_type_chk" of relation
+           "sold_listings" is violated by some row
+
+Diagnosis: sold_listings ALREADY had a sale_type column (not net-new as
+the spec assumed; ADD COLUMN IF NOT EXISTS quietly skipped it). It carried
+651 rows with eBay-native values: Auction (328), Best Offer (181), BIN (142).
+The new v2 CHECK rejected them.
+
+Resolution: one-shot UPDATE block to normalize:
+    'Auction'    → 'auction'          (case-fold, 328 rows)
+    'BIN'        → 'fixed_price'      (Buy It Now, 142 rows)
+    'Best Offer' → 'offer_accepted'   (a SOLD row with sale_type='Best Offer'
+                                       means seller accepted the offer, 181)
+
+Mapping is semantically lossless. Re-applied step 01 successfully — all 5
+renames + 13 CHECKs landed. Transaction wrapping meant the partial first
+attempt left no half-applied state.
+
+Carry-forward: sold_listings carried more pre-existing columns than the
+spec accounted for (card_number, edition, sale_type already existed). The
+IF NOT EXISTS guard handled the column adds, but the CHECK addition needed
+the data normalization above. Future migrations against this table should
+inspect live schema first (\d in psql) rather than trust the spec's
+"these are net-new" framing.
+
+──────────────────────────────────────────────────────────────────────────────
+B. estimate_trade_costs() double-counted eBay FVF tiers (step 06)
+──────────────────────────────────────────────────────────────────────────────
+
+Steps 02–05 applied without issue. While verifying step 04 against Part 2
+§4's worked example (courtyard_to_ebay, $800 buy / $1,100 sell, expected
+~$170 sell_fees and +$121 net), the function returned $313.90 sell_fees
+and -$23.91 net — NOT profitable. Same trade, 2x over the spec's expected
+sell fees.
+
+Diagnosis: fee_schedule seeded BOTH eBay FVF tiers as separate rows:
+  'Final Value Fee'   (non-store, 13.25%)
+  'FVF Basic Store'   (basic_store, 12.35%)
+They're mutually exclusive — a seller is on ONE plan, not both — but
+nothing in the schema marked them as such. The function summed both,
+producing $145.75 + $135.85 = $281.60 just in FVF before payment processing.
+
+Fix (sql/market-data-standard-06-fee-tier-fix.sql, applied + committed):
+
+  1. ALTER fee_schedule ADD COLUMN tier TEXT (nullable) with CHECK
+     {all, non_store, basic_store, premium_store, anchor_store}.
+
+  2. Tag existing rows:
+       non_store    Final Value Fee, FVF Above $7,500           (2)
+       basic_store  FVF Basic Store, FVF Basic Above $2,500     (2)
+       all          Payment Processing, Per-Order (both), AG,
+                    Shipping (graded card), FVF 50% Promo       (6)
+       NULL         every Courtyard / Collector Crypt row       (9)
+                                                       ────────
+                                                       Total    19
+
+  3. DROP + CREATE estimate_trade_costs with new signature:
+       estimate_trade_costs(p_buy_market, p_sell_market, p_buy_price,
+                            p_sell_price, p_direction,
+                            p_ebay_tier DEFAULT 'non_store')
+     Filter clause on both buy-side and sell-side fee aggregation:
+       AND (tier IS NULL OR tier = 'all' OR tier = p_ebay_tier)
+
+     Signature changed (added a 6th parameter), so CREATE OR REPLACE
+     wasn't sufficient — DROP + CREATE was required. EXECUTE grants
+     reapplied against the new signature.
+
+Verification on LA:
+  non_store tier:   sell_fees $178.05, net +$111.94, ROI 13.99%, profitable ✓
+  basic_store tier: sell_fees $168.15, net +$121.84, ROI 15.23%, profitable ✓
+
+The spec's "$121 net / 15.2% ROI" target matched basic_store EXACTLY —
+the spec authors implicitly used Basic Store rates. Default to non_store
+gives the conservative number; trades profitable at non_store are
+profitable at any higher tier.
+
+Authoritative-doc patch landed in commit e924b59:
+  §13.1 — tier column docs + live tagging table + filter clause
+  §13.2 — 6-param signature + non_store vs basic_store worked example
+  §13.5 — step 06 added to migration files index
+
+──────────────────────────────────────────────────────────────────────────────
+LIVE LA STATE AT END OF SESSION (POST-MIGRATION)
+──────────────────────────────────────────────────────────────────────────────
+
+  Tables renamed (relkind='r', data preserved):
+    ebay_asks                       2,274 rows  ← ebay_listings
+    ebay_transactions                 651 rows  ← sold_listings
+    courtyard_asks                      0 rows  ← courtyard_listings
+    courtyard_transactions              0 rows  ← courtyard_sales
+    collector_crypt_transactions        0 rows  ← collector_crypt_sales
+
+  Tables created (relkind='r'):
+    ebay_bids                       22 cols
+    courtyard_bids                  25 cols
+    collector_crypt_bids            25 cols
+    collector_crypt_asks            39 cols
+    order_price_history             11 cols
+    fee_schedule                    15 cols (after step 06 added tier)
+    arbitrage_positions             88 cols
+
+  Views created (relkind='v', auto-updatable):
+    ebay_listings, sold_listings, courtyard_listings,
+    courtyard_sales, collector_crypt_sales
+    (counts match underlying tables; existing n8n + collectors unaffected)
+
+  Function created:
+    estimate_trade_costs(TEXT, TEXT, DECIMAL, DECIMAL, TEXT, TEXT)
+    GRANT EXECUTE TO n8n_user, agent_reader, ehuser
+
+  fee_schedule seed:
+    19 rows total — courtyard=6, collector_crypt=3, ebay=10
+    Tier distribution: NULL=9, all=6, non_store=2, basic_store=2
+
+  Cosmetic carry-over (not blocking):
+    New CHECK constraints kept their original <old_table>_*_chk names
+    because they were created BEFORE the RENAME in step 01. E.g.
+    'sold_listings_sale_type_chk' now sits on 'ebay_transactions'.
+    Postgres doesn't auto-rename constraints with the table.
+    Rename pass is purely a \d readability cleanup — defer or skip.
+
+──────────────────────────────────────────────────────────────────────────────
+COMMIT TRAIL (final)
+──────────────────────────────────────────────────────────────────────────────
+
+  11c5fc7  feat(sql): Market Data Standard v2 — renames + new tables +
+                      fee_schedule + estimate_trade_costs()
+                      [steps 01–05]
+  922bff4  docs(pokemonbhn): merge v2 Market Data Standard into
+                              collectibles-data-standard.md (§12, §13)
+  66a94df  docs(handoff): 2026-05-27 PT2 (this file, original version)
+  867ad41  fix(sql): step 06 — fee_schedule tier column + tier-aware
+                     estimate_trade_costs()
+  e924b59  docs(pokemonbhn): patch §13 — fee_schedule.tier + 6-param
+                              estimate_trade_costs()
+
+──────────────────────────────────────────────────────────────────────────────
+LESSONS / MEMORY-WORTHY
+──────────────────────────────────────────────────────────────────────────────
+
+  - Pre-apply checks should include a `\d` inspection of every table the
+    migration touches, not just the values in suspected columns. The
+    sold_listings.sale_type issue would have been caught by "what columns
+    already exist on this table" before "what values are non-canonical".
+
+  - When a spec seeds reference data with mutually-exclusive variants
+    (eBay FVF non-store vs basic-store, future store tiers, regional fee
+    structures), the schema needs a disambiguator column from day one,
+    not bolted on after a worked-example test exposes the ambiguity.
+    Pattern now established: fee_schedule.tier with controlled vocab.
+
+  - The spec's worked examples ARE the verification — if the numbers
+    don't match, the function is wrong (or the spec is). In this case
+    the spec authors implicitly used the basic_store tier without
+    noting it; the new function makes that explicit via the
+    p_ebay_tier parameter.
+
+================================================================================
+ADDENDUM 2 — eBay SOLD-COMPS COLLECTOR (built this session, not deployed)
+================================================================================
+
+Built `n8n-workflows/pokemon/pokemon-bhn-sold-comps.json` — a daily collector
+that pulls 33 cards/day from master_card_catalog and writes sold comps into
+ebay_transactions.
+
+Design:
+  - Schedule: daily 08:00 UTC. Full catalog sweep ~41 days at 33/day.
+  - Rotation: deterministic by (CURRENT_DATE - DATE '2026-01-01')::int * 33
+              modulo catalog size. Wraps cleanly; same date always pulls
+              the same 33 cards (idempotent re-runs).
+  - eBay API: Finding API findCompletedItems + itemFilter SoldItemsOnly=true.
+              Uses the same App ID as the vintage scrapers
+              (HaydenHa-TEAMROCK-PRD-*) — Finding API takes the App ID in
+              SECURITY-APPNAME URL param, no OAuth dance needed.
+  - Parser: extracts item_id, sold_price, sold_at (endTime), sale_type
+            (auction vs fixed_price from listingType), seller, raw_payload.
+            grader+grade parsed from listing title via canonical regex;
+            both NULL if either can't be derived.
+  - INSERT: WITH grade_check CTE consults master_grade_catalog FK before
+            insert — non-canonical (grader, grade) pairs land as (NULL,
+            NULL) instead of FK-rejecting the whole row.
+            ON CONFLICT (item_id) DO NOTHING — re-runs idempotent.
+  - Columns: only references columns confirmed present on live
+            ebay_transactions today (listing_url / image_url / condition /
+            seller_feedback live on ebay_asks, not transactions).
+
+Operator follow-ups:
+  - Import via n8n UI from n8n-workflows/pokemon/pokemon-bhn-sold-comps.json
+  - Verify the existing "Postgres EventHorizon" credential (id
+    dQxOaWILJI9iNiQc) binds automatically (it's the same one all other
+    workflows use). No new credential required.
+  - First-run test: execute manually, inspect output of "Parse Sold Comps"
+    node to confirm grader/grade extraction matches the catalog, then check
+    ebay_transactions for fresh rows.
+  - Activate the schedule when verified.
+
+================================================================================
+FOLLOW-UP WORKSTREAM — Courtyard blockchain collector (next session)
+================================================================================
+
+Queued for the session AFTER the eBay sold-comps workflow is verified
+producing data.
+
+Goal:
+  Replace the OpenSea API dependency (project_opensea_api_key_required —
+  v2 anonymous reads now 401; key needed and is rate-limited) with direct
+  on-chain reads from Polygon. Same target schema, complete history, no
+  rate-limit ceiling, no key-expiry surprises.
+
+Provider:
+  Alchemy free tier on Polygon Mainnet. Free quota covers historical
+  backfill + ongoing tail collection at our cadence.
+  - https://www.alchemy.com/  → Polygon Mainnet RPC + Enhanced APIs
+  - Free tier: 100M compute units/month (~3M JSON-RPC calls equivalent)
+
+Events to capture:
+  1. Transfer(address from, address to, uint256 tokenId)
+     - Standard ERC-721 transfer event
+     - Captures every change of ownership (mint, sale, transfer, redemption)
+  2. OrderFulfilled
+     - Seaport (OpenSea) protocol-level event
+     - Carries price, buyer, seller, royalty info
+     - Filter to orders involving the Courtyard contract
+
+Contract address (TBD — first task of the follow-up):
+  Find from one of:
+    a. github.com/courtyard-io — official deployment manifests
+    b. Existing courtyard_transactions rows: SELECT DISTINCT nft_contract
+       FROM courtyard_transactions WHERE nft_contract IS NOT NULL;
+       (Empty today — Courtyard collectors awaiting OpenSea API key —
+       but populated rows will surface the contract once any data lands)
+    c. Polygon block explorer: courtyard.io's marketplace contract
+  Record the canonical address in collector_config or a dedicated config
+  table once confirmed; do NOT hardcode in the collector.
+
+Schema target:
+  courtyard_transactions (existing, unchanged shape from this session).
+  Same INSERT path used by the SOLD-COMPS workflow:
+    - On-chain tx_hash → item_id
+    - currentPrice from OrderFulfilled → sold_price
+    - block timestamp → sold_at
+    - sale_type='peer_to_peer' (or 'fixed_price' if listed via Seaport order)
+    - seller_address, buyer_address from event payload
+    - raw_payload = the full event log JSON for replay
+  ON CONFLICT (item_id) DO NOTHING (same idempotency pattern).
+
+Phases:
+  Phase A — One-time historical backfill
+    - Use Alchemy's getAssetTransfers (or getLogs filtered by contract +
+      topic) to pull every Transfer/OrderFulfilled since contract deploy
+    - Batch in 10k-block chunks (Polygon ~2s blocks → ~5.5h per chunk)
+    - Resolve card_id via existing resolve_card_id() on (set_name,
+      card_name) parsed from token metadata at the NFT contract
+    - Expect ~30-60 min runtime for full history given Polygon's throughput
+
+  Phase B — Ongoing collector
+    - n8n workflow polling Alchemy every 5 min for new logs since last
+      processed block
+    - State: store last_processed_block in collector_config or a small
+      bookkeeping table
+    - Same parser/insert pipeline as backfill
+
+Why this is the right architectural move:
+  - No API key dependency (Alchemy key is operational, not market-side)
+  - No 401 risk from OpenSea policy changes
+  - Polygon chain data is permanent — historical queries always work
+  - Direct event reads carry exact transaction metadata (gas, block, hash)
+    that the OpenSea events API only summarizes
+
+Related context to read first:
+  - infrastructure/docs/pokemonbhn/collectibles-data-standard.md §10
+    (tokenized market stream — current state)
+  - scripts/courtyard-historical-backfill.py (the OpenSea/Polygonscan
+    hybrid backfill written this morning — pieces of its design are
+    reusable, but the data source changes from OpenSea events to direct
+    contract logs)
+  - project_opensea_api_key_required memory — why this replacement matters
+
+Not part of the same session as sold-comps:
+  Do this AFTER the sold-comps workflow is collecting cleanly. Two
+  collectors going up at once doubles the verification surface; bring
+  one online, confirm it produces clean data, then start the next.
 
 ================================================================================
 END OF HANDOFF — 2026-05-27 PT2 (CLAUDE CODE)
