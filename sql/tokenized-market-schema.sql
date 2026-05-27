@@ -324,3 +324,19 @@ GRANT SELECT ON collector_crypt_sales        TO agent_reader, grafana_reader, eh
 GRANT SELECT ON tokenized_arbitrage_signals  TO agent_reader, grafana_reader, ehuser;
 
 COMMIT;
+
+
+-- ============================================================================
+-- 2026-05-27 — raw_payload columns on the three observation tables.
+-- ============================================================================
+-- The COURTYARD-BHN | SALES-COLLECTOR / LISTINGS-COLLECTOR workflows store the
+-- full OpenSea event JSON as raw_payload so attribute drift (OpenSea renaming
+-- 'Card Name' → 'card_name' etc.) can be reprocessed without re-fetching from
+-- the API. Same applies to Collector Crypt sales when that collector is built.
+-- collector_crypt_sales gets the column for shape parity per §10.2 (the three
+-- observation tables share an identical column layout).
+-- Idempotent — safe to re-apply.
+
+ALTER TABLE courtyard_sales       ADD COLUMN IF NOT EXISTS raw_payload JSONB;
+ALTER TABLE courtyard_listings    ADD COLUMN IF NOT EXISTS raw_payload JSONB;
+ALTER TABLE collector_crypt_sales ADD COLUMN IF NOT EXISTS raw_payload JSONB;
