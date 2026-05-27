@@ -40,24 +40,35 @@ command -v jq     >/dev/null || { echo "bhn-vnstat: jq not installed"     >&2; e
 snapshot=$(vnstat --json) || { echo "bhn-vnstat: vnstat --json failed" >&2; exit 3; }
 
 # Build a multi-row INSERT … ON CONFLICT DO UPDATE for all (iface × period × bucket) combos.
-# jq emits one TSV line per row: iface\tperiod\tperiod_start_iso\trx\ttx\traw_json
+# jq emits one TSV line per row: iface\tperiod\tperiod_start_iso\trx\ttx
+#
+# Two parse-time guards (both regressed on 2026-05-27):
+#   1. Each (array | map(...)) is parenthesised so + concatenates the four
+#      arrays before we iterate. Without parens, | binds tighter than + and
+#      we lose three of the four period types.
+#   2. select(.d != null and .d.year != null) drops "top" entries where
+#      vnstat hasn't yet recorded a date — those previously produced the
+#      literal timestamp "null-null-1T00:00:00Z" which PG rejected as
+#      "invalid input syntax for type timestamp with time zone".
 rows=$(echo "$snapshot" | jq -r '
   .interfaces[] |
   . as $iface |
   (
-    ($iface.traffic.hour  // []) | map({p:"hour",  d:.date, t:.time, rx:.rx, tx:.tx})
-    + ($iface.traffic.day   // []) | map({p:"day",   d:.date,         rx:.rx, tx:.tx})
-    + ($iface.traffic.month // []) | map({p:"month", d:.date,         rx:.rx, tx:.tx})
-    + ($iface.traffic.top   // []) | map({p:"top",   d:.date,         rx:.rx, tx:.tx})
+    (($iface.traffic.hour  // []) | map({p:"hour",  d:.date, t:.time, rx:.rx, tx:.tx})) +
+    (($iface.traffic.day   // []) | map({p:"day",   d:.date,          rx:.rx, tx:.tx})) +
+    (($iface.traffic.month // []) | map({p:"month", d:.date,          rx:.rx, tx:.tx})) +
+    (($iface.traffic.top   // []) | map({p:"top",   d:.date,          rx:.rx, tx:.tx}))
   )[] |
+  select(.d != null and .d.year != null and .d.month != null) |
   [
     $iface.name,
     .p,
     (
       if .p == "hour" then
-        (.d | "\(.year)-\(.month|tostring|@text)-\(.day|tostring|@text)") + "T" + (.t | "\(.hour|tostring|@text):\(.minute|tostring|@text):00Z")
+        ((.d.year|tostring) + "-" + (.d.month|tostring) + "-" + ((.d.day // 1)|tostring) + "T"
+         + ((.t.hour // 0)|tostring) + ":" + ((.t.minute // 0)|tostring) + ":00Z")
       else
-        (.d | "\(.year)-\(.month|tostring|@text)-\((.day // 1)|tostring|@text)") + "T00:00:00Z"
+        ((.d.year|tostring) + "-" + (.d.month|tostring) + "-" + ((.d.day // 1)|tostring) + "T00:00:00Z")
       end
     ),
     (.rx | tostring),
