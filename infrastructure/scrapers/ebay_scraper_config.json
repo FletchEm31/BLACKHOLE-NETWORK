@@ -1,0 +1,14 @@
+{
+  "delay_min_sec": 8,
+  "delay_max_sec": 15,
+  "long_pause_every_n": 12,
+  "long_pause_min_sec": 25,
+  "long_pause_max_sec": 45,
+  "break_every_n": 50,
+  "break_min_min": 3,
+  "break_max_min": 5,
+  "max_pages_per_card": 3,
+  "min_grade": 7,
+  "sets_to_run": ["Team Rocket", "Base Set", "Fossil", "Jungle", "Gym Heroes", "Gym Challenge"],
+  "checkpoint_every_n_cards": 10
+}
