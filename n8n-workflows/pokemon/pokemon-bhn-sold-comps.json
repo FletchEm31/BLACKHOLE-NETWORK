@@ -8,7 +8,7 @@
           "interval": [
             {
               "field": "cronExpression",
-              "expression": "0 8 * * *"
+              "expression": "0 */3 * * *"
             }
           ]
         }
@@ -17,27 +17,27 @@
       "typeVersion": 1.3,
       "position": [-960, 0],
       "id": "scd-trigger-sold-comps",
-      "name": "Schedule Trigger (Daily 08:00 UTC)",
-      "notes": "Daily rotation: 33 cards/day from master_card_catalog. With 1,354 variant rows, one full sweep takes ~41 days. Adjust cron if you want a different cadence."
+      "name": "Schedule Trigger (Every 3 Hours)",
+      "notes": "Fires every 3 hours (8 runs/day at 00, 03, 06, 09, 12, 15, 18, 21 UTC). 5 cards/run × 8 runs/day = 40 cards/day. Full master_card_catalog sweep ~34 days. Spacing chosen to stay under eBay Finding API rate limits — burst-firing 33 calls returned 500s consistently."
     },
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "WITH ranked AS (\n  SELECT m.id AS card_id, m.card_code, m.card_name, m.set_name,\n         m.card_number, m.edition,\n         ROW_NUMBER() OVER (ORDER BY m.id) - 1 AS rn,\n         COUNT(*) OVER () AS total\n    FROM master_card_catalog m\n),\nparams AS (\n  SELECT ((CURRENT_DATE - DATE '2026-01-01')::int * 33)\n         % (SELECT COUNT(*) FROM master_card_catalog) AS day_offset\n)\nSELECT r.card_id, r.card_code, r.card_name, r.set_name,\n       r.card_number, r.edition\n  FROM ranked r\n CROSS JOIN params p\n WHERE (r.rn - p.day_offset + r.total) % r.total < 33\n ORDER BY r.card_id;",
+        "query": "WITH ranked AS (\n  SELECT m.id AS card_id, m.card_code, m.card_name, m.set_name,\n         m.card_number, m.edition,\n         ROW_NUMBER() OVER (ORDER BY m.id) - 1 AS rn,\n         COUNT(*) OVER () AS total\n    FROM master_card_catalog m\n),\nparams AS (\n  -- Rotation key: number of 3-hour buckets since Unix epoch, times 5.\n  -- Each scheduled fire (every 3h) advances the window by 5 cards;\n  -- 8 fires/day × 5 cards = 40 cards/day; full catalog cycle ~34 days.\n  SELECT ((EXTRACT(EPOCH FROM NOW())::bigint / 10800) * 5)\n         % (SELECT COUNT(*) FROM master_card_catalog) AS run_offset\n)\nSELECT r.card_id, r.card_code, r.card_name, r.set_name,\n       r.card_number, r.edition\n  FROM ranked r\n CROSS JOIN params p\n WHERE (r.rn - p.run_offset + r.total) % r.total < 5\n ORDER BY r.card_id;",
         "options": {}
       },
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
       "position": [-720, 0],
       "id": "pg-get-daily-cards",
-      "name": "Get Daily 33 Cards",
+      "name": "Get 5 Cards For This Run",
       "credentials": {
         "postgres": {
           "id": "dQxOaWILJI9iNiQc",
           "name": "Postgres EventHorizon"
         }
       },
-      "notes": "Deterministic rotation by days-since-epoch (2026-01-01). Same set of 33 cards every time the workflow runs on a given date. Wraps the catalog cleanly when stride * days exceeds catalog size."
+      "notes": "Deterministic rotation by 3-hour-buckets-since-Unix-epoch × 5 mod catalog size. Each scheduled fire picks the next 5 cards; wraps cleanly at catalog end. Re-running within the same 3-hour window pulls the same 5 cards (idempotent → ON CONFLICT DO NOTHING handles dedupe)."
     },
     {
       "parameters": {
@@ -57,7 +57,7 @@
           "batching": {
             "batch": {
               "batchSize": 1,
-              "batchInterval": 2000
+              "batchInterval": 10000
             }
           }
         }
@@ -68,8 +68,9 @@
       "id": "http-ebay-finding",
       "name": "eBay Finding API (findCompletedItems)",
       "alwaysOutputData": true,
+      "continueOnFail": true,
       "onError": "continueRegularOutput",
-      "notes": "GET against eBay Finding API. Iterates over each input item — 33 calls per run, sequential with 2s spacing (batchSize=1, batchInterval=2000ms) to stay under the Finding API rate limit. Standard tier limit is 5,000 calls/day; 2s/call → ~66s total wall time per run, ~30 req/min sustained — well under the per-second ceiling. categoryId 2536 = Trading Card Singles."
+      "notes": "GET against eBay Finding API. 5 calls per run, strictly sequential with 10s spacing (batchSize=1, batchInterval=10000ms) — 2s spacing still hit the limiter on the burst. continueOnFail + onError=continueRegularOutput so any individual 500/throttle response doesn't stop the workflow; the parser skips error-shape responses. ~50s wall time per run, ~6 req/min sustained — comfortably under any reasonable eBay ceiling. categoryId 2536 = Trading Card Singles."
     },
     {
       "parameters": {
@@ -106,10 +107,10 @@
     }
   ],
   "connections": {
-    "Schedule Trigger (Daily 08:00 UTC)": {
-      "main": [[{"node": "Get Daily 33 Cards", "type": "main", "index": 0}]]
+    "Schedule Trigger (Every 3 Hours)": {
+      "main": [[{"node": "Get 5 Cards For This Run", "type": "main", "index": 0}]]
     },
-    "Get Daily 33 Cards": {
+    "Get 5 Cards For This Run": {
       "main": [[{"node": "Build Search URLs", "type": "main", "index": 0}]]
     },
     "Build Search URLs": {
