@@ -468,6 +468,17 @@ Every cost estimate in the system reads from `fee_schedule` — never hardcoded.
 
 `fee_type` controlled vocab: `platform_pct`, `platform_flat`, `payment_pct`, `payment_flat`, `royalty_pct`, `shipping_flat`, `shipping_pct`, `authentication_flat`, `redemption_flat`, `tokenization_flat`, `gas_flat`, `tax_pct`.
 
+`tier` (TEXT, nullable) — added 2026-05-27 in step 06 to disambiguate mutually-exclusive eBay seller plans. Controlled vocab `{all, non_store, basic_store, premium_store, anchor_store}`. Tagging on the live seed:
+
+| tier | eBay rows |
+|---|---|
+| `non_store` | `Final Value Fee` (13.25%), `FVF Above $7,500` (2.35%) |
+| `basic_store` | `FVF Basic Store` (12.35%), `FVF Basic Above $2,500` (2.35%) |
+| `all` | `Payment Processing`, `Per-Order Fee` (both), `Authenticity Guarantee`, `Shipping (graded card)`, `FVF 50% Promo` |
+| `NULL` | every Courtyard / Collector Crypt row (n/a — non-tiered markets) |
+
+`estimate_trade_costs()` filters `(tier IS NULL OR tier = 'all' OR tier = p_ebay_tier)` so only one FVF rate ever participates in a single call. Reserved values `premium_store` / `anchor_store` are placeholders for future eBay plans — add seed rows when needed; no schema change required.
+
 Seed rows verified 2026-05-27 (Courtyard 6, Collector Crypt 3, eBay 10) — see `sql/market-data-standard-03-fee-schedule-seed.sql`. Each row carries a `verified_source` URL/note. Promotional rows (e.g. expired eBay FVF 50% promo) stay in the table for historical reference.
 
 ### 13.2 `estimate_trade_costs()` function
@@ -478,11 +489,21 @@ SELECT * FROM estimate_trade_costs(
     p_sell_market  := 'ebay',
     p_buy_price    := 800,
     p_sell_price   := 1100,
-    p_direction    := 'courtyard_to_ebay'
+    p_direction    := 'courtyard_to_ebay',
+    p_ebay_tier    := 'non_store'   -- optional; default 'non_store'
 );
 ```
 
 Returns: `buy_fees_est`, `sell_fees_est`, `shipping_est`, `redemption_est`, `tokenization_est`, `gas_est`, `total_costs_est`, `net_profit_est`, `roi_est_pct`, `is_profitable` (vs default $25 minimum threshold).
+
+The 6th parameter `p_ebay_tier` was added in step 06 to model eBay's mutually-exclusive FVF tiers. Defaults to `non_store` (the operator's current plan); pass `basic_store` to project costs as if upgraded. Non-eBay sell markets ignore the tier filter (their fee rows are `tier IS NULL`). Verified worked example (Part 2 §4, PSA-10 $800→$1,100):
+
+| tier | sell_fees | net_profit | ROI | profitable |
+|---|---|---|---|---|
+| `non_store` | $178.05 | +$111.94 | 13.99% | ✓ |
+| `basic_store` | $168.15 | +$121.84 | 15.23% | ✓ |
+
+The spec's "$121 net / 15.2% ROI" target matched `basic_store` exactly — the spec authors implicitly used Basic Store rates. Default `non_store` gives the more conservative projection; if a trade is profitable at `non_store`, it's profitable at any higher tier.
 
 Called by the arbitrage signal generator BEFORE a signal fires. A signal with `is_profitable_est = FALSE` must not produce an alert.
 
@@ -515,5 +536,6 @@ Worked example: a PSA-10 selling for $1,000 on eBay vs $900 on Courtyard — the
 | 03 — fee_schedule seed | `sql/market-data-standard-03-fee-schedule-seed.sql` |
 | 04 — `estimate_trade_costs()` + signal extension | `sql/market-data-standard-04-estimate-fn.sql` |
 | 05 — back-compat views | `sql/market-data-standard-05-backcompat-views.sql` |
+| 06 — `fee_schedule.tier` + tier-aware function | `sql/market-data-standard-06-fee-tier-fix.sql` |
 
 Out of scope for this batch: n8n workflow migration off the back-compat views, HORIZON SMS query wiring (Part 2 §4, Part 3 §5), calibration cron (Part 3 §4). Each is gated on operator decisions and goes in a follow-up.
