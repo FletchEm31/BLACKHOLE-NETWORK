@@ -16,6 +16,8 @@
 #   123/udp (NTP — UDP, can't proxy)
 #   51820/51821/udp to known peer endpoints (WG underlay)
 #   10.8.0.0/24, 10.9.0.0/24 (intra-mesh)
+#   WireGuard client forwarded traffic (10.8.0.0/24 via eth0) — direct egress preserved
+#     so full-tunnel WireGuard clients (operator PC/phone) retain internet access.
 #
 # Lives at: /opt/bhn-la-egress-lockdown/ufw-rewrite.sh on LA
 # Repo:     infrastructure/la-egress-lockdown/ufw-rewrite.sh
@@ -81,11 +83,19 @@ case "${1:-status}" in
     fi
     ok "Proxy reachability verified (LA → tinyproxy → internet works)"
 
+    # Allow WireGuard clients (full-tunnel) to retain direct internet access.
+    # This rule permits FORWARDED traffic from 10.8.0.0/24 out via eth0,
+    # keeping operator PC/phone browsing working while LA's own egress is proxied.
+    ufw route allow out on eth0 from 10.8.0.0/24 comment 'wg-client-forwarded-egress' >/dev/null \
+      && ok "WireGuard client forwarded egress rule added" \
+      || warn "WireGuard forwarded egress rule may already exist — continuing"
+
     del_rule "allow out 443/tcp"  "direct 443/tcp egress" "443/tcp.*ALLOW OUT.*Anywhere"
     del_rule "allow out 587/tcp"  "direct 587/tcp egress" "587/tcp.*ALLOW OUT.*Anywhere"
     del_rule "allow out 80/tcp"   "direct 80/tcp  egress" "80/tcp.*ALLOW OUT.*Anywhere"
 
     log "Lockdown applied. LA's outbound HTTP/HTTPS now requires the proxy. DNS/NTP/WG/intra-mesh unchanged."
+    log "WireGuard full-tunnel clients retain direct internet access via forwarding rule."
     log "Verify: curl https://api.ipify.org → should return 5.78.94.237 (via env vars routed through proxy)"
     log "       curl --noproxy '*' https://api.ipify.org → should TIME OUT (direct egress gone)"
     ;;
@@ -95,19 +105,24 @@ case "${1:-status}" in
     add_rule "allow out 443/tcp comment 'egress-https'"           "direct 443/tcp" "443/tcp.*ALLOW OUT.*Anywhere"
     add_rule "allow out 587/tcp comment 'egress-smtp-submission'" "direct 587/tcp" "587/tcp.*ALLOW OUT.*Anywhere"
     add_rule "allow out 80/tcp  comment 'egress-http'"            "direct 80/tcp"  "80/tcp.*ALLOW OUT.*Anywhere"
+    # Remove the WireGuard forwarding rule added during lockdown
+    ufw route delete allow out on eth0 from 10.8.0.0/24 >/dev/null 2>&1 \
+      && ok "WireGuard client forwarded egress rule removed" \
+      || ok "WireGuard forwarded egress rule already absent"
     log "Direct egress restored. The proxy egress rule (to $HSB_TUNNEL_IP:$PROXY_PORT) was NOT removed — it's safe to leave."
     ;;
 
   status)
     log "Current LA UFW egress state (relevant lines only)"
     echo
-    ufw status verbose | grep -E "(ALLOW OUT|Default: .* outgoing)" | head -30
+    ufw status verbose | grep -E "(ALLOW OUT|ALLOW FWD|Default: .* outgoing)" | head -30
     echo
     log "Lockdown state checks:"
-    rule_present "$HSB_TUNNEL_IP $PROXY_PORT/tcp.*ALLOW OUT"   && ok "Proxy egress rule PRESENT (good)"          || warn "Proxy egress rule MISSING (run add-proxy-route)"
+    rule_present "$HSB_TUNNEL_IP $PROXY_PORT/tcp.*ALLOW OUT"   && ok "Proxy egress rule PRESENT (good)"                    || warn "Proxy egress rule MISSING (run add-proxy-route)"
     rule_present "443/tcp.*ALLOW OUT.*Anywhere"                 && warn "Direct 443/tcp PRESENT (lockdown not yet applied)" || ok "Direct 443/tcp REMOVED (locked down)"
     rule_present "587/tcp.*ALLOW OUT.*Anywhere"                 && warn "Direct 587/tcp PRESENT (lockdown not yet applied)" || ok "Direct 587/tcp REMOVED (locked down)"
     rule_present "80/tcp.*ALLOW OUT.*Anywhere"                  && warn "Direct 80/tcp  PRESENT (lockdown not yet applied)" || ok "Direct 80/tcp  REMOVED (locked down)"
+    rule_present "10.8.0.0/24.*ALLOW FWD"                      && ok "WireGuard client forwarded egress PRESENT (good)"    || warn "WireGuard forwarded egress MISSING (run lockdown)"
     ;;
 
   *)
@@ -116,8 +131,8 @@ Usage: $0 {add-proxy-route|lockdown|restore-direct-egress|status}
 
   add-proxy-route        Add outbound 8888/tcp to 10.8.0.6 (Hillsboro tinyproxy). Additive, safe.
   lockdown               Remove direct 443/587/80 egress. Cuts non-proxied calls. Verifies
-                         proxy reachability before applying.
-  restore-direct-egress  Re-add direct 443/587/80 rules (rollback).
+                         proxy reachability before applying. Adds WireGuard client forwarding rule.
+  restore-direct-egress  Re-add direct 443/587/80 rules (rollback). Removes WireGuard forwarding rule.
   status                 Show egress state.
 USAGE
     exit 1
