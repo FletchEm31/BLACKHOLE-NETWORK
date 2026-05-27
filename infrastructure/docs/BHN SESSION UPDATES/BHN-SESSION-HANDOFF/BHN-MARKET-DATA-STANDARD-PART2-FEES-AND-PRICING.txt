@@ -1,0 +1,280 @@
+================================================================================
+BHN — MARKET DATA STANDARD: PART 2 — FEES, COST ESTIMATION & PRICE HISTORY
+2026-05-27 v2
+================================================================================
+Depends on: Part 1 (core schema). Merge into collectibles-data-standard.md.
+================================================================================
+
+
+================================================================================
+SECTION 1 — FEE_SCHEDULE (platform fee reference table)
+================================================================================
+Source of truth for all cost estimates. Updated when platforms change their rates.
+Every fee calculation in the system reads from this table — never hardcoded.
+
+  id                    SERIAL PRIMARY KEY
+  market                TEXT NOT NULL       -- 'ebay', 'courtyard', 'collector_crypt'
+  fee_name              TEXT NOT NULL       -- human-readable label
+  fee_type              TEXT NOT NULL CHECK (fee_type IN (
+                          'platform_pct',       -- % of sale price (e.g. eBay 13.25%)
+                          'platform_flat',      -- flat dollar amount
+                          'payment_pct',        -- payment processing % (e.g. eBay 2.9%)
+                          'payment_flat',       -- payment processing flat fee ($0.30)
+                          'royalty_pct',         -- creator/protocol royalty %
+                          'shipping_flat',       -- estimated standard shipping
+                          'shipping_pct',        -- shipping as % of value (insurance)
+                          'authentication_flat', -- eBay Authenticity Guarantee
+                          'redemption_flat',     -- vault redemption/handling
+                          'tokenization_flat',   -- cost to mint/vault a physical
+                          'gas_flat',            -- blockchain gas estimate
+                          'tax_pct'              -- estimated sales tax rate
+                        ))
+  rate                  DECIMAL(10,4)       -- the rate (percentage OR dollar amount)
+  applies_to            TEXT CHECK (applies_to IN ('buyer', 'seller', 'both'))
+  min_threshold         DECIMAL(10,2)       -- only applies at or above this price
+  max_threshold         DECIMAL(10,2)       -- only applies at or below this price
+  is_promotional        BOOLEAN DEFAULT FALSE
+  promo_expires_at      TIMESTAMPTZ         -- when the promo ends (NULL if permanent)
+  effective_date        DATE NOT NULL        -- when this rate took effect
+  notes                 TEXT
+  verified_source       TEXT                 -- URL or doc where this was confirmed
+  updated_at            TIMESTAMPTZ DEFAULT NOW()
+
+
+SEED DATA (all verified 2026-05-27):
+
+COURTYARD:
+  market='courtyard', fee_name='Marketplace Fee',       fee_type='platform_pct',     rate=0.0000, applies_to='seller'
+    -- Source: Courtyard official announcement, Deadspin review 2026, Sports Collectors Daily
+  market='courtyard', fee_name='Polygon Gas (buy)',      fee_type='gas_flat',         rate=0.01,   applies_to='buyer'
+    -- Source: approximate Polygon L2 gas cost
+  market='courtyard', fee_name='Polygon Gas (sell)',     fee_type='gas_flat',         rate=0.01,   applies_to='seller'
+  market='courtyard', fee_name='Redemption Handling',    fee_type='redemption_flat',  rate=2.00,   applies_to='seller'
+    -- Source: docs.courtyard.io — $2/card during high demand periods
+  market='courtyard', fee_name='Shipping Domestic',      fee_type='shipping_flat',    rate=12.00,  applies_to='seller'
+    -- Source: FedEx estimate from Delaware vault, docs.courtyard.io
+  market='courtyard', fee_name='Shipping International', fee_type='shipping_flat',    rate=35.00,  applies_to='seller'
+    -- Source: estimate — verify with Courtyard for exact rates
+
+COLLECTOR CRYPT:
+  market='collector_crypt', fee_name='Platform Fee',     fee_type='platform_pct',     rate=1.0000, applies_to='seller'
+    -- Source: CoinGecko CARDS token profile
+  market='collector_crypt', fee_name='Royalty Fee',      fee_type='royalty_pct',       rate=1.0000, applies_to='seller'
+    -- Source: CoinGecko — 1% platform + 1% royalty = 2% total
+  market='collector_crypt', fee_name='Solana Gas',       fee_type='gas_flat',         rate=0.002,  applies_to='buyer'
+    -- Source: approximate Solana transaction cost
+
+EBAY (non-store / starter store):
+  market='ebay', fee_name='Final Value Fee',             fee_type='platform_pct',     rate=13.2500, applies_to='seller', max_threshold=7500.00
+    -- Source: eBay fee documentation, webgility.com analysis
+  market='ebay', fee_name='FVF Above $7,500',            fee_type='platform_pct',     rate=2.3500,  applies_to='seller', min_threshold=7500.01
+    -- Source: eBay fee documentation
+  market='ebay', fee_name='Payment Processing',          fee_type='payment_pct',      rate=2.9000,  applies_to='seller'
+    -- Source: eBay managed payments documentation
+  market='ebay', fee_name='Per-Order Fee (over $10)',    fee_type='payment_flat',     rate=0.40,    applies_to='seller', min_threshold=10.01
+    -- Source: eBay fee documentation
+  market='ebay', fee_name='Per-Order Fee ($10 or less)', fee_type='payment_flat',     rate=0.30,    applies_to='seller', max_threshold=10.00
+  market='ebay', fee_name='Authenticity Guarantee',      fee_type='authentication_flat', rate=17.00, applies_to='buyer', min_threshold=250.00
+    -- Source: eBay AG docs — $12-22 range, using $17 midpoint
+  market='ebay', fee_name='Shipping (graded card)',      fee_type='shipping_flat',    rate=8.00,    applies_to='seller'
+    -- Source: estimated insured USPS/UPS for graded slab
+  market='ebay', fee_name='FVF 50% Promo ($1K+)',       fee_type='platform_pct',     rate=-6.6250, applies_to='seller', min_threshold=1000.00, is_promotional=TRUE, promo_expires_at='2026-05-04'
+    -- Source: eBay promotional page — periodic, not permanent
+
+EBAY (basic store and above):
+  market='ebay', fee_name='FVF Basic Store',             fee_type='platform_pct',     rate=12.3500, applies_to='seller', max_threshold=2500.00
+    -- Source: eBay fee documentation
+  market='ebay', fee_name='FVF Basic Above $2,500',      fee_type='platform_pct',     rate=2.3500,  applies_to='seller', min_threshold=2500.01
+
+NOTES:
+  - When eBay runs new promotions, add a new row with is_promotional=TRUE and promo_expires_at.
+  - Expired promos stay in the table for historical reference (queries filter on effective_date).
+  - Gas fees are estimates — actual varies with network congestion.
+  - Shipping estimates should be updated periodically based on actual trade data.
+
+
+================================================================================
+SECTION 2 — ESTIMATE_TRADE_COSTS() FUNCTION
+================================================================================
+Pre-trade cost calculator. Called by the arbitrage signal generator BEFORE firing.
+Returns estimated costs, net profit, and is_profitable flag.
+
+Inputs:
+  p_buy_market     TEXT         -- 'courtyard', 'collector_crypt', 'ebay'
+  p_sell_market    TEXT         -- 'courtyard', 'collector_crypt', 'ebay'
+  p_buy_price      DECIMAL      -- what you'd pay to acquire
+  p_sell_price     DECIMAL      -- expected sell price (e.g. eBay 90d avg)
+  p_direction      TEXT         -- determines if redemption/tokenization costs apply
+
+Returns (TABLE):
+  buy_fees_est          DECIMAL(10,2)
+  sell_fees_est         DECIMAL(10,2)
+  shipping_est          DECIMAL(10,2)
+  redemption_est        DECIMAL(10,2)
+  tokenization_est      DECIMAL(10,2)
+  gas_est               DECIMAL(10,2)
+  total_costs_est       DECIMAL(10,2)
+  net_profit_est        DECIMAL(10,2)
+  roi_est_pct           DECIMAL(6,2)
+  is_profitable         BOOLEAN
+
+Logic:
+  1. Look up all seller-side fees for p_sell_market from fee_schedule
+     where is_promotional=FALSE and price within min/max thresholds
+  2. Look up all buyer-side fees for p_buy_market from fee_schedule
+  3. Add direction-specific costs:
+     - *_to_ebay directions: add redemption ($2) + shipping ($8 est)
+     - ebay_to_* directions: add shipping to vault ($8) + tokenization ($0)
+     - within-platform: no shipping/redemption
+  4. Sum all costs → total_costs_est
+  5. net_profit_est = p_sell_price - p_buy_price - total_costs_est
+  6. roi_est_pct = net_profit_est / p_buy_price * 100
+  7. is_profitable = net_profit_est > 0
+
+GRANT EXECUTE TO n8n_user, agent_reader, ehuser;
+
+
+================================================================================
+SECTION 3 — ORDER_PRICE_HISTORY (bid + ask price change tracking)
+================================================================================
+Tracks price changes on BOTH sides of the order book across all markets.
+Populated by collectors via polling — when a listing or offer price changes
+between observations, log the old and new price here.
+
+  id                  SERIAL PRIMARY KEY
+  market              TEXT NOT NULL     -- 'ebay', 'courtyard', 'collector_crypt'
+  order_side          TEXT NOT NULL CHECK (order_side IN ('bid', 'ask'))
+  item_id             TEXT NOT NULL     -- listing ID (ask) or offer ID (bid)
+  card_id             INTEGER REFERENCES master_card_catalog(id)
+  card_code           TEXT
+  old_price           DECIMAL(10,2)
+  new_price           DECIMAL(10,2)
+  change_pct          DECIMAL(6,2)      -- ((new - old) / old) * 100
+  change_direction    TEXT NOT NULL CHECK (change_direction IN ('increase', 'decrease'))
+  recorded_at         TIMESTAMPTZ DEFAULT NOW()
+
+INDEXES:
+  order_price_history_card_id_idx     ON (card_id)
+  order_price_history_market_side_idx ON (market, order_side)
+  order_price_history_recorded_idx    ON (recorded_at)
+
+HOW IT'S POPULATED:
+  Each time a collector runs (every 15-30 min), it compares the current price
+  of each listing/offer against the last_seen price. If different:
+    INSERT INTO order_price_history (market, order_side, item_id, card_id, card_code,
+      old_price, new_price, change_pct, change_direction)
+    VALUES (
+      'courtyard', 'ask', $item_id, $card_id, $card_code,
+      $last_price, $current_price,
+      (($current_price - $last_price) / $last_price * 100),
+      CASE WHEN $current_price > $last_price THEN 'increase' ELSE 'decrease' END
+    );
+
+WHY BOTH SIDES MATTER:
+  - Sellers reducing asks = price ceiling dropping (supply side weakening)
+  - Buyers raising bids = price floor rising (demand side strengthening)
+  - When ask reductions and bid increases converge = transaction imminent
+  - Consistent ask reductions with no bid changes = market is overpriced
+  - Consistent bid increases with stable asks = market is underpriced
+
+KEY QUERIES:
+
+  -- Average price change velocity per card (last 7 days)
+  SELECT card_code, order_side,
+    COUNT(*) AS changes,
+    AVG(change_pct) AS avg_change_pct,
+    MIN(new_price) AS lowest_price_seen,
+    MAX(new_price) AS highest_price_seen
+  FROM order_price_history
+  WHERE recorded_at > NOW() - INTERVAL '7 days'
+  GROUP BY card_code, order_side;
+
+  -- Convergence detector: ask dropping + bid rising on same card
+  SELECT a.card_code,
+    a.avg_ask_change,
+    b.avg_bid_change,
+    ABS(a.avg_ask_change) + ABS(b.avg_bid_change) AS convergence_velocity
+  FROM (
+    SELECT card_code, AVG(change_pct) AS avg_ask_change
+    FROM order_price_history
+    WHERE order_side = 'ask' AND change_direction = 'decrease'
+    AND recorded_at > NOW() - INTERVAL '7 days'
+    GROUP BY card_code
+  ) a
+  JOIN (
+    SELECT card_code, AVG(change_pct) AS avg_bid_change
+    FROM order_price_history
+    WHERE order_side = 'bid' AND change_direction = 'increase'
+    AND recorded_at > NOW() - INTERVAL '7 days'
+    GROUP BY card_code
+  ) b ON a.card_code = b.card_code
+  ORDER BY convergence_velocity DESC;
+
+
+================================================================================
+SECTION 4 — ESTIMATED COSTS ON ARBITRAGE SIGNALS
+================================================================================
+Added to tokenized_arbitrage_signals so signals include cost projections.
+A signal with is_profitable_est=FALSE should never fire an alert.
+
+NEW COLUMNS ON tokenized_arbitrage_signals:
+
+  est_buy_fees          DECIMAL(10,2)   -- estimated buy-side fees
+  est_sell_fees         DECIMAL(10,2)   -- estimated sell-side fees
+  est_shipping          DECIMAL(10,2)   -- estimated shipping (if physical movement)
+  est_redemption        DECIMAL(10,2)   -- estimated vault redemption fee
+  est_tokenization      DECIMAL(10,2)   -- estimated minting cost
+  est_gas               DECIMAL(10,2)   -- estimated blockchain gas (both sides)
+  est_total_costs       DECIMAL(10,2)   -- sum of all estimated costs
+  est_net_profit        DECIMAL(10,2)   -- sell_price - buy_price - est_total_costs
+  est_roi_pct           DECIMAL(6,2)    -- est_net_profit / buy_price * 100
+  is_profitable_est     BOOLEAN         -- est_net_profit > minimum_profit_threshold
+
+SIGNAL FLOW (updated):
+  1. Spread detected: courtyard_ask < ebay_90d_avg (gross spread > 10%)
+  2. estimate_trade_costs() called with buy/sell prices + direction
+  3. Estimated costs populated on the signal row
+  4. is_profitable_est evaluated against minimum threshold ($25 default)
+  5. Signal fires ONLY if is_profitable_est = TRUE
+  6. HORIZON SMS includes cost breakdown:
+     "SIGNAL: BST-004-1E-PSA-10
+      Buy $800 Courtyard | Sell ~$1,100 eBay
+      Est fees: -$170.75 | Est shipping: -$8.00 | Est net: +$121.25
+      Est ROI: 15.2% | Direction: courtyard_to_ebay"
+
+
+================================================================================
+SECTION 5 — MARKET-RATE ESTIMATES ON TRANSACTIONS
+================================================================================
+For observed third-party sales (not your trades), you can't see actual fees.
+But you CAN estimate what the seller netted using the fee_schedule.
+
+NEW COLUMNS ON ALL [market]_transactions:
+
+  market_platform_fee_est     DECIMAL(10,2)  -- estimated platform fee from fee_schedule
+  market_processing_fee_est   DECIMAL(10,2)  -- estimated payment processing
+  market_shipping_est         DECIMAL(10,2)  -- estimated shipping
+  market_auth_fee_est         DECIMAL(10,2)  -- estimated authentication (eBay AG)
+  market_total_costs_est      DECIMAL(10,2)  -- sum of all estimated costs
+  market_net_to_seller_est    DECIMAL(10,2)  -- sold_price - market_total_costs_est
+
+EXAMPLE:
+  A PSA 10 Charizard sells on eBay for $1,000:
+    market_platform_fee_est   = $132.50  (13.25% FVF)
+    market_processing_fee_est = $29.40   (2.9% + $0.40)
+    market_shipping_est       = $8.00
+    market_auth_fee_est       = $17.00   (AG midpoint)
+    market_total_costs_est    = $186.90
+    market_net_to_seller_est  = $813.10
+
+  Same card sells on Courtyard for $900:
+    market_platform_fee_est   = $0.00    (0% fee)
+    market_processing_fee_est = $0.00
+    market_shipping_est       = $0.00    (token transfer)
+    market_auth_fee_est       = $0.00
+    market_total_costs_est    = $0.01    (gas only)
+    market_net_to_seller_est  = $899.99
+
+  Seller nets $87 MORE on Courtyard despite selling for $100 LESS.
+  This is the structural arbitrage the system exploits.
+================================================================================

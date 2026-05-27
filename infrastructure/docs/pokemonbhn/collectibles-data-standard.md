@@ -401,3 +401,119 @@ The new dimension surfaced a long-standing naming drift across the observation s
 |---------|---------------|--------|
 | Seller username | `ebay_listings.seller_username`, `sold_listings.seller`, `seller_profiles.seller_username`, tokenized tables `seller_username` | `seller_username` everywhere — `sold_listings.seller` rename pending |
 | Seller feedback count | `ebay_listings.seller_feedback`, `seller_profiles.seller_feedback_score` | pick one — `seller_feedback_score` is the more descriptive choice |
+
+---
+
+## 12. Market Data Standard v2 — uniform `[market]_{bids,asks,transactions}` naming (2026-05-27)
+
+Authoritative spec text: `infrastructure/docs/BHN session updates/BHN-SESSION-HANDOFF/BHN-MARKET-DATA-STANDARD-PART{1,2,3}-*.txt` (v2). §12 and §13 of this doc are the steady-state shape; the three Part files are the change-log.
+
+### 12.1 Renames (in-place ALTER, then RENAME TO — preserves all data)
+
+| Old name | New name |
+|---|---|
+| `ebay_listings` | `ebay_asks` |
+| `sold_listings` | `ebay_transactions` |
+| `courtyard_listings` | `courtyard_asks` |
+| `courtyard_sales` | `courtyard_transactions` |
+| `collector_crypt_sales` | `collector_crypt_transactions` |
+
+Back-compat views (same old names) point at the new tables and stay alive until every n8n workflow + collector script has been migrated and re-tested. View drops are operator-gated, one at a time, after `grep -r "<old_name>" n8n-workflows/ scripts/` is empty for that name. Precedent: `card_catalog` view kept after `master_card_catalog` rename.
+
+### 12.2 New tables
+
+| Table | Purpose |
+|---|---|
+| `ebay_bids` | Best Offer / OBO offers on YOUR eBay listings (Trading API). Cannot see offers on other sellers' listings — sparsely populated. |
+| `courtyard_bids` | Offers on Courtyard tokens (OpenSea Offers API). Full coverage. |
+| `collector_crypt_bids` | Bids on CC tokens (Magic Eden Bids API). Full coverage. |
+| `collector_crypt_asks` | CC sell listings (Magic Eden Listings API). New — the 2026-05-22 schema only covered sales. |
+| `order_price_history` | Bid + ask price-change log across all markets. Polled comparison of last_seen vs current. |
+| `fee_schedule` | Platform fee reference table — source of truth for every cost estimate. See §13. |
+| `arbitrage_positions` | Full trade lifecycle: signal → buy → list → sell, with three-way (market / est / actual) fee accounting and P&L. |
+
+### 12.3 Universal columns
+
+Present on EVERY `_bids`, `_asks`, `_transactions` table:
+
+`id` (PK), `card_id` FK, `card_code`, `card_name`, `set_name`, `card_number`, `grader`, `grade`, `edition` (NOT NULL DEFAULT 'N/A'), `print_variant` (NOT NULL DEFAULT 'Standard'), `platform`, `currency`, `created_at`, `raw_payload` (JSONB).
+
+`card_id` is NULLABLE — unresolved rows still insert; they're excluded from arbitrage joins, not from the table.
+
+### 12.4 `_asks` outcome vocabulary (per-market CHECK)
+
+| Market | Allowed outcomes |
+|---|---|
+| `ebay_asks` | `active`, `sold_full_price`, `sold_auction`, `sold_obo`, `expired_no_bids`, `expired_with_bids`, `cancelled_seller`, `relisted`, `ended_other` |
+| `courtyard_asks` | `active`, `sold`, `delisted`, `price_reduced`, `expired` |
+| `collector_crypt_asks` | `active`, `sold`, `delisted`, `price_reduced`, `expired`, `buyback` |
+
+### 12.5 `_transactions.sale_type` vocabulary (uniform across markets)
+
+`fixed_price`, `auction`, `offer_accepted`, `buyback` (CC only), `peer_to_peer`. The pre-v2 CC/Courtyard constraint (`peer_to_peer`/`buyback`/`gacha`) was broadened during the migration.
+
+### 12.6 `_bids` vocabulary
+
+`offer_type ∈ {individual, collection, trait, obo}`. `status ∈ {open, accepted, declined, expired, cancelled}`.
+
+eBay can only populate `ebay_bids` from YOUR own listings (Trading API limitation) — this table will be sparse. OpenSea and Magic Eden expose full bid feeds.
+
+---
+
+## 13. Fee Schedule & Cost Estimation (2026-05-27)
+
+### 13.1 `fee_schedule` table
+
+Every cost estimate in the system reads from `fee_schedule` — never hardcoded. When a platform changes rates, INSERT a new row with a later `effective_date`; queries filter on `effective_date` so historical rates remain queryable.
+
+`fee_type` controlled vocab: `platform_pct`, `platform_flat`, `payment_pct`, `payment_flat`, `royalty_pct`, `shipping_flat`, `shipping_pct`, `authentication_flat`, `redemption_flat`, `tokenization_flat`, `gas_flat`, `tax_pct`.
+
+Seed rows verified 2026-05-27 (Courtyard 6, Collector Crypt 3, eBay 10) — see `sql/market-data-standard-03-fee-schedule-seed.sql`. Each row carries a `verified_source` URL/note. Promotional rows (e.g. expired eBay FVF 50% promo) stay in the table for historical reference.
+
+### 13.2 `estimate_trade_costs()` function
+
+```sql
+SELECT * FROM estimate_trade_costs(
+    p_buy_market   := 'courtyard',
+    p_sell_market  := 'ebay',
+    p_buy_price    := 800,
+    p_sell_price   := 1100,
+    p_direction    := 'courtyard_to_ebay'
+);
+```
+
+Returns: `buy_fees_est`, `sell_fees_est`, `shipping_est`, `redemption_est`, `tokenization_est`, `gas_est`, `total_costs_est`, `net_profit_est`, `roi_est_pct`, `is_profitable` (vs default $25 minimum threshold).
+
+Called by the arbitrage signal generator BEFORE a signal fires. A signal with `is_profitable_est = FALSE` must not produce an alert.
+
+### 13.3 Three-way cost accounting on `arbitrage_positions`
+
+Every cost line item carries three views:
+
+| View | Source | Use |
+|---|---|---|
+| `market_*` | published rate from `fee_schedule` | what published fees would have been |
+| `est_*` | output of `estimate_trade_costs()` at signal time | pre-trade projection |
+| `actual_*` | populated after trade closes | the number that actually mattered |
+
+Deltas (`delta_market_vs_est`, `delta_est_vs_actual`, `delta_market_vs_actual`) feed weekly calibration (Part 3 §4) — drift the seed rates when `delta_est_vs_actual` shows a consistent bias.
+
+### 13.4 Market-rate estimates on observed third-party `_transactions`
+
+For sales you didn't make, actual fees aren't visible — but you can estimate what the seller netted using `fee_schedule`. Populated on every `_transactions` row:
+
+`market_platform_fee_est`, `market_processing_fee_est`, `market_shipping_est`, `market_auth_fee_est`, `market_total_costs_est`, `market_net_to_seller_est`.
+
+Worked example: a PSA-10 selling for $1,000 on eBay vs $900 on Courtyard — the Courtyard seller nets ~$87 more despite the $100 lower headline price. This is the structural spread the arbitrage signal exploits.
+
+### 13.5 Migration files
+
+| Step | File |
+|---|---|
+| 01 — renames + column extensions | `sql/market-data-standard-01-renames.sql` |
+| 02 — new tables | `sql/market-data-standard-02-new-tables.sql` |
+| 03 — fee_schedule seed | `sql/market-data-standard-03-fee-schedule-seed.sql` |
+| 04 — `estimate_trade_costs()` + signal extension | `sql/market-data-standard-04-estimate-fn.sql` |
+| 05 — back-compat views | `sql/market-data-standard-05-backcompat-views.sql` |
+
+Out of scope for this batch: n8n workflow migration off the back-compat views, HORIZON SMS query wiring (Part 2 §4, Part 3 §5), calibration cron (Part 3 §4). Each is gated on operator decisions and goes in a follow-up.
