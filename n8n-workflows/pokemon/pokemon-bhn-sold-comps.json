@@ -53,7 +53,13 @@
       "parameters": {
         "url": "={{ $json.search_url }}",
         "options": {
-          "timeout": 30000
+          "timeout": 30000,
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 2000
+            }
+          }
         }
       },
       "type": "n8n-nodes-base.httpRequest",
@@ -63,7 +69,7 @@
       "name": "eBay Finding API (findCompletedItems)",
       "alwaysOutputData": true,
       "onError": "continueRegularOutput",
-      "notes": "GET against eBay Finding API. Iterates over each input item — 33 calls per run. Standard tier limit is 5,000 calls/day. categoryId 2536 = Trading Card Singles."
+      "notes": "GET against eBay Finding API. Iterates over each input item — 33 calls per run, sequential with 2s spacing (batchSize=1, batchInterval=2000ms) to stay under the Finding API rate limit. Standard tier limit is 5,000 calls/day; 2s/call → ~66s total wall time per run, ~30 req/min sustained — well under the per-second ceiling. categoryId 2536 = Trading Card Singles."
     },
     {
       "parameters": {
