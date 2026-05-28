@@ -1,0 +1,32 @@
+# /etc/grafana/provisioning/datasources/postgres-eventhorizon.yaml
+#
+# Provisions the eventhorizon Postgres datasource on the Grafana host.
+# After the 2026-05-28 LA→NJ migration this file lives on NJ (10.8.0.5)
+# and points at LA's PG over the WireGuard tunnel.
+#
+# The password is loaded from an environment variable so the actual value
+# never lands in this YAML. The systemd unit reads /etc/bhn-trading/env
+# (gitignored, mode 0600) which carries GF_DATABASE_GRAFANA_READER_PASSWORD.
+# See infrastructure/grafana/systemd/grafana-server.service.d/nj-env.conf.
+
+apiVersion: 1
+
+datasources:
+  - name: eventhorizon
+    type: postgres
+    uid: eventhorizon
+    access: proxy
+    url: 10.8.0.1:5432
+    database: eventhorizon
+    user: grafana_reader
+    isDefault: true
+    secureJsonData:
+      password: $GF_DATABASE_GRAFANA_READER_PASSWORD
+    jsonData:
+      sslmode: disable          # WG-tunneled — no TLS overhead needed
+      postgresVersion: 1400     # PG 14
+      timescaledb: false
+      maxOpenConns: 25
+      maxIdleConns: 5
+      connMaxLifetime: 14400
+    editable: false

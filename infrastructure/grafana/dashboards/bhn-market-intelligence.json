@@ -1,0 +1,3450 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "BHN Market Intelligence — Regime, Equity, Sectors, Volatility, Bonds, Commodities ETFs, Macro, Sentiment, Earnings, Analyst Ratings, News",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": 1515630217162752,
+  "liveNow": false,
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 37,
+      "title": "── MARKET REGIME",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [
+            {
+              "options": {
+                "BEAR_GRIND": {
+                  "color": "red",
+                  "index": 3,
+                  "text": "BEAR GRIND"
+                },
+                "BEAR_PANIC": {
+                  "color": "dark-red",
+                  "index": 4,
+                  "text": "BEAR PANIC"
+                },
+                "BULL_CALM": {
+                  "color": "green",
+                  "index": 0,
+                  "text": "BULL CALM"
+                },
+                "BULL_STRESSED": {
+                  "color": "orange",
+                  "index": 2,
+                  "text": "BULL STRESSED"
+                },
+                "BULL_VOLATILE": {
+                  "color": "yellow",
+                  "index": 1,
+                  "text": "BULL VOLATILE"
+                }
+              },
+              "type": "value"
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          }
+        }
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 0,
+        "y": 1
+      },
+      "id": 1,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^regime$/",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "13.0.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "format": "table",
+          "rawSql": "SELECT regime FROM market_regimes ORDER BY date DESC LIMIT 1;",
+          "refId": "A"
+        }
+      ],
+      "title": "Current Regime",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "yellow",
+                "value": 20
+              },
+              {
+                "color": "red",
+                "value": 30
+              }
+            ]
+          },
+          "unit": "short"
+        }
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 5,
+        "y": 1
+      },
+      "id": 2,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^vix$/",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "value_and_name",
+        "wideLayout": true
+      },
+      "pluginVersion": "13.0.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "format": "table",
+          "rawSql": "SELECT vix FROM market_regimes ORDER BY date DESC LIMIT 1;",
+          "refId": "A"
+        }
+      ],
+      "title": "VIX",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 2,
+          "max": 1,
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": 0
+              },
+              {
+                "color": "yellow",
+                "value": -0.05
+              },
+              {
+                "color": "green",
+                "value": 0.05
+              }
+            ]
+          },
+          "unit": "percentunit"
+        }
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 9,
+        "y": 1
+      },
+      "id": 3,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^spy_vs_200ma$/",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "value_and_name",
+        "wideLayout": true
+      },
+      "pluginVersion": "13.0.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "format": "table",
+          "rawSql": "SELECT spy_vs_200ma FROM market_regimes ORDER BY date DESC LIMIT 1;",
+          "refId": "A"
+        }
+      ],
+      "title": "SPY vs 200MA",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": 0
+              },
+              {
+                "color": "yellow",
+                "value": -0.5
+              },
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "short"
+        }
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 13,
+        "y": 1
+      },
+      "id": 4,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^yield_curve$/",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "value_and_name",
+        "wideLayout": true
+      },
+      "pluginVersion": "13.0.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "format": "table",
+          "rawSql": "SELECT yield_curve FROM market_regimes ORDER BY date DESC LIMIT 1;",
+          "refId": "A"
+        }
+      ],
+      "title": "Yield Curve (10Y-2Y)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 1,
+          "max": 100,
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": 0
+              },
+              {
+                "color": "yellow",
+                "value": 50
+              },
+              {
+                "color": "green",
+                "value": 70
+              }
+            ]
+          },
+          "unit": "short"
+        }
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 17,
+        "y": 1
+      },
+      "id": 5,
+      "options": {
+        "barShape": "flat",
+        "barWidthFactor": 0.5,
+        "effects": {
+          "barGlow": false,
+          "centerGlow": false,
+          "gradient": true
+        },
+        "endpointMarker": "point",
+        "minVizHeight": 75,
+        "minVizWidth": 75,
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "segmentCount": 1,
+        "segmentSpacing": 0.3,
+        "shape": "gauge",
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true,
+        "sizing": "auto",
+        "sparkline": true,
+        "textMode": "auto"
+      },
+      "pluginVersion": "13.0.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "format": "table",
+          "rawSql": "SELECT ROUND((confidence_score * 100)::numeric, 1) AS confidence FROM market_regimes ORDER BY date DESC LIMIT 1;",
+          "refId": "A"
+        }
+      ],
+      "title": "Regime Confidence",
+      "type": "gauge"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        }
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 24,
+        "x": 0,
+        "y": 5
+      },
+      "id": 6,
+      "options": {
+        "annotations": {
+          "clustering": -1,
+          "multiLane": false
+        },
+        "legend": {
+          "calcs": [
+            "last"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "13.0.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "format": "table",
+          "rawSql": "SELECT date::timestamptz AS time, vix, spy_vs_200ma, yield_curve FROM market_regimes WHERE date >= NOW() - INTERVAL '90 days' ORDER BY date ASC;",
+          "refId": "A",
+          "timeColumn": "time"
+        }
+      ],
+      "title": "Regime History — VIX / SPY vs 200MA / Yield Curve (90 days)",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 11
+      },
+      "id": 38,
+      "title": "── MACRO DATA",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "yellow",
+                "value": 3
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
+            ]
+          },
+          "unit": "short"
+        }
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 0,
+        "y": 12
+      },
+      "id": 22,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^cpi$/",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "value_and_name",
+        "wideLayout": true
+      },
+      "pluginVersion": "13.0.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "format": "table",
+          "rawSql": "SELECT ROUND(((curr.cpi - prev.cpi) / prev.cpi * 100)::numeric, 2) AS cpi FROM (SELECT cpi FROM macro_daily WHERE cpi IS NOT NULL ORDER BY date DESC LIMIT 1) curr, (SELECT cpi FROM macro_daily WHERE cpi IS NOT NULL AND date <= NOW() - INTERVAL '11 months' ORDER BY date DESC LIMIT 1) prev;",
+          "refId": "A"
+        }
+      ],
+      "title": "CPI YoY %",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 2,
+          "max": 100,
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "yellow",
+                "value": 4.5
+              },
+              {
+                "color": "red",
+                "value": 5.5
+              }
+            ]
+          },
+          "unit": "percent"
+        }
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 4,
+        "y": 12
+      },
+      "id": 23,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^fed_funds_rate$/",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "value_and_name",
+        "wideLayout": true
+      },
+      "pluginVersion": "13.0.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "format": "table",
+          "rawSql": "SELECT fed_funds_rate FROM macro_daily WHERE fed_funds_rate IS NOT NULL ORDER BY date DESC LIMIT 1;",
+          "refId": "A"
+        }
+      ],
+      "title": "Fed Funds Rate",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 1,
+          "max": 100,
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "yellow",
+                "value": 5
+              },
+              {
+                "color": "red",
+                "value": 7
+              }
+            ]
+          },
+          "unit": "percent"
+        }
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 8,
+        "y": 12
+      },
+      "id": 24,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^unemployment$/",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "value_and_name",
+        "wideLayout": true
+      },
+      "pluginVersion": "13.0.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "format": "table",
+          "rawSql": "SELECT unemployment FROM macro_daily WHERE unemployment IS NOT NULL ORDER BY date DESC LIMIT 1;",
+          "refId": "A"
+        }
+      ],
+      "title": "Unemployment",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [
+            {
+              "options": {
+                "Extreme Fear": {
+                  "color": "dark-red",
+                  "index": 0
+                },
+                "Extreme Greed": {
+                  "color": "dark-green",
+                  "index": 4
+                },
+                "Fear": {
+                  "color": "red",
+                  "index": 1
+                },
+                "Greed": {
+                  "color": "green",
+                  "index": 3
+                },
+                "Neutral": {
+                  "color": "yellow",
+                  "index": 2
+                }
+              },
+              "type": "value"
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          }
+        }
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 12,
+        "y": 12
+      },
+      "id": 28,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^fear_greed_label$/",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "13.0.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "format": "table",
+          "rawSql": "SELECT fear_greed_label FROM market_sentiment ORDER BY date DESC LIMIT 1;",
+          "refId": "A"
+        }
+      ],
+      "title": "Fear & Greed Label",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "max": 100,
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": 0
+              },
+              {
+                "color": "orange",
+                "value": 25
+              },
+              {
+                "color": "yellow",
+                "value": 45
+              },
+              {
+                "color": "green",
+                "value": 55
+              },
+              {
+                "color": "dark-green",
+                "value": 75
+              }
+            ]
+          },
+          "unit": "short"
+        }
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 18,
+        "y": 12
+      },
+      "id": 27,
+      "options": {
+        "barShape": "flat",
+        "barWidthFactor": 0.5,
+        "effects": {
+          "barGlow": false,
+          "centerGlow": false,
+          "gradient": true
+        },
+        "endpointMarker": "point",
+        "minVizHeight": 75,
+        "minVizWidth": 75,
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^fear_greed_index$/",
+          "values": false
+        },
+        "segmentCount": 1,
+        "segmentSpacing": 0.3,
+        "shape": "gauge",
+        "showThresholdLabels": true,
+        "showThresholdMarkers": true,
+        "sizing": "auto",
+        "sparkline": true,
+        "textMode": "auto"
+      },
+      "pluginVersion": "13.0.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "format": "table",
+          "rawSql": "SELECT fear_greed_index FROM market_sentiment ORDER BY date DESC LIMIT 1;",
+          "refId": "A"
+        }
+      ],
+      "title": "Fear & Greed Index",
+      "type": "gauge"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 8,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "percent"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
+      "id": 19,
+      "options": {
+        "annotations": {
+          "clustering": -1,
+          "multiLane": false
+        },
+        "legend": {
+          "calcs": [
+            "last"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "sortBy": "Name",
+          "sortDesc": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "13.0.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "format": "table",
+          "rawSql": "SELECT date::timestamptz AS time, fed_funds_rate, yield_curve_10y2y, yield_curve_10y3m FROM macro_daily WHERE date >= NOW() - INTERVAL '1 year' ORDER BY date ASC;",
+          "refId": "A",
+          "timeColumn": "time"
+        }
+      ],
+      "title": "Interest Rates (1 Year)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 15,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "short"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 17
+      },
+      "id": 25,
+      "options": {
+        "annotations": {
+          "clustering": -1,
+          "multiLane": false
+        },
+        "legend": {
+          "calcs": [
+            "last",
+            "mean"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "13.0.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "format": "table",
+          "rawSql": "SELECT date::timestamptz AS time, fear_greed_index, put_call_ratio, insider_buy_sell_ratio FROM market_sentiment ORDER BY date ASC;",
+          "refId": "A",
+          "timeColumn": "time"
+        }
+      ],
+      "title": "Fear & Greed + Put/Call Ratio (30 days)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 8,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "short"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 24
+      },
+      "id": 21,
+      "options": {
+        "annotations": {
+          "clustering": -1,
+          "multiLane": false
+        },
+        "legend": {
+          "calcs": [
+            "last"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "13.0.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "format": "table",
+          "rawSql": "SELECT date::timestamptz AS time, dollar_index, high_yield_spread FROM macro_daily WHERE date >= NOW() - INTERVAL '1 year' ORDER BY date ASC;",
+          "refId": "A",
+          "timeColumn": "time"
+        }
+      ],
+      "title": "Dollar Index / High Yield Spread (1 Year)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 15,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "percent"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 25
+      },
+      "id": 26,
+      "options": {
+        "annotations": {
+          "clustering": -1,
+          "multiLane": false
+        },
+        "legend": {
+          "calcs": [
+            "last",
+            "mean"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "13.0.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "format": "table",
+          "rawSql": "SELECT date::timestamptz AS time, aaii_bull_pct, aaii_bear_pct, aaii_neutral_pct FROM market_sentiment ORDER BY date ASC;",
+          "refId": "A",
+          "timeColumn": "time"
+        }
+      ],
+      "title": "AAII Sentiment — Bull / Bear / Neutral (30 days)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 8,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "short"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 32
+      },
+      "id": 20,
+      "options": {
+        "annotations": {
+          "clustering": -1,
+          "multiLane": false
+        },
+        "legend": {
+          "calcs": [
+            "last"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "13.0.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "format": "table",
+          "rawSql": "SELECT date::timestamptz AS time, cpi, unemployment, consumer_sentiment FROM macro_daily WHERE date >= NOW() - INTERVAL '1 year' ORDER BY date ASC;",
+          "refId": "A",
+          "timeColumn": "time"
+        }
+      ],
+      "title": "CPI / Unemployment / Consumer Sentiment (1 Year)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "bars",
+            "fillOpacity": 50,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 5,
+            "pointSize": 19,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "normal"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "short"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 33
+      },
+      "id": 14,
+      "options": {
+        "annotations": {
+          "clustering": -1,
+          "multiLane": false
+        },
+        "legend": {
+          "calcs": [
+            "last"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "13.0.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "format": "table",
+          "rawSql": "SELECT date::timestamptz AS time, ticker, volume FROM market_daily WHERE ticker IN ('VXX','UVIX','SVXY') AND date >= NOW() - INTERVAL '90 days' ORDER BY date ASC;",
+          "refId": "A",
+          "timeColumn": "time"
+        }
+      ],
+      "title": "Volatility Volume (90 days)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "currencyUSD"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 40
+      },
+      "id": 13,
+      "options": {
+        "annotations": {
+          "clustering": -1,
+          "multiLane": false
+        },
+        "legend": {
+          "calcs": [
+            "last",
+            "min",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "13.0.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "format": "table",
+          "rawSql": "SELECT date::timestamptz AS time, ticker, close FROM market_daily WHERE ticker IN ('VXX','UVIX','SVXY') AND date >= NOW() - INTERVAL '90 days' ORDER BY date ASC;",
+          "refId": "A",
+          "timeColumn": "time"
+        }
+      ],
+      "title": "Volatility ETFs — VXX / UVIX / SVXY (90 days)",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "id": 39,
+      "title": "── MARKET SENTIMENT",
+      "type": "row"
+    },
+    {
+      "collapsed": false,
+      "id": 40,
+      "title": "── VOLATILITY",
+      "type": "row"
+    },
+    {
+      "collapsed": true,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 41,
+      "panels": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "barWidthFactor": 0.6,
+                "drawStyle": "line",
+                "fillOpacity": 5,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "linear",
+                "lineWidth": 2,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "auto",
+                "showValues": false,
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": 0
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              },
+              "unit": "currencyUSD"
+            }
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 1
+          },
+          "id": 7,
+          "options": {
+            "annotations": {
+              "clustering": -1,
+              "multiLane": false
+            },
+            "legend": {
+              "calcs": [
+                "last",
+                "min",
+                "max"
+              ],
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "hideZeros": false,
+              "mode": "multi",
+              "sort": "none"
+            }
+          },
+          "pluginVersion": "13.0.1",
+          "targets": [
+            {
+              "datasource": {
+                "type": "postgres",
+                "uid": "cflc7izgwm7lsc"
+              },
+              "format": "table",
+              "rawSql": "SELECT date::timestamptz AS time, ticker, close FROM market_daily WHERE ticker IN ('SPY','QQQ','IWM','DIA') AND date >= NOW() - INTERVAL '90 days' ORDER BY date ASC;",
+              "refId": "A",
+              "timeColumn": "time"
+            }
+          ],
+          "title": "Broad Market — SPY / QQQ / IWM / DIA (90 days)",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "barWidthFactor": 0.6,
+                "drawStyle": "line",
+                "fillOpacity": 5,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "linear",
+                "lineWidth": 2,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "auto",
+                "showValues": false,
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": 0
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              },
+              "unit": "currencyUSD"
+            }
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 1
+          },
+          "id": 8,
+          "options": {
+            "annotations": {
+              "clustering": -1,
+              "multiLane": false
+            },
+            "legend": {
+              "calcs": [
+                "last",
+                "min",
+                "max"
+              ],
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "hideZeros": false,
+              "mode": "multi",
+              "sort": "none"
+            }
+          },
+          "pluginVersion": "13.0.1",
+          "targets": [
+            {
+              "datasource": {
+                "type": "postgres",
+                "uid": "cflc7izgwm7lsc"
+              },
+              "format": "table",
+              "rawSql": "SELECT date::timestamptz AS time, ticker, close FROM market_daily WHERE ticker IN ('TQQQ','QLD','SOXL','TECL','FAS') AND date >= NOW() - INTERVAL '90 days' ORDER BY date ASC;",
+              "refId": "A",
+              "timeColumn": "time"
+            }
+          ],
+          "title": "Leveraged Bull — TQQQ / QLD / SOXL / TECL / FAS (90 days)",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "barWidthFactor": 0.6,
+                "drawStyle": "line",
+                "fillOpacity": 5,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "linear",
+                "lineWidth": 2,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "auto",
+                "showValues": false,
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": 0
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              },
+              "unit": "currencyUSD"
+            }
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 9
+          },
+          "id": 9,
+          "options": {
+            "annotations": {
+              "clustering": -1,
+              "multiLane": false
+            },
+            "legend": {
+              "calcs": [
+                "last",
+                "min",
+                "max"
+              ],
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "hideZeros": false,
+              "mode": "multi",
+              "sort": "none"
+            }
+          },
+          "pluginVersion": "13.0.1",
+          "targets": [
+            {
+              "datasource": {
+                "type": "postgres",
+                "uid": "cflc7izgwm7lsc"
+              },
+              "format": "table",
+              "rawSql": "SELECT date::timestamptz AS time, ticker, close FROM market_daily WHERE ticker IN ('SQQQ','QID','PSQ') AND date >= NOW() - INTERVAL '90 days' ORDER BY date ASC;",
+              "refId": "A",
+              "timeColumn": "time"
+            }
+          ],
+          "title": "Leveraged Bear / Inverse — SQQQ / QID / PSQ (90 days)",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "barWidthFactor": 0.6,
+                "drawStyle": "line",
+                "fillOpacity": 5,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "linear",
+                "lineWidth": 2,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "auto",
+                "showValues": false,
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "max": 100,
+              "min": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": 0
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              },
+              "unit": "short"
+            }
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 9
+          },
+          "id": 10,
+          "options": {
+            "annotations": {
+              "clustering": -1,
+              "multiLane": false
+            },
+            "legend": {
+              "calcs": [
+                "last"
+              ],
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "hideZeros": false,
+              "mode": "multi",
+              "sort": "none"
+            }
+          },
+          "pluginVersion": "13.0.1",
+          "targets": [
+            {
+              "datasource": {
+                "type": "postgres",
+                "uid": "cflc7izgwm7lsc"
+              },
+              "format": "table",
+              "rawSql": "SELECT date::timestamptz AS time, ticker, rsi_14 FROM market_daily WHERE ticker IN ('SPY','QQQ','IWM','TQQQ','SQQQ') AND date >= NOW() - INTERVAL '90 days' ORDER BY date ASC;",
+              "refId": "A",
+              "timeColumn": "time"
+            }
+          ],
+          "title": "RSI-14 — Broad Market (90 days)",
+          "type": "timeseries"
+        }
+      ],
+      "title": "── BROAD EQUITY",
+      "type": "row"
+    },
+    {
+      "collapsed": true,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 1
+      },
+      "id": 42,
+      "panels": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "barWidthFactor": 0.6,
+                "drawStyle": "line",
+                "fillOpacity": 5,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "linear",
+                "lineWidth": 2,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "auto",
+                "showValues": false,
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": 0
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              },
+              "unit": "currencyUSD"
+            }
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 2
+          },
+          "id": 11,
+          "options": {
+            "annotations": {
+              "clustering": -1,
+              "multiLane": false
+            },
+            "legend": {
+              "calcs": [
+                "last",
+                "min",
+                "max"
+              ],
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "hideZeros": false,
+              "mode": "multi",
+              "sort": "none"
+            }
+          },
+          "pluginVersion": "13.0.1",
+          "targets": [
+            {
+              "datasource": {
+                "type": "postgres",
+                "uid": "cflc7izgwm7lsc"
+              },
+              "format": "table",
+              "rawSql": "SELECT date::timestamptz AS time, ticker, close FROM market_daily WHERE ticker IN ('XLK','XLF','XLE','XLV','XLU') AND date >= NOW() - INTERVAL '90 days' ORDER BY date ASC;",
+              "refId": "A",
+              "timeColumn": "time"
+            }
+          ],
+          "title": "Sector ETFs — XLK / XLF / XLE / XLV / XLU (90 days)",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "barWidthFactor": 0.6,
+                "drawStyle": "line",
+                "fillOpacity": 5,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "linear",
+                "lineWidth": 2,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "auto",
+                "showValues": false,
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "max": 100,
+              "min": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": 0
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              },
+              "unit": "short"
+            }
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 2
+          },
+          "id": 12,
+          "options": {
+            "annotations": {
+              "clustering": -1,
+              "multiLane": false
+            },
+            "legend": {
+              "calcs": [
+                "last"
+              ],
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "hideZeros": false,
+              "mode": "multi",
+              "sort": "none"
+            }
+          },
+          "pluginVersion": "13.0.1",
+          "targets": [
+            {
+              "datasource": {
+                "type": "postgres",
+                "uid": "cflc7izgwm7lsc"
+              },
+              "format": "table",
+              "rawSql": "SELECT date::timestamptz AS time, ticker, rsi_14 FROM market_daily WHERE ticker IN ('XLK','XLF','XLE','XLV','XLU') AND date >= NOW() - INTERVAL '90 days' ORDER BY date ASC;",
+              "refId": "A",
+              "timeColumn": "time"
+            }
+          ],
+          "title": "Sector RSI-14 (90 days)",
+          "type": "timeseries"
+        }
+      ],
+      "title": "── SECTOR ETFs",
+      "type": "row"
+    },
+    {
+      "collapsed": true,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 2
+      },
+      "id": 43,
+      "panels": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "barWidthFactor": 0.6,
+                "drawStyle": "line",
+                "fillOpacity": 8,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "linear",
+                "lineWidth": 2,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "auto",
+                "showValues": false,
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": 0
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              },
+              "unit": "currencyUSD"
+            }
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 3
+          },
+          "id": 15,
+          "options": {
+            "annotations": {
+              "clustering": -1,
+              "multiLane": false
+            },
+            "legend": {
+              "calcs": [
+                "last",
+                "min",
+                "max"
+              ],
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "hideZeros": false,
+              "mode": "multi",
+              "sort": "none"
+            }
+          },
+          "pluginVersion": "13.0.1",
+          "targets": [
+            {
+              "datasource": {
+                "type": "postgres",
+                "uid": "cflc7izgwm7lsc"
+              },
+              "format": "table",
+              "rawSql": "SELECT date::timestamptz AS time, ticker, close FROM market_daily WHERE ticker IN ('TMF','BIL','JPST') AND date >= NOW() - INTERVAL '90 days' ORDER BY date ASC;",
+              "refId": "A",
+              "timeColumn": "time"
+            }
+          ],
+          "title": "Fixed Income — TMF / BIL / JPST (90 days)",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "barWidthFactor": 0.6,
+                "drawStyle": "line",
+                "fillOpacity": 8,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "linear",
+                "lineWidth": 2,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "auto",
+                "showValues": false,
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": 0
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              },
+              "unit": "currencyUSD"
+            }
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 3
+          },
+          "id": 16,
+          "options": {
+            "annotations": {
+              "clustering": -1,
+              "multiLane": false
+            },
+            "legend": {
+              "calcs": [
+                "last",
+                "min",
+                "max"
+              ],
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "hideZeros": false,
+              "mode": "multi",
+              "sort": "none"
+            }
+          },
+          "pluginVersion": "13.0.1",
+          "targets": [
+            {
+              "datasource": {
+                "type": "postgres",
+                "uid": "cflc7izgwm7lsc"
+              },
+              "format": "table",
+              "rawSql": "SELECT date::timestamptz AS time, ticker, close FROM market_daily WHERE ticker IN ('UUP') AND date >= NOW() - INTERVAL '90 days' ORDER BY date ASC;",
+              "refId": "A",
+              "timeColumn": "time"
+            }
+          ],
+          "title": "Dollar Index ETF — UUP (90 days)",
+          "type": "timeseries"
+        }
+      ],
+      "title": "── BONDS & FIXED INCOME",
+      "type": "row"
+    },
+    {
+      "collapsed": true,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 3
+      },
+      "id": 44,
+      "panels": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "barWidthFactor": 0.6,
+                "drawStyle": "line",
+                "fillOpacity": 8,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "linear",
+                "lineWidth": 2,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "auto",
+                "showValues": false,
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": 0
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              },
+              "unit": "currencyUSD"
+            }
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 4
+          },
+          "id": 17,
+          "options": {
+            "annotations": {
+              "clustering": -1,
+              "multiLane": false
+            },
+            "legend": {
+              "calcs": [
+                "last",
+                "min",
+                "max"
+              ],
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "hideZeros": false,
+              "mode": "multi",
+              "sort": "none"
+            }
+          },
+          "pluginVersion": "13.0.1",
+          "targets": [
+            {
+              "datasource": {
+                "type": "postgres",
+                "uid": "cflc7izgwm7lsc"
+              },
+              "format": "table",
+              "rawSql": "SELECT date::timestamptz AS time, ticker, close FROM market_daily WHERE ticker IN ('GLD','SLV','USO','UNG') AND date >= NOW() - INTERVAL '90 days' ORDER BY date ASC;",
+              "refId": "A",
+              "timeColumn": "time"
+            }
+          ],
+          "title": "Precious Metals & Energy — GLD / SLV / USO / UNG (90 days)",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "barWidthFactor": 0.6,
+                "drawStyle": "line",
+                "fillOpacity": 8,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "linear",
+                "lineWidth": 2,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "auto",
+                "showValues": false,
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": 0
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              },
+              "unit": "currencyUSD"
+            }
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 4
+          },
+          "id": 18,
+          "options": {
+            "annotations": {
+              "clustering": -1,
+              "multiLane": false
+            },
+            "legend": {
+              "calcs": [
+                "last",
+                "min",
+                "max"
+              ],
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "hideZeros": false,
+              "mode": "multi",
+              "sort": "none"
+            }
+          },
+          "pluginVersion": "13.0.1",
+          "targets": [
+            {
+              "datasource": {
+                "type": "postgres",
+                "uid": "cflc7izgwm7lsc"
+              },
+              "format": "table",
+              "rawSql": "SELECT date::timestamptz AS time, ticker, close FROM market_daily WHERE ticker IN ('CORN','WEAT','SOYB') AND date >= NOW() - INTERVAL '90 days' ORDER BY date ASC;",
+              "refId": "A",
+              "timeColumn": "time"
+            }
+          ],
+          "title": "Agricultural ETFs — CORN / WEAT / SOYB (90 days)",
+          "type": "timeseries"
+        }
+      ],
+      "title": "── COMMODITIES ETFs",
+      "type": "row"
+    },
+    {
+      "collapsed": true,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 4
+      },
+      "id": 45,
+      "panels": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                },
+                "footer": {
+                  "reducers": []
+                },
+                "inspect": false
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": 0
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "surprise_pct"
+                },
+                "properties": [
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "red",
+                          "value": 0
+                        },
+                        {
+                          "color": "yellow",
+                          "value": 0
+                        },
+                        {
+                          "color": "green",
+                          "value": 2
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "unit",
+                    "value": "percent"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "eps_actual"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "currencyUSD"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "eps_estimate"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "currencyUSD"
+                  }
+                ]
+              }
+            ]
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 14,
+            "x": 0,
+            "y": 5
+          },
+          "id": 31,
+          "options": {
+            "cellHeight": "sm",
+            "showHeader": true,
+            "sortBy": [
+              {
+                "desc": true,
+                "displayName": "period"
+              }
+            ]
+          },
+          "pluginVersion": "13.0.1",
+          "targets": [
+            {
+              "datasource": {
+                "type": "postgres",
+                "uid": "cflc7izgwm7lsc"
+              },
+              "format": "table",
+              "rawSql": "SELECT symbol, period, eps_actual, eps_estimate, ROUND(surprise_pct::numeric, 2) AS surprise_pct FROM earnings_data ORDER BY period DESC, symbol ASC LIMIT 30;",
+              "refId": "A"
+            }
+          ],
+          "title": "Earnings — EPS Actual vs Estimate",
+          "type": "table"
+        },
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "barWidthFactor": 0.6,
+                "drawStyle": "line",
+                "fillOpacity": 5,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "linear",
+                "lineWidth": 2,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "auto",
+                "showValues": false,
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": 0
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              },
+              "unit": "percent"
+            }
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 10,
+            "x": 14,
+            "y": 5
+          },
+          "id": 32,
+          "options": {
+            "annotations": {
+              "clustering": -1,
+              "multiLane": false
+            },
+            "legend": {
+              "calcs": [
+                "last"
+              ],
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "hideZeros": false,
+              "mode": "multi",
+              "sort": "none"
+            }
+          },
+          "pluginVersion": "13.0.1",
+          "targets": [
+            {
+              "datasource": {
+                "type": "postgres",
+                "uid": "cflc7izgwm7lsc"
+              },
+              "format": "table",
+              "rawSql": "SELECT period::timestamptz AS time, symbol, ROUND(surprise_pct::numeric, 2) AS surprise_pct FROM earnings_data WHERE surprise_pct IS NOT NULL ORDER BY period ASC;",
+              "refId": "A",
+              "timeColumn": "time"
+            }
+          ],
+          "title": "EPS Surprise % by Symbol",
+          "type": "timeseries"
+        }
+      ],
+      "title": "── EARNINGS",
+      "type": "row"
+    },
+    {
+      "collapsed": true,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 5
+      },
+      "id": 46,
+      "panels": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                },
+                "footer": {
+                  "reducers": []
+                },
+                "inspect": false
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": 0
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "strong_buy"
+                },
+                "properties": [
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "green",
+                          "value": 0
+                        }
+                      ]
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "strong_sell"
+                },
+                "properties": [
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "green",
+                          "value": 0
+                        },
+                        {
+                          "color": "red",
+                          "value": 1
+                        }
+                      ]
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "bull_pct"
+                },
+                "properties": [
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "red",
+                          "value": 0
+                        },
+                        {
+                          "color": "yellow",
+                          "value": 50
+                        },
+                        {
+                          "color": "green",
+                          "value": 70
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "unit",
+                    "value": "percent"
+                  }
+                ]
+              }
+            ]
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 14,
+            "x": 0,
+            "y": 6
+          },
+          "id": 33,
+          "options": {
+            "cellHeight": "sm",
+            "showHeader": true,
+            "sortBy": [
+              {
+                "desc": true,
+                "displayName": "period"
+              }
+            ]
+          },
+          "pluginVersion": "13.0.1",
+          "targets": [
+            {
+              "datasource": {
+                "type": "postgres",
+                "uid": "cflc7izgwm7lsc"
+              },
+              "format": "table",
+              "rawSql": "SELECT DISTINCT ON (symbol) symbol, period, strong_buy, buy, hold, sell, strong_sell, ROUND((strong_buy + buy)::numeric / NULLIF(strong_buy + buy + hold + sell + strong_sell, 0) * 100, 1) AS bull_pct FROM analyst_data ORDER BY symbol, period DESC;",
+              "refId": "A"
+            }
+          ],
+          "title": "Analyst Ratings — Buy / Hold / Sell (Latest)",
+          "type": "table"
+        },
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "barWidthFactor": 0.6,
+                "drawStyle": "line",
+                "fillOpacity": 5,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "linear",
+                "lineWidth": 2,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "auto",
+                "showValues": false,
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": 0
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              },
+              "unit": "percent"
+            }
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 10,
+            "x": 14,
+            "y": 6
+          },
+          "id": 34,
+          "options": {
+            "annotations": {
+              "clustering": -1,
+              "multiLane": false
+            },
+            "legend": {
+              "calcs": [
+                "last"
+              ],
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "hideZeros": false,
+              "mode": "multi",
+              "sort": "none"
+            }
+          },
+          "pluginVersion": "13.0.1",
+          "targets": [
+            {
+              "datasource": {
+                "type": "postgres",
+                "uid": "cflc7izgwm7lsc"
+              },
+              "format": "table",
+              "rawSql": "SELECT period::timestamptz AS time, symbol, ROUND((strong_buy + buy)::numeric / NULLIF(strong_buy + buy + hold + sell + strong_sell, 0) * 100, 1) AS bull_pct FROM analyst_data ORDER BY period ASC;",
+              "refId": "A",
+              "timeColumn": "time"
+            }
+          ],
+          "title": "Analyst Bull % Trend",
+          "type": "timeseries"
+        }
+      ],
+      "title": "── ANALYST RATINGS",
+      "type": "row"
+    },
+    {
+      "collapsed": true,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 6
+      },
+      "id": 47,
+      "panels": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                },
+                "footer": {
+                  "reducers": []
+                },
+                "inspect": false
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": 0
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "importance"
+                },
+                "properties": [
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "options": {
+                          "high": {
+                            "color": "red",
+                            "index": 0
+                          },
+                          "low": {
+                            "color": "green",
+                            "index": 2
+                          },
+                          "medium": {
+                            "color": "yellow",
+                            "index": 1
+                          }
+                        },
+                        "type": "value"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 7
+          },
+          "id": 35,
+          "options": {
+            "cellHeight": "sm",
+            "showHeader": true
+          },
+          "pluginVersion": "13.0.1",
+          "targets": [
+            {
+              "datasource": {
+                "type": "postgres",
+                "uid": "cflc7izgwm7lsc"
+              },
+              "format": "table",
+              "rawSql": "SELECT event_date, event_name, event_type, importance, expected_value, previous_value FROM market_events WHERE event_date BETWEEN NOW() AND NOW() + INTERVAL '30 days' ORDER BY event_date ASC LIMIT 20;",
+              "refId": "A"
+            }
+          ],
+          "title": "Upcoming Market Events (next 30 days)",
+          "type": "table"
+        },
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                },
+                "footer": {
+                  "reducers": []
+                },
+                "inspect": false
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": 0
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              }
+            }
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 7
+          },
+          "id": 36,
+          "options": {
+            "cellHeight": "sm",
+            "showHeader": true
+          },
+          "pluginVersion": "13.0.1",
+          "targets": [
+            {
+              "datasource": {
+                "type": "postgres",
+                "uid": "cflc7izgwm7lsc"
+              },
+              "format": "table",
+              "rawSql": "SELECT published_at::date AS date, source, LEFT(title, 70) AS headline FROM news_articles ORDER BY published_at DESC LIMIT 20;",
+              "refId": "A"
+            }
+          ],
+          "title": "Recent News",
+          "type": "table"
+        }
+      ],
+      "title": "── MARKET EVENTS & NEWS",
+      "type": "row"
+    }
+  ],
+  "preload": false,
+  "refresh": "5m",
+  "schemaVersion": 42,
+  "tags": [
+    "bhn",
+    "market",
+    "intelligence",
+    "equity",
+    "bonds",
+    "commodities",
+    "sectors",
+    "volatility"
+  ],
+  "time": {
+    "from": "now-90d",
+    "to": "now"
+  },
+  "timepicker": {
+    "refresh_intervals": [
+      "5s",
+      "10s",
+      "30s",
+      "1m",
+      "5m",
+      "15m",
+      "30m",
+      "1h",
+      "2h",
+      "1d"
+    ]
+  },
+  "timezone": "America/Los_Angeles",
+  "title": "BHN — Market Intelligence V5",
+  "uid": "bhn-market-intelligence",
+  "version": 5
+}

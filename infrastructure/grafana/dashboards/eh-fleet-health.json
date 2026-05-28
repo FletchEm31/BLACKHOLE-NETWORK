@@ -1,0 +1,356 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "Per-node liveness derived from the nodes registry + 5-min heartbeat cron. A node is stale when its last_seen is older than three missed heartbeats (15 min).",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": 3799416711110656,
+  "liveNow": false,
+  "panels": [
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "online"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "red"
+                    },
+                    {
+                      "color": "green",
+                      "value": 1
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value_and_name"
+      },
+      "pluginVersion": "",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "format": "table",
+          "rawSql": "SELECT  SUM(CASE WHEN last_seen >= NOW() - INTERVAL '15 minutes' THEN 1 ELSE 0 END) AS online,  SUM(CASE WHEN last_seen <  NOW() - INTERVAL '15 minutes' OR last_seen IS NULL THEN 1 ELSE 0 END) AS stale FROM nodes WHERE status NOT IN ('decommissioned')",
+          "refId": "A"
+        }
+      ],
+      "title": "Online vs stale",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "minutes_stale"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "m"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "mode": "gradient",
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "yellow"
+                    },
+                    {
+                      "color": "orange",
+                      "value": 60
+                    },
+                    {
+                      "color": "red",
+                      "value": 240
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 4
+      },
+      "id": 2,
+      "options": {
+        "footer": {
+          "show": false
+        },
+        "showHeader": true
+      },
+      "pluginVersion": "",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "format": "table",
+          "rawSql": "SELECT name, type, region, status, last_seen, EXTRACT(EPOCH FROM (NOW() - last_seen))/60 AS minutes_stale, public_ip, tunnel_ip FROM nodes WHERE (last_seen < NOW() - INTERVAL '15 minutes' OR last_seen IS NULL) AND status NOT IN ('decommissioned') ORDER BY last_seen NULLS FIRST",
+          "refId": "A"
+        }
+      ],
+      "title": "Stale nodes (no heartbeat > 15 min)",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "minutes_since_heartbeat"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "m"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "status"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "options": {
+                      "online": {
+                        "color": "green",
+                        "index": 0
+                      }
+                    },
+                    "type": "value"
+                  },
+                  {
+                    "options": {
+                      "bootstrapping": {
+                        "color": "blue",
+                        "index": 1
+                      }
+                    },
+                    "type": "value"
+                  },
+                  {
+                    "options": {
+                      "degraded": {
+                        "color": "orange",
+                        "index": 2
+                      }
+                    },
+                    "type": "value"
+                  },
+                  {
+                    "options": {
+                      "offline": {
+                        "color": "red",
+                        "index": 3
+                      }
+                    },
+                    "type": "value"
+                  },
+                  {
+                    "options": {
+                      "decommissioned": {
+                        "color": "gray",
+                        "index": 4
+                      }
+                    },
+                    "type": "value"
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 12
+      },
+      "id": 3,
+      "options": {
+        "footer": {
+          "show": false
+        },
+        "showHeader": true
+      },
+      "pluginVersion": "",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "format": "table",
+          "rawSql": "SELECT id, name, type, region, status, last_seen, EXTRACT(EPOCH FROM (NOW() - last_seen))/60 AS minutes_since_heartbeat, bootstrap_version, public_ip, tunnel_ip FROM nodes ORDER BY type, region, name",
+          "refId": "A"
+        }
+      ],
+      "title": "All nodes (registry)",
+      "type": "table"
+    }
+  ],
+  "preload": false,
+  "refresh": "30s",
+  "schemaVersion": 42,
+  "tags": [
+    "eh",
+    "fleet",
+    "heartbeat"
+  ],
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "timepicker": {
+    "refresh_intervals": [
+      "5s",
+      "10s",
+      "30s",
+      "1m",
+      "5m",
+      "15m",
+      "30m",
+      "1h",
+      "2h",
+      "1d"
+    ]
+  },
+  "timezone": "utc",
+  "title": "EH Fleet Health",
+  "uid": "eh-fleet-health",
+  "version": 2
+}

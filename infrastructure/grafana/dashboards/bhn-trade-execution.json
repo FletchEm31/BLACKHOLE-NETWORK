@@ -1,0 +1,1270 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "BHN Trade Execution & Operations — Paper Trades, Signals, Orders, Intraday Bars, Reconciliation",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": 1524282193899520,
+  "links": [],
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 100,
+      "title": "── TRADING SCORECARD",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red"
+              },
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "currencyUSD"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 1
+      },
+      "id": 1,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value_and_name"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "format": "table",
+          "rawSql": "SELECT ROUND(COALESCE(SUM(pnl), 0)::numeric, 2) AS total_pnl FROM paper_trades;",
+          "refId": "A"
+        }
+      ],
+      "title": "Total PnL (All Time)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red"
+              },
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "currencyUSD"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 1
+      },
+      "id": 2,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value_and_name"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "format": "table",
+          "rawSql": "SELECT ROUND(COALESCE(SUM(pnl), 0)::numeric, 2) AS pnl_today FROM paper_trades WHERE filled_at >= CURRENT_DATE;",
+          "refId": "A"
+        }
+      ],
+      "title": "PnL Today",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green"
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 12,
+        "y": 1
+      },
+      "id": 3,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value_and_name"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "format": "table",
+          "rawSql": "SELECT COUNT(*) AS total_trades FROM paper_trades;",
+          "refId": "A"
+        }
+      ],
+      "title": "Total Trades",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 1,
+          "max": 100,
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red"
+              },
+              {
+                "color": "yellow",
+                "value": 40
+              },
+              {
+                "color": "green",
+                "value": 55
+              }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 16,
+        "y": 1
+      },
+      "id": 4,
+      "options": {
+        "minVizHeight": 50,
+        "minVizWidth": 50,
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "format": "table",
+          "rawSql": "SELECT ROUND((SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END)::numeric / NULLIF(COUNT(*), 0) * 100), 1) AS win_rate FROM paper_trades;",
+          "refId": "A"
+        }
+      ],
+      "title": "Win Rate",
+      "type": "gauge"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red"
+              },
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "currencyUSD"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 20,
+        "y": 1
+      },
+      "id": 5,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value_and_name"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "format": "table",
+          "rawSql": "SELECT ROUND(AVG(pnl)::numeric, 2) AS avg_pnl FROM paper_trades;",
+          "refId": "A"
+        }
+      ],
+      "title": "Avg PnL per Trade",
+      "type": "stat"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 5
+      },
+      "id": 101,
+      "title": "── PnL PERFORMANCE",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 10,
+            "lineWidth": 2
+          },
+          "unit": "currencyUSD"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 6
+      },
+      "id": 6,
+      "options": {
+        "legend": {
+          "calcs": [
+            "last"
+          ],
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "format": "table",
+          "rawSql": "SELECT filled_at AS time, strategy_name, SUM(pnl) OVER (PARTITION BY strategy_name ORDER BY filled_at) AS cumulative_pnl FROM paper_trades ORDER BY filled_at ASC;",
+          "refId": "A",
+          "timeColumn": "time"
+        }
+      ],
+      "title": "Cumulative PnL by Strategy",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 10,
+            "lineWidth": 2
+          },
+          "unit": "currencyUSD"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 6
+      },
+      "id": 7,
+      "options": {
+        "legend": {
+          "calcs": [
+            "last"
+          ],
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "format": "table",
+          "rawSql": "SELECT filled_at::date::timestamptz AS time, ROUND(SUM(pnl)::numeric, 2) AS daily_pnl FROM paper_trades GROUP BY filled_at::date ORDER BY filled_at::date ASC;",
+          "refId": "A",
+          "timeColumn": "time"
+        }
+      ],
+      "title": "Daily PnL (all strategies combined)",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 14
+      },
+      "id": 102,
+      "title": "── STRATEGY BREAKDOWN",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "total_pnl"
+            },
+            "properties": [
+              {
+                "id": "custom.displayMode",
+                "value": "color-background"
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "red"
+                    },
+                    {
+                      "color": "green",
+                      "value": 0
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "unit",
+                "value": "currencyUSD"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "win_rate"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percent"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "avg_pnl"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "currencyUSD"
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 14,
+        "x": 0,
+        "y": 15
+      },
+      "id": 8,
+      "options": {
+        "footer": {
+          "show": false
+        },
+        "showHeader": true,
+        "sortBy": [
+          {
+            "desc": true,
+            "displayName": "total_pnl"
+          }
+        ]
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "format": "table",
+          "rawSql": "SELECT strategy_name, COUNT(*) AS trades, SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) AS wins, ROUND((SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END)::float / NULLIF(COUNT(*), 0) * 100)::numeric, 1) AS win_rate, ROUND(SUM(pnl)::numeric, 2) AS total_pnl, ROUND(AVG(pnl)::numeric, 2) AS avg_pnl, ROUND(MAX(pnl)::numeric, 2) AS best_trade, ROUND(MIN(pnl)::numeric, 2) AS worst_trade FROM paper_trades GROUP BY strategy_name ORDER BY total_pnl DESC;",
+          "refId": "A"
+        }
+      ],
+      "title": "Strategy Performance Summary",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red"
+              },
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "currencyUSD"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 10,
+        "x": 14,
+        "y": 15
+      },
+      "id": 9,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": true
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "format": "table",
+          "rawSql": "SELECT strategy_name, ROUND(SUM(pnl)::numeric, 2) AS total_pnl FROM paper_trades GROUP BY strategy_name ORDER BY total_pnl DESC;",
+          "refId": "A"
+        }
+      ],
+      "title": "PnL by Strategy (all time)",
+      "type": "stat"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 23
+      },
+      "id": 103,
+      "title": "── SIGNALS",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green"
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 3,
+        "w": 6,
+        "x": 0,
+        "y": 24
+      },
+      "id": 10,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value_and_name"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "format": "table",
+          "rawSql": "SELECT COUNT(*) AS signals_24h FROM signals_log WHERE evaluated_at > NOW() - INTERVAL '24 hours';",
+          "refId": "A"
+        }
+      ],
+      "title": "Total Signals (24h)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green"
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 3,
+        "w": 6,
+        "x": 6,
+        "y": 24
+      },
+      "id": 11,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value_and_name"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "format": "table",
+          "rawSql": "SELECT COUNT(*) AS acted_on FROM signals_log WHERE evaluated_at > NOW() - INTERVAL '24 hours' AND acted_on = true;",
+          "refId": "A"
+        }
+      ],
+      "title": "Signals Acted On (24h)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green"
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 3,
+        "w": 6,
+        "x": 12,
+        "y": 24
+      },
+      "id": 12,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value_and_name"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "format": "table",
+          "rawSql": "SELECT COUNT(*) AS buy_signals FROM signals_log WHERE evaluated_at > NOW() - INTERVAL '24 hours' AND action = 'buy';",
+          "refId": "A"
+        }
+      ],
+      "title": "Buy Signals (24h)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green"
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 3,
+        "w": 6,
+        "x": 18,
+        "y": 24
+      },
+      "id": 13,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value_and_name"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "format": "table",
+          "rawSql": "SELECT COUNT(*) AS sell_signals FROM signals_log WHERE evaluated_at > NOW() - INTERVAL '24 hours' AND action = 'sell';",
+          "refId": "A"
+        }
+      ],
+      "title": "Sell Signals (24h)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 10,
+            "lineWidth": 2
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 27
+      },
+      "id": 14,
+      "options": {
+        "legend": {
+          "calcs": [
+            "last",
+            "sum"
+          ],
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "format": "table",
+          "rawSql": "SELECT date_trunc('hour', evaluated_at) AS time, action, COUNT(*) AS count FROM signals_log WHERE evaluated_at >= NOW() - INTERVAL '7 days' GROUP BY 1, 2 ORDER BY 1 ASC;",
+          "refId": "A",
+          "timeColumn": "time"
+        }
+      ],
+      "title": "Signal Actions Over Time (7 days)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "action"
+            },
+            "properties": [
+              {
+                "id": "custom.displayMode",
+                "value": "color-background"
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "options": {
+                      "buy": {
+                        "color": "green",
+                        "index": 0
+                      },
+                      "hold": {
+                        "color": "yellow",
+                        "index": 2
+                      },
+                      "sell": {
+                        "color": "red",
+                        "index": 1
+                      }
+                    },
+                    "type": "value"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "acted_on"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "options": {
+                      "false": {
+                        "color": "gray",
+                        "index": 1,
+                        "text": "—"
+                      },
+                      "true": {
+                        "color": "green",
+                        "index": 0,
+                        "text": "✅"
+                      }
+                    },
+                    "type": "value"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 27
+      },
+      "id": 15,
+      "options": {
+        "footer": {
+          "show": false
+        },
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "format": "table",
+          "rawSql": "SELECT evaluated_at, strategy_id, ticker, action, acted_on::text, reason, value FROM signals_log ORDER BY evaluated_at DESC LIMIT 25;",
+          "refId": "A"
+        }
+      ],
+      "title": "Recent Signals",
+      "type": "table"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 35
+      },
+      "id": 104,
+      "title": "── RECENT TRADES",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "pnl"
+            },
+            "properties": [
+              {
+                "id": "custom.displayMode",
+                "value": "color-background"
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "red"
+                    },
+                    {
+                      "color": "green",
+                      "value": 0
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "unit",
+                "value": "currencyUSD"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "side"
+            },
+            "properties": [
+              {
+                "id": "custom.displayMode",
+                "value": "color-background"
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "options": {
+                      "buy": {
+                        "color": "green",
+                        "index": 0
+                      },
+                      "sell": {
+                        "color": "red",
+                        "index": 1
+                      }
+                    },
+                    "type": "value"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 36
+      },
+      "id": 16,
+      "options": {
+        "footer": {
+          "show": false
+        },
+        "showHeader": true,
+        "sortBy": [
+          {
+            "desc": true,
+            "displayName": "filled_at"
+          }
+        ]
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "format": "table",
+          "rawSql": "SELECT filled_at, strategy_name, symbol, side, qty, fill_price, pnl, account_id FROM paper_trades ORDER BY filled_at DESC LIMIT 30;",
+          "refId": "A"
+        }
+      ],
+      "title": "Recent Paper Trades",
+      "type": "table"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 46
+      },
+      "id": 105,
+      "title": "── RECONCILIATION",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto"
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 24,
+        "x": 0,
+        "y": 47
+      },
+      "id": 17,
+      "options": {
+        "footer": {
+          "show": false
+        },
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "format": "table",
+          "rawSql": "SELECT * FROM reconciliation_heartbeat ORDER BY id DESC LIMIT 10;",
+          "refId": "A"
+        }
+      ],
+      "title": "Reconciliation Heartbeat (latest)",
+      "type": "table"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 53
+      },
+      "id": 106,
+      "title": "── CIRCUIT BREAKERS",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto"
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 24,
+        "x": 0,
+        "y": 54
+      },
+      "id": 18,
+      "options": {
+        "footer": {
+          "show": false
+        },
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "format": "table",
+          "rawSql": "SELECT * FROM circuit_breaker_log ORDER BY id DESC LIMIT 20;",
+          "refId": "A"
+        }
+      ],
+      "title": "Circuit Breaker Log",
+      "type": "table"
+    }
+  ],
+  "refresh": "1m",
+  "schemaVersion": 42,
+  "tags": [
+    "bhn",
+    "trading",
+    "execution",
+    "operations",
+    "signals",
+    "pnl"
+  ],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-7d",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "America/Los_Angeles",
+  "title": "BHN — Trade Execution & Operations",
+  "uid": "bhn-trade-execution",
+  "version": 1,
+  "weekStart": ""
+}

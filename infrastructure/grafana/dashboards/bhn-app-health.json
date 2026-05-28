@@ -1,0 +1,1347 @@
+{
+  "description": "Software layer: Docker containers, PostgreSQL stats, n8n workflow health, HORIZON activity. Data from container_stats, n8n_execution_stats, pg_stat_database, memories tables.",
+  "id": 494005492662272,
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 100,
+      "title": "── DOCKER CONTAINERS",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "CPU %"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "mode": "gradient",
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 50
+                    },
+                    {
+                      "color": "red",
+                      "value": 90
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Mem %"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "mode": "gradient",
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 70
+                    },
+                    {
+                      "color": "red",
+                      "value": 90
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Mem Used (MB)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "MB"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Mem Limit (MB)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "MB"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Net RX"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Net TX"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Block R"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Block W"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Last Sample"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "dateTimeFromNow"
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 1
+      },
+      "id": 1,
+      "options": {
+        "footer": {
+          "show": false
+        },
+        "showHeader": true,
+        "sortBy": [
+          {
+            "desc": false,
+            "displayName": "Container"
+          }
+        ]
+      },
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT DISTINCT ON (container_name) container_name AS \"Container\", image AS \"Image\", cpu_pct AS \"CPU %\", mem_used_mb AS \"Mem Used (MB)\", mem_limit_mb AS \"Mem Limit (MB)\", mem_pct AS \"Mem %\", net_rx_bytes AS \"Net RX\", net_tx_bytes AS \"Net TX\", block_read_bytes AS \"Block R\", block_write_bytes AS \"Block W\", pids AS \"PIDs\", measured_at AS \"Last Sample\" FROM container_stats ORDER BY container_name, measured_at DESC",
+          "refId": "A"
+        }
+      ],
+      "title": "Live Container Stats (latest snapshot)",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 10,
+            "lineWidth": 2,
+            "spanNulls": true
+          },
+          "min": 0,
+          "unit": "percent"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 9
+      },
+      "id": 2,
+      "options": {
+        "legend": {
+          "calcs": [
+            "mean",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "format": "time_series",
+          "rawSql": "SELECT measured_at AS time, container_name AS metric, cpu_pct FROM container_stats WHERE $__timeFilter(measured_at) ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Container CPU % over time",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 10,
+            "lineWidth": 2,
+            "spanNulls": true
+          },
+          "max": 100,
+          "min": 0,
+          "unit": "percent"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 9
+      },
+      "id": 3,
+      "options": {
+        "legend": {
+          "calcs": [
+            "mean",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "format": "time_series",
+          "rawSql": "SELECT measured_at AS time, container_name AS metric, mem_pct FROM container_stats WHERE $__timeFilter(measured_at) ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Container Memory % over time",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 17
+      },
+      "id": 101,
+      "title": "── POSTGRESQL",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 15
+              },
+              {
+                "color": "red",
+                "value": 30
+              }
+            ]
+          },
+          "unit": "short"
+        }
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 18
+      },
+      "id": 10,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT numbackends AS value FROM pg_stat_database WHERE datname = 'eventhorizon'",
+          "refId": "A"
+        }
+      ],
+      "title": "Active Connections",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "max": 100,
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 90
+              },
+              {
+                "color": "green",
+                "value": 95
+              }
+            ]
+          },
+          "unit": "percent"
+        }
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 18
+      },
+      "id": 11,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT ROUND(blks_hit::numeric / NULLIF(blks_hit + blks_read, 0) * 100, 2) AS value FROM pg_stat_database WHERE datname = 'eventhorizon'",
+          "refId": "A"
+        }
+      ],
+      "title": "Cache Hit Ratio",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "text",
+            "mode": "fixed"
+          },
+          "unit": "bytes"
+        }
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 18
+      },
+      "id": 12,
+      "options": {
+        "colorMode": "none",
+        "graphMode": "none",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT pg_database_size('eventhorizon') AS value",
+          "refId": "A"
+        }
+      ],
+      "title": "DB Size",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "text",
+            "mode": "fixed"
+          },
+          "unit": "short"
+        }
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 18
+      },
+      "id": 13,
+      "options": {
+        "colorMode": "none",
+        "graphMode": "none",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT xact_commit + xact_rollback AS value FROM pg_stat_database WHERE datname = 'eventhorizon'",
+          "refId": "A"
+        }
+      ],
+      "title": "Total Transactions (lifetime)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Running (s)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "mode": "basic",
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 10
+                    },
+                    {
+                      "color": "red",
+                      "value": 30
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "State"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "mode": "basic",
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "options": {
+                      "active": {
+                        "color": "green",
+                        "index": 0
+                      },
+                      "idle in transaction": {
+                        "color": "yellow",
+                        "index": 1
+                      },
+                      "idle in transaction (aborted)": {
+                        "color": "red",
+                        "index": 2
+                      }
+                    },
+                    "type": "value"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 22
+      },
+      "id": 14,
+      "options": {
+        "footer": {
+          "show": false
+        },
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT pid AS \"PID\", usename AS \"User\", application_name AS \"App\", state AS \"State\", ROUND(EXTRACT(EPOCH FROM (NOW() - query_start)), 1) AS \"Running (s)\", LEFT(query, 120) AS \"Query\" FROM pg_stat_activity WHERE datname = 'eventhorizon' AND state != 'idle' AND query NOT LIKE '%pg_stat_activity%' ORDER BY query_start ASC",
+          "refId": "A"
+        }
+      ],
+      "title": "Active Queries (non-idle)",
+      "type": "table"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 30
+      },
+      "id": 102,
+      "title": "── n8n WORKFLOW HEALTH",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "text",
+            "mode": "fixed"
+          },
+          "unit": "short"
+        }
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 31
+      },
+      "id": 20,
+      "options": {
+        "colorMode": "none",
+        "graphMode": "none",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT COUNT(*) AS value FROM n8n_execution_stats WHERE started_at > NOW() - INTERVAL '24 hours'",
+          "refId": "A"
+        }
+      ],
+      "title": "Executions (24h)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
+            ]
+          },
+          "unit": "short"
+        }
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 31
+      },
+      "id": 21,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT COUNT(*) AS value FROM n8n_execution_stats WHERE status IN ('error','crashed') AND started_at > NOW() - INTERVAL '24 hours'",
+          "refId": "A"
+        }
+      ],
+      "title": "Errors (24h)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "text",
+            "mode": "fixed"
+          },
+          "unit": "ms"
+        }
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 31
+      },
+      "id": 22,
+      "options": {
+        "colorMode": "none",
+        "graphMode": "none",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT ROUND(AVG(duration_ms)) AS value FROM n8n_execution_stats WHERE started_at > NOW() - INTERVAL '24 hours' AND duration_ms IS NOT NULL",
+          "refId": "A"
+        }
+      ],
+      "title": "Avg Duration (24h)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "max": 100,
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 80
+              },
+              {
+                "color": "green",
+                "value": 95
+              }
+            ]
+          },
+          "unit": "percent"
+        }
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 31
+      },
+      "id": 23,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT ROUND(COUNT(*) FILTER (WHERE status = 'success')::numeric / NULLIF(COUNT(*), 0) * 100, 1) AS value FROM n8n_execution_stats WHERE started_at > NOW() - INTERVAL '24 hours'",
+          "refId": "A"
+        }
+      ],
+      "title": "Success Rate (24h)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Status"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "mode": "basic",
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "options": {
+                      "canceled": {
+                        "color": "orange",
+                        "index": 4
+                      },
+                      "crashed": {
+                        "color": "red",
+                        "index": 2
+                      },
+                      "error": {
+                        "color": "red",
+                        "index": 1
+                      },
+                      "running": {
+                        "color": "blue",
+                        "index": 3
+                      },
+                      "success": {
+                        "color": "green",
+                        "index": 0
+                      },
+                      "waiting": {
+                        "color": "yellow",
+                        "index": 5
+                      }
+                    },
+                    "type": "value"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Last Run"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "dateTimeAsIso"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Min Ago"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "m"
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "mode": "basic",
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 120
+                    },
+                    {
+                      "color": "red",
+                      "value": 1440
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Duration"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 35
+      },
+      "id": 24,
+      "options": {
+        "footer": {
+          "show": false
+        },
+        "showHeader": true,
+        "sortBy": [
+          {
+            "desc": false,
+            "displayName": "Workflow"
+          }
+        ]
+      },
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT DISTINCT ON (workflow_name) workflow_name AS \"Workflow\", status AS \"Status\", started_at AS \"Last Run\", ROUND(EXTRACT(EPOCH FROM (NOW() - started_at)) / 60, 0) AS \"Min Ago\", duration_ms AS \"Duration\", LEFT(COALESCE(error_message, ''), 100) AS \"Error\" FROM n8n_execution_stats ORDER BY workflow_name, started_at DESC",
+          "refId": "A"
+        }
+      ],
+      "title": "Workflow Status — Last Run per Workflow",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "barAlignment": 0,
+            "drawStyle": "bars",
+            "fillOpacity": 15,
+            "lineWidth": 2
+          },
+          "unit": "short"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "success"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "green",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "error"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "red",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 45
+      },
+      "id": 25,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "format": "time_series",
+          "rawSql": "SELECT $__timeGroupAlias(started_at, '15m') AS time, 'success' AS metric, COUNT(*) FROM n8n_execution_stats WHERE status = 'success' AND $__timeFilter(started_at) GROUP BY 1 ORDER BY 1",
+          "refId": "A"
+        },
+        {
+          "format": "time_series",
+          "rawSql": "SELECT $__timeGroupAlias(started_at, '15m') AS time, 'error' AS metric, COUNT(*) FROM n8n_execution_stats WHERE status IN ('error','crashed') AND $__timeFilter(started_at) GROUP BY 1 ORDER BY 1",
+          "refId": "B"
+        }
+      ],
+      "title": "Executions by Status over time",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 53
+      },
+      "id": 103,
+      "title": "── HORIZON ACTIVITY",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "purple",
+            "mode": "fixed"
+          },
+          "unit": "short"
+        }
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 54
+      },
+      "id": 30,
+      "options": {
+        "colorMode": "none",
+        "graphMode": "none",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT COUNT(*) AS value FROM memories",
+          "refId": "A"
+        }
+      ],
+      "title": "Total Memories",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "text",
+            "mode": "fixed"
+          },
+          "unit": "dateTimeFromNow"
+        }
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 54
+      },
+      "id": 31,
+      "options": {
+        "colorMode": "none",
+        "graphMode": "none",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT MAX(created_at) AS value FROM memories",
+          "refId": "A"
+        }
+      ],
+      "title": "Last Memory Written",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "text",
+            "mode": "fixed"
+          },
+          "unit": "short"
+        }
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 54
+      },
+      "id": 32,
+      "options": {
+        "colorMode": "none",
+        "graphMode": "none",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT COUNT(*) AS value FROM conversation_sessions WHERE created_at > NOW() - INTERVAL '24 hours'",
+          "refId": "A"
+        }
+      ],
+      "title": "Conversations (24h)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "text",
+            "mode": "fixed"
+          },
+          "unit": "short"
+        }
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 54
+      },
+      "id": 33,
+      "options": {
+        "colorMode": "none",
+        "graphMode": "none",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT COALESCE(SUM(total_tokens), 0) AS value FROM agent_token_log WHERE logged_at > NOW() - INTERVAL '24 hours'",
+          "refId": "A"
+        }
+      ],
+      "title": "Tokens Used (24h)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Created"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "dateTimeFromNow"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Importance"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "mode": "basic",
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "blue",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 7
+                    },
+                    {
+                      "color": "red",
+                      "value": 9
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 58
+      },
+      "id": 34,
+      "options": {
+        "footer": {
+          "show": false
+        },
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT created_at AS \"Created\", memory_type AS \"Type\", importance AS \"Importance\", title AS \"Title\", source AS \"Source\" FROM memories ORDER BY created_at DESC LIMIT 20",
+          "refId": "A"
+        }
+      ],
+      "title": "Recent Memories",
+      "type": "table"
+    }
+  ],
+  "refresh": "1m",
+  "schemaVersion": 39,
+  "tags": [
+    "bhn",
+    "app",
+    "health",
+    "application"
+  ],
+  "time": {
+    "from": "now-3h",
+    "to": "now"
+  },
+  "timezone": "browser",
+  "title": "BHN — Application Health",
+  "uid": "bhn-app-health",
+  "version": 3
+}

@@ -1,0 +1,1635 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "BHN Commodities & Tangible Asset Markets — Energy, Agriculture, Precious Metals ETFs, Weather",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": 1521591535300608,
+  "liveNow": false,
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 27,
+      "title": "── ENERGY",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 70
+              },
+              {
+                "color": "red",
+                "value": 90
+              }
+            ]
+          },
+          "unit": "currencyUSD"
+        }
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 0,
+        "y": 1
+      },
+      "id": 1,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^value$/",
+          "values": false
+        },
+        "textMode": "value_and_name"
+      },
+      "pluginVersion": "",
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "format": "table",
+          "rawSql": "SELECT value FROM energy_prices WHERE series_id = 'PET.RWTC.D' AND value IS NOT NULL ORDER BY period_start DESC LIMIT 1;",
+          "refId": "A"
+        }
+      ],
+      "title": "WTI Crude ($/BBL)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 72
+              },
+              {
+                "color": "red",
+                "value": 92
+              }
+            ]
+          },
+          "unit": "currencyUSD"
+        }
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 5,
+        "y": 1
+      },
+      "id": 2,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^value$/",
+          "values": false
+        },
+        "textMode": "value_and_name"
+      },
+      "pluginVersion": "",
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "format": "table",
+          "rawSql": "SELECT value FROM energy_prices WHERE series_id = 'PET.RBRTE.D' AND value IS NOT NULL ORDER BY period_start DESC LIMIT 1;",
+          "refId": "A"
+        }
+      ],
+      "title": "Brent Crude ($/BBL)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 3,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 3
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
+            ]
+          },
+          "unit": "currencyUSD"
+        }
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 10,
+        "y": 1
+      },
+      "id": 3,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^value$/",
+          "values": false
+        },
+        "textMode": "value_and_name"
+      },
+      "pluginVersion": "",
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "format": "table",
+          "rawSql": "SELECT value FROM energy_prices WHERE series_id = 'NG.RNGWHHD.D' AND value IS NOT NULL ORDER BY period_start DESC LIMIT 1;",
+          "refId": "A"
+        }
+      ],
+      "title": "Henry Hub Nat Gas ($/MMBTU)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 5
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
+            ]
+          },
+          "unit": "currencyUSD"
+        }
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 9,
+        "x": 15,
+        "y": 1
+      },
+      "id": 4,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^brent_wti_spread$/",
+          "values": false
+        },
+        "textMode": "value_and_name"
+      },
+      "pluginVersion": "",
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "format": "table",
+          "rawSql": "SELECT ROUND((b.value - w.value)::numeric, 2) AS brent_wti_spread FROM (SELECT value FROM energy_prices WHERE series_id = 'PET.RBRTE.D' AND value IS NOT NULL ORDER BY period_start DESC LIMIT 1) b, (SELECT value FROM energy_prices WHERE series_id = 'PET.RWTC.D' AND value IS NOT NULL ORDER BY period_start DESC LIMIT 1) w;",
+          "refId": "A"
+        }
+      ],
+      "title": "Brent-WTI Spread",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 10,
+            "lineWidth": 2
+          },
+          "unit": "currencyUSD"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 5
+      },
+      "id": 5,
+      "options": {
+        "legend": {
+          "calcs": [
+            "last",
+            "min",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "pluginVersion": "",
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "format": "table",
+          "rawSql": "SELECT period_start::timestamptz AS time, series_title, value FROM energy_prices WHERE series_id IN ('PET.RWTC.D','PET.RBRTE.D') AND period_start >= NOW() - INTERVAL '1 year' ORDER BY period_start ASC;",
+          "refId": "A",
+          "timeColumn": "time"
+        }
+      ],
+      "title": "WTI & Brent Crude (1 Year)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 10,
+            "lineWidth": 2
+          },
+          "unit": "currencyUSD"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 5
+      },
+      "id": 6,
+      "options": {
+        "legend": {
+          "calcs": [
+            "last",
+            "min",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "pluginVersion": "",
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "format": "table",
+          "rawSql": "SELECT period_start::timestamptz AS time, series_title, value FROM energy_prices WHERE series_id = 'NG.RNGWHHD.D' AND period_start >= NOW() - INTERVAL '1 year' ORDER BY period_start ASC;",
+          "refId": "A",
+          "timeColumn": "time"
+        }
+      ],
+      "title": "Henry Hub Natural Gas (1 Year)",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 13
+      },
+      "id": 28,
+      "title": "── PRECIOUS METALS & COMMODITIES ETFs",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 8,
+            "lineWidth": 2
+          },
+          "unit": "currencyUSD"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 14
+      },
+      "id": 7,
+      "options": {
+        "legend": {
+          "calcs": [
+            "last",
+            "min",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "pluginVersion": "",
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "format": "table",
+          "rawSql": "SELECT date::timestamptz AS time, ticker, close FROM market_daily WHERE ticker IN ('GLD','SLV') AND date >= NOW() - INTERVAL '90 days' ORDER BY date ASC;",
+          "refId": "A",
+          "timeColumn": "time"
+        }
+      ],
+      "title": "Precious Metals — GLD / SLV (90 days)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 8,
+            "lineWidth": 2
+          },
+          "unit": "currencyUSD"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 14
+      },
+      "id": 8,
+      "options": {
+        "legend": {
+          "calcs": [
+            "last",
+            "min",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "pluginVersion": "",
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "format": "table",
+          "rawSql": "SELECT date::timestamptz AS time, ticker, close FROM market_daily WHERE ticker IN ('USO','UNG','ERX') AND date >= NOW() - INTERVAL '90 days' ORDER BY date ASC;",
+          "refId": "A",
+          "timeColumn": "time"
+        }
+      ],
+      "title": "Energy & Gas ETFs — USO / UNG / ERX (90 days)",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 22
+      },
+      "id": 29,
+      "title": "── AGRICULTURE",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "currencyUSD"
+        }
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 0,
+        "y": 23
+      },
+      "id": 9,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^value$/",
+          "values": false
+        },
+        "textMode": "value_and_name"
+      },
+      "pluginVersion": "",
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "format": "table",
+          "rawSql": "SELECT value FROM agriculture_prices WHERE commodity = 'CORN' AND units = '$ / BU' AND value IS NOT NULL ORDER BY period_start DESC LIMIT 1;",
+          "refId": "A"
+        }
+      ],
+      "title": "Corn ($/BU)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "currencyUSD"
+        }
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 4,
+        "y": 23
+      },
+      "id": 10,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^value$/",
+          "values": false
+        },
+        "textMode": "value_and_name"
+      },
+      "pluginVersion": "",
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "format": "table",
+          "rawSql": "SELECT value FROM agriculture_prices WHERE commodity = 'SOYBEANS' AND units = '$ / BU' AND value IS NOT NULL ORDER BY period_start DESC LIMIT 1;",
+          "refId": "A"
+        }
+      ],
+      "title": "Soybeans ($/BU)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "currencyUSD"
+        }
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 8,
+        "y": 23
+      },
+      "id": 11,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^value$/",
+          "values": false
+        },
+        "textMode": "value_and_name"
+      },
+      "pluginVersion": "",
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "format": "table",
+          "rawSql": "SELECT value FROM agriculture_prices WHERE commodity = 'WHEAT' AND units = '$ / BU' AND value IS NOT NULL ORDER BY period_start DESC LIMIT 1;",
+          "refId": "A"
+        }
+      ],
+      "title": "Wheat ($/BU)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "currencyUSD"
+        }
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 12,
+        "y": 23
+      },
+      "id": 12,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^value$/",
+          "values": false
+        },
+        "textMode": "value_and_name"
+      },
+      "pluginVersion": "",
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "format": "table",
+          "rawSql": "SELECT value FROM agriculture_prices WHERE commodity = 'COTTON' AND units = '$ / LB' AND value IS NOT NULL ORDER BY period_start DESC LIMIT 1;",
+          "refId": "A"
+        }
+      ],
+      "title": "Cotton ($/LB)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "currencyUSD"
+        }
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 16,
+        "y": 23
+      },
+      "id": 13,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^value$/",
+          "values": false
+        },
+        "textMode": "value_and_name"
+      },
+      "pluginVersion": "",
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "format": "table",
+          "rawSql": "SELECT value FROM agriculture_prices WHERE commodity = 'CATTLE' AND units = '$ / CWT' AND value IS NOT NULL ORDER BY period_start DESC LIMIT 1;",
+          "refId": "A"
+        }
+      ],
+      "title": "Cattle ($/CWT)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "currencyUSD"
+        }
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 20,
+        "y": 23
+      },
+      "id": 14,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^value$/",
+          "values": false
+        },
+        "textMode": "value_and_name"
+      },
+      "pluginVersion": "",
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "format": "table",
+          "rawSql": "SELECT value FROM agriculture_prices WHERE commodity = 'HOGS' AND units = '$ / CWT' AND value IS NOT NULL ORDER BY period_start DESC LIMIT 1;",
+          "refId": "A"
+        }
+      ],
+      "title": "Hogs ($/CWT)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 8,
+            "lineWidth": 2
+          },
+          "unit": "currencyUSD"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 27
+      },
+      "id": 15,
+      "options": {
+        "legend": {
+          "calcs": [
+            "last",
+            "min",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "pluginVersion": "",
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "format": "table",
+          "rawSql": "SELECT period_start::timestamptz AS time, commodity, value FROM agriculture_prices WHERE commodity IN ('CORN','SOYBEANS','WHEAT') AND units = '$ / BU' AND period_start >= NOW() - INTERVAL '1 year' ORDER BY period_start ASC;",
+          "refId": "A",
+          "timeColumn": "time"
+        }
+      ],
+      "title": "Grains — Corn / Soybeans / Wheat (1 Year)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 8,
+            "lineWidth": 2
+          },
+          "unit": "currencyUSD"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 27
+      },
+      "id": 16,
+      "options": {
+        "legend": {
+          "calcs": [
+            "last",
+            "min",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "pluginVersion": "",
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "format": "table",
+          "rawSql": "SELECT period_start::timestamptz AS time, commodity, value FROM agriculture_prices WHERE commodity IN ('CATTLE','HOGS') AND units = '$ / CWT' AND period_start >= NOW() - INTERVAL '1 year' ORDER BY period_start ASC;",
+          "refId": "A",
+          "timeColumn": "time"
+        }
+      ],
+      "title": "Livestock — Cattle / Hogs (1 Year)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 8,
+            "lineWidth": 2
+          },
+          "unit": "currencyUSD"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 35
+      },
+      "id": 17,
+      "options": {
+        "legend": {
+          "calcs": [
+            "last",
+            "min",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "pluginVersion": "",
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "format": "table",
+          "rawSql": "SELECT date::timestamptz AS time, ticker, close FROM market_daily WHERE ticker IN ('CORN','WEAT','SOYB') AND date >= NOW() - INTERVAL '90 days' ORDER BY date ASC;",
+          "refId": "A",
+          "timeColumn": "time"
+        }
+      ],
+      "title": "Agricultural ETFs — CORN / WEAT / SOYB (90 days)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto"
+          }
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 35
+      },
+      "id": 18,
+      "options": {
+        "footer": {
+          "show": false
+        },
+        "showHeader": true
+      },
+      "pluginVersion": "",
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "format": "table",
+          "rawSql": "SELECT DISTINCT ON (commodity, units) commodity, units, value, period_start, period_label FROM agriculture_prices WHERE value IS NOT NULL ORDER BY commodity, units, period_start DESC;",
+          "refId": "A"
+        }
+      ],
+      "title": "Agriculture Price Summary (Latest)",
+      "type": "table"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 43
+      },
+      "id": 30,
+      "title": "── WEATHER (OPERATOR HOME)",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 60
+              },
+              {
+                "color": "yellow",
+                "value": 80
+              },
+              {
+                "color": "red",
+                "value": 95
+              }
+            ]
+          },
+          "unit": "fahrenheit"
+        }
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 0,
+        "y": 44
+      },
+      "id": 19,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^current_temp_f$/",
+          "values": false
+        },
+        "textMode": "value_and_name"
+      },
+      "pluginVersion": "",
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "format": "table",
+          "rawSql": "SELECT current_temp_f FROM weather_snapshots WHERE location_label = 'operator-home' ORDER BY fetched_at DESC LIMIT 1;",
+          "refId": "A"
+        }
+      ],
+      "title": "Current Temp",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 60
+              },
+              {
+                "color": "yellow",
+                "value": 80
+              },
+              {
+                "color": "red",
+                "value": 95
+              }
+            ]
+          },
+          "unit": "fahrenheit"
+        }
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 4,
+        "y": 44
+      },
+      "id": 20,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^today_high_f$/",
+          "values": false
+        },
+        "textMode": "value_and_name"
+      },
+      "pluginVersion": "",
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "format": "table",
+          "rawSql": "SELECT today_high_f FROM weather_snapshots WHERE location_label = 'operator-home' ORDER BY fetched_at DESC LIMIT 1;",
+          "refId": "A"
+        }
+      ],
+      "title": "Today High",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 50
+              },
+              {
+                "color": "yellow",
+                "value": 70
+              }
+            ]
+          },
+          "unit": "fahrenheit"
+        }
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 8,
+        "y": 44
+      },
+      "id": 21,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^today_low_f$/",
+          "values": false
+        },
+        "textMode": "value_and_name"
+      },
+      "pluginVersion": "",
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "format": "table",
+          "rawSql": "SELECT today_low_f FROM weather_snapshots WHERE location_label = 'operator-home' ORDER BY fetched_at DESC LIMIT 1;",
+          "refId": "A"
+        }
+      ],
+      "title": "Today Low",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 30
+              },
+              {
+                "color": "red",
+                "value": 60
+              }
+            ]
+          },
+          "unit": "percent"
+        }
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 12,
+        "y": 44
+      },
+      "id": 22,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^precipitation_chance$/",
+          "values": false
+        },
+        "textMode": "value_and_name"
+      },
+      "pluginVersion": "",
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "format": "table",
+          "rawSql": "SELECT precipitation_chance FROM weather_snapshots WHERE location_label = 'operator-home' ORDER BY fetched_at DESC LIMIT 1;",
+          "refId": "A"
+        }
+      ],
+      "title": "Precip Chance",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 15
+              },
+              {
+                "color": "red",
+                "value": 25
+              }
+            ]
+          },
+          "unit": "velocitymph"
+        }
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 16,
+        "y": 44
+      },
+      "id": 23,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^wind_mph$/",
+          "values": false
+        },
+        "textMode": "value_and_name"
+      },
+      "pluginVersion": "",
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "format": "table",
+          "rawSql": "SELECT wind_mph FROM weather_snapshots WHERE location_label = 'operator-home' ORDER BY fetched_at DESC LIMIT 1;",
+          "refId": "A"
+        }
+      ],
+      "title": "Wind Speed",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 6
+              },
+              {
+                "color": "red",
+                "value": 8
+              }
+            ]
+          },
+          "unit": "short"
+        }
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 20,
+        "y": 44
+      },
+      "id": 24,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^uv_index$/",
+          "values": false
+        },
+        "textMode": "value_and_name"
+      },
+      "pluginVersion": "",
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "format": "table",
+          "rawSql": "SELECT uv_index FROM weather_snapshots WHERE location_label = 'operator-home' ORDER BY fetched_at DESC LIMIT 1;",
+          "refId": "A"
+        }
+      ],
+      "title": "UV Index",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 10,
+            "lineWidth": 2
+          },
+          "unit": "fahrenheit"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 48
+      },
+      "id": 25,
+      "options": {
+        "legend": {
+          "calcs": [
+            "last",
+            "min",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "pluginVersion": "",
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "format": "table",
+          "rawSql": "SELECT fetched_at AS time, current_temp_f, today_high_f, today_low_f FROM weather_snapshots WHERE location_label = 'operator-home' AND fetched_at >= NOW() - INTERVAL '30 days' ORDER BY fetched_at ASC;",
+          "refId": "A",
+          "timeColumn": "time"
+        }
+      ],
+      "title": "Temperature History — High / Low / Current (30 days)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "cflc7izgwm7lsc"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto"
+          }
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 48
+      },
+      "id": 26,
+      "options": {
+        "footer": {
+          "show": false
+        },
+        "showHeader": true
+      },
+      "pluginVersion": "",
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "cflc7izgwm7lsc"
+          },
+          "format": "table",
+          "rawSql": "SELECT fetched_at, current_temp_f, today_high_f, today_low_f, conditions, wind_mph, humidity_pct, precipitation_chance, uv_index FROM weather_snapshots WHERE location_label = 'operator-home' ORDER BY fetched_at DESC LIMIT 10;",
+          "refId": "A"
+        }
+      ],
+      "title": "Weather Conditions Summary",
+      "type": "table"
+    }
+  ],
+  "preload": false,
+  "refresh": "5m",
+  "schemaVersion": 42,
+  "tags": [
+    "bhn",
+    "commodities",
+    "energy",
+    "agriculture",
+    "weather",
+    "metals"
+  ],
+  "time": {
+    "from": "now-90d",
+    "to": "now"
+  },
+  "timepicker": {
+    "refresh_intervals": [
+      "5s",
+      "10s",
+      "30s",
+      "1m",
+      "5m",
+      "15m",
+      "30m",
+      "1h",
+      "2h",
+      "1d"
+    ]
+  },
+  "timezone": "America/Los_Angeles",
+  "title": "BHN — Commodities & Tangible Asset Markets",
+  "uid": "bhn-commodities",
+  "version": 3
+}
