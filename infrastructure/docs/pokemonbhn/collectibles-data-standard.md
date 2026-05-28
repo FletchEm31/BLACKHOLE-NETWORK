@@ -406,7 +406,18 @@ raw_payload         JSONB
 
 Sequence `USAGE` granted to writers as needed for the `SERIAL` / `BIGSERIAL` defaults.
 
-### 10.8 Relationship to `seller_profiles`
+### 10.8 Intentionally-NULL fields on Courtyard rows
+
+Two columns on `courtyard_transactions` are **always NULL by design** — future sessions should not flag these as missing data:
+
+| Column | Why NULL on Courtyard |
+|---|---|
+| `listed_price` | OpenSea's sale-event payload doesn't carry the pre-sale ask price. The transaction event records the realized price only (→ `sold_price`). The asking price for active inventory lives on `courtyard_asks` instead. Backfilling from `courtyard_asks` at sale time is not done — listings are deleted on fulfillment, so by the time the sale event arrives the ask history is already gone unless we polled it frequently. |
+| `shipping` | Courtyard sales are peer-to-peer ERC-721 transfers on Polygon. The physical card never moves — it stays in Brink's-vaulted custody. Shipping cost only applies if the buyer later requests **redemption** (a separate action, not part of the sale), which incurs the `Redemption Handling` + `Shipping Domestic`/`Shipping International` fees from `fee_schedule`. Those costs are tracked on `arbitrage_positions.shipping_cost` for your own trades, not on the third-party sale row. |
+
+Same applies to `collector_crypt_transactions` for the same reasons (Solana ERC-721-equivalent, vaulted custody).
+
+### 10.9 Relationship to `seller_profiles`
 
 Tokenized observation tables carry `seller_username` (mirror column from `ebay_listings`) and `seller_address` (the wallet address — a tokenized-specific addition). Neither is FK-bound to `seller_profiles`, but both are *expected* to map to it for cross-table joins:
 
