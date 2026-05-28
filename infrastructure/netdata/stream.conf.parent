@@ -1,0 +1,23 @@
+# /etc/netdata/stream.conf  (LA — the streaming parent)
+# Deployed path on LA: /opt/netdata/etc/netdata/stream.conf  (static-kickstart install)
+#
+# Receives streamed metrics from NJ, Hillsboro, and Frankfurt.
+# Configured 2026-05-28 as part of the centralized monitoring rollout.
+#
+# The actual API key is NOT in this repo — replace <APIKEY> with the value
+# from the operator's secret store. The same UUID lives on each child as
+# `api key = ...` in the [stream] section.
+#
+# CRITICAL: `type = api` is required on v2.x. Without it the API key
+# section is ignored and children silently fail to authenticate. The
+# upstream template explicitly warns "YOU MUST SET THIS FIELD ON ALL
+# API KEYS." We hit this — children wouldn't connect until we added it.
+
+[<APIKEY>]
+    type = api
+    enabled = yes
+    # mesh networks only — children authenticate over WG
+    allow from = 10.8.0.* 10.9.0.* 127.0.0.1
+    default history = 3600
+    health enabled by default = auto
+    multiple connections = allow
