@@ -346,22 +346,46 @@ async function insertRow(client, row, sellerCol, hasGradeLabel, validGrades) {
     return 'rejected';
   }
 
+  // Map row keys (legacy CSV-shape) to live v2 ebay_transactions columns.
+  // Renames: pbds_code→card_code, title→title_raw, transaction_type→sale_type, created_at→sold_at.
+  // Dropped (live on ebay_asks per v2 §12) preserved in raw_payload.
+  const saleTypeRaw = row.transaction_type;
+  let saleType = null;
+  if (saleTypeRaw) {
+    const s = String(saleTypeRaw).trim().toLowerCase();
+    if (s === 'auction') saleType = 'auction';
+    else if (s === 'bin' || s === 'buy it now' || s === 'fixed_price' || s === 'fixed price') saleType = 'fixed_price';
+    else if (s === 'best offer' || s === 'offer_accepted') saleType = 'offer_accepted';
+    else if (s === 'buyback') saleType = 'buyback';
+    else if (s === 'peer_to_peer' || s === 'peer to peer') saleType = 'peer_to_peer';
+  }
+
+  const rawPayload = {
+    source: 'ebay-sold-scrape-all.js',
+    loaded_at: new Date().toISOString(),
+    listing_url: row.listing_url || null,
+    condition: row.condition || null,
+    returns_accepted: row.returns_accepted,
+    current_bid: row.current_bid,
+    seller_feedback: row.seller_feedback,
+  };
+
   const cols = [
-    'pbds_code','item_id','title','card_name','set_name','card_number','edition',
+    'card_code','item_id','title_raw','card_name','set_name','card_number','edition',
     'print_variant','grader','grade','sold_price','currency','shipping',
-    'transaction_type','bid_count','created_at', sellerCol,'seller_feedback',
-    'seller_feedback_pct','cert_number','location','condition','returns_accepted',
-    'obo_min_price','current_bid','watchers','listing_url',
+    'sale_type','bid_count','sold_at', sellerCol,
+    'seller_feedback_pct','cert_number','location',
+    'obo_min_price','watchers','raw_payload',
   ];
   const vals = [
     row.pbds_code, row.item_id, row.title, row.card_name, row.set_name,
     row.card_number, row.edition, row.print_variant, grader, grade,
     row.sold_price, row.currency, row.shipping,
-    row.transaction_type, row.bid_count, row.created_at,
-    row.seller, row.seller_feedback, row.seller_feedback_pct,
+    saleType, row.bid_count, row.created_at,
+    row.seller, row.seller_feedback_pct,
     null,  // cert_number — always NULL (Option A)
-    row.location, row.condition, row.returns_accepted,
-    row.obo_min_price, row.current_bid, row.watchers, row.listing_url,
+    row.location,
+    row.obo_min_price, row.watchers, JSON.stringify(rawPayload),
   ];
 
   if (hasGradeLabel) {
@@ -403,6 +427,7 @@ async function main() {
 
   // Load config
   const config = hotReloadConfig(CONFIG_PATH) || {
+    initial_warmup_min_sec: 120, initial_warmup_max_sec: 180,
     delay_min_sec: 8, delay_max_sec: 15,
     long_pause_every_n: 12, long_pause_min_sec: 25, long_pause_max_sec: 45,
     break_every_n: 50, break_min_min: 3, break_max_min: 5,
@@ -471,8 +496,10 @@ async function main() {
   updateHeader();
   updateStats();
 
-  // Shared reqState for delay multiplier (passed by reference into scrapeSet via callbacks)
-  const reqState = { delayMultiplier: state.delayMultiplier };
+  // Shared reqState for delay multiplier (passed by reference into scrapeSet via callbacks).
+  // warmupDone starts false so scrapeCard's cold-start pause (120-180s) fires before the
+  // first eBay request — see feedback_ebay_scraper_never_auto_kickoff.
+  const reqState = { delayMultiplier: state.delayMultiplier, warmupDone: false };
 
   // Kick off stats update ticker
   const statsTicker = NO_UI ? null : setInterval(() => {

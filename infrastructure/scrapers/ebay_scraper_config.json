@@ -1,4 +1,6 @@
 {
+  "initial_warmup_min_sec": 120,
+  "initial_warmup_max_sec": 180,
   "delay_min_sec": 8,
   "delay_max_sec": 15,
   "long_pause_every_n": 12,

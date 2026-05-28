@@ -68,6 +68,15 @@ function parseMoney(raw) {
   return isNaN(n) ? null : n;
 }
 
+// Strip '%' suffix and parse to float; CSV exports feedback as "99.8%".
+// Existing ebay_transactions rows store this as a plain percentage number.
+function parsePercent(raw) {
+  if (raw === null || raw === undefined || raw === '') return null;
+  const s = String(raw).trim().replace(/%$/, '');
+  const n = parseFloat(s);
+  return isNaN(n) ? null : n;
+}
+
 // Coerce empty string to null; parse int.
 function parseIntOrNull(raw) {
   if (raw === null || raw === undefined || raw === '') return null;
@@ -89,6 +98,20 @@ function parseDate(raw) {
   if (!raw || raw.trim() === '') return null;
   const d = new Date(raw.trim());
   return isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+// Normalize CSV/scraper transaction_type values to the v2 sale_type vocabulary.
+// CHECK constraint on ebay_transactions.sale_type allows:
+//   auction, fixed_price, offer_accepted, buyback, peer_to_peer
+function normalizeSaleType(raw) {
+  if (!raw) return null;
+  const s = String(raw).trim().toLowerCase();
+  if (s === 'auction') return 'auction';
+  if (s === 'bin' || s === 'buy it now' || s === 'fixed_price' || s === 'fixed price') return 'fixed_price';
+  if (s === 'best offer' || s === 'offer_accepted') return 'offer_accepted';
+  if (s === 'buyback') return 'buyback';
+  if (s === 'peer_to_peer' || s === 'peer to peer') return 'peer_to_peer';
+  return null;
 }
 
 // Normalize grade for FK validation.
@@ -242,13 +265,26 @@ async function main() {
       continue;
     }
 
-    // Build column/value lists dynamically to handle optional grade_label column.
+    // Build column/value lists mapped to live v2 ebay_transactions schema.
+    // Renames: pbds_code→card_code, title→title_raw, transaction_type→sale_type, created_at→sold_at.
+    // Dropped columns (live on ebay_asks per v2 §12, not on transactions) preserved in raw_payload:
+    //   listing_url, condition, returns_accepted, current_bid, seller_feedback.
+    const rawPayload = {
+      source: 'ebay-sold-load.js',
+      loaded_at: new Date().toISOString(),
+      listing_url: listingUrl,
+      condition: row.condition || null,
+      returns_accepted: parseBool(row.returns_accepted),
+      current_bid: parseMoney(row.current_bid),
+      seller_feedback: sellerFb,
+    };
+
     const cols = [
-      'pbds_code','item_id','title','card_name','set_name','card_number','edition',
+      'card_code','item_id','title_raw','card_name','set_name','card_number','edition',
       'print_variant','grader','grade','sold_price','currency','shipping',
-      'transaction_type','bid_count','created_at', sellerCol,'seller_feedback',
-      'seller_feedback_pct','cert_number','location','condition','returns_accepted',
-      'obo_min_price','current_bid','watchers','listing_url',
+      'sale_type','bid_count','sold_at', sellerCol,
+      'seller_feedback_pct','cert_number','location',
+      'obo_min_price','watchers','raw_payload',
     ];
     const vals = [
       row.pbds_code || null,
@@ -264,20 +300,16 @@ async function main() {
       soldPrice,
       row.currency  || null,
       shipping,
-      row.transaction_type || null,
+      normalizeSaleType(row.transaction_type),
       bidCount,
       createdAt,
       row.seller    || null,
-      sellerFb,
-      row.seller_feedback_pct || null,
+      parsePercent(row.seller_feedback_pct),
       null,   // cert_number — Option A: always NULL
       row.location  || null,
-      row.condition || null,
-      parseBool(row.returns_accepted),
       parseMoney(row.obo_min_price),
-      parseMoney(row.current_bid),
       watchers,
-      listingUrl,
+      JSON.stringify(rawPayload),
     ];
 
     if (hasGradeLabel) {

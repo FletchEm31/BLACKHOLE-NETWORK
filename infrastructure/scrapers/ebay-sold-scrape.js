@@ -15,7 +15,8 @@
 //
 // Usage (single card):
 //   node ebay-sold-scrape.js --card "Dark Weezing" --set "Team Rocket" \
-//     --card-number 14 --edition "1st Edition" --variant Holo [--dry-run]
+//     --card-number 14 --edition "1st Edition" --print-variant Holo [--dry-run]
+// (--variant kept as deprecated alias for --print-variant)
 //
 // Stealth rules (non-negotiable):
 //   Base delay: 8–15s randomised · Long pause every 10–15 req: 25–45s
@@ -459,15 +460,27 @@ async function scrapeCard(cardDef, config, callbacks, sessionUA, reqState) {
     }
 
     const url = buildSearchUrl(cardDef, page);
-    onLog && onLog(`[FETCH] ${cardCode} p${page} — ${url.slice(0, 80)}…`, 'debug');
+    const multiplier = (reqState && reqState.delayMultiplier) || 1.0;
+
+    // Cold-start warmup — fires ONCE per process, before the very first eBay request.
+    // Critical: prevents hammering a possibly-already-rate-limited IP immediately on resume.
+    // Per feedback_ebay_scraper_never_auto_kickoff: a sub-15s base delay is NOT a warmup.
+    if (!reqState.warmupDone) {
+      const warmupMs = randMs(
+        config.initial_warmup_min_sec || 120,
+        config.initial_warmup_max_sec || 180
+      ) * multiplier;
+      onLog && onLog(`[WARMUP] cold-start pause ${Math.round(warmupMs/1000)}s before first eBay request`, 'info');
+      await sleep(warmupMs);
+      reqState.warmupDone = true;
+    }
 
     // Stealth delay before every request
-    const multiplier = (reqState && reqState.delayMultiplier) || 1.0;
     await sleep(randMs(config.delay_min_sec, config.delay_max_sec) * multiplier);
 
-    // Long pause every 10–15 requests
+    // Long pause every 10–15 requests (gate dropped — also evaluates on request 1)
     reqState.count = (reqState.count || 0) + 1;
-    if (reqState.count > 1 && reqState.count % reqState.longPauseEvery === 0) {
+    if (reqState.count % reqState.longPauseEvery === 0) {
       const pauseMs = randMs(config.long_pause_min_sec, config.long_pause_max_sec) * multiplier;
       onLog && onLog(`[PAUSE] long pause ${Math.round(pauseMs/1000)}s`, 'info');
       onStats && onStats({ pauses: 1 });
@@ -475,8 +488,8 @@ async function scrapeCard(cardDef, config, callbacks, sessionUA, reqState) {
       reqState.longPauseEvery = randInt(10, 15);  // re-randomise interval
     }
 
-    // Full break every ~50 requests
-    if (reqState.count > 1 && reqState.count % (config.break_every_n || 50) === 0) {
+    // Full break every ~50 requests (gate dropped — also evaluates on request 1)
+    if (reqState.count % (config.break_every_n || 50) === 0) {
       const breakMs = randMs(
         (config.break_min_min || 3) * 60,
         (config.break_max_min || 5) * 60
@@ -488,6 +501,9 @@ async function scrapeCard(cardDef, config, callbacks, sessionUA, reqState) {
 
     let status, html;
     try {
+      // [FETCH] log placed here so its timestamp reflects the actual HTTP request,
+      // not the queue intent (this fires AFTER warmup + base-delay + any pause/break).
+      onLog && onLog(`[FETCH] ${cardCode} p${page} — ${url.slice(0, 80)}…`, 'debug');
       ({ status, text: html } = await fetchPage(url, sessionUA));
       onStats && onStats({ requests: 1 });
     } catch (e) {
@@ -703,26 +719,27 @@ async function main() {
   const setName     = flag('--set');
   const cardNumber  = flag('--card-number');
   const edition     = flag('--edition')  || '1st Edition';
-  const variant     = flag('--variant')  || 'Standard';
+  const printVariant = flag('--print-variant') || flag('--variant') || 'Standard';
   const dryRun      = hasF('--dry-run');
   const configPath  = flag('--config')   || path.join(__dirname, 'ebay_scraper_config.json');
   const checkDir    = flag('--checkpoint-dir') || path.join(__dirname, 'checkpoints');
 
   if (!cardName || !setName) {
-    console.error('usage: ebay-sold-scrape.js --card <name> --set <set> [--card-number N] [--edition <ed>] [--variant <v>] [--dry-run]');
+    console.error('usage: ebay-sold-scrape.js --card <name> --set <set> [--card-number N] [--edition <ed>] [--print-variant <v>] [--dry-run]');
     process.exit(2);
   }
 
   const config = hotReloadConfig(configPath) || {
+    initial_warmup_min_sec: 120, initial_warmup_max_sec: 180,
     delay_min_sec: 8, delay_max_sec: 15,
     long_pause_every_n: 12, long_pause_min_sec: 25, long_pause_max_sec: 45,
     break_every_n: 50, break_min_min: 3, break_max_min: 5,
     max_pages_per_card: 3, checkpoint_every_n_cards: 10,
   };
 
-  const cardDef = { card_name: cardName, set_name: setName, card_number: cardNumber || '0', edition, print_variant: variant };
+  const cardDef = { card_name: cardName, set_name: setName, card_number: cardNumber || '0', edition, print_variant: printVariant };
   const sessionUA = pickSessionUA();
-  const reqState  = { count: 0, longPauseEvery: 12, consecutiveBlocks: 0, delayMultiplier: 1.0, shouldStop: false };
+  const reqState  = { count: 0, longPauseEvery: 12, consecutiveBlocks: 0, delayMultiplier: 1.0, shouldStop: false, warmupDone: false };
 
   const callbacks = {
     onLog:    (msg, level) => console.log(`[${level || 'info'}] ${msg}`),
