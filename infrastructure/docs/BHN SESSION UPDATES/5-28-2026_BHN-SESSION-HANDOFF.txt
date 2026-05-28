@@ -1,0 +1,314 @@
+==========================================================================
+BHN SESSION HANDOFF — 2026-05-28 (Thursday)
+==========================================================================
+
+Session scope: infrastructure cleanup + ShadowBroker attempt + SDR schema
+prep + Netdata streaming + WireGuard PSK rotation + LA egress lockdown
+completion. Carried through from the earlier 2026-05-28 session that did
+the Grafana LA→NJ migration and Metabase install.
+
+All fleet-touching work below was operator-greenlit at the start of the
+session. Commits are on origin/main.
+
+--------------------------------------------------------------------------
+HEADLINE STATE AS OF END OF SESSION
+--------------------------------------------------------------------------
+
+  Nodes:    LA (10.8.0.1)         BHN-LOSANGELES-US1, mesh hub, PG, n8n
+            NJ (10.8.0.5)         BHN-NEWJERSEY-US2, trading + Grafana + Metabase
+            Hillsboro (10.8.0.6)  BHN-HILLSBORO-US3, tinyproxy + Tor relay
+            Frankfurt (10.9.0.2)  BHN-FRANKFURT-EU1, decom queued
+
+  All 4 nodes streaming Netdata metrics to LA (UI: http://10.8.0.1:19999).
+  Grafana migrated to NJ (UI: http://10.8.0.5:3000). LA Grafana stopped+disabled.
+  Metabase live on NJ (UI: http://10.8.0.5:3001) — first-run wizard pending operator.
+  ShadowBroker queued — needs a 4 GB+ dedicated VPS.
+  RTL-SDR dongle arrives 2026-05-29 — 3 PG tables pre-created.
+
+--------------------------------------------------------------------------
+COMPLETED — INFRASTRUCTURE CLEANUP
+--------------------------------------------------------------------------
+
+  Item 6  LA hostname:
+          renamed from "vultr" to "BHN-LOSANGELES-US1" via hostnamectl.
+          /etc/hosts entry added.
+
+  Item 2  FRA UFW orphan rule for 9001/tcp (Tor relay ORPort):
+          deleted v4 + v6 rules. Tor container was decommissioned earlier
+          in the day; the rule was dangling.
+
+  Item 8  Suricata on NJ + FRA:
+          stopped + disabled. Hillsboro was already done in prior session.
+          LA Suricata left running for now (operator did not direct removal).
+
+  Item 10 Unneeded VPS services across all 4 nodes:
+          disabled — ModemManager, snapd, multipathd. fwupd + packagekit
+          turned out to be socket-activated only (not standalone-enabled)
+          on most nodes; they remain idle.
+          RAM reclaim: 8–17 MB immediate per node; larger gains as cache
+          ages out.
+
+  Item 9  wg1 mystery — IDENTIFIED:
+          LA's wg1 (port 51822, key V3RenHJ...) is a dedicated point-to-
+          point alt-egress tunnel to Hillsboro on 10.10.0.0/30. AllowedIPs
+          0.0.0.0/0 on LA side; not currently used as default route. Active
+          handshake, ~3 MiB keepalive only since boot.
+          Purpose: provisioned-but-dormant kernel-level egress fallback.
+          If tinyproxy fails or operator wants to rotate LA's egress IP
+          at the OS layer (covering Node native fetch, pg-client, anything
+          bypassing HTTP_PROXY), promoting wg1 to default route does it
+          in one command. DO NOT MODIFY.
+          Documented at infrastructure/docs/wg-mesh-topology.md.
+
+  Item 7  fail2ban on Hillsboro:
+          installed + enabled with stripped [DEFAULT] + [sshd] config
+          (no [grafana]/[postgresql]/[n8n] since none run on Hillsboro).
+          Mesh ignoreip preserved.
+          Config in repo: infrastructure/services/fail2ban/hillsboro.jail.conf
+          (filename dodges the *.local.* gitignore pattern).
+
+  Item 3  NJ WireGuard PSK rotation:
+          NJ was the only mesh peer without a PSK on its LA link.
+          Generated one PSK, sed-inserted into both /etc/wireguard/wg0.conf
+          files under the appropriate peer block, applied via
+          `wg syncconf wg0 <(wg-quick strip wg0)` on both ends.
+          Verify: handshake 37s post-sync; ping both ways 0% loss.
+          Backups: /etc/wireguard/wg0.conf.bak-2026-05-28 on both nodes.
+
+  Item 1  LA Docker daemon proxy drop-in:
+          /etc/systemd/system/docker.service.d/proxy.conf was staged in a
+          prior commit (40af768) but never activated. Activated this session
+          with systemctl daemon-reload && systemctl restart docker.
+          dockerd /proc/PID/environ now shows HTTP_PROXY / HTTPS_PROXY
+          pointing at http://10.8.0.6:8888.
+          n8n, bhn-horizon-redis, bhn-wallos all recovered cleanly post-
+          restart (n8n /healthz=ok, wallos health=healthy, redis responsive).
+
+          CAVEAT (resolved): initial docker pull through the proxy chain
+          returned a wrong TLS cert (stage-teams.ndms.nascar.com instead
+          of docker.com). Curl through the same proxy worked fine —
+          suggests Docker daemon's image fetcher hits an IPv6 path that
+          tinyproxy or upstream misroutes.
+
+          STOPGAP applied: added docker.io, docker.com, cloudflare.docker.com
+          to NO_PROXY in the drop-in. Pulls now go direct (LA's IP) for
+          Docker registry endpoints only. Loses lockdown purity for that
+          one path; preserves it for everything else. `docker pull alpine`
+          verified working.
+
+          ROOT CAUSE investigation deferred — likely something to do with
+          tinyproxy's CONNECT path not supporting IPv6 cleanly. Not a
+          regression; existing containers unaffected.
+
+--------------------------------------------------------------------------
+COMPLETED — NETDATA STREAMING
+--------------------------------------------------------------------------
+
+  LA is now the streaming parent. All 4 nodes appear in the Nodes view
+  at http://10.8.0.1:19999.
+
+  Shared API key (kept off-repo, in operator secret store):
+      0f223adb-5ce1-4faa-8aac-63bc8937791a
+
+  GOTCHA documented: parent's [API_KEY] section in stream.conf requires
+  `type = api` on Netdata v2.x. Without it the parent silently drops
+  children with zero log output on either side. Took 20 min to find.
+
+  Templates in repo: infrastructure/netdata/{stream.conf.parent,stream.conf.child,README.md}
+
+--------------------------------------------------------------------------
+COMPLETED — POSTGRES SCHEMAS FOR THE SDR PIPELINE
+--------------------------------------------------------------------------
+
+  Three new tables created on LA's eventhorizon DB. Owner postgres
+  (matches convention). Grants: bootstrap_writer SELECT+INSERT,
+  grafana_reader SELECT.
+
+      public.sdr_aircraft_positions   ADS-B from dump1090
+      public.sdr_aprs_packets         APRS from Direwolf
+      public.sdr_sensor_readings      rtl_433 ISM-band decodes
+
+  Repo: sql/sdr-{aircraft-positions,aprs-packets,sensor-readings}-schema.sql
+
+  Data flows in when the RTL-SDR dongle arrives 2026-05-29. Ingest path
+  (n8n cron? Python collector?) is TBD — design it when the dongle is
+  on the desk so we know what dump1090 actually emits.
+
+--------------------------------------------------------------------------
+DEFERRED — SHADOWBROKER + HORIZON WIRING
+--------------------------------------------------------------------------
+
+  Deployment attempted on LA, rolled back.
+
+  Backend container hit its 1 GB limit at 94 % within 2 minutes of boot,
+  driving LA into swap thrash (available RAM dropped to 220 MB, 1.6 GB
+  of swap in use). Backend never finished initial data sync.
+
+  Cause: ShadowBroker's backend wants ~1.5–2 GB resident at steady state.
+  LA at 1.9 GB total can't host it cleanly. NJ + Hillsboro are also too
+  full. FRA is too small AND being decommissioned.
+
+  DECISION: queue for deploy on a 4 GB+ dedicated VPS in a future session.
+  Operator to provision. Recommended spec: 4 GB RAM, 2 vCPU, 40 GB disk,
+  Vultr or Hetzner.
+
+  Staged in repo:
+      infrastructure/shadowbroker/docker-compose.override.yml
+      infrastructure/shadowbroker/.env.example
+      infrastructure/shadowbroker/README.md  (full deploy recipe + lessons)
+
+  HORIZON↔ShadowBroker wiring (item 12) is dependent on SB being up.
+  Same defer.
+
+  ShadowBroker repo cloned from github.com/brockmisner/shadowbroker
+  (operator's fork — works, identical content to canonical bigbodycobain).
+
+--------------------------------------------------------------------------
+DEFERRED — KERNEL PATCH (Phase D)
+--------------------------------------------------------------------------
+
+  Item 4 collapsed: no kernel upgrade currently available via apt for any
+  node. LA + NJ + FRA are at 5.15.0-177-generic, Hillsboro at 5.15.0-164
+  (older but no upgrade offered either).
+
+  CVE-2026-31431 (copy.fail) mitigation IS in place — verified Hillsboro
+  /etc/modprobe.d/disable-algif_aead.conf contains:
+      install algif_aead /bin/false
+
+  When upstream Ubuntu ships a patched 5.15 kernel, revisit. Plan calls
+  for one-node-at-a-time reboots, Hillsboro → NJ → LA, FRA skipped, with
+  trading-strategy halt on NJ.
+
+  Non-kernel security updates applied this session on Hillsboro + NJ
+  (docker-ce 29.4→29.5, snapd, etc.). LA skipped to avoid a third
+  Docker daemon restart in one day.
+
+--------------------------------------------------------------------------
+FRANKFURT DECOMMISSION PREP
+--------------------------------------------------------------------------
+
+  FRA is queued for full decommission in the next session. Captured in
+  the file at C:/Users/fletc/AppData/Local/Temp/fra-decom-enum.txt
+  (snapshot only — not in repo).
+
+  Services still running:
+      bhn-searxng, bhn-searxng-redis, bhn-librespeed (3 Docker containers)
+      shadowsocks-libev (server, public 8388)
+      crowdsec + bouncer + fail2ban + netdata
+
+  WireGuard:
+      wg1 interface, peer LA at 149.28.91.100:51820
+      Allowed IPs from LA: 10.8.0.0/24 (mesh) + 0.0.0.0/0 (egress)
+
+  Before final decom:
+      1) Migrate or shut down SearXNG + LibreSpeed (SearXNG is used by
+         operator workstation; LibreSpeed less critical).
+      2) Remove FRA peer block from LA's /etc/wireguard/wg0.conf and
+         /etc/wireguard/wg1.conf (the wg1 file references FRA — see
+         topology doc).
+      3) Drop /etc/wireguard/bhn-frankfurt-exit.sh PostUp hook from LA.
+      4) UFW egress rule cleanup: rule 13 (192.248.187.208 51821/udp ALLOW
+         OUT) and rule 14 (10.9.0.0/24 ALLOW OUT) on LA.
+
+--------------------------------------------------------------------------
+RADIO ROADMAP (per operator note)
+--------------------------------------------------------------------------
+
+  Hardware arriving / planned:
+      2026-05-29:  RTL-SDR dongle (NooElec starter kit assumed)
+                   → dump1090 (ADS-B), Direwolf (APRS), rtl_433 (ISM)
+                   PG schemas already created.
+      Soon:        Amateur radio license (operator pursuing)
+      After:       HackRF One (full-duplex SDR, TX-capable)
+      Long-term:   IC-7300 (HF transceiver)
+
+  None of this needs immediate code prep. The 3 new PG tables are the
+  only thing operator wants in place pre-dongle.
+
+--------------------------------------------------------------------------
+DOCKER PULL THROUGH PROXY — TODO FOR FOLLOW-UP
+--------------------------------------------------------------------------
+
+  Open investigation: why does Docker daemon's image fetcher get
+  wrong-cert errors through tinyproxy when curl through the same proxy
+  works fine?
+
+  Hypothesis: Docker uses Go's HTTP client which prefers IPv6 when
+  available. Hillsboro tinyproxy may not handle IPv6 upstream cleanly,
+  OR the upstream IPv6 path from Hillsboro hits a misconfigured edge.
+
+  Stopgap is in place (docker.io domains in NO_PROXY) so this isn't
+  urgent. Root cause investigation:
+      1) tail /var/log/tinyproxy/* on Hillsboro during a docker pull
+         (verify the request actually reaches tinyproxy)
+      2) Compare strace of docker pull vs curl through proxy
+      3) Try disabling IPv6 on docker0 bridge as a test
+      4) Consider a Docker registry mirror on Hillsboro as the proper fix
+
+--------------------------------------------------------------------------
+WG MESH TOPOLOGY CHANGES SUMMARY
+--------------------------------------------------------------------------
+
+  LA↔NJ wg0:       PSK added (was missing). Backup wg0.conf.bak-2026-05-28
+                   on both ends.
+  LA↔Hillsboro:    no change to wg0; wg1 alt-egress path identified and
+                   documented (no change).
+  LA↔FRA:          no change; queued for removal in FRA decom.
+  All other peers: unchanged.
+
+  Full topology at infrastructure/docs/wg-mesh-topology.md.
+
+--------------------------------------------------------------------------
+OPEN ITEMS / TODO
+--------------------------------------------------------------------------
+
+  1) HORIZON n8n workflow re-import (operator's separate task — explicitly
+     out of scope this session).
+  2) Provision 4 GB+ VPS for ShadowBroker. Deploy SB. Wire HORIZON.
+  3) Investigate docker-pull-through-tinyproxy IPv6 cert issue. Decide
+     whether to keep the NO_PROXY stopgap or implement a proper fix
+     (registry mirror?).
+  4) Apply non-kernel upgrades on LA when convenient (docker-ce 29.4→29.5,
+     snapd, etc.). Briefly stops n8n/redis/wallos.
+  5) Frankfurt full decommission — migrate SearXNG, remove WG peers, clean
+     up LA-side UFW egress rules.
+  6) 48 h Grafana rollback window expires 2026-05-30. After that, remove
+     LA's `apt remove grafana` and UFW rule [5] (3000/tcp from 10.8.0.0/24).
+  7) Pokemon/collectibles workflow continues separately. Untouched this
+     session per do-not-touch constraint.
+  8) Trading stack continues running on NJ. Untouched per constraint.
+  9) PostgreSQL — no schema changes beyond the 3 SDR tables this session.
+     Pokemon tables, transaction tables, n8n workflow tables all untouched.
+
+--------------------------------------------------------------------------
+SECRETS GENERATED THIS SESSION
+--------------------------------------------------------------------------
+
+  Kept in operator secret store (NOT in repo):
+
+  - LA↔NJ wg0 PSK:                  zOG/RVQESLpqT3zBvTawce+njpqrWonax+iwKXbqO+Q=
+  - Netdata streaming API key:      0f223adb-5ce1-4faa-8aac-63bc8937791a
+  - ShadowBroker ADMIN_KEY:         e40e2872b4b5fa3dbfec1ef7d5ce12ddc2d3f62c75d1d48f372e33c7ad95468b
+  - ShadowBroker MESH_PEER_PUSH:    7d1d77d84c9db6a6c8c164379b4cb3a115cc079f15a123177e10abbe4c6a6db9
+
+  ShadowBroker secrets are sitting in /opt/bhn/shadowbroker/.env on LA
+  but the stack is down. When SB is redeployed on the new host, either
+  copy this .env across or regenerate.
+
+--------------------------------------------------------------------------
+COMMITS THIS SESSION (sequence)
+--------------------------------------------------------------------------
+
+  dcc152a  feat(infra): Grafana LA→NJ migration files + 4-node audit snapshot
+  6189192  feat(metabase): NJ install — Docker compose, mesh-only, 512m heap cap
+  1690f94  feat(netdata): fleet streaming — LA parent, 3 children, shared API key
+  89d89aa  docs(infra): wg mesh topology — identify wg1 alt-egress path
+  18ede38  feat(infra): Phase B — fail2ban Hillsboro, SDR PG schemas, ShadowBroker staged
+  0de4cef  docs(infra): mark LA↔NJ wg0 PSK gap closed (rotated 2026-05-28)
+  <this>   docs(handoff): 2026-05-28 session handoff
+
+  Branch: main. Origin: github.com/FletchEm31/BLACKHOLE-NETWORK.
+
+--------------------------------------------------------------------------
+END HANDOFF
+--------------------------------------------------------------------------
