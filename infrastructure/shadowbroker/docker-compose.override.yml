@@ -1,0 +1,37 @@
+# BHN override for upstream ShadowBroker docker-compose.yml.
+#
+# Drop this file next to the upstream `docker-compose.yml` in the
+# ShadowBroker clone directory; `docker compose up -d` will auto-merge.
+#
+# Differences from upstream:
+#   - Frontend bound to the WG mesh interface only (operator-specified host
+#     + port — defaults below assume LA at 10.8.0.1:8099)
+#   - Backend's host port mapping suppressed entirely. Frontend proxies API
+#     calls to the backend over the Docker bridge network using the
+#     `backend` service name; nothing needs to be exposed on the host.
+#   - Resource limits adjusted for the 1.9 GB / 2 vCPU class boxes BHN uses
+#     by default. Reset these for a bigger dedicated SB host (recommended:
+#     give the backend at least 2 GB).
+#
+# Status note 2026-05-28: attempted deploy on LA failed — backend hit its
+# 1 GB limit during initial data sync and pushed LA into swap thrash. SB
+# really wants ~1.5–2 GB resident at steady state. Queued for deploy on a
+# 4 GB+ dedicated VPS in a future session.
+
+services:
+  frontend:
+    ports: !override
+      - "10.8.0.1:8099:3000"
+    deploy:
+      resources:
+        limits:
+          memory: 384M
+          cpus: '0.75'
+
+  backend:
+    ports: !override []
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1'
