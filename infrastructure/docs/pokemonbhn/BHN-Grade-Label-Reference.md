@@ -27,20 +27,26 @@ Live DB (`master_grade_catalog`) is ground truth — Claude Code must verify all
 
 ## Grader Sentinel Values — Disambiguating NULL
 
-`grader = NULL` is ambiguous between "we haven't captured this data yet" and "the card is ungraded / raw." HORIZON needs to distinguish those — a raw card is a market segment, missing data is a quality issue. Explicit sentinels:
+`grader = NULL` is ambiguous between "we haven't captured this data yet," "the card is ungraded," and "we couldn't parse the grade." HORIZON needs to distinguish all three — a raw card is a market segment, an unparseable grade is a parser issue, missing data is a scraper issue. Explicit sentinels:
 
-| Scenario | `grader` | `grade` | `grade_label` |
-|---|---|---|---|
-| Graded card (any tier) | `PSA` / `CGC` / `BGS` / `SGC` | the raw_label (e.g. `10`, `Gem Mint 10`) | tier name from title |
-| **Raw / ungraded card** (no slab) | **`RAW`** | NULL | `Ungraded` |
-| Data not captured yet | NULL | NULL | NULL |
+| Scenario | `grader` | `grade` | `grade_label` | Lives in |
+|---|---|---|---|---|
+| Graded card (any tier) | `PSA` / `CGC` / `BGS` / `SGC` | the raw_label (e.g. `10`, `Gem Mint 10`) | tier name from title | Graded fact tables |
+| **Raw / ungraded card** (no slab) | **`RAW`** | NULL | `Ungraded` | **`raw_*` tables** — see "RAW (Ungraded)" section below |
+| **Grade unparseable from title** | **`UNKNOWN`** | NULL | NULL | Graded fact tables — flag for operator review |
+| Data not captured yet | NULL | NULL | NULL | Anywhere — scraper/parser gap |
 
-`RAW` is a first-class grader value across all fact tables. CHECK constraints on `ebay_transactions`, `courtyard_transactions`, `courtyard_asks`, `collector_crypt_transactions`, `collector_crypt_asks` accept it; master catalog row: `('RAW', 'Ungraded', NULL, 'Ungraded', FALSE, FALSE)`. Migration: `sql/migrations/2026-05-28-grade-catalog-corrections.sql`.
+`RAW` and `UNKNOWN` are first-class grader values. CHECK constraints on `ebay_transactions`, `courtyard_transactions`, `courtyard_asks`, `collector_crypt_transactions`, `collector_crypt_asks` accept both (and PSA/CGC/BGS/SGC). Master catalog rows:
+- `('RAW', 'Ungraded', NULL, 'Ungraded', FALSE, FALSE)`
+- `('UNKNOWN', 'Unparseable', NULL, 'Unparseable', FALSE, FALSE)`
+
+Migration: `sql/migrations/2026-05-28-grade-catalog-corrections.sql`.
 
 **Rules:**
-- `grader = 'RAW'` is a positive assertion: the card IS ungraded. Distinct market segment from graded slabs — different price expectations, different sniping logic, different P&L treatment.
-- `grader = NULL` is a deficit: we don't know. Parser failed or scraper didn't capture. Operator should investigate why.
-- `grade = NULL` is acceptable when `grader = 'RAW'` (not applicable) OR when we couldn't determine the grade (missing).
+- `grader = 'RAW'` is a positive assertion: the card IS ungraded. **Lives in `raw_*` tables**, NOT graded fact tables.
+- `grader = 'UNKNOWN'` means we observed a listing but the grade was unparseable. Row still lands in graded fact tables for replay/review.
+- `grader = NULL` is a deficit: we don't know. Parser/scraper gap. Operator should investigate.
+- `grade = NULL` is acceptable when `grader IN ('RAW','UNKNOWN')` (not applicable / can't determine) OR when data is genuinely missing.
 - `grade_label = 'Ungraded'` only when `grader = 'RAW'`.
 
 ---
@@ -50,28 +56,28 @@ Live DB (`master_grade_catalog`) is ground truth — Claude Code must verify all
 
 | raw_label | tier_label | numeric | label color | reholder_eligible | Notes |
 |---|---|---|---|---|---|
-| `Perfect 10` | `Perfect` | 10.0 | (legacy) | — | LEGACY — retired 2023. Kept for backfill only. |
-| `Pristine 10` | `Pristine` | 10.0 | **Gold** | — | Current top tier. Distinct from Gem Mint. |
-| `Gem Mint 10` | `Gem Mint` | 10.0 | **Blue** | — | Current standard 10. Distinct from Pristine. |
-| `Gem Mint 9.5` | `Gem Mint` | 9.5 | **older Blue** | **TRUE** | **OUTLIER.** Older Blue Label naming. Market ≈ `Gem Mint 10`. Reholder → `Gem Mint 10` for ~$10. |
-| `Mint+ 9.5` | `Mint+` | 9.5 | Blue | — | Current standard 9.5. **NOT equivalent to a 10.** |
-| `9` | `Mint` | 9.0 | Blue | — | Raw label IS the bare number for grades 1–9 |
-| `8.5` | `Near Mint/Mint+` | 8.5 | Blue | — | |
-| `8` | `Near Mint/Mint` | 8.0 | Blue | — | |
-| `7.5` | `Near Mint+` | 7.5 | Blue | — | |
-| `7` | `Near Mint` | 7.0 | Blue | — | |
-| `6.5` | `Excellent/Mint+` | 6.5 | Blue | — | |
-| `6` | `Excellent/Mint` | 6.0 | Blue | — | |
-| `5.5` | `Excellent+` | 5.5 | Blue | — | |
-| `5` | `Excellent` | 5.0 | Blue | — | |
-| `4.5` | `Very Good/Excellent+` | 4.5 | Blue | — | |
-| `4` | `Very Good/Excellent` | 4.0 | Blue | — | |
-| `3.5` | `Very Good+` | 3.5 | Blue | — | |
-| `3` | `Very Good` | 3.0 | Blue | — | |
-| `2.5` | `Good+` | 2.5 | Blue | — | |
-| `2` | `Good` | 2.0 | Blue | — | |
-| `1.5` | `Fair` | 1.5 | Blue | — | |
-| `1` | `Poor` | 1.0 | Blue | — | |
+| `Perfect 10` | `Perfect` | 10.0 | (legacy) | **TRUE** | LEGACY — retired 2023. Reholders to `Pristine 10` (**NOT** `Gem Mint 10`). Fee unknown. Kept for backfill only. |
+| `Pristine 10` | `Pristine` | 10.0 | **Gold** | — | Current top tier. Gold Label. Virtually flawless. 50/50 centering required. Distinct from Gem Mint. |
+| `Gem Mint 10` | `Gem Mint` | 10.0 | **Black** | — | Current standard 10. One criteria short of Pristine. |
+| `Gem Mint 9.5` | `Gem Mint` | 9.5 | **Blue** (legacy) | **TRUE** | **OUTLIER.** Legacy Blue Label naming. CGC officially treats as equivalent to `Gem Mint 10`. Reholder → `Gem Mint 10` for **$5–$10**. |
+| `Mint+ 9.5` | `Mint+` | 9.5 | **Black** | — | Current standard 9.5. **NOT equivalent to a 10.** Completely different card from Gem Mint 9.5. |
+| `9` | `Mint` | 9.0 | Black | — | Raw label IS the bare number for grades 1–9 |
+| `8.5` | `Near Mint/Mint+` | 8.5 | Black | — | |
+| `8` | `Near Mint/Mint` | 8.0 | Black | — | |
+| `7.5` | `Near Mint+` | 7.5 | Black | — | |
+| `7` | `Near Mint` | 7.0 | Black | — | |
+| `6.5` | `Excellent/Mint+` | 6.5 | Black | — | |
+| `6` | `Excellent/Mint` | 6.0 | Black | — | |
+| `5.5` | `Excellent+` | 5.5 | Black | — | |
+| `5` | `Excellent` | 5.0 | Black | — | |
+| `4.5` | `Very Good/Excellent+` | 4.5 | Black | — | |
+| `4` | `Very Good/Excellent` | 4.0 | Black | — | |
+| `3.5` | `Very Good+` | 3.5 | Black | — | |
+| `3` | `Very Good` | 3.0 | Black | — | |
+| `2.5` | `Good+` | 2.5 | Black | — | |
+| `2` | `Good` | 2.0 | Black | — | |
+| `1.5` | `Fair` | 1.5 | Black | — | |
+| `1` | `Poor` | 1.0 | Black | — | |
 | `AU` | `Altered/Ungraded` | NULL | (special) | — | Altered or unauthentic — no numeric grade |
 | `AA` | `Altered/Authentic` | NULL | (special) | — | Authentic but altered — no numeric grade |
 
@@ -79,16 +85,16 @@ Parser-fallback rows also live in the live catalog but are not authoritative tie
 - `10` (bare, no tier) — ambiguous CGC 10 catch-all; routes to `grade_reject_log` per §3.8.
 - `9.5` (bare, no tier) — same idea for the 9.5 tier when no `Mint+` or `Gem Mint` label in title.
 
-**CGC label colors (current scheme):**
+**CGC label colors (authoritative 2026-05-28):**
 
 | Color | What it means | Raw_labels carrying this color |
 |---|---|---|
-| **Blue** | Standard CGC grading | `Gem Mint 10`, `Mint+ 9.5`, plus the bare-number / shorthand tiers `9`–`1` |
-| **Gold** | Pristine tier (stricter criteria at 10) | `Pristine 10` |
-| (older Blue) | Outlier — legacy 9.5 from a prior naming convention | `Gem Mint 9.5` |
-| (legacy) | Perfect tier, retired 2023 | `Perfect 10` |
+| **Gold** | Pristine tier — virtually flawless, 50/50 centering | `Pristine 10` |
+| **Black** | Current standard CGC grading | `Gem Mint 10`, `Mint+ 9.5`, plus bare-number tiers `9`–`1` |
+| **Blue** | LEGACY — older naming convention outlier (pre-2023 era) | `Gem Mint 9.5` only |
+| (legacy) | Retired 2023 — kept for backfill | `Perfect 10` |
 
-There is **no current CGC Green Label.** Earlier drafts that referenced one were incorrect.
+There is **no current CGC Green Label for trading cards.** Earlier session drafts that referenced one were incorrect and have been corrected.
 
 **CRITICAL CGC NOTE:** For grades 1–9, the raw_label stored in the DB IS the bare number
 (`'9'`, `'8.5'`, `'8'` etc.) — NOT a text tier name. `Mint+ 9.5` and `Gem Mint 9.5` are the
@@ -102,22 +108,31 @@ are all distinct rows.
 
 ### CGC Reholder/Crossover Service — HORIZON arbitrage signal
 
-CGC offers a paid reholder/crossover service. The relevant legacy row:
+CGC offers a paid reholder/crossover service. **Two flagged cases:**
 
-| raw_label | numeric | reholder target | Fee | Reason |
-|---|---|---|---|---|
-| `Gem Mint 9.5` | 9.5 | `Gem Mint 10` (current Blue Label) | ~$10 | Same grading evaluation, modern label format |
+| Source raw_label | Source label color | Reholder target | Target label color | Fee | Notes |
+|---|---|---|---|---|---|
+| `Gem Mint 9.5` | Blue (legacy) | `Gem Mint 10` | Black (current) | **$5–$10** | CGC officially treats as equivalent grade. Same eval, modern label format. |
+| `Perfect 10` | (legacy retired 2023) | `Pristine 10` | Gold (current) | unknown | **Reholders to Pristine 10, NOT Gem Mint 10.** Operator to confirm fee. |
 
 **Pricing implications HORIZON should flag:**
-- Legacy `Gem Mint 9.5` slabs may trade at a **discount** vs native `Gem Mint 10`s — buyers know they can upgrade for ~$10.
+- Legacy `Gem Mint 9.5` slabs may trade at a **discount** vs native `Gem Mint 10`s — buyers know they can upgrade for $5–$10.
 - Post-reholder slabs are **indistinguishable** from native 10s; no provenance trail in the cert number.
-- Arbitrage: **buy `Gem Mint 9.5` at discount → reholder ($10) → sell as `Gem Mint 10`**.
+- Arbitrage: **buy `Gem Mint 9.5` at discount → reholder ($5–$10) → sell as `Gem Mint 10`**.
 
-`master_grade_catalog.reholder_eligible BOOLEAN` flags eligible raw_labels. Added via
-`sql/migrations/2026-05-28-grade-catalog-corrections.sql`. Currently flagged TRUE for `CGC | Gem Mint 9.5` only.
+**Schema:** `master_grade_catalog` carries four reholder columns:
+
+| Column | Type | Purpose |
+|---|---|---|
+| `reholder_eligible` | BOOLEAN | TRUE on raw_labels eligible for crossover |
+| `reholder_target_raw_label` | TEXT | What it becomes post-reholder |
+| `reholder_fee_min_usd` | NUMERIC | Lower bound of fee (NULL when unknown) |
+| `reholder_fee_max_usd` | NUMERIC | Upper bound of fee |
+
+Migration: `sql/migrations/2026-05-28-grade-catalog-corrections.sql`.
 
 **Deferred (operator review):**
-- Does CGC reholder `Perfect 10` (legacy 2023-retired) → current top tier? If yes, flag.
+- `Perfect 10` reholder fee — operator to confirm exact rate
 - SGC equivalent crossover service — does one exist? Flag if so.
 
 ---
@@ -160,14 +175,15 @@ The label is informational only — PSA grade resolution is unambiguous from the
 
 ---
 
-## BGS (Beckett) — 22 Raw Labels (post-Gold Label addition)
-**Source:** master_grade_catalog (21 rows live as of 2026-05-28, +1 added via the grade-catalog-corrections migration). BGS scraper not yet built.
+## BGS (Beckett) — 23 Raw Labels (post-Black/Gold Label additions)
+**Source:** master_grade_catalog (21 rows live as of 2026-05-28, +2 added via the grade-catalog-corrections migration: `Black Label 10` and `Gold Label 10`). BGS scraper not yet built.
 Claude Code must verify exact raw_labels against live DB before using.
 
 | grade (raw_label) | grade_label | grade_numeric | label color | Notes |
 |---|---|---|---|---|
-| `Pristine 10` | `Pristine` | 10.0 | **Black** | BGS top tier — all four subgrades = 10. Extremely rare. |
-| `Gold 10` | `Gold` | 10.0 | **Gold** | Overall 10, at least one subgrade below 10. Less rare than Black; still scarce. Premium over standard BGS, discount vs Black. |
+| `Black Label 10` | `Black Label` | 10.0 | **Black** | BGS top tier — all four subgrades = 10. Rarest, highest premium. |
+| `Gold Label 10` | `Gold Label` | 10.0 | **Gold** | Overall 10, subgrades may include 9.5. Less rare than Black; premium over Pristine. |
+| `Pristine 10` | `Pristine` | 10.0 | (standard top) | Overall 10, less-strict subgrade criteria. Lowest of the three 10-tiers, still scarce. |
 | `Gem Mint 9.5` | `Gem Mint` | 9.5 | (standard) | Subgrades all 9.5+ |
 | `Mint 9` | `Mint` | 9.0 | |
 | `Near Mint-Mint+ 8.5` | `Near Mint-Mint+` | 8.5 | |
@@ -191,23 +207,29 @@ Claude Code must verify exact raw_labels against live DB before using.
 
 **BGS-specific notes:**
 - BGS publishes subgrades (Centering / Corners / Edges / Surface) — the only grader that does
-- `Pristine 10` (Black Label) requires all four subgrades to be 10 — extremely rare
-- `Gold 10` (Gold Label) is overall 10 with one or more subgrades below 10 — less rare than Black
+- **Three-tier top-end** at overall 10: `Black Label 10` > `Gold Label 10` > `Pristine 10`
+  - `Black Label 10` requires all four subgrades = 10 — rarest, highest premium
+  - `Gold Label 10` is overall 10 with subgrades that may include 9.5 — middle tier
+  - `Pristine 10` is overall 10 with less-strict subgrade criteria — lowest of the three 10-tiers
 - `Gem Mint 9.5` is the practical top for most slabs (standard white/silver label)
-- In eBay titles: `BGS 9.5` always means `Gem Mint 9.5`. No ambiguity.
+- In eBay titles: `BGS 9.5` always means `Gem Mint 9.5`. No ambiguity at 9.5.
+- Bare `BGS 10` with no label keyword is ambiguous across the three 10-tiers → route to grade_reject_log until label is in title
 - Titles may say `BECKETT` instead of `BGS` — detect both, store grader as `BGS`
 
 **BGS label colors:**
 
 | Color | What it means | Raw_label |
 |---|---|---|
-| **Black** | Perfect-10 slab (all four subgrades = 10) | `Pristine 10` |
-| **Gold** | 10-overall slab with at least one sub-10 subgrade | `Gold 10` |
-| (standard) | Everything else (≤ 9.5 overall, or 10 not meeting Black/Gold criteria) | All other raw_labels — white/silver slab |
+| **Black** | Perfect-10 slab (all four subgrades = 10) | `Black Label 10` |
+| **Gold** | 10-overall slab with at least one subgrade at 9.5 | `Gold Label 10` |
+| (standard top) | 10-overall slab not meeting Black/Gold criteria | `Pristine 10` |
+| (standard) | Everything ≤ 9.5 | All other raw_labels — white/silver slab |
 
-**Title parsing:** `BLACK LABEL` or `PRISTINE` + `BGS 10` → `Pristine 10`. `GOLD LABEL` + `BGS 10` → `Gold 10`. Bare `BGS 10` with no label keyword → ambiguous; route to grade_reject_log until clarified.
+**Title parsing:** `BLACK LABEL` + `BGS 10` → `Black Label 10`. `GOLD LABEL` + `BGS 10` → `Gold Label 10`. `PRISTINE` + `BGS 10` → `Pristine 10`. Bare `BGS 10` with no label keyword → ambiguous; route to grade_reject_log.
 
-**Reholder/crossover:** No confirmed BGS equivalent of CGC's reholder service. Operator to confirm if Beckett offers a Black/Gold Label crossover; flag deferred.
+> ⚠ **Naming convention pending operator confirmation:** raw_labels above use `Black Label 10` / `Gold Label 10`. If BGS prints `Black 10` / `Gold 10` on the slab instead, update master_grade_catalog and parsers accordingly. Easy rename if needed.
+
+**Reholder/crossover:** No confirmed BGS equivalent of CGC's reholder service. Operator to confirm if Beckett offers a Black/Gold/Pristine crossover; flag deferred.
 
 ---
 
@@ -246,6 +268,32 @@ Claude Code must verify exact raw_labels against live DB before using.
 - SGC 10 has TWO tiers: `Pristine 10` and `Gem Mint 10` — ambiguous from bare `SGC 10`
   in a title with no label. Apply same rule as CGC 10: if no label in title → reject log.
 - In eBay titles: `SGC 9` always means `Gem Mint 9` (SGC's naming convention).
+
+---
+
+## RAW (Ungraded)
+
+Raw (ungraded) cards are tracked separately from graded cards. They have fundamentally different market dynamics — condition-driven instead of grade-driven, no slab provenance, different fee structures, different buyer profiles. Mixing them with graded market data would dilute arbitrage signal quality.
+
+**Master catalog row:**
+
+| grader | raw_label | numeric_grade | tier_label | Notes |
+|---|---|---|---|---|
+| `RAW` | `Ungraded` | NULL | `Ungraded` | Unslabbed card. Condition tracked separately via `condition_label`. Never mixed with graded market tables. |
+
+**Table series** (`raw_transactions`, `raw_asks`, `raw_bids`) — to be created when operator confirms architecture (single-set with `market` column vs per-market sets). See `collectibles-data-standard.md` §3.5.4.
+
+**`condition_label` vocabulary** (replaces grader/grade/grade_label for raw cards):
+
+| Code | Meaning |
+|---|---|
+| `NM` | Near Mint — top condition for ungraded |
+| `LP` | Light Play — minor wear |
+| `MP` | Moderate Play — visible wear |
+| `HP` | Heavy Play — significant wear |
+| `DMG` | Damaged — creased / torn / ink / liquid |
+
+**Title parsing for raw cards:** Bare card listings without slab markers (PSA/CGC/BGS/SGC) and without numeric grade. Condition words in title (`NM`, `LP`, `Near Mint`, `Mint`, `Played`, etc.) map to `condition_label`.
 
 ---
 

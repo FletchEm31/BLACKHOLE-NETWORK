@@ -1,27 +1,30 @@
--- master_grade_catalog corrections + reholder support + RAW grader sentinel.
+-- master_grade_catalog corrections + reholder schema + RAW/UNKNOWN sentinels.
 --
--- Combined migration covering three logically-coupled changes:
---   A. CGC tier_label corrections at grades 4–6.5 + AU/AA (live mismatches)
---   B. Reholder/crossover support: add reholder_eligible column + the
---      legacy CGC 'Gem Mint 9.5' raw_label row
---   C. Add 'RAW' as a valid grader value (sentinel for ungraded cards) +
---      update fact-table CHECK constraints to accept it
+-- Authoritative source: operator-supplied CGC + BGS tables and grader sentinel
+-- spec (2026-05-28). Supersedes earlier drafts that incorrectly mapped CGC
+-- label colors (the "Green Label" prose was wrong — CGC has no current Green
+-- Label for trading cards).
+--
+-- Five sections, all in one BEGIN/COMMIT:
+--   A. CGC tier_label corrections at grades 4–6.5 + AU/AA
+--   B. Reholder/crossover support — schema cols + flagged raw_labels
+--   C. BGS — separate Black Label and Gold Label rows from Pristine 10
+--   D. RAW grader sentinel + UNKNOWN grader sentinel
+--   E. Fact-table CHECK constraints accept RAW and UNKNOWN
+--
+-- CGC label color scheme (authoritative):
+--   Gold   = Pristine 10 only
+--   Black  = current standard CGC (Gem Mint 10, Mint+ 9.5, grades 9 and below)
+--   Blue   = LEGACY (Gem Mint 9.5 only — older naming convention outlier)
+--   (Perfect 10 = legacy retired 2023)
 --
 -- NOT YET APPLIED on LA. Awaiting operator OK.
---
--- AUTHORITATIVE SOURCE: operator-provided CGC raw_label table (2026-05-28)
--- and grader-sentinel spec. Supersedes prior label-color assumptions.
 
 BEGIN;
 
 -- ============================================================================
--- A. CGC tier_label corrections
+-- A. CGC tier_label corrections at grades 4–6.5 + AU/AA
 -- ============================================================================
--- Live catalog has tier_labels that disagree with the authoritative spec.
--- Substantive changes at grades 6 and 6.5 (Ex/NM → Excellent/Mint — different
--- intermediate term, not just shorthand expansion) and AU/AA (different
--- meanings). Other rows are shorthand → full expansion for consistency.
-
 UPDATE master_grade_catalog SET tier_label = 'Near Mint/Mint+'      WHERE grader = 'CGC' AND raw_label = '8.5';
 UPDATE master_grade_catalog SET tier_label = 'Near Mint/Mint'       WHERE grader = 'CGC' AND raw_label = '8';
 UPDATE master_grade_catalog SET tier_label = 'Excellent/Mint+'      WHERE grader = 'CGC' AND raw_label = '6.5';
@@ -34,127 +37,183 @@ UPDATE master_grade_catalog SET tier_label = 'Altered/Authentic'    WHERE grader
 -- ============================================================================
 -- B. Reholder/crossover support
 -- ============================================================================
--- Per operator (2026-05-28): CGC offers a paid reholder service. Legacy CGC
--- 9.5 "Gem Mint" slabs (older Blue Label — outlier, not a separate color
--- tier) can be re-cased as current CGC 10 "Gem Mint" (Blue Label) for ~$10.
--- Market signal: Gem Mint 9.5 trades ≈ Gem Mint 10. Mint+ 9.5 (current
--- standard 9.5) does NOT trade like a 10 — tier_label is the discriminator.
+-- CGC paid service. Two flagged cases:
+--   Gem Mint 9.5 (legacy Blue Label outlier) → Gem Mint 10 (current Black), $5–$10
+--   Perfect 10   (legacy retired 2023)        → Pristine 10  (current Gold), fee unknown
+--
+-- Schema: add three nullable columns so HORIZON can query the target tier
+-- and cost without prose parsing.
 
 ALTER TABLE master_grade_catalog
-  ADD COLUMN IF NOT EXISTS reholder_eligible BOOLEAN NOT NULL DEFAULT FALSE;
+  ADD COLUMN IF NOT EXISTS reholder_eligible        BOOLEAN NOT NULL DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS reholder_target_raw_label TEXT,
+  ADD COLUMN IF NOT EXISTS reholder_fee_min_usd     NUMERIC(8,2),
+  ADD COLUMN IF NOT EXISTS reholder_fee_max_usd     NUMERIC(8,2);
 
 COMMENT ON COLUMN master_grade_catalog.reholder_eligible IS
-'TRUE if cards with this raw_label can be reholdered/crossed-over by the grader to a higher-tier modern label (e.g. legacy CGC Gem Mint 9.5 → current CGC Gem Mint 10, ~$10). Pricing signal: such slabs may trade at a discount vs the target tier.';
+'TRUE if cards with this raw_label can be reholdered/crossed-over by the grader to a different (typically higher-tier) raw_label. HORIZON arbitrage signal: such slabs may trade at a discount vs the target.';
 
--- Insert the legacy CGC 'Gem Mint 9.5' raw_label if missing.
--- This is an OUTLIER row — CGC's current 9.5 tier is Mint+ 9.5; only legacy
--- (older Blue Label) slabs carry the Gem Mint tier at 9.5.
-INSERT INTO master_grade_catalog (grader, raw_label, numeric_grade, tier_label, market_equiv_10, reholder_eligible)
-SELECT 'CGC', 'Gem Mint 9.5', 9.5, 'Gem Mint', FALSE, TRUE
+COMMENT ON COLUMN master_grade_catalog.reholder_target_raw_label IS
+'The raw_label this card would carry post-reholder (e.g. ''Pristine 10'' for CGC Perfect 10). NULL when reholder_eligible = FALSE.';
+
+COMMENT ON COLUMN master_grade_catalog.reholder_fee_min_usd IS
+'Lower bound of the reholder service fee in USD. NULL when fee unknown or reholder_eligible = FALSE.';
+
+COMMENT ON COLUMN master_grade_catalog.reholder_fee_max_usd IS
+'Upper bound of the reholder service fee in USD. Same NULL semantics as the min.';
+
+-- Insert legacy CGC Gem Mint 9.5 (Blue Label outlier) if missing.
+INSERT INTO master_grade_catalog
+  (grader, raw_label, numeric_grade, tier_label, market_equiv_10, reholder_eligible, reholder_target_raw_label, reholder_fee_min_usd, reholder_fee_max_usd)
+SELECT 'CGC', 'Gem Mint 9.5', 9.5, 'Gem Mint', TRUE,
+       TRUE, 'Gem Mint 10', 5.00, 10.00
 WHERE NOT EXISTS (
-  SELECT 1 FROM master_grade_catalog
-   WHERE grader = 'CGC' AND raw_label = 'Gem Mint 9.5'
+  SELECT 1 FROM master_grade_catalog WHERE grader = 'CGC' AND raw_label = 'Gem Mint 9.5'
 );
 
--- Ensure the flag is set whether the row was just inserted or already existed.
+-- Update existing row even if INSERT was skipped (idempotent).
+-- Note: market_equiv_10 = TRUE because CGC officially treats Gem Mint 9.5
+-- as equivalent to Gem Mint 10 — this is the central pricing signal.
 UPDATE master_grade_catalog
-   SET reholder_eligible = TRUE
+   SET reholder_eligible        = TRUE,
+       reholder_target_raw_label = 'Gem Mint 10',
+       reholder_fee_min_usd     = 5.00,
+       reholder_fee_max_usd     = 10.00,
+       market_equiv_10          = TRUE
  WHERE grader = 'CGC' AND raw_label = 'Gem Mint 9.5';
 
+-- Flag CGC Perfect 10 (legacy Gold-era, retired 2023) — reholders to Pristine 10.
+-- Fee unknown to operator; left NULL until CGC publishes / operator confirms.
+UPDATE master_grade_catalog
+   SET reholder_eligible        = TRUE,
+       reholder_target_raw_label = 'Pristine 10',
+       reholder_fee_min_usd     = NULL,
+       reholder_fee_max_usd     = NULL
+ WHERE grader = 'CGC' AND raw_label = 'Perfect 10';
+
 -- ============================================================================
--- C-pre. BGS Gold Label row
+-- C. BGS — separate Black Label, Gold Label, and Pristine 10 rows
 -- ============================================================================
--- Per operator (2026-05-28): BGS Gold Label is a distinct tier from Black
--- Label (currently catalogued as 'Pristine 10') and needs its own row.
--- Existing Black Label = Pristine 10 (all four subgrades = 10, overall 10).
--- Gold Label = 10 overall but with one or more subgrades below 10 — a
--- separate slab colorway. Adding a `Gold 10` raw_label as the canonical
--- representation; operator should confirm exact label-string convention
--- after first observed listing.
-INSERT INTO master_grade_catalog (grader, raw_label, numeric_grade, tier_label, market_equiv_10, reholder_eligible)
-SELECT 'BGS', 'Gold 10', 10.0, 'Gold', TRUE, FALSE
+-- Per operator: BGS has a three-tier top-end. All three are overall-10 slabs
+-- but with different subgrade requirements:
+--   Black Label (rarest)  — all four subgrades = 10
+--   Gold Label  (middle)  — overall 10, subgrades may include 9.5
+--   Pristine 10 (lowest)  — overall 10, less-strict subgrade criteria
+--
+-- Existing master_grade_catalog has only Pristine 10 (which was previously
+-- documented as "Black Label maps to Pristine 10" — that mapping is being
+-- explicitly broken; Black Label is now its own row).
+--
+-- ⚠ NAMING — operator to confirm: using 'Black Label 10' / 'Gold Label 10' as
+-- the raw_label strings. Alternative is bare 'Black 10' / 'Gold 10'. Match
+-- whatever BGS actually prints on the slab label. Easy to rename later if needed.
+
+INSERT INTO master_grade_catalog
+  (grader, raw_label, numeric_grade, tier_label, market_equiv_10, reholder_eligible)
+SELECT 'BGS', 'Black Label 10', 10.0, 'Black Label', TRUE, FALSE
 WHERE NOT EXISTS (
-  SELECT 1 FROM master_grade_catalog
-   WHERE grader = 'BGS' AND raw_label = 'Gold 10'
+  SELECT 1 FROM master_grade_catalog WHERE grader = 'BGS' AND raw_label = 'Black Label 10'
 );
 
--- ============================================================================
--- C. RAW grader sentinel
--- ============================================================================
--- Per operator (2026-05-28): explicit sentinel values needed because NULL is
--- ambiguous between "no data captured" and "not applicable."
---   grader = 'RAW'   → card is ungraded/raw, no grade applies
---   grader = NULL    → grader data was not captured
---   grade = NULL is acceptable when grader = 'RAW' OR when data missing
---   grade_label = 'Ungraded' when grader = 'RAW'
+INSERT INTO master_grade_catalog
+  (grader, raw_label, numeric_grade, tier_label, market_equiv_10, reholder_eligible)
+SELECT 'BGS', 'Gold Label 10', 10.0, 'Gold Label', TRUE, FALSE
+WHERE NOT EXISTS (
+  SELECT 1 FROM master_grade_catalog WHERE grader = 'BGS' AND raw_label = 'Gold Label 10'
+);
 
-INSERT INTO master_grade_catalog (grader, raw_label, numeric_grade, tier_label, market_equiv_10, reholder_eligible)
+-- Cleanup: a prior commit (db93ccf) inserted 'Gold 10' as a placeholder under
+-- a different assumption. Remove it if present, since 'Gold Label 10' is the
+-- new authoritative naming.
+DELETE FROM master_grade_catalog WHERE grader = 'BGS' AND raw_label = 'Gold 10';
+
+-- ============================================================================
+-- D. RAW grader sentinel + UNKNOWN grader sentinel
+-- ============================================================================
+-- grader='RAW'     → card is ungraded/raw (no slab). Lives in the raw_* table
+--                    series (see standardization doc §3.5.3). The catalog row
+--                    is informational; raw_* tables don't FK-join here.
+-- grader='UNKNOWN' → grade could not be parsed from listing title. Distinct
+--                    from grader=NULL (which means "data not captured yet").
+
+INSERT INTO master_grade_catalog
+  (grader, raw_label, numeric_grade, tier_label, market_equiv_10, reholder_eligible)
 SELECT 'RAW', 'Ungraded', NULL, 'Ungraded', FALSE, FALSE
 WHERE NOT EXISTS (
-  SELECT 1 FROM master_grade_catalog
-   WHERE grader = 'RAW' AND raw_label = 'Ungraded'
+  SELECT 1 FROM master_grade_catalog WHERE grader = 'RAW' AND raw_label = 'Ungraded'
 );
 
--- Update grader CHECK constraints on every fact table that carries a grader
--- column to include 'RAW' as a valid value. Without this, RAW grader rows
--- will be rejected at INSERT time.
---
--- Affected tables (all have "<original_table_name>_grader_chk" naming because
--- constraints didn't auto-rename during the v2 sold_listings → ebay_transactions
--- rename pass — see BHN-SESSION-HANDOFF-2026-05-27-PT2.txt §"Cosmetic carry-over"):
---   ebay_transactions       constraint: sold_listings_grader_chk
---   ebay_asks               constraint: ebay_listings_grader_chk  (NOTE: column type is numeric on this table; check existence)
---   courtyard_transactions  constraint: courtyard_sales_grader_chk
---   courtyard_asks          constraint: courtyard_listings_grader_chk
---   collector_crypt_transactions  constraint: collector_crypt_sales_grader_chk
---   collector_crypt_asks    constraint: collector_crypt_asks_grader_chk
+INSERT INTO master_grade_catalog
+  (grader, raw_label, numeric_grade, tier_label, market_equiv_10, reholder_eligible)
+SELECT 'UNKNOWN', 'Unparseable', NULL, 'Unparseable', FALSE, FALSE
+WHERE NOT EXISTS (
+  SELECT 1 FROM master_grade_catalog WHERE grader = 'UNKNOWN' AND raw_label = 'Unparseable'
+);
+
+-- ============================================================================
+-- E. Fact-table CHECK constraints accept RAW + UNKNOWN
+-- ============================================================================
+-- ⚠ DECISION DEFERRED: Should graded-table CHECK constraints accept 'RAW'?
+-- The operator's spec puts raw cards in their OWN tables (raw_transactions,
+-- raw_asks, raw_bids — see standardization doc §3.5.3). Strictly speaking,
+-- grader='RAW' should never appear on the graded tables. But leaving 'RAW'
+-- in the CHECK is defensive (it means a misrouted insert lands with a clear
+-- sentinel rather than being silently rejected). Keeping 'RAW' in the CHECK
+-- list below for now; operator can tighten later if desired.
 
 ALTER TABLE ebay_transactions DROP CONSTRAINT IF EXISTS sold_listings_grader_chk;
+ALTER TABLE ebay_transactions DROP CONSTRAINT IF EXISTS ebay_transactions_grader_chk;
 ALTER TABLE ebay_transactions ADD CONSTRAINT ebay_transactions_grader_chk
-  CHECK (grader IS NULL OR grader = ANY (ARRAY['CGC','PSA','BGS','SGC','RAW']));
+  CHECK (grader IS NULL OR grader = ANY (ARRAY['CGC','PSA','BGS','SGC','RAW','UNKNOWN']));
 
 ALTER TABLE courtyard_transactions DROP CONSTRAINT IF EXISTS courtyard_sales_grader_chk;
+ALTER TABLE courtyard_transactions DROP CONSTRAINT IF EXISTS courtyard_transactions_grader_chk;
 ALTER TABLE courtyard_transactions ADD CONSTRAINT courtyard_transactions_grader_chk
-  CHECK (grader IS NULL OR grader = ANY (ARRAY['CGC','PSA','BGS','SGC','RAW']));
+  CHECK (grader IS NULL OR grader = ANY (ARRAY['CGC','PSA','BGS','SGC','RAW','UNKNOWN']));
 
 ALTER TABLE courtyard_asks DROP CONSTRAINT IF EXISTS courtyard_listings_grader_chk;
+ALTER TABLE courtyard_asks DROP CONSTRAINT IF EXISTS courtyard_asks_grader_chk;
 ALTER TABLE courtyard_asks ADD CONSTRAINT courtyard_asks_grader_chk
-  CHECK (grader IS NULL OR grader = ANY (ARRAY['CGC','PSA','BGS','SGC','RAW']));
+  CHECK (grader IS NULL OR grader = ANY (ARRAY['CGC','PSA','BGS','SGC','RAW','UNKNOWN']));
 
 ALTER TABLE collector_crypt_transactions DROP CONSTRAINT IF EXISTS collector_crypt_sales_grader_chk;
+ALTER TABLE collector_crypt_transactions DROP CONSTRAINT IF EXISTS collector_crypt_transactions_grader_chk;
 ALTER TABLE collector_crypt_transactions ADD CONSTRAINT collector_crypt_transactions_grader_chk
-  CHECK (grader IS NULL OR grader = ANY (ARRAY['CGC','PSA','BGS','SGC','RAW']));
+  CHECK (grader IS NULL OR grader = ANY (ARRAY['CGC','PSA','BGS','SGC','RAW','UNKNOWN']));
 
 ALTER TABLE collector_crypt_asks DROP CONSTRAINT IF EXISTS collector_crypt_asks_grader_chk;
 ALTER TABLE collector_crypt_asks ADD CONSTRAINT collector_crypt_asks_grader_chk
-  CHECK (grader IS NULL OR grader = ANY (ARRAY['CGC','PSA','BGS','SGC','RAW']));
-
--- ebay_asks may have a different CHECK or none — handle defensively.
--- The pre-v2 ebay_listings table had `grader has descriptors` per §9 of the
--- standard, suggesting no strict CHECK. Skip ebay_asks here; if a CHECK
--- exists it'll need its own ALTER once the operator confirms current state.
+  CHECK (grader IS NULL OR grader = ANY (ARRAY['CGC','PSA','BGS','SGC','RAW','UNKNOWN']));
 
 COMMIT;
 
 -- ============================================================================
 -- Post-apply verification
 -- ============================================================================
--- 1. Confirm CGC catalog matches authoritative table:
---    SELECT raw_label, tier_label, numeric_grade, reholder_eligible
+-- 1. CGC catalog matches authoritative table (26 rows: 24 + Gem Mint 9.5 + Perfect 10 updates):
+--    SELECT raw_label, tier_label, numeric_grade, reholder_eligible,
+--           reholder_target_raw_label, reholder_fee_min_usd, reholder_fee_max_usd
 --      FROM master_grade_catalog WHERE grader = 'CGC'
 --     ORDER BY numeric_grade DESC NULLS LAST, raw_label;
---    Expected 26 rows (was 25 + new Gem Mint 9.5).
 --
--- 2. Confirm RAW grader sentinel:
---    SELECT * FROM master_grade_catalog WHERE grader = 'RAW';
---    Expected 1 row: RAW | Ungraded | NULL | Ungraded | FALSE | FALSE
+-- 2. BGS three-tier top end:
+--    SELECT raw_label, tier_label FROM master_grade_catalog
+--     WHERE grader = 'BGS' AND numeric_grade = 10 ORDER BY raw_label;
+--    Expected 3 rows: Black Label 10 / Gold Label 10 / Pristine 10.
 --
--- 3. Confirm grader CHECK constraints accept RAW:
---    INSERT INTO ebay_transactions (item_id, grader, grade, sale_type, platform, currency, raw_payload, edition, print_variant)
---      VALUES ('test-raw-001', 'RAW', NULL, 'fixed_price', 'ebay', 'USD', '{}'::jsonb, 'N/A', 'Standard');
---    -- should succeed; then: DELETE FROM ebay_transactions WHERE item_id = 'test-raw-001';
+-- 3. RAW + UNKNOWN sentinels:
+--    SELECT grader, raw_label, tier_label FROM master_grade_catalog
+--     WHERE grader IN ('RAW','UNKNOWN');
 --
--- 4. Confirm reholder flag:
---    SELECT grader, raw_label, reholder_eligible FROM master_grade_catalog
---     WHERE reholder_eligible = TRUE;
---    Expected 1 row: CGC | Gem Mint 9.5 | TRUE
+-- 4. Reholder eligibility summary:
+--    SELECT grader, raw_label, reholder_target_raw_label, reholder_fee_min_usd, reholder_fee_max_usd
+--      FROM master_grade_catalog WHERE reholder_eligible = TRUE;
+--    Expected 2 rows: CGC Gem Mint 9.5 → Gem Mint 10 ($5–$10),
+--                     CGC Perfect 10   → Pristine 10  (NULL–NULL).
+--
+-- 5. Fact-table CHECK constraints accept new sentinels:
+--    INSERT INTO ebay_transactions (item_id, grader, edition, print_variant, platform, currency, raw_payload)
+--      VALUES ('test-raw-001', 'RAW', 'N/A', 'Standard', 'ebay', 'USD', '{}'::jsonb);
+--    INSERT INTO ebay_transactions (item_id, grader, edition, print_variant, platform, currency, raw_payload)
+--      VALUES ('test-unk-001', 'UNKNOWN', 'N/A', 'Standard', 'ebay', 'USD', '{}'::jsonb);
+--    DELETE FROM ebay_transactions WHERE item_id IN ('test-raw-001','test-unk-001');

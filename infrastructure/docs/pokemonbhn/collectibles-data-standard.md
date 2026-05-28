@@ -182,77 +182,129 @@ columns. Both are **NOT NULL** (NULLs are distinct in a UNIQUE index and would b
 
 #### 3.5.1 CGC label colors & reholder/crossover service — pricing signal
 
-**CGC label colors (current conventions):**
+**Authoritative CGC label color scheme (2026-05-28):**
 
-| Label color | Current raw_label(s) | Notes |
+| Color | What it means | Raw_labels carrying this color |
 |---|---|---|
-| **Blue** | `Gem Mint 10`, `Mint+ 9.5`, `9`, `8.5`, … through `1`, plus legacy outlier `Gem Mint 9.5` | Standard CGC grading. Vast majority of slabs. |
-| **Gold** | `Pristine 10` | Current top tier. Stricter criteria than Gem Mint 10. |
-| (legacy) | `Perfect 10` | Retired 2023. Kept in catalog for backfill only. |
+| **Gold** | Pristine tier (Gold Label) — virtually flawless, 50/50 centering required | `Pristine 10` |
+| **Black** | Current standard CGC grading | `Gem Mint 10`, `Mint+ 9.5`, `9`, `8.5` ... through `1` |
+| **Blue** | LEGACY — older naming convention, outlier | `Gem Mint 9.5` only |
+| (legacy) | Retired 2023 — kept for backfill | `Perfect 10` |
 
-There is **no current CGC Green Label** — earlier session drafts that referenced "Green Label" were incorrect and have been corrected.
+**There is no current CGC Green Label for trading cards.** Earlier drafts that referenced "Green Label" were incorrect and have been corrected throughout the docs.
 
-**Outlier: legacy `Gem Mint 9.5` (older Blue Label)**
+**Critical pricing distinction at 9.5:**
 
-`Gem Mint 9.5` is an unusual raw_label — CGC's current 9.5 tier is `Mint+ 9.5`. Older Blue Label slabs from a prior naming convention carry `Gem Mint` at 9.5 instead. Same label color (Blue), different tier_label, materially different market behavior:
+Same numeric grade, different `tier_label`, materially different market behavior:
 
-| raw_label | numeric | tier_label | Market behavior |
+| raw_label | label color | tier_label | Market behavior |
 |---|---|---|---|
-| `Mint+ 9.5` | 9.5 | Mint+ | Current standard 9.5. **NOT equivalent to a 10.** |
-| `Gem Mint 9.5` | 9.5 | Gem Mint | Legacy. **Market-equivalent to Gem Mint 10.** |
+| `Mint+ 9.5` | Black (current) | Mint+ | Current standard 9.5. **NOT equivalent to a 10.** Completely different card. |
+| `Gem Mint 9.5` | Blue (legacy) | Gem Mint | Older Blue Label. **CGC officially treats as equivalent to `Gem Mint 10`.** |
 
-HORIZON discriminates between these by `tier_label` — same numeric grade and same label color, the text tier is the only tell.
+HORIZON discriminates between these by `tier_label` on the `(grader, raw_label)` JOIN — the bare numeric is the same and a casual reader would conflate them. The `Gem Mint` tier_label at `numeric_grade = 9.5` is the identifier for legacy Blue Label slabs.
 
-**Reholder/crossover service — arbitrage path**
+**Reholder/crossover service — HORIZON arbitrage signals**
 
-CGC offers a paid reholder/crossover service. Owners of legacy `Gem Mint 9.5` slabs can pay ~$10 to have CGC re-case the card as current `Gem Mint 10` (Blue Label). Same grading evaluation, modern label format.
+CGC offers a paid reholder/crossover service for legacy slabs. Two flagged cases:
 
-| Legacy slab | Current slab (post-reholder) | Fee |
-|---|---|---|
-| CGC `Gem Mint 9.5` (older Blue Label) | CGC `Gem Mint 10` (current Blue Label) | ~$10 |
-
-HORIZON pricing implications:
-- Legacy `Gem Mint 9.5` slabs may trade at a **discount** vs native `Gem Mint 10`s because buyers know they can upgrade for ~$10.
-- Post-reholder slabs are **indistinguishable** from native 10s — no provenance trail in the cert number.
-- Arbitrage path: **buy `Gem Mint 9.5` at discount → reholder ($10) → sell as `Gem Mint 10`**.
-
-**Schema support:**
-
-`master_grade_catalog.reholder_eligible BOOLEAN` flags raw_labels that qualify for the service. See `sql/migrations/2026-05-28-grade-catalog-corrections.sql`. Currently flagged TRUE only for `CGC | Gem Mint 9.5`.
-
-Deferred operator decisions:
-- Does CGC reholder `Perfect 10` (legacy 2023-retired) → `Pristine 10` or `Gem Mint 10`? If yes, flag.
-- BGS / SGC equivalent crossover services — flag legacy rows if those programs exist.
-
-The `reholder_eligible` flag is a HORIZON signal input; it does not change which raw_labels are valid or which rows can land on fact tables.
-
-#### 3.5.2 BGS label colors
-
-BGS has the only multi-color slab system among the four graders (CGC's "color" tiers are tier_label distinctions, not slab-color distinctions in the same way):
-
-| Label color | raw_label | numeric | Criteria |
+| Source raw_label | Target raw_label | Fee | Notes |
 |---|---|---|---|
-| **Black** | `Pristine 10` | 10.0 | All four subgrades = 10. Extremely rare. |
-| **Gold** | `Gold 10` | 10.0 | Overall 10 with at least one subgrade below 10. Less rare than Black, still scarce. |
-| (standard) | `Gem Mint 9.5`, `Mint 9`, … | ≤ 9.5 | Most BGS slabs. White/silver label. |
+| `Gem Mint 9.5` (Blue Label, legacy) | `Gem Mint 10` (Black Label, current) | **$5–$10** | Same grading evaluation, modern label format. Post-reholder slab is indistinguishable from a native Gem Mint 10. |
+| `Perfect 10` (legacy, retired 2023) | `Pristine 10` (Gold Label, current) | unknown | Operator to confirm fee. Reholders to **Pristine 10, NOT Gem Mint 10.** |
 
-BGS publishes Centering/Corners/Edges/Surface subgrades — the only grader that does. Black Label requires all 10s; Gold Label is everything else at overall-10. Pricing-wise, Black Label commands a significant premium over Gold Label which in turn premiums over a standard BGS slab.
+Pricing implications HORIZON should detect:
+- Legacy `Gem Mint 9.5` slabs may trade at a **discount** vs native `Gem Mint 10`s — buyers know they can upgrade for $5–$10.
+- Post-reholder slabs carry no provenance trail in the cert number — indistinguishable from native top tier.
+- Arbitrage: **buy `Gem Mint 9.5` at discount → reholder ($5–$10) → sell as `Gem Mint 10`**.
+
+**Schema support:** `master_grade_catalog` carries four reholder columns:
+
+| Column | Purpose |
+|---|---|
+| `reholder_eligible BOOLEAN` | TRUE on raw_labels eligible for crossover |
+| `reholder_target_raw_label TEXT` | The raw_label this card becomes post-reholder |
+| `reholder_fee_min_usd NUMERIC(8,2)` | Lower bound of fee (NULL when unknown) |
+| `reholder_fee_max_usd NUMERIC(8,2)` | Upper bound of fee |
+
+See `sql/migrations/2026-05-28-grade-catalog-corrections.sql`.
+
+#### 3.5.2 BGS label colors — three-tier top-end
+
+BGS has a three-tier structure at overall-10 that other graders don't. All three are distinct `raw_label` rows:
+
+| Label color | raw_label | numeric | Criteria | Market premium |
+|---|---|---|---|---|
+| **Black** | `Black Label 10` | 10.0 | Overall 10 **AND all four subgrades = 10** | Highest — rarest tier |
+| **Gold** | `Gold Label 10` | 10.0 | Overall 10 with subgrades that include 9.5 | Middle — between Black and Pristine |
+| (standard top) | `Pristine 10` | 10.0 | Overall 10, less-strict subgrade criteria | Lowest of the three top tiers, still scarce |
+
+Order: **Black Label 10 > Gold Label 10 > Pristine 10**.
+
+BGS publishes per-subgrade ratings (Centering / Corners / Edges / Surface) — the only grader that does. The three-tier top is BGS's way of representing how strict the subgrade floor was.
+
+> ⚠ **Naming convention pending operator confirmation:** the SQL migration uses `Black Label 10` / `Gold Label 10` as the `raw_label` strings. If BGS actually prints `Black 10` / `Gold 10` on the slab (vs. `Black Label 10` / `Gold Label 10`), update the catalog before parsing real listings.
+
+> ⚠ **Reclassification note:** earlier this session, the doc mapped "Legacy Black Label" to `Pristine 10`. That mapping is now superseded — Black Label is a distinct tier from Pristine 10. The `2026-05-28-grade-catalog-corrections.sql` migration inserts the two new BGS rows + cleans up an earlier `Gold 10` placeholder that used the now-wrong naming convention.
+
+No confirmed BGS reholder/crossover service. Operator to flag if one exists.
 
 #### 3.5.3 Grader sentinel values — disambiguating NULL
 
 `grader = NULL` is ambiguous between "data not captured" and "card is ungraded." HORIZON needs explicit sentinels:
 
-| Scenario | grader | grade | grade_label |
+| Scenario | `grader` | `grade` | `grade_label` | Where stored |
+|---|---|---|---|---|
+| Graded card | `PSA` / `CGC` / `BGS` / `SGC` | raw_label (e.g. `10`, `Gem Mint 10`) | tier name from title | Graded fact tables (`ebay_transactions`, `courtyard_*`, etc.) |
+| Raw / ungraded card (no slab) | `RAW` (sentinel) | NULL | `Ungraded` | **`raw_*` table series** — see §3.5.4 |
+| Grade unparseable from title | `UNKNOWN` | NULL | NULL | Graded fact tables — flag for operator review |
+| Data not captured yet | NULL | NULL | NULL | Anywhere — quality issue, parser/scraper gap |
+
+**Master catalog rows for the two new sentinels:**
+
+| grader | raw_label | numeric | tier_label |
 |---|---|---|---|
-| Graded card | `PSA` / `CGC` / `BGS` / `SGC` | raw_label (e.g. `10`, `Gem Mint 10`) | tier (parsed from title) |
-| **Raw / ungraded card** (no slab) | **`RAW`** | NULL | `Ungraded` |
-| Data not captured yet | NULL | NULL | NULL |
+| `RAW` | `Ungraded` | NULL | `Ungraded` |
+| `UNKNOWN` | `Unparseable` | NULL | `Unparseable` |
 
-`RAW` is a valid `grader` value across all fact tables (CHECK constraints updated to accept it — see migration). Master catalog row: `('RAW', 'Ungraded', NULL, 'Ungraded', FALSE, FALSE)`.
+**Rules:**
+- `grader = 'RAW'` is a positive assertion: the card IS ungraded. Distinct market segment from graded slabs — different price expectations, different sniping logic, different P&L treatment. **Lives in the `raw_*` table series, NOT in graded fact tables.**
+- `grader = 'UNKNOWN'` means we parsed a listing but couldn't determine the grade. The row still lands in the graded fact table for replay/operator-review purposes.
+- `grader = NULL` means we haven't even tried to capture grader yet. Parser failed or scraper didn't enrich. Quality issue.
+- `grade = NULL` is acceptable when `grader IN ('RAW','UNKNOWN')` (not applicable / can't determine) OR when data is genuinely missing.
+- `grade_label = 'Ungraded'` only when `grader = 'RAW'`.
 
-**Rule of thumb:**
-- `grader = 'RAW'` → card is explicitly ungraded. No grade applies. Treat as a distinct market segment from graded slabs.
-- `grader = NULL` → we don't know yet. Parser couldn't determine, or scraper hasn't enriched. Treat as missing data, not a market signal.
+Fact-table CHECK constraints on `grader` now accept `{CGC, PSA, BGS, SGC, RAW, UNKNOWN}` plus NULL.
+
+#### 3.5.4 Raw card table series — `raw_transactions`, `raw_asks`, `raw_bids`
+
+Raw (ungraded) cards live in a **separate table series** from graded cards. They have fundamentally different market dynamics — condition-driven instead of grade-driven, no slab provenance, different fee structures, different buyer profiles. Mixing them with graded market data would dilute arbitrage signal quality.
+
+**Tables (to be created — schema pending operator confirmation):**
+
+| Table | Purpose | Mirrors |
+|---|---|---|
+| `raw_transactions` | Completed raw-card sales | shape similar to `ebay_transactions` / `courtyard_transactions` |
+| `raw_asks` | Active raw-card listings | shape similar to `ebay_asks` / `courtyard_asks` |
+| `raw_bids` | Open offers / OBO on raw cards | shape similar to `ebay_bids` |
+
+**`condition_label` vocabulary** (replaces `grader` / `grade` / `grade_label` for raw cards):
+
+| Code | Meaning | Notes |
+|---|---|---|
+| `NM` | Near Mint | Top condition for an ungraded card. Equivalent observation to a low-mid graded slab. |
+| `LP` | Light Play | Minor wear |
+| `MP` | Moderate Play | Visible wear |
+| `HP` | Heavy Play | Significant wear |
+| `DMG` | Damaged | Creased / torn / ink / liquid damage |
+
+**Open architecture questions (operator to confirm before `CREATE TABLE`):**
+
+1. **Single-set with `market` column** (`raw_transactions(market TEXT, …)`) OR **per-market sets** (`raw_ebay_transactions`, `raw_courtyard_transactions`, …)? Single-set is cleaner if downstream queries don't need market-specific indexes; per-market mirrors the existing graded-table pattern.
+2. Should raw cards still carry `card_id` FK to `master_card_catalog`? (Recommended yes — same card identity model.)
+3. Anything else operator wants on the schema before the migration is written?
+
+The migration to CREATE these tables is **not yet written** — pending confirmation on the architecture above.
 
 ### 3.6 Money
 - `listed_price` (asking) and `sold_price` (paid) are **separate**; valuation uses `sold_price` only.
