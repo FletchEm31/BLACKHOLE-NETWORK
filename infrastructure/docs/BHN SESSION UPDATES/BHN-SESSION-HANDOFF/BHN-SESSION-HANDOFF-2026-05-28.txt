@@ -1,414 +1,558 @@
-================================================================================
-BHN SESSION HANDOFF — 2026-05-28
-Claude Code — long session, multi-track work
-================================================================================
-
-Continuation of 2026-05-27 (see BHN-SESSION-HANDOFF-2026-05-27.txt morning +
-BHN-SESSION-HANDOFF-2026-05-27-PT2.txt evening for the prior day's work).
-
-This session was largely about (a) repairing schema/data-flow drift that
-surfaced from data actually flowing through the new v2 tables, (b) building
-new operator-facing tooling (master XLSX export), and (c) a comprehensive
-grading vocabulary refresh culminating in CGC label-color corrections + new
-RAW/UNKNOWN grader sentinels + a raw-card table-series architecture stub.
-
-================================================================================
-COMMITS LANDED THIS SESSION (newest first)
-================================================================================
-
-  78d00c1  fix(pokemon): NULLIF wrap on Courtyard collectors — defeat n8n
-                        'null' string coercion
-  e83701b  fix(pokemonbhn): ebay-sold-load.js normalizes print_variant
-                            against catalog
-  e518273  docs(pokemonbhn): §10.8 — Courtyard listed_price + shipping are
-                              intentionally NULL
-  bf81755  docs(pokemonbhn): runbook for FRA SOCKS5 scrape egress
-  6e249e6  fix(pokemon): COURTYARD-BHN | LISTINGS-COLLECTOR parses ev.asset
-                          on listings
-  07c7f95  feat(sql): market_*_est trigger on [market]_transactions tables
-  723147a  feat(pokemonbhn): master XLSX export of ebay_transactions per set
-  28cf42c  feat(pokemonbhn): scraping work-order Progress tab in master XLSX
-                              export
-  646fda9  chore(repo): gitignore scraper data + checkpoints; untrack
-                         legacy CSV
-  11904ea  feat(sql): migration to drop legacy master_card_catalog.variant
-  3db6692  security(pokemonbhn): eBay scraper cold-start warmup + v2 schema
-                                  mapping fix
-  db93ccf  feat(pokemonbhn): grade catalog corrections + reholder + RAW
-                              grader sentinel  ⚠ SUPERSEDED BY THIS SESSION'S
-                              FINAL COMMIT — CGC label colors were wrong
-                              (had Blue=standard, actually Black=standard)
-
-================================================================================
-WHAT'S APPLIED ON LA vs WHAT'S ONLY STAGED
-================================================================================
-
-APPLIED on LA (live):
-  - market_*_est trigger (07c7f95) — 1083/1092 ebay_transactions + 546/546
-    courtyard_transactions backfilled with seller-side fee estimates
-  - LISTINGS-COLLECTOR ev.asset fix (n8n DB patch via direct workflow_entity
-    UPDATE + version bump + activate event + container restart)
-  - NULLIF wrap on Courtyard collectors (n8n DB patch, same pattern). Live
-    verified: 580 'null' strings backfilled to SQL NULL across 3 columns.
-  - POKEMON-BHN | SOLD-COMPS published (was active=0 with no activeVersionId;
-    DB patch added publish event + restarted n8n). First scheduled fire 06:00 UTC
-    expected; eBay App ID was rate-limited at session end (5000/day cap).
-  - card_code backfill on ebay_transactions: 99.8% coverage (1090/1092)
-  - 140 ebay_transactions rows normalized: 'Holo' → 'Standard' where catalog
-    has Standard only (per §3.3 inherent-holo rule)
-
-STAGED but NOT applied to LA:
-  - sql/migrations/2026-05-27-drop-mcc-variant.sql — drops legacy variant
-    column + trigger + index on master_card_catalog. Pre-apply check passed
-    yesterday (1354/1354 rows have valid edition+print_variant).
-  - sql/migrations/2026-05-28-grade-catalog-corrections.sql — see next section.
-
-================================================================================
-GRADE CATALOG CORRECTIONS — TODAY'S FINAL DELIVERABLE
-================================================================================
-
-The migration sql/migrations/2026-05-28-grade-catalog-corrections.sql is the
-authoritative final version. It supersedes db93ccf's earlier draft (which had
-CGC label colors backwards — labeled Black-Label slabs as Blue).
-
-WHAT IT DOES (5 sections, all in one BEGIN/COMMIT):
-
-A. CGC tier_label corrections at grades 4–6.5 + AU/AA
-   8 UPDATE statements bringing live tier_labels into sync with the
-   operator's authoritative table. Substantive changes at 6 and 6.5
-   ("Ex/NM" → "Excellent/Mint" — different intermediate term, not just
-   shorthand expansion). Cosmetic shorthand expansion at 4, 4.5, 8, 8.5.
-   AU/AA tier_label corrections (live had "Authentic" / "Authentic Altered";
-   spec wants "Altered/Ungraded" / "Altered/Authentic").
-
-B. Reholder/crossover support
-   ADD COLUMN: reholder_eligible BOOLEAN + reholder_target_raw_label TEXT
-              + reholder_fee_min_usd NUMERIC(8,2)
-              + reholder_fee_max_usd NUMERIC(8,2)
-   INSERT row: CGC | Gem Mint 9.5 | Gem Mint | 9.5 | market_equiv_10=TRUE
-              | reholder_eligible=TRUE | target='Gem Mint 10' | fee $5–$10
-   UPDATE:     CGC | Perfect 10 | reholder_eligible=TRUE
-              | target='Pristine 10' | fee unknown (NULL bounds)
-
-C. BGS — three-tier top-end
-   Black Label 10 (rarest) > Gold Label 10 (middle) > Pristine 10 (lowest)
-   Two new INSERTs:
-     BGS | Black Label 10 | tier='Black Label' | numeric=10
-     BGS | Gold Label 10  | tier='Gold Label'  | numeric=10
-   DELETE of 'Gold 10' placeholder from db93ccf (wrong naming convention).
-
-D. RAW grader sentinel + UNKNOWN grader sentinel
-   INSERT: RAW | Ungraded   | NULL | Ungraded   | FALSE | FALSE
-   INSERT: UNKNOWN | Unparseable | NULL | Unparseable | FALSE | FALSE
-
-E. Fact-table CHECK constraints accept RAW + UNKNOWN
-   ebay_transactions, courtyard_transactions, courtyard_asks,
-   collector_crypt_transactions, collector_crypt_asks — all 5 get
-   the same allowed list: {CGC, PSA, BGS, SGC, RAW, UNKNOWN} + NULL.
-
-CGC LABEL COLOR SCHEME (authoritative — replaces prior wrong drafts):
-
-  Gold   = Pristine 10 (current top tier, virtually flawless, 50/50 centering)
-  Black  = current standard CGC (Gem Mint 10, Mint+ 9.5, grades 9 and below)
-  Blue   = LEGACY — older naming convention, Gem Mint 9.5 only (outlier)
-  (legacy retired) = Perfect 10 (retired 2023)
-
-There is NO current CGC Green Label for trading cards. Earlier session
-drafts referenced "Green Label" — all wrong, all removed.
-
-CRITICAL PRICING DISTINCTION (HORIZON load-bearing):
-
-At numeric grade 9.5, two raw_labels exist with very different market
-behavior:
-
-  Mint+ 9.5     (Black Label, current standard) — NOT equivalent to a 10.
-                Completely different card from Gem Mint 9.5.
-  Gem Mint 9.5  (Blue Label, legacy outlier)    — CGC officially treats as
-                EQUIVALENT to Gem Mint 10. Eligible for $5–$10 reholder to
-                Gem Mint 10.
-
-HORIZON must JOIN on (grader, raw_label) — not (grader, numeric_grade) — to
-distinguish these. tier_label is the discriminator at the same numeric.
-
-================================================================================
-RAW-CARD TABLE SERIES — ARCHITECTURE STUB, NOT YET CREATED
-================================================================================
-
-Per operator: raw (ungraded) cards live in a SEPARATE table series from
-graded cards, with their own condition vocabulary.
-
-Tables to be created (schema pending operator confirmation):
-  raw_transactions   — completed raw-card sales
-  raw_asks           — active raw-card listings
-  raw_bids           — open offers / OBO on raw cards
-
-condition_label vocabulary (replaces grader/grade/grade_label):
-  NM   Near Mint        — top condition for ungraded
-  LP   Light Play       — minor wear
-  MP   Moderate Play    — visible wear
-  HP   Heavy Play       — significant wear
-  DMG  Damaged          — creased / torn / ink / liquid
-
-OPEN QUESTIONS — operator to answer before CREATE TABLE:
-
-  1. Single-set with `market` column (raw_transactions(market TEXT, …))
-     OR per-market sets (raw_ebay_transactions, raw_courtyard_transactions,
-     raw_collector_crypt_transactions)?
-     Single-set is cleaner if downstream queries don't need market-specific
-     indexes. Per-market mirrors the existing graded-table pattern.
-
-  2. Should raw cards still carry card_id FK to master_card_catalog?
-     (Recommended yes — same card identity model regardless of grading.)
-
-  3. Anything else operator wants on the schema before the migration is written?
-
-DOCUMENTED in:
-  infrastructure/docs/pokemonbhn/collectibles-data-standard.md §3.5.4
-  infrastructure/docs/pokemonbhn/BHN-Grade-Label-Reference.md (RAW section
-    after SGC, plus updated Grader Sentinel Values section near the top)
-
-================================================================================
-LATE-SESSION ADDENDUM — TLS FINGERPRINT BREAKTHROUGH (impers + firefox144)
-================================================================================
-
-Confirmed empirically tonight from LA's burned IP 149.28.91.100:
-
-1. All three of our data-center IPs return HTTP 403 in <1 second on eBay's
-   /sch/i.html search endpoint:
-     LA direct  (Vultr LA, 149.28.91.100)         → 403
-     FRA tunnel (Vultr Frankfurt, 192.248.187.208) → 403
-     Hillsboro  (Hetzner US-WEST, 5.78.94.237)    → 403
-   eBay broad-blocks data-center ranges on this endpoint.
-
-2. BUT — the dominant block signal is not IP reputation alone; it's also
-   TLS fingerprint. eBay's anti-bot (Akamai-style) scores on JA3 / HTTP-2
-   fingerprint AND IP. Standard clients (curl, Node fetch/undici, Python
-   requests) emit non-browser TLS handshakes that flag fast.
-
-3. Tested 8 browser-impersonation profiles via the npm package `impers`
-   (Node-native TypeScript port of curl_cffi) from LA's burned IP:
-     chrome (default, older) → 403 (1.8 KB Error Page)
-     chrome142/131/116       → 200 / 13 KB  (Akamai challenge, NOT listings)
-     firefox / firefox144    → 200 / 1.47-1.50 MB  (REAL listings page)
-     safari / edge           → 200 / 13 KB  (challenge page, NOT listings)
-
-   Firefox is the only profile that gets through to the full search-results
-   payload. ALL from LA's burned IP — NO proxy involved.
-
-4. Sustainability test (60s cool + 5 requests × 20s gaps, firefox144):
-     [1] 403   1,989 bytes  (residual rate-limit from prior 8-profile batch)
-     [2] 200   1.50 MB
-     [3] 200   1.50 MB
-     [4] 200   1.50 MB
-     [5] 200   1.50 MB
-   4/5 success. The single 403 was carryover from earlier rapid-fire tests;
-   on a fully-cooled IP with paced requests, 5/5 expected.
-
-CONCLUSION
-
-  impers + firefox144 + paced requests = working eBay scrape from LA's
-  existing IP. No residential proxies. No managed service. No monthly cost.
-  The scraper lives.
-
-  TLS fingerprint, not IP reputation, was the dominant block all along.
-  Residential proxies would have been money spent on the wrong problem.
-
-REQUIRED FOLLOW-UP — LISTINGS PARSER UPDATE
-
-  The 200 responses have 1.5 MB bodies but our quick-check regex for the
-  CSS class `s-item__title` returned zero hits. eBay redesigned the search-
-  results markup at some point; the BHN scraper's parser
-  (infrastructure/scrapers/ebay-sold-scrape.js, the parseSearchPage logic
-  using $el.find('.s-item') / `.s-item__title`) IS STALE.
-
-  Before the scraper can run in production with impers, the parser needs
-  re-derivation against current eBay HTML. Steps:
-    1. From a fresh paced request, save the 1.5 MB body to disk
-    2. Inspect the actual CSS class names eBay now uses for listing tiles,
-       titles, prices, sold dates, seller info
-    3. Update the cheerio selectors in scrapeCard's per-page loop
-    4. Verify with a single test request that fields populate correctly
-    5. Then re-enable scraping
-
-  This is a REQUIRED fix before the integration commit — don't ship the
-  impers integration without it or the scraper will run silently with
-  zero rows landing in ebay_transactions.
-
-INTEGRATION SKETCH (for next-session execution)
-
-  impers is ESM-only — top-level await in its dist/index.js. Our scraper
-  is CJS. Two options:
-    a) Convert ebay-sold-scrape.js to ESM (top-level changes, .mjs extension)
-    b) Use dynamic `await import('impers')` inside fetchPage(), cache the
-       module reference. Cleaner, smaller diff.
-
-  Replace fetchPage()'s native fetch() with impers.get(url, {
-    impersonate: 'firefox144',
-    proxy: process.env.BHN_SOCKS_PROXY,   // optional, can layer if needed later
-  }). Drop the AbortController / signal pattern — impers has its own timeout.
-
-ARTIFACTS LEFT ON LA
-
-  /opt/bhn/ebay-sold-scraper/test-impers.mjs           — first test (single fetch)
-  /opt/bhn/ebay-sold-scraper/test-impers-multi.mjs     — 8-profile batch test
-  /opt/bhn/ebay-sold-scraper/verify-firefox-response.mjs — single-shot verify
-  /opt/bhn/ebay-sold-scraper/test-firefox-paced.mjs    — 5x paced firefox144
-  /opt/bhn/ebay-sold-scraper/node_modules/impers       — installed (npm install impers)
-
-  The FRA SOCKS5 tunnel screen session (`fra-socks` on LA) is STILL UP at
-  127.0.0.1:10808. Leaving it for tomorrow in case integration testing
-  benefits from layering proxy + impers. Operator can tear down with
-  `screen -X -S fra-socks quit` when done.
-
-  LA's 149.28.91.100 needs an OVERNIGHT COOL — today's 8-profile rapid-fire
-  test almost certainly left a residual rate-limit signature. No more
-  scraper requests from this IP tonight.
-
-================================================================================
-NEXT SESSION — PRIORITY 0 (top of queue, supersedes prior priorities)
-================================================================================
-
-BUILD `BHN-eBay-Scraper` AS A STANDALONE REPO
-
-  Fork github.com/lexiforest/impers and use it as the foundation of a
-  purpose-built BHN-eBay-Scraper repo, separate from BHN core infrastructure.
-
-  Rationale:
-    - impers is in tech-preview state — pinning a known-working version + our
-      patches gives stability decoupled from upstream.
-    - eBay scraping is a contained workstream with its own deployment, parser
-      maintenance, anti-bot ops. Doesn't belong in BLACKHOLE-NETWORK's core
-      infra repo long-term.
-    - A standalone repo lets us version the parser separately from the BHN
-      data standards.
-
-  Suggested scope of BHN-eBay-Scraper v0:
-    - Fork of impers (or thin wrapper around upstream pinned to a known
-      version)
-    - Our ebay-sold-scrape.js + ebay-sold-scrape-all.js + ebay-sold-load.js
-      ported in, refactored to use impers natively
-    - Updated CSS selectors for current eBay search HTML
-    - Operator runbook (replaces FRA SOCKS5 runbook which becomes obsolete)
-    - LA deployment scripts (mirrors today's /opt/bhn/ebay-sold-scraper
-      layout)
-    - Test harness that runs paced firefox144 requests against a known
-      WOTC card and verifies parser output
-
-  THIS SUPERSEDES the FRA SOCKS5 tunnel approach. Don't invest more in the
-  tunnel runbook — impers + LA IP is the path forward.
-
-================================================================================
-HOUSEKEEPING DONE THIS SESSION
-================================================================================
-
-  - DELETED infrastructure/docs/pokemonbhn/BHN-Grade-Label-Reference.txt
-    (duplicate of the .md, no longer maintained in parallel).
-  - RENAMED  infrastructure/docs/pokemonbhn/PokemonBHN-Data Standardization
-            Framework.docx → ...-LEGACY.docx
-    The .md files are the authoritative grading + data-standard docs going
-    forward. Word doc kept for historical reference only.
-  - Hillsboro tinyproxy egress finding from earlier this session: Node native
-    fetch() does NOT auto-honor HTTPS_PROXY env vars. The scraper's 2026-05-27
-    eBay 403 burned LA's real IP 149.28.91.100, NOT Hillsboro's 5.78.94.237.
-    See memory: project_la_egress_finding_2026-05-27.md.
-
-================================================================================
-PENDING OPERATOR DECISIONS (carried forward)
-================================================================================
-
-DATA STANDARD / GRADING
-
-  1. RAW table series architecture (single-set vs per-market) — see above.
-  2. BGS naming: confirm raw_label strings 'Black Label 10' / 'Gold Label 10'
-     vs bare 'Black 10' / 'Gold 10' against what BGS prints on actual slabs.
-     Easy rename when operator observes first real listing.
-  3. CGC Perfect 10 reholder fee — unknown to operator; left NULL in the
-     migration. Confirm rate when known.
-  4. SGC equivalent crossover service — does one exist? Flag if so.
-  5. CHECK constraint for grader='RAW' on graded tables — kept defensive in
-     the migration. If operator wants strict separation, drop RAW from the
-     CHECK list and rely solely on raw_* tables.
-
-SCHEMA AUDIT (DEFERRED PER OPERATOR)
-
-  22 actual-fee/acquisition/P&L columns on [market]_transactions tables
-  (platform_fee_pct/amt, royalty_fee_*, payment_processing_*, shipping_cost,
-  insurance_cost, packaging_cost, authentication_fee, sales_tax_*,
-  income_tax_liability, acquisition_*, total_fees, total_cost_basis,
-  gross_profit, net_profit, profit_margin_pct, roi_pct) — Sonnet-designed
-  in 2026-05-27 parallel chat session, NOT operator-reviewed individually.
-  Currently 100% NULL across 1092 ebay_transactions + 546 courtyard_transactions.
-  Cleanup deferred until real trade data flows. Likely Option C (drop the
-  five derived totals, keep per-fee + acquisition cols for direct your-trade
-  logging). See memory: project_transactions_accounting_columns_deferred.md.
-
-SCRAPING
-
-  6. eBay scraping currently HELD pending fresh residential proxies. The four
-     proxies the operator had (74.0.98.59, 212.68.184.95, 151.247.121.84,
-     176.103.231.25 — all on :50100 HTTP / :50101 SOCKS5) are dead — all 4
-     time out on connect from LA.
-  7. FRA SOCKS5 tunnel runbook documented at
-     infrastructure/docs/pokemonbhn/fra-socks5-scrape-runbook.md — operator
-     starts a screen on LA with `ssh -i /root/.ssh/eh_frankfurt -N
-     -D 127.0.0.1:10808 root@10.9.0.2` when next scrape session begins.
-     Frankfurt confirmed up + healthy + reachable; outbound IP 192.248.187.208
-     (clean, never used for eBay scraping). FRA decommission queued — use
-     before it's gone.
-  8. Scraper code change for SOCKS5 dispatcher still pending — Node fetch()
-     needs an explicit undici.Agent + socks package to route through the
-     tunnel. Code sketch in the FRA runbook. Defer to when scraping resumes.
-
-COURTYARD / OPENSEA
-
-  9. Courtyard SALES + LISTINGS + ARBITRAGE n8n workflows all live + active.
-     SALES has accumulated 546 rows; LISTINGS now actively populating
-     courtyard_asks (48 rows at last check after the ev.asset fix +
-     NULL-coercion fix landed). ARBITRAGE workflow runs every 30 min but
-     produces 0 signals — likely because most Courtyard cards are modern
-     Pokemon not in master_card_catalog (96% non-WOTC). Re-evaluate signal
-     yield once Courtyard parser is extended OR master_card_catalog expands
-     to modern sets.
-
-NOT TOUCHED INTENTIONALLY
-
-  - Hillsboro / la-egress-lockdown — untouched, separate workstream.
-  - eBay VINTAGE-* workflows (8 of them) writing to ebay_asks — not touched
-    despite producing the legacy 'Holo' rows in sold_listings. Fix pattern
-    is the same as the loader, but ebay_asks is lower priority than
-    ebay_transactions.
-
-================================================================================
-MEMORY DELTA (in ~/.claude/projects/.../memory/)
-================================================================================
-
-  Existing memories (referenced this session):
-    feedback_ebay_scraper_never_auto_kickoff
-      — never launch eBay scrapers automatically. eBay is operator's primary
-        income source. Re-violated and corrected during 2026-05-27 PT2.
-    project_la_egress_finding_2026-05-27
-      — Node fetch on LA bypasses HTTPS_PROXY env; the 2026-05-27 403 burned
-        LA's real IP 149.28.91.100, not Hillsboro. FRA is clean.
-    project_transactions_accounting_columns_deferred
-      — 22 actual-fee/acquisition/P&L cols on [market]_transactions are
-        Sonnet-designed and not operator-reviewed individually. Cleanup
-        deferred until trade data flows; likely Option C.
-
-================================================================================
-APPLY ORDER WHEN OPERATOR IS READY
-================================================================================
-
-Per the LA stateless-deploy pattern (postgres user can't cd into /root):
-
-  cat sql/migrations/2026-05-28-grade-catalog-corrections.sql | \
-    ssh root@10.8.0.1 'sudo -u postgres psql -d eventhorizon -v ON_ERROR_STOP=1'
-
-Then run the 5 post-apply verification queries documented in the migration
-file's tail comments.
-
-The 2026-05-27-drop-mcc-variant.sql migration can apply independently
-(separate concern, lower priority — operator's call on when).
-
-================================================================================
+==================================================================
+BLACKHOLE NETWORK (BHN) — SESSION HANDOFF
+Last Updated: 2026-05-28 | Day 32
+Operator: Hayden Harper | Laguna Niguel, CA
+==================================================================
+
+PURPOSE
+-------
+Read this FIRST at the start of every Claude session.
+Tells Claude what state the project is in, what was done
+last session, and what to work on next.
+
+==================================================================
+SECTION 1 — NETWORK SNAPSHOT
+==================================================================
+
+NODE            IP (PUBLIC)         TUNNEL IP   SSH         STATUS
+LA (hub)        149.28.91.100       10.8.0.1    port 22     OPERATIONAL — hub, PG, n8n, HORIZON, Redis, Wallos
+NJ (trading)    140.82.4.35         10.8.0.5    port 2222   OPERATIONAL — trading stack, Grafana, Metabase
+Hillsboro       5.78.94.237         10.8.0.6    port 22     OPERATIONAL — tinyproxy egress, Tor relay BHNHeliosUS3
+Frankfurt       192.248.187.208     10.9.0.2    port 22     DECOMMISSIONING — pending next session
+
+WireGuard Mesh (hub-and-spoke, LA is hub):
+  Operator PC:     10.8.0.4   PSK: YES
+  Operator Phone:  10.8.0.2   PSK: YES
+  Operator Laptop: 10.8.0.7   PSK: YES
+  NJ:              10.8.0.5   PSK: YES (rotated this session)
+  Hillsboro:       10.8.0.6   PSK: YES
+  Frankfurt:       10.9.0.2   PSK: YES
+
+WireGuard server pubkey: TOYnFt18v4NynEN91o6zkmV5hsvHBLJTb8qL7GG/KAo=
+Laptop SSH key: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFTizS5J0MtOYMxpjtOd8GLwfUV3p+tdP3dodGnfC6yd
+
+CONSOLE TERMINOLOGY (STRICT — never mix up):
+  REMOTE BROWSER WINDOW = noVNC web console (Vultr or Hetzner)
+  PC LA CONSOLE         = ssh root@149.28.91.100
+  PC GE CONSOLE         = ssh root@192.248.187.208
+  PC NJ CONSOLE         = ssh -p 2222 root@140.82.4.35  <-- ALWAYS port 2222
+  PC Hillsboro          = ssh root@5.78.94.237
+  LA->Frankfurt:        ssh frankfurt  (alias from LA)
+  LA->NJ:               ssh nj         (alias from LA)
+  LA->Hillsboro:        ssh hillsboro  (alias from LA)
+
+==================================================================
+SECTION 2 — LAST SESSION COMPLETED (2026-05-28)
+==================================================================
+
+CLAUDE CODE — 14 TASKS:
+  [1]  LA Docker daemon proxy drop-in         DONE — applied + NO_PROXY stopgap for docker.io
+  [2]  Frankfurt UFW 9001/tcp orphan rule      DONE — deleted v4 + v6 rules
+  [3]  NJ WireGuard PSK rotation              DONE — rotated, handshake clean
+  [4]  Kernel patches — all nodes             SKIP — no kernel update in apt; CVE mitigation in
+                                                      place (algif_aead blacklisted in
+                                                      /etc/modprobe.d/disable-algif_aead.conf)
+  [5]  Frankfurt decom prep                   DONE — enumerated for handoff (fra-decom-enum.txt)
+  [6]  LA hostname fix                        DONE — vultr -> BHN-LOSANGELES-US1
+  [7]  fail2ban on Hillsboro                  DONE — active, sshd jail configured
+  [8]  Suricata cleanup on NJ + Frankfurt     DONE — stopped and disabled on both
+  [9]  wg1 mystery interface                  DONE — identified: alt-egress LA<->Hillsboro
+                                                      on 10.10.0.0/30, dormant, intentional
+                                                      redundancy. Documented in
+                                                      infrastructure/docs/wg-mesh-topology.md
+  [10] Unnecessary services trim — all nodes  DONE — ModemManager, snapd, multipathd disabled
+  [11] ShadowBroker deploy on LA              DEFERRED — LA RAM insufficient (940MB/1GB at boot)
+                                                         Needs 4GB+ VPS. Staged in repo.
+  [12] HORIZON <-> ShadowBroker              DEFERRED — depends on #11
+  [13] SDR PostgreSQL tables                  DONE — aircraft_positions, aprs_packets,
+                                                      sensor_readings created with grants
+  [14] Session handoff doc                    DONE — committed 8e05089
+
+7 COMMITS PUSHED: dcc152a -> 6189192 -> 1690f94 -> 89d89aa -> 18ede38 -> 0de4cef -> 8e05089
+
+ALSO COMPLETED THIS SESSION:
+  - Grafana migrated from LA to NJ (LA freed ~500MB RAM)
+  - Metabase installed on NJ (port 3001) — connected to LA PostgreSQL
+  - Netdata installed all 4 nodes — all streaming to LA as parent
+    All 4 nodes visible at http://10.8.0.1:19999
+  - Hillsboro stabilized — Suricata killed, 2GB swap added
+  - Node audit committed — infrastructure/docs/BHN-NODE-AUDIT-2026-05-28.md
+  - WireGuard mesh topology documented — infrastructure/docs/wg-mesh-topology.md
+  - eBay scraper TLS fingerprint breakthrough (impers + firefox144)
+  - Reddit post to r/selfhosted (approved after AI disclosure clarification)
+  - ShadowBroker researched and added to BHN roadmap
+  - SDR/radio stack planned and hardware ordered
+
+NODE RAM STATUS (end of session):
+  LA (BHN-LOSANGELES-US1):  ~63%, ~1.2/1.9GB
+  NJ (BHN-NEWJERSEY-US2):   ~70%, ~1.3/1.9GB
+  Hillsboro (BHN-HILLSBORO-US3): ~62%, ~1.2/1.9GB
+  Frankfurt (BHN-FRANKFURT-EU1): ~43% RAM, ~43% CPU (HIGH CPU — investigate)
+
+==================================================================
+SECTION 3 — PENDING NEXT SESSION (priority order)
+==================================================================
+
+[P0] PROVISION 4GB+ VPS FOR SHADOWBROKER
+  - Vultr 4GB/2vCPU ~$24/mo
+  - ShadowBroker backend alone needs ~1GB RAM
+  - No existing BHN node has headroom
+  - This node also becomes home for SDR data collectors
+  - ShadowBroker Docker compose + .env template staged in repo
+  - API keys operator is signing up for tonight:
+      opensky-network.org (aircraft)
+      aisstream.io (ship tracking)
+      n2yo.com (satellite tracking)
+      adsb.lol — no account needed
+      USGS — no account needed
+      GDELT — no account needed
+
+[P0] DEPLOY SHADOWBROKER ON NEW VPS
+  - Repo: github.com/brockmisner/shadowbroker
+  - Port: 8099
+  - UFW: allow from 10.8.0.0/24 only
+  - Wire HORIZON as co-analyst via HMAC-signed agentic command channel
+  - Use existing EventHorizonVPN-Claude n8n credential for API key
+
+[P1] FRANKFURT FULL DECOMMISSION
+  - Enumeration saved to fra-decom-enum.txt
+  - Stop all services, remove from WireGuard mesh
+  - Cancel Hetzner billing
+  - High CPU (43%) still suspicious — check before shutdown
+
+[P1] FIX DOCKER-PULL-VIA-TINYPROXY TLS CERT ISSUE
+  - Stopgap in place (docker.io added to NO_PROXY)
+  - Root cause: IPv6 vs IPv4 TLS cert mismatch through tinyproxy
+  - Getting wrong cert: stage-teams.ndms.nascar.com instead of docker.com
+  - Does not affect running containers
+
+[P1] REMOVE GRAFANA FROM LA
+  - 48hr rollback window expires 2026-05-30
+  - After: apt purge grafana + clean up config
+  - Grafana package retained on LA until then
+  - Grafana now running on NJ at http://10.8.0.5:3000
+
+[P2] HORIZON WORKFLOW RE-IMPORT
+  - bhn-horizon.json not re-imported into n8n
+  - HORIZON still running stale workflow, identifies as "Nathan"
+  - Lacks awareness of financial/trading tables
+  - Re-import via browser session on WireGuard at http://10.8.0.1:5678
+  - Manual credential re-wiring required — no page refresh during edit
+
+[P2] N8N + NODE FETCH() BYPASS HTTP_PROXY
+  - n8n and HORIZON use Node's native fetch() which ignores HTTP_PROXY env
+  - LA outbound traffic from n8n/HORIZON goes direct via LA IP (not through Hillsboro)
+  - wg1 alt-egress tunnel (10.10.0.0/30) is the kernel-level fix
+  - Promoting wg1 to default route on LA would catch all outbound including Node fetch()
+  - Not done — it's the break-glass option when needed
+
+[P3] TRADING STACK RESUME
+  - Currently paused
+  - Hotfix a7ba358 committed (trading_core.py singleton bug fixed)
+  - Resume when operator ready
+
+[P3] POP!_OS DUAL BOOT ON DRESDEN (D:)
+  - ISO ready at T:\Downloads\
+  - Etcher installed
+  - SANDISKJUMP ready
+  - Pending operator convenience
+
+==================================================================
+SECTION 4 — CURRENT STACK DISTRIBUTION
+==================================================================
+
+Layer               Tool                    Node        URL
+---------------------------------------------------------------------------
+Database            PostgreSQL 14           LA          10.8.0.1:5432
+Vector memory       pgvector                LA          —
+Workflow automation n8n                     LA          http://10.8.0.1:5678
+AI agent            HORIZON                 LA          —
+Short-term memory   Redis                   LA          —
+Infra monitoring    Netdata (parent)        LA          http://10.8.0.1:19999
+Data dashboards     Metabase                NJ          http://10.8.0.5:3001
+Infra dashboards    Grafana                 NJ          http://10.8.0.5:3000
+Trading stack       Alpaca paper (5 strats) NJ          PAUSED
+Speed testing       LibreSpeed              NJ          —
+Egress proxy        tinyproxy               Hillsboro   10.8.0.6:8888
+Tor relay           BHNHeliosUS3            Hillsboro   —
+OSINT dashboard     ShadowBroker (PENDING)  New VPS     http://[new-vps]:8099
+
+==================================================================
+SECTION 5 — SDR / RADIO STACK (NEW THIS SESSION)
+==================================================================
+
+HARDWARE ORDERED (arriving 2026-05-29):
+  NooElec NESDR SMArt v4 RTL-SDR Essentials Starter Kit — $87.95 — Amazon
+  Includes:
+    - NESDR SMArt v5 dongle (100kHz-1.7GHz receive only)
+    - Flamingo FM bandstop filter (blocks strong FM stations)
+    - 3 antenna masts (helical, DVB-T2, telescopic)
+    - 10 RF adapters and cables
+    - Carrying case
+    - 2 year warranty, 24/7 support
+    - Amazon-exclusive bundle
+
+HARDWARE WISHLIST:
+  Baofeng programming cable — ~$8 — program frequencies via CHIRP
+  Nagoya NA-771 antenna — ~$15 — upgrade Baofeng rubber duck
+  HackRF One (used) — ~$150-200 — SDR TX/RX 1MHz-6GHz, modular with NooElec
+  Icom IC-7300 (used) — ~$800 — HF transceiver 100W, reach Missouri
+
+EXISTING HARDWARE:
+  Baofeng UV-5R handheld — VHF/UHF 144/440 MHz — need license to transmit
+  Roof flat panel TV antenna — wideband, coax runs inside, F connector
+  Sony STR-DH550 AV receiver — shares roof coax via splitter
+
+SDR ARCHITECTURE:
+  Roof TV antenna
+       |
+  F to SMA adapter (~$5)
+       |
+  RTL-SDR NooElec dongle (PC USB)
+       |
+  +-----------+-----------+-----------+
+  |           |           |
+  rtl_433  dump1090   Direwolf
+  (433MHz  (ADS-B     (APRS
+  sensors) aircraft)  packets)
+       |           |           |
+  PostgreSQL on LA (via WireGuard)
+       |
+  ShadowBroker on new VPS reads data
+       |
+  HORIZON as co-analyst
+       |
+  SMS alerts to operator
+
+SOFTWARE DOWNLOADED — R:\AA RADIO\SDR\Software\:
+  Zadig 2.9          -> \Zadig\     — run when dongle arrives (USB driver)
+  SDR# x64 (Airspy)  -> \Airspy\    — main SDR receiver software
+  VB-Audio Virtual   -> \VB Audio\  — virtual audio cable between apps
+  CHIRP (20260522)   -> \CHIRP\     — Baofeng programmer (needs cable)
+
+SOFTWARE INSTALL ORDER (when dongle arrives tomorrow):
+  1. Run Zadig — install RTL-SDR USB driver
+  2. Install SDR# — confirm dongle working
+  3. Install VB-Audio Virtual Cable
+  4. Install CHIRP (needs Baofeng programming cable ~$8)
+  5. Clone + install Direwolf — github.com/wb2osz/direwolf
+  6. Clone + install rtl_433 — github.com/merbanan/rtl_433
+  7. Clone + install dump1090 — github.com/flightaware/dump1090
+
+ACCOUNTS TO SIGN UP TONIGHT:
+  opensky-network.org  — aircraft ADS-B (ShadowBroker key)
+  aisstream.io         — ship tracking (ShadowBroker key)
+  n2yo.com             — satellite tracking (ShadowBroker key)
+
+NEW POSTGRESQL TABLES (schema only — data flows when dongle arrives):
+  aircraft_positions   — ADS-B data from dump1090
+  aprs_packets         — APRS data from Direwolf
+  sensor_readings      — 433MHz sensor data from rtl_433
+
+==================================================================
+SECTION 6 — SHADOWBROKER INTELLIGENCE PLATFORM
+==================================================================
+
+WHAT IT IS:
+  Self-hosted real-time global OSINT intelligence dashboard.
+  Repo: github.com/brockmisner/shadowbroker
+  Stack: Next.js + MapLibre GL + FastAPI + Python + Docker
+  35+ toggleable data layers on a dark-ops map interface.
+  No user data collected — runs entirely in browser vs self-hosted backend.
+
+KEY CAPABILITIES:
+  - Aircraft tracking: commercial, military, private jets, Air Force One
+  - Maritime vessel tracking via AIS
+  - Satellite tracking: spy satellites, ISS, Starlink
+  - Seismic events (USGS real-time)
+  - GPS jamming detection — real-time NAC-P analysis
+  - 500+ public KiwiSDR receivers plotted worldwide — click to tune remotely
+  - CCTV layer — publicly accessible cameras worldwide
+  - US Navy Carrier Strike Group tracker (all 11 carriers)
+  - GDELT geopolitical news scraping
+  - SAR ground-change detection
+  - Visual modes: DEFAULT / SATELLITE / FLIR / NVG / CRT
+  - Right-click anywhere on Earth: country dossier + Sentinel-2 satellite photo
+
+HORIZON INTEGRATION:
+  - Supports Claude API via HMAC-signed agentic command channel
+  - HORIZON gets full read/write access to all 35+ data layers
+  - Pin placement, map control, SAR ground-change, mesh networking, alerts
+  - HORIZON sees everything operator sees, can take actions on map in real time
+  - Use EventHorizonVPN-Claude n8n credential for API key
+
+DEPLOYMENT PLAN:
+  Node:     New 4GB+ Vultr VPS (~$24/mo)
+  Port:     8099
+  Access:   UFW — 10.8.0.0/24 mesh only
+  API keys: OpenSky (opensky-network.org), adsb.lol (no account),
+            aisstream.io, N2YO (n2yo.com), USGS (no account), GDELT (no account)
+
+==================================================================
+SECTION 7 — HAM RADIO ROADMAP
+==================================================================
+
+STUDY COURSE:
+  HamRadioPrep.com — Technician + General bundle — $55
+  Lifetime access, money back guarantee
+  hamradioprep.com/pricing
+
+LICENSE PATH:
+  1. Study on HamRadioPrep.com — Technician + General ($55)
+  2. Take both exams same day online:
+       hamstudy.org/sessions/remote
+       N9BI 24-Hours Testing — runs 6AM-6PM almost daily — $15
+       Zoom + webcam + government ID required
+  3. FCC issues license ~2-5 business days after exam
+     Auto-assigned callsign like KD6ABC
+  4. Apply for KK0F vanity callsign
+     2x1 format — General class required
+     Confirmed available as of 2026-05-27 at radioqth.com/vanity
+     FCC vanity processing ~2-4 weeks
+  5. License valid 10 years, renewable free online, no re-exam
+
+WHY TECHNICIAN + GENERAL (not just Technician):
+  - KK0F is 2x1 format — requires General class (not Technician)
+  - HF privileges (reach Missouri) require General class
+  - $55 vs $35 — obvious choice
+  - Pass both same day, come out with General immediately
+
+RADIO HARDWARE ROADMAP:
+  Now:           NooElec RTL-SDR kit (arriving tomorrow)
+                 Receive 100kHz-1.7GHz — aircraft, APRS, weather sats, sensors
+                 Feed BHN/PostgreSQL immediately
+
+  After license: Baofeng UV-5R (already owned — FREE)
+                 VHF/UHF transmit once licensed
+                 Hit Santiago Peak repeaters — 100-150mi SoCal coverage
+                 APRS transmit — appear on aprs.fi
+
+  Future:        HackRF One ~$175 used
+                 SDR TX/RX 1MHz-6GHz
+                 Modular — pairs with NooElec (NooElec = dedicated RX)
+                 No license required for receiving
+
+  Wishlist:      Icom IC-7300 ~$800 used
+                 HF 100W desktop transceiver
+                 California to Missouri routine on 40m band at night
+                 Looks like a home stereo receiver on your desk
+
+SOCAL RADIO ADVANTAGE:
+  - Laguna Niguel has direct LOS to Santiago Peak (5,687 ft)
+  - Santiago Peak hosts dozens of major OC/LA repeaters
+  - Baofeng + roof antenna = 100-150 mile coverage radius across SoCal
+  - EchoLink/AllStar linked repeaters = can reach Missouri via internet links
+  - APRS digipeaters cover RSM area — packets on aprs.fi within seconds
+
+SUBREDDITS:
+  r/amateurradio     — main ham community 350K+ members
+  r/RTLSDR           — SDR specific projects and tutorials
+  r/APRS             — APRS specific
+  r/ADSB             — aircraft tracking
+  r/AmateurRadioExams — license study
+  r/hackrf           — for when HackRF One arrives
+
+==================================================================
+SECTION 8 — GITHUB PROJECTS — BHN ROADMAP
+==================================================================
+
+Project       Repo                                    Runs On        Purpose
+-------------------------------------------------------------------------------------------
+ShadowBroker  github.com/brockmisner/shadowbroker     New VPS        Global OSINT + HORIZON
+rtl_433       github.com/merbanan/rtl_433             Operator PC    433MHz sensors -> PG
+dump1090      github.com/flightaware/dump1090         Operator PC    ADS-B aircraft -> PG
+Direwolf      github.com/wb2osz/direwolf              Operator PC    APRS decoding -> PG
+
+==================================================================
+SECTION 9 — KNOWN ISSUES
+==================================================================
+
+ISSUE                               SEVERITY    STATUS
+-----------------------------------------------------------------------
+HORIZON running stale Nathan        HIGH        Pending re-import
+  workflow (bhn-horizon.json)                   Browser session on WG
+                                                at 10.8.0.1:5678
+                                                Manual credential re-wire
+                                                NO page refresh during edit
+
+Docker pull via tinyproxy           LOW         Stopgap in place
+  TLS cert mismatch                             docker.io in NO_PROXY
+                                                Root: IPv6 vs IPv4 mismatch
+
+n8n + Node fetch() bypasses         LOW         Known limitation
+  HTTP_PROXY env                                wg1 alt-egress is fix
+                                                (break-glass option)
+
+Frankfurt high CPU (~43%)           MEDIUM      Investigate before decom
+  after Tor decommission                        May have rogue process
+
+Twilio A2P outbound SMS             MEDIUM      Unknown — check status
+  approval                                      Est. window was May 23-30
+
+Hillsboro kernel older              LOW         Monitored
+  (5.15.0-164 vs 177)                           No apt upgrade offered
+                                                CVE mitigation in place
+
+==================================================================
+SECTION 10 — STORAGE — LA
+==================================================================
+
+NVMe 101GB: /dev/vdb -> LUKS2 -> /dev/mapper/eh-nvme -> XFS -> /mnt/eh-nvme-hot
+  Label: SSD-LOSANGELES-US1
+  Purpose: HOT — live writes, PostgreSQL, logs
+  LUKS keyfile: /root/.luks-eh-nvme
+  LUKS passphrase: EH-NVMe-LUKS (in Proton Pass)
+
+HDD 399GB: /dev/vdc -> LUKS2 -> /dev/mapper/eh-hdd -> XFS -> /mnt/eh-hdd-cold
+  Label: HDD-LOSANGELES-US1
+  Purpose: COLD — archives
+  LUKS keyfile: /root/.luks-eh-hdd
+  LUKS passphrase: EH-HDD-LUKS (in Proton Pass)
+
+Auto-unlock on boot: verified working.
+
+==================================================================
+SECTION 11 — QUICK REFERENCE
+==================================================================
+
+SERVICE URLS (WireGuard required):
+  n8n:               http://10.8.0.1:5678
+  Netdata (all):     http://10.8.0.1:19999
+  Metabase:          http://10.8.0.5:3001
+  Grafana:           http://10.8.0.5:3000
+  ShadowBroker:      http://[new-vps]:8099  (PENDING)
+  PostgreSQL:        10.8.0.1:5432 / db: eventhorizon
+
+KEY CREDENTIALS (all in Proton Pass):
+  LA root password:  Changed 2026-05-07 — old EventHorizon2026 INVALID
+  Frankfurt:         Still uses EventHorizon2026
+  LUKS passphrases:  EH-NVMe-LUKS and EH-HDD-LUKS
+  SSH key:           C:\Users\fletc\.ssh\id_ed25519
+  HORIZON email:     horizon@eventhorizonvpn.com
+  HORIZON SMS:       +1 310 929 6201 (Twilio)
+  Proton Mail:       hayden.harper92@proton.me
+
+LA SECURITY CONFIG:
+  sshd_config:       PermitRootLogin=prohibit-password
+  fail2ban ignoreip: 127.0.0.1/8, ::1, 10.8.0.0/24, 92.118.39.235
+  iptables pos 1:    ACCEPT from 10.8.0.0/24 to port 22
+  INPUT default:     DROP
+
+TRADING ACCOUNTS (Alpaca paper):
+  PA39LSUT2NW8 — $100k account
+  PA3AZX0UE3JC — $25k account
+  PA37PRN150AG — $25k account
+  Status: PAUSED — hotfix a7ba358 committed
+
+==================================================================
+SECTION 12 — EH PRODUCT ROADMAP
+==================================================================
+
+PHASE 1 NETWORK — Infrastructure
+  Status: In progress
+  LA solid. Frankfurt decommissioning. More nodes planned.
+
+PHASE 2 DASHBOARD — Visibility
+  Status: Active
+  PostgreSQL + n8n + Metabase + Netdata deployed.
+  Grafana on NJ. Single pane of glass achieved.
+
+PHASE 3 AI INTEGRATION — HORIZON + ShadowBroker
+  Status: Blocked on 4GB VPS for ShadowBroker
+  HORIZON running (stale workflow). ShadowBroker staged in repo.
+
+PHASE 4 EH CHAT — Matrix Synapse + Element
+  Status: Planned
+  Self-hosted Matrix Synapse on LA. VPN-only. Federation off.
+
+PHASE 5 DNS SWITCHER + ECOSYSTEM
+  Status: Planned
+  Sources: encrypted-dns.party, nitrohorse.com
+  Top picks: Mullvad, Quad9, AdGuard Unfiltered, Cloudflare, NextDNS
+
+EH COMMUNITY/IDENTITY SYSTEM:
+  Founding account: BlackHole-Zero (hardcoded)
+  Format: Color-CosmicObject[JoinNumber] · [4-char code]
+  Black: founding circle (001-048)
+  Crimson: Genesis Tier (049-096)
+  Cobalt: Pioneer Tier (097-144)
+  Violet+: community (145+)
+
+EH PAYMENT ARCHITECTURE:
+  Accepted: Monero XMR (unique subaddresses), physical cash by mail,
+            Goldbacks, prepaid cards, postal money orders, gift cards (Bitrefill)
+  Excluded: PayPal, Stripe, Venmo, bank transfers
+
+==================================================================
+SECTION 13 — HARD RULES (NEVER DEVIATE)
+==================================================================
+
+PROJECT NAME:     BLACKHOLE NETWORK (BHN) — never "EventHorizon"
+                  (EventHorizon = PostgreSQL DB name only)
+
+NJ SSH PORT:      ALWAYS port 2222 — ssh -p 2222 root@140.82.4.35
+
+GITHUB COMMITS:   ALWAYS provide Summary AND Description first
+                  No exceptions — no blind commits
+
+POSTGRESQL:       DB name stays "eventhorizon"
+                  Email stays "eventhorizonvpn.com"
+
+SCHEMA CHANGES:   Consult operator before ANY structural change
+                  No unilateral alterations
+
+MASTER TABLES:    All master reference tables use *_catalog suffix
+
+TESTING FLAG:     DNS query content + packet payload capture ENABLED
+                  MUST disable before onboarding real users
+
+POWERSHELL:       ALWAYS wrap string assignments in quotes
+                  $pat = "token" not $pat = token
+
+BOOTSTRAP:        Uses scp not git clone (repo is private)
+                  ALWAYS set TUNNEL_IP_OVERRIDE before running
+                  After bootstrap: ALWAYS run UFW egress rules on LA
+
+WIREGUARD:        After ANY new peer to LA wg0:
+                  ufw allow out to <PUBLIC_IP> port 51821 proto udp
+                  ufw allow out to <TUNNEL_IP>
+
+ALPACA SDK:       ALPACA_BASE_URL must NOT include /v2 suffix
+                  SDK appends it — including it causes double /v2/v2/ errors
+
+RESPONSES:        Keep answers short and to the point
+                  Long explanations only for genuine insights
+
+DO NOT TOUCH:
+  - PostgreSQL schema beyond new SDR tables
+  - n8n workflows
+  - Trading stack
+  - Pokemon/collectibles tables
+  - HORIZON workflow (re-import separately)
+
+==================================================================
+SECTION 14 — NAMING CONVENTIONS
+==================================================================
+
+EH RESOURCE NAMING:
+  Standalone VPS:  EH|VPS-LOCATION-COUNTRY+SEQINDEX
+                   Example: EH|VPS-LOSANGELES-US1
+  Attachments:     Drop the EH| prefix
+                   Example: SSD-LOSANGELES-US1
+  Format:          DEVICE-LOCATION-COUNTRY+SEQINDEX
+
+TOR RELAY NICKNAMES:
+  NO HYPHENS — alphanumeric only [a-zA-Z0-9]
+  Format: BHN + [AstroName] + [RegionCode] + [SeqNum]
+  Good:   BHNFornaxEU1
+  Bad:    BHN-Fornax-EU1
+
+CURRENT TOR RELAYS:
+  BHNHeliosUS3   -> Hillsboro   (active)
+  BHNFornaxEU1   -> Frankfurt   (DECOMMISSIONED this session)
+  BHNNebulaUS2   -> NJ          (deployed, not live)
+
+==================================================================
 END OF HANDOFF — 2026-05-28
-================================================================================
+==================================================================
+Store in: Claude Project files + repo infrastructure/docs/BHN session updates/
