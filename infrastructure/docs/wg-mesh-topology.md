@@ -22,12 +22,12 @@ The mesh actually carries two subnets:
 
 | From | To | Iface | AllowedIPs | PSK | Notes |
 |------|----|----|------------|-----|-------|
-| LA wg0 | NJ | wg0 | `10.8.0.5/32` | **none** | One of the only PSK-less peers in the mesh. PSK rotation queued (item 3). |
+| LA wg0 | NJ | wg0 | `10.8.0.5/32` | yes (PSK, rotated 2026-05-28) | Was PSK-less before 2026-05-28. PSK added to both sides via `wg syncconf`; backups at `wg0.conf.bak-2026-05-28` on both nodes. |
 | LA wg0 | Hillsboro | wg0 | `10.8.0.6/32, 10.8.0.0/24` | yes (PSK) | The catch-all `10.8.0.0/24` means Hillsboro answers for mesh broadcast paths. |
 | LA wg0 | FRA (via wg1 on FRA side) | wg0 | `0.0.0.0/0` | yes (PSK) | LA reaches FRA's 10.9.0.0/24 via the FRA peer. The `0.0.0.0/0` here is what makes the SOCKS scrape egress work. |
 | LA wg0 | Operator workstation 10.8.0.4 | wg0 | `10.8.0.4/32` | yes (PSK) | High-traffic peer (5.5 GB rx / 38 GB tx). |
 | LA wg0 | Operator workstation 10.8.0.2 | wg0 | `10.8.0.2/32` | yes (PSK) | Second operator endpoint (1.67 GB rx / 19.3 GB tx). |
-| NJ wg0 | LA | wg0 | `10.8.0.0/24` | **none** | One PSK-less side. |
+| NJ wg0 | LA | wg0 | `10.8.0.0/24` | yes (PSK, rotated 2026-05-28) | Matching side of the LA↔NJ rotation. |
 | Hillsboro wg0 | LA | wg0 | `10.8.0.0/24` | yes (PSK) | Primary mesh return path. |
 | Hillsboro wg0 | LA wg1 (point-to-point) | wg0 | `10.10.0.0/30` | **none** | The 10.10.0.0/30 link. Returns keepalive every ~25s. |
 | FRA wg1 | LA | wg1 | `10.8.0.0/24` | yes (PSK) | LA reaches FRA, FRA reaches LA's mesh. |
@@ -74,9 +74,7 @@ break this redundancy. Both sides hold legitimate config. Leave alone.
 
 ## PSK gaps (work queued)
 
-- **LA ↔ NJ on `wg0`:** no PSK on either side. Queued for rotation as
-  item 3 of the 2026-05-28 maintenance plan. Generate one PSK, add to
-  both `wg0.conf` files, reload both ends.
+- ~~**LA ↔ NJ on `wg0`:** no PSK on either side.~~ ✅ Rotated 2026-05-28.
 - **LA wg1 ↔ Hillsboro `V3RenH` peer:** no PSK. Could be added in a
   separate session — operator decision.
 
