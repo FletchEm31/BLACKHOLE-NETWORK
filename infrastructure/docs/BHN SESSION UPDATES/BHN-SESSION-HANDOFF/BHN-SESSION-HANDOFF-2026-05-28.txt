@@ -168,6 +168,136 @@ DOCUMENTED in:
     after SGC, plus updated Grader Sentinel Values section near the top)
 
 ================================================================================
+LATE-SESSION ADDENDUM — TLS FINGERPRINT BREAKTHROUGH (impers + firefox144)
+================================================================================
+
+Confirmed empirically tonight from LA's burned IP 149.28.91.100:
+
+1. All three of our data-center IPs return HTTP 403 in <1 second on eBay's
+   /sch/i.html search endpoint:
+     LA direct  (Vultr LA, 149.28.91.100)         → 403
+     FRA tunnel (Vultr Frankfurt, 192.248.187.208) → 403
+     Hillsboro  (Hetzner US-WEST, 5.78.94.237)    → 403
+   eBay broad-blocks data-center ranges on this endpoint.
+
+2. BUT — the dominant block signal is not IP reputation alone; it's also
+   TLS fingerprint. eBay's anti-bot (Akamai-style) scores on JA3 / HTTP-2
+   fingerprint AND IP. Standard clients (curl, Node fetch/undici, Python
+   requests) emit non-browser TLS handshakes that flag fast.
+
+3. Tested 8 browser-impersonation profiles via the npm package `impers`
+   (Node-native TypeScript port of curl_cffi) from LA's burned IP:
+     chrome (default, older) → 403 (1.8 KB Error Page)
+     chrome142/131/116       → 200 / 13 KB  (Akamai challenge, NOT listings)
+     firefox / firefox144    → 200 / 1.47-1.50 MB  (REAL listings page)
+     safari / edge           → 200 / 13 KB  (challenge page, NOT listings)
+
+   Firefox is the only profile that gets through to the full search-results
+   payload. ALL from LA's burned IP — NO proxy involved.
+
+4. Sustainability test (60s cool + 5 requests × 20s gaps, firefox144):
+     [1] 403   1,989 bytes  (residual rate-limit from prior 8-profile batch)
+     [2] 200   1.50 MB
+     [3] 200   1.50 MB
+     [4] 200   1.50 MB
+     [5] 200   1.50 MB
+   4/5 success. The single 403 was carryover from earlier rapid-fire tests;
+   on a fully-cooled IP with paced requests, 5/5 expected.
+
+CONCLUSION
+
+  impers + firefox144 + paced requests = working eBay scrape from LA's
+  existing IP. No residential proxies. No managed service. No monthly cost.
+  The scraper lives.
+
+  TLS fingerprint, not IP reputation, was the dominant block all along.
+  Residential proxies would have been money spent on the wrong problem.
+
+REQUIRED FOLLOW-UP — LISTINGS PARSER UPDATE
+
+  The 200 responses have 1.5 MB bodies but our quick-check regex for the
+  CSS class `s-item__title` returned zero hits. eBay redesigned the search-
+  results markup at some point; the BHN scraper's parser
+  (infrastructure/scrapers/ebay-sold-scrape.js, the parseSearchPage logic
+  using $el.find('.s-item') / `.s-item__title`) IS STALE.
+
+  Before the scraper can run in production with impers, the parser needs
+  re-derivation against current eBay HTML. Steps:
+    1. From a fresh paced request, save the 1.5 MB body to disk
+    2. Inspect the actual CSS class names eBay now uses for listing tiles,
+       titles, prices, sold dates, seller info
+    3. Update the cheerio selectors in scrapeCard's per-page loop
+    4. Verify with a single test request that fields populate correctly
+    5. Then re-enable scraping
+
+  This is a REQUIRED fix before the integration commit — don't ship the
+  impers integration without it or the scraper will run silently with
+  zero rows landing in ebay_transactions.
+
+INTEGRATION SKETCH (for next-session execution)
+
+  impers is ESM-only — top-level await in its dist/index.js. Our scraper
+  is CJS. Two options:
+    a) Convert ebay-sold-scrape.js to ESM (top-level changes, .mjs extension)
+    b) Use dynamic `await import('impers')` inside fetchPage(), cache the
+       module reference. Cleaner, smaller diff.
+
+  Replace fetchPage()'s native fetch() with impers.get(url, {
+    impersonate: 'firefox144',
+    proxy: process.env.BHN_SOCKS_PROXY,   // optional, can layer if needed later
+  }). Drop the AbortController / signal pattern — impers has its own timeout.
+
+ARTIFACTS LEFT ON LA
+
+  /opt/bhn/ebay-sold-scraper/test-impers.mjs           — first test (single fetch)
+  /opt/bhn/ebay-sold-scraper/test-impers-multi.mjs     — 8-profile batch test
+  /opt/bhn/ebay-sold-scraper/verify-firefox-response.mjs — single-shot verify
+  /opt/bhn/ebay-sold-scraper/test-firefox-paced.mjs    — 5x paced firefox144
+  /opt/bhn/ebay-sold-scraper/node_modules/impers       — installed (npm install impers)
+
+  The FRA SOCKS5 tunnel screen session (`fra-socks` on LA) is STILL UP at
+  127.0.0.1:10808. Leaving it for tomorrow in case integration testing
+  benefits from layering proxy + impers. Operator can tear down with
+  `screen -X -S fra-socks quit` when done.
+
+  LA's 149.28.91.100 needs an OVERNIGHT COOL — today's 8-profile rapid-fire
+  test almost certainly left a residual rate-limit signature. No more
+  scraper requests from this IP tonight.
+
+================================================================================
+NEXT SESSION — PRIORITY 0 (top of queue, supersedes prior priorities)
+================================================================================
+
+BUILD `BHN-eBay-Scraper` AS A STANDALONE REPO
+
+  Fork github.com/lexiforest/impers and use it as the foundation of a
+  purpose-built BHN-eBay-Scraper repo, separate from BHN core infrastructure.
+
+  Rationale:
+    - impers is in tech-preview state — pinning a known-working version + our
+      patches gives stability decoupled from upstream.
+    - eBay scraping is a contained workstream with its own deployment, parser
+      maintenance, anti-bot ops. Doesn't belong in BLACKHOLE-NETWORK's core
+      infra repo long-term.
+    - A standalone repo lets us version the parser separately from the BHN
+      data standards.
+
+  Suggested scope of BHN-eBay-Scraper v0:
+    - Fork of impers (or thin wrapper around upstream pinned to a known
+      version)
+    - Our ebay-sold-scrape.js + ebay-sold-scrape-all.js + ebay-sold-load.js
+      ported in, refactored to use impers natively
+    - Updated CSS selectors for current eBay search HTML
+    - Operator runbook (replaces FRA SOCKS5 runbook which becomes obsolete)
+    - LA deployment scripts (mirrors today's /opt/bhn/ebay-sold-scraper
+      layout)
+    - Test harness that runs paced firefox144 requests against a known
+      WOTC card and verifies parser output
+
+  THIS SUPERSEDES the FRA SOCKS5 tunnel approach. Don't invest more in the
+  tunnel runbook — impers + LA IP is the path forward.
+
+================================================================================
 HOUSEKEEPING DONE THIS SESSION
 ================================================================================
 
