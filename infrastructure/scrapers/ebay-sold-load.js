@@ -174,6 +174,44 @@ async function main() {
   const validGrades = new Set(catalogRes.rows.map((r) => `${r.grader}|${r.raw_label}`));
   console.log(`Loaded ${catalogRes.rows.length} grade catalog entries.`);
 
+  // Load valid (set, card_number, edition, print_variant) tuples for print_variant validation.
+  // Per collectibles-data-standard §3.3: inherent holo (Base Charizard #4) is 'Standard';
+  // 'Holo' is reserved for distinguishing alternates. We let the catalog be the arbiter.
+  const cardCatRes = await client.query(
+    'SELECT set_name, card_number, edition, print_variant FROM master_card_catalog'
+  );
+  const validPVs = new Set(
+    cardCatRes.rows.map((r) => `${r.set_name}|${r.card_number}|${r.edition}|${r.print_variant}`)
+  );
+  console.log(`Loaded ${cardCatRes.rows.length} card catalog entries for print_variant validation.`);
+
+  // Normalize a candidate print_variant against the catalog.
+  // Order of preference: exact candidate match → title-derived distinguishing variant → 'Standard'.
+  // Falls through to the original candidate if nothing matches (row still inserts; operator reviews).
+  const DISTINGUISHING_VARIANTS = [
+    { keyword: /\berror\b/i,           pv: 'Error' },
+    { keyword: /\bred[\s-]?cheeks\b/i, pv: 'Red Cheeks' },
+    { keyword: /\bw[\s-]?stamp\b/i,    pv: 'W Stamp' },
+    { keyword: /\bno[\s-]?symbol\b/i,  pv: 'No Symbol' },
+    { keyword: /\bwinner\b/i,          pv: 'Winner' },
+    { keyword: /\bjumbo\b/i,           pv: 'Jumbo' },
+    { keyword: /\bpre[\s-]?release\b/i,pv: 'Prerelease' },
+    { keyword: /\bgold[\s-]?border\b/i,pv: 'Gold Border' },
+    { keyword: /\bwb[\s-]?movie\b/i,   pv: 'WB Movie' },
+    { keyword: /\bnintendo[\s-]?power\b/i, pv: 'Nintendo Power' },
+  ];
+  function normalizePrintVariant(setName, cardNumber, edition, candidate, title) {
+    const key = (pv) => `${setName}|${cardNumber}|${edition}|${pv}`;
+    if (candidate && validPVs.has(key(candidate))) return candidate;
+    if (title) {
+      for (const { keyword, pv } of DISTINGUISHING_VARIANTS) {
+        if (keyword.test(title) && validPVs.has(key(pv))) return pv;
+      }
+    }
+    if (validPVs.has(key('Standard'))) return 'Standard';
+    return candidate;  // catalog miss — return candidate so the row still inserts
+  }
+
   // Detect whether the seller column is 'seller' or 'seller_username'.
   const colRes = await client.query(`
     SELECT column_name FROM information_schema.columns
@@ -286,6 +324,15 @@ async function main() {
       'seller_feedback_pct','cert_number','location',
       'obo_min_price','watchers','raw_payload',
     ];
+    // Normalize print_variant against master_card_catalog. The CSV often carries 'Holo'
+    // for inherent-holo cards (e.g. Team Rocket Dark Charizard), but per §3.3 those are
+    // catalogued as 'Standard'. Validator: csv value → title-derived distinguishing
+    // variant → 'Standard' fallback.
+    const normalizedPV = normalizePrintVariant(
+      row.set_name, cardNumber, row.edition,
+      row.print_variant || null, row.title || null
+    );
+
     const vals = [
       row.pbds_code || null,
       itemId,
@@ -294,7 +341,7 @@ async function main() {
       row.set_name  || null,
       cardNumber,
       row.edition   || null,
-      row.print_variant || null,
+      normalizedPV,
       grader,
       grade,
       soldPrice,
