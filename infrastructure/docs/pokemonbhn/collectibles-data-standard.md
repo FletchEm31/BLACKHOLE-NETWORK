@@ -180,6 +180,80 @@ columns. Both are **NOT NULL** (NULLs are distinct in a UNIQUE index and would b
 - New labels must be added to `master_grade_catalog` **first** (deliberate vocab control).
 - CGC `Perfect 10` is a **legacy** row (retired 2023) kept for backfill — not a current tier.
 
+#### 3.5.1 CGC label colors & reholder/crossover service — pricing signal
+
+**CGC label colors (current conventions):**
+
+| Label color | Current raw_label(s) | Notes |
+|---|---|---|
+| **Blue** | `Gem Mint 10`, `Mint+ 9.5`, `9`, `8.5`, … through `1`, plus legacy outlier `Gem Mint 9.5` | Standard CGC grading. Vast majority of slabs. |
+| **Gold** | `Pristine 10` | Current top tier. Stricter criteria than Gem Mint 10. |
+| (legacy) | `Perfect 10` | Retired 2023. Kept in catalog for backfill only. |
+
+There is **no current CGC Green Label** — earlier session drafts that referenced "Green Label" were incorrect and have been corrected.
+
+**Outlier: legacy `Gem Mint 9.5` (older Blue Label)**
+
+`Gem Mint 9.5` is an unusual raw_label — CGC's current 9.5 tier is `Mint+ 9.5`. Older Blue Label slabs from a prior naming convention carry `Gem Mint` at 9.5 instead. Same label color (Blue), different tier_label, materially different market behavior:
+
+| raw_label | numeric | tier_label | Market behavior |
+|---|---|---|---|
+| `Mint+ 9.5` | 9.5 | Mint+ | Current standard 9.5. **NOT equivalent to a 10.** |
+| `Gem Mint 9.5` | 9.5 | Gem Mint | Legacy. **Market-equivalent to Gem Mint 10.** |
+
+HORIZON discriminates between these by `tier_label` — same numeric grade and same label color, the text tier is the only tell.
+
+**Reholder/crossover service — arbitrage path**
+
+CGC offers a paid reholder/crossover service. Owners of legacy `Gem Mint 9.5` slabs can pay ~$10 to have CGC re-case the card as current `Gem Mint 10` (Blue Label). Same grading evaluation, modern label format.
+
+| Legacy slab | Current slab (post-reholder) | Fee |
+|---|---|---|
+| CGC `Gem Mint 9.5` (older Blue Label) | CGC `Gem Mint 10` (current Blue Label) | ~$10 |
+
+HORIZON pricing implications:
+- Legacy `Gem Mint 9.5` slabs may trade at a **discount** vs native `Gem Mint 10`s because buyers know they can upgrade for ~$10.
+- Post-reholder slabs are **indistinguishable** from native 10s — no provenance trail in the cert number.
+- Arbitrage path: **buy `Gem Mint 9.5` at discount → reholder ($10) → sell as `Gem Mint 10`**.
+
+**Schema support:**
+
+`master_grade_catalog.reholder_eligible BOOLEAN` flags raw_labels that qualify for the service. See `sql/migrations/2026-05-28-grade-catalog-corrections.sql`. Currently flagged TRUE only for `CGC | Gem Mint 9.5`.
+
+Deferred operator decisions:
+- Does CGC reholder `Perfect 10` (legacy 2023-retired) → `Pristine 10` or `Gem Mint 10`? If yes, flag.
+- BGS / SGC equivalent crossover services — flag legacy rows if those programs exist.
+
+The `reholder_eligible` flag is a HORIZON signal input; it does not change which raw_labels are valid or which rows can land on fact tables.
+
+#### 3.5.2 BGS label colors
+
+BGS has the only multi-color slab system among the four graders (CGC's "color" tiers are tier_label distinctions, not slab-color distinctions in the same way):
+
+| Label color | raw_label | numeric | Criteria |
+|---|---|---|---|
+| **Black** | `Pristine 10` | 10.0 | All four subgrades = 10. Extremely rare. |
+| **Gold** | `Gold 10` | 10.0 | Overall 10 with at least one subgrade below 10. Less rare than Black, still scarce. |
+| (standard) | `Gem Mint 9.5`, `Mint 9`, … | ≤ 9.5 | Most BGS slabs. White/silver label. |
+
+BGS publishes Centering/Corners/Edges/Surface subgrades — the only grader that does. Black Label requires all 10s; Gold Label is everything else at overall-10. Pricing-wise, Black Label commands a significant premium over Gold Label which in turn premiums over a standard BGS slab.
+
+#### 3.5.3 Grader sentinel values — disambiguating NULL
+
+`grader = NULL` is ambiguous between "data not captured" and "card is ungraded." HORIZON needs explicit sentinels:
+
+| Scenario | grader | grade | grade_label |
+|---|---|---|---|
+| Graded card | `PSA` / `CGC` / `BGS` / `SGC` | raw_label (e.g. `10`, `Gem Mint 10`) | tier (parsed from title) |
+| **Raw / ungraded card** (no slab) | **`RAW`** | NULL | `Ungraded` |
+| Data not captured yet | NULL | NULL | NULL |
+
+`RAW` is a valid `grader` value across all fact tables (CHECK constraints updated to accept it — see migration). Master catalog row: `('RAW', 'Ungraded', NULL, 'Ungraded', FALSE, FALSE)`.
+
+**Rule of thumb:**
+- `grader = 'RAW'` → card is explicitly ungraded. No grade applies. Treat as a distinct market segment from graded slabs.
+- `grader = NULL` → we don't know yet. Parser couldn't determine, or scraper hasn't enriched. Treat as missing data, not a market signal.
+
 ### 3.6 Money
 - `listed_price` (asking) and `sold_price` (paid) are **separate**; valuation uses `sold_price` only.
 - Money/shipping is **`NULL`, not `0`** (`0` means free/zero-sale).
