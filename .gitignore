@@ -63,3 +63,14 @@ desktop.ini
 # Backup archives (off-host drops live in D:\EH Backups\, never the repo)
 n8n-backup.tar.gz
 *.tar.gz
+
+# Scraper operational data — CSVs, Excel exports, master output XLSX are all
+# sensitive scrape outputs; keep the folder structure (.gitkeep), not contents
+infrastructure/scrapers/data/*
+!infrastructure/scrapers/data/.gitkeep
+
+# Scraper runtime state — checkpoints/, dead-proxy lists, captured pages
+infrastructure/scrapers/checkpoints/
+
+# Local export tool credentials (Windows operator runs export-master.js)
+infrastructure/scrapers/.export-master.env
