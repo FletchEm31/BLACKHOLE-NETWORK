@@ -64,7 +64,7 @@ if (!PG_PASS) {
 
 const TODAY_UTC = new Date().toISOString().slice(0, 10);
 
-// ── query ─────────────────────────────────────────────────────────────────────
+// ── queries ───────────────────────────────────────────────────────────────────
 const QUERY = `
 SELECT s.set_code,
        t.card_code, t.item_id, t.title_raw, t.card_name, t.set_name, t.card_number,
@@ -81,6 +81,38 @@ SELECT s.set_code,
   LEFT JOIN master_set_catalog s ON s.set_name = t.set_name
  WHERE ($1::text[] IS NULL OR s.set_code = ANY($1))
  ORDER BY s.set_code NULLS LAST, t.sold_at DESC NULLS LAST, t.inserted_at DESC
+`;
+
+// Progress / work-order query: every catalog card LEFT JOINed against comp counts.
+// Composite-key join (set_name, card_number, edition, print_variant) because
+// ebay_transactions.card_id is NULL on legacy rows + on rows loaded via the CSV
+// loader (loader writes the composite columns but not card_id).
+const CATALOG_QUERY = `
+WITH comps AS (
+  SELECT set_name, card_number, edition, print_variant, COUNT(*) AS comp_count
+    FROM ebay_transactions
+   GROUP BY set_name, card_number, edition, print_variant
+)
+SELECT s.set_code,
+       mcc.set_name,
+       mcc.card_number,
+       mcc.card_name,
+       mcc.edition,
+       mcc.print_variant,
+       mcc.card_code,
+       COALESCE(c.comp_count, 0)::int AS comp_count
+  FROM master_card_catalog mcc
+  JOIN master_set_catalog  s ON s.set_name = mcc.set_name
+  LEFT JOIN comps c
+    ON c.set_name     = mcc.set_name
+   AND c.card_number  = mcc.card_number
+   AND c.edition      = mcc.edition
+   AND c.print_variant = mcc.print_variant
+ WHERE ($1::text[] IS NULL OR s.set_code = ANY($1))
+ ORDER BY s.set_code,
+          -- natural numeric sort of card_number when it parses as int, else lexical
+          CASE WHEN mcc.card_number ~ '^[0-9]+$' THEN LPAD(mcc.card_number, 6, '0') ELSE mcc.card_number END,
+          mcc.edition, mcc.print_variant
 `;
 
 // ── column definition (used for both Master and Daily tabs) ───────────────────
@@ -125,7 +157,36 @@ const SUMMARY_COLS = [
   { header: 'rows_today_total',   key: 'rows_today_total',   width: 17 },
   { header: 'latest_sold_at',     key: 'latest_sold_at',     width: 22 },
   { header: 'latest_inserted_at', key: 'latest_inserted_at', width: 22 },
+  { header: 'cards_done',         key: 'cards_done',         width: 11 },
+  { header: 'cards_partial',      key: 'cards_partial',      width: 13 },
+  { header: 'cards_not_started',  key: 'cards_not_started',  width: 17 },
+  { header: 'pct_done',           key: 'pct_done',           width: 9, style: { numFmt: '0.0%' } },
 ];
+
+const PROGRESS_COLS = [
+  { header: 'card_number',   key: 'card_number',   width: 11 },
+  { header: 'card_name',     key: 'card_name',     width: 28 },
+  { header: 'edition',       key: 'edition',       width: 12 },
+  { header: 'print_variant', key: 'print_variant', width: 14 },
+  { header: 'card_code',     key: 'card_code',     width: 14 },
+  { header: 'comp_count',    key: 'comp_count',    width: 11 },
+  { header: 'status',        key: 'status',        width: 13 },
+];
+
+// Done/Partial/Not Started thresholds + Excel "Good/Neutral/Bad" cell fills
+const PROGRESS_DONE_THRESHOLD = 10;
+const FILL_GREEN  = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFC6EFCE' } };
+const FILL_YELLOW = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFEB9C' } };
+const FILL_RED    = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFC7CE' } };
+const FONT_GREEN  = { color: { argb: 'FF006100' }, bold: true };
+const FONT_YELLOW = { color: { argb: 'FF9C5700' }, bold: true };
+const FONT_RED    = { color: { argb: 'FF9C0006' }, bold: true };
+
+function statusForCompCount(n) {
+  if (n >= PROGRESS_DONE_THRESHOLD) return { label: 'Done',        fill: FILL_GREEN,  font: FONT_GREEN  };
+  if (n >= 1)                       return { label: 'Partial',     fill: FILL_YELLOW, font: FONT_YELLOW };
+  return                                   { label: 'Not Started', fill: FILL_RED,    font: FONT_RED    };
+}
 
 // ── main ──────────────────────────────────────────────────────────────────────
 async function main() {
@@ -136,7 +197,20 @@ async function main() {
   console.log(`[export-master] querying ebay_transactions${SETS_FILTER ? ` (sets: ${SETS_FILTER.join(',')})` : ''}…`);
   const res = await client.query(QUERY, [SETS_FILTER]);
   console.log(`[export-master] fetched ${res.rows.length} rows.`);
+
+  console.log(`[export-master] querying master_card_catalog × comp counts for Progress tabs…`);
+  const catalogRes = await client.query(CATALOG_QUERY, [SETS_FILTER]);
+  console.log(`[export-master] fetched ${catalogRes.rows.length} catalog rows.`);
+
   await client.end();
+
+  // Group catalog rows by set_code for per-set Progress tabs
+  const catalogBySet = new Map();
+  for (const r of catalogRes.rows) {
+    const code = r.set_code || 'UNK';
+    if (!catalogBySet.has(code)) catalogBySet.set(code, []);
+    catalogBySet.get(code).push(r);
+  }
 
   const workbook = new ExcelJS.Workbook();
   let existed = false;
@@ -200,6 +274,59 @@ async function main() {
     const appended = todaysCandidate.filter((r) => !existingItemIds.has(String(r.item_id)));
     daily.addRows(appended);
 
+    // Progress tab — regenerated each run, work-order intel from master_card_catalog
+    const progressName = `${code} - Progress`;
+    const existingProgress = workbook.getWorksheet(progressName);
+    if (existingProgress) workbook.removeWorksheet(existingProgress.id);
+    const progress = workbook.addWorksheet(progressName);
+    progress.columns = PROGRESS_COLS;
+    progress.getRow(1).font = { bold: true };
+    progress.views = [{ state: 'frozen', ySplit: 1 }];
+
+    const catalogRows = catalogBySet.get(code) || [];
+    let nDone = 0, nPartial = 0, nNotStarted = 0;
+    for (const c of catalogRows) {
+      const status = statusForCompCount(c.comp_count);
+      if      (status.label === 'Done')        nDone++;
+      else if (status.label === 'Partial')     nPartial++;
+      else                                     nNotStarted++;
+      const addedRow = progress.addRow({
+        card_number:   c.card_number,
+        card_name:     c.card_name,
+        edition:       c.edition,
+        print_variant: c.print_variant,
+        card_code:     c.card_code,
+        comp_count:    c.comp_count,
+        status:        status.label,
+      });
+      const statusCell = addedRow.getCell('status');
+      statusCell.fill = status.fill;
+      statusCell.font = status.font;
+      statusCell.alignment = { horizontal: 'center' };
+    }
+
+    // Tally banner at the top: prepend a frozen 2-row header showing totals
+    if (catalogRows.length > 0) {
+      // Insert summary row above the table by shifting everything down — exceljs
+      // doesn't have a clean "prepend" so we use a side-panel approach instead:
+      // populate H1..K1 with totals next to the column headers.
+      progress.getCell('I1').value = `Done: ${nDone}`;
+      progress.getCell('I1').fill = FILL_GREEN;
+      progress.getCell('I1').font = FONT_GREEN;
+      progress.getCell('I1').alignment = { horizontal: 'center' };
+      progress.getCell('J1').value = `Partial: ${nPartial}`;
+      progress.getCell('J1').fill = FILL_YELLOW;
+      progress.getCell('J1').font = FONT_YELLOW;
+      progress.getCell('J1').alignment = { horizontal: 'center' };
+      progress.getCell('K1').value = `Not Started: ${nNotStarted}`;
+      progress.getCell('K1').fill = FILL_RED;
+      progress.getCell('K1').font = FONT_RED;
+      progress.getCell('K1').alignment = { horizontal: 'center' };
+      progress.getColumn('I').width = 12;
+      progress.getColumn('J').width = 13;
+      progress.getColumn('K').width = 17;
+    }
+
     // Summary row
     const latestSoldAt = rows.find((r) => r.sold_at)?.sold_at || null;
     let latestInsertedAt = null;
@@ -208,6 +335,7 @@ async function main() {
         latestInsertedAt = r.inserted_at;
       }
     }
+    const totalCatalog = catalogRows.length;
     summaryRows.push({
       set_code: code,
       set_name: rows[0]?.set_name || '',
@@ -216,6 +344,77 @@ async function main() {
       rows_today_total: existingItemIds.size + appended.length,
       latest_sold_at: latestSoldAt,
       latest_inserted_at: latestInsertedAt,
+      cards_done: nDone,
+      cards_partial: nPartial,
+      cards_not_started: nNotStarted,
+      pct_done: totalCatalog > 0 ? nDone / totalCatalog : 0,
+    });
+  }
+
+  // Generate Progress tabs for sets present in master_card_catalog but with
+  // ZERO ebay_transactions rows (so they didn't iterate above). Without this
+  // a brand-new set the operator hasn't scraped yet would have no Progress tab.
+  for (const [code, catalogRows] of catalogBySet) {
+    if (sortedSetCodes.includes(code)) continue;  // already handled above
+    if (catalogRows.length === 0) continue;
+
+    const progressName = `${code} - Progress`;
+    const existingProgress = workbook.getWorksheet(progressName);
+    if (existingProgress) workbook.removeWorksheet(existingProgress.id);
+    const progress = workbook.addWorksheet(progressName);
+    progress.columns = PROGRESS_COLS;
+    progress.getRow(1).font = { bold: true };
+    progress.views = [{ state: 'frozen', ySplit: 1 }];
+
+    let nDone = 0, nPartial = 0, nNotStarted = 0;
+    for (const c of catalogRows) {
+      const status = statusForCompCount(c.comp_count);
+      if      (status.label === 'Done')        nDone++;
+      else if (status.label === 'Partial')     nPartial++;
+      else                                     nNotStarted++;
+      const addedRow = progress.addRow({
+        card_number:   c.card_number,
+        card_name:     c.card_name,
+        edition:       c.edition,
+        print_variant: c.print_variant,
+        card_code:     c.card_code,
+        comp_count:    c.comp_count,
+        status:        status.label,
+      });
+      const statusCell = addedRow.getCell('status');
+      statusCell.fill = status.fill;
+      statusCell.font = status.font;
+      statusCell.alignment = { horizontal: 'center' };
+    }
+
+    progress.getCell('I1').value = `Done: ${nDone}`;
+    progress.getCell('I1').fill = FILL_GREEN;
+    progress.getCell('I1').font = FONT_GREEN;
+    progress.getCell('I1').alignment = { horizontal: 'center' };
+    progress.getCell('J1').value = `Partial: ${nPartial}`;
+    progress.getCell('J1').fill = FILL_YELLOW;
+    progress.getCell('J1').font = FONT_YELLOW;
+    progress.getCell('J1').alignment = { horizontal: 'center' };
+    progress.getCell('K1').value = `Not Started: ${nNotStarted}`;
+    progress.getCell('K1').fill = FILL_RED;
+    progress.getCell('K1').font = FONT_RED;
+    progress.getCell('K1').alignment = { horizontal: 'center' };
+    progress.getColumn('I').width = 12;
+    progress.getColumn('J').width = 13;
+    progress.getColumn('K').width = 17;
+
+    summaryRows.push({
+      set_code: code,
+      set_name: catalogRows[0]?.set_name || '',
+      total_rows: 0,
+      rows_today_appended: 0,
+      rows_today_total: 0,
+      latest_sold_at: null,
+      latest_inserted_at: null,
+      cards_done: nDone,
+      cards_partial: nPartial,
+      cards_not_started: nNotStarted,
+      pct_done: catalogRows.length > 0 ? nDone / catalogRows.length : 0,
     });
   }
 
@@ -248,13 +447,25 @@ async function main() {
   await workbook.xlsx.writeFile(OUT_PATH);
 
   const totalAppended = summaryRows.reduce((s, r) => s + r.rows_today_appended, 0);
+  const totalDone = summaryRows.reduce((s, r) => s + r.cards_done, 0);
+  const totalPartial = summaryRows.reduce((s, r) => s + r.cards_partial, 0);
+  const totalNotStarted = summaryRows.reduce((s, r) => s + r.cards_not_started, 0);
   console.log('');
   console.log('── Export report ───────────────────────────────');
   console.log(`  Output:           ${OUT_PATH}`);
   console.log(`  Workbook state:   ${existed ? 'updated existing' : 'created new'}`);
-  console.log(`  Sets exported:    ${bySet.size}`);
+  console.log(`  Sets exported:    ${bySet.size}  (catalog Progress: ${catalogBySet.size})`);
   console.log(`  Total rows:       ${res.rows.length}`);
   console.log(`  Today's appends:  ${totalAppended}`);
+  console.log(`  Cards Done:       ${totalDone}    (>= ${PROGRESS_DONE_THRESHOLD} comps)`);
+  console.log(`  Cards Partial:    ${totalPartial}    (1-${PROGRESS_DONE_THRESHOLD-1} comps)`);
+  console.log(`  Cards Not Started:${totalNotStarted}    (0 comps)`);
+  console.log('────────────────────────────────────────────────');
+  for (const s of summaryRows) {
+    const total = s.cards_done + s.cards_partial + s.cards_not_started;
+    const pct = total > 0 ? (s.cards_done / total * 100).toFixed(1) : '—';
+    console.log(`  ${s.set_code.padEnd(4)}  ${String(s.cards_done).padStart(3)} done  ${String(s.cards_partial).padStart(3)} partial  ${String(s.cards_not_started).padStart(3)} not-started  (${pct}% complete)`);
+  }
   console.log('────────────────────────────────────────────────');
 }
 
