@@ -1,5 +1,9 @@
 # FRA SOCKS5 tunnel — scrape egress runbook
 
+> **RETIRED 2026-05-28.** Frankfurt was destroyed; this egress path no longer exists. The current eBay scrape egress uses `curl_cffi` impersonation (`impersonate="firefox144"`) directly from LA's own IP, which returns real listings — the TLS fingerprint, not the IP, was the dominant block. See the project memory `project_ebay_tls_fingerprint_impers_2026-05-28`. This runbook is preserved as history of the FRA-era approach.
+
+---
+
 When the operator wants to resume eBay scraping (held since the 2026-05-27 403
 against LA's IP `149.28.91.100`), route through Frankfurt's untouched IP.
 

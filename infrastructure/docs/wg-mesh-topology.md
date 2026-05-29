@@ -1,7 +1,7 @@
 # BHN WireGuard mesh topology
 
-As of 2026-05-28. Maintained alongside the node audit. If a peer or
-interface is added/removed, update this file.
+As of 2026-05-28 (FRA decommissioned). Maintained alongside the node
+audit. If a peer or interface is added/removed, update this file.
 
 ## Interfaces and subnets
 
@@ -10,13 +10,14 @@ interface is added/removed, update this file.
 | `wg0` | LA | 10.8.0.1 | UDP 51820 | `TOYnFt...` | **Primary mesh hub.** All BHN mesh members connect here. |
 | `wg0` | NJ | 10.8.0.5 | UDP 51820 | `ylnSJO...` | Mesh client. Single peer (LA). |
 | `wg0` | Hillsboro | 10.8.0.6 | UDP 51821 | `EwBHwk...` | Mesh spoke. Hosts tinyproxy egress for LA. |
-| `wg1` | FRA | 10.9.0.2 | UDP 51821 | `zkfJNb...` | **Separate `10.9.0.0/24` subnet** for EU-side services. Single peer (LA via wg1 on LA). |
 | `wg1` | LA | 10.10.0.1 | UDP 51822 | `V3RenH...` | **Dedicated point-to-point to Hillsboro on 10.10.0.0/30.** See note below. |
 
-The mesh actually carries two subnets:
+Active subnets:
 - `10.8.0.0/24` — primary mesh (LA hub, NJ, Hillsboro)
-- `10.9.0.0/24` — EU spur (LA ↔ FRA)
 - `10.10.0.0/30` — LA ↔ Hillsboro alternate egress path (see below)
+
+Retired:
+- `10.9.0.0/24` — EU spur (LA ↔ FRA). FRA decommissioned 2026-05-28; subnet no longer routed.
 
 ## Peer matrix (who-talks-to-who)
 
@@ -24,13 +25,13 @@ The mesh actually carries two subnets:
 |------|----|----|------------|-----|-------|
 | LA wg0 | NJ | wg0 | `10.8.0.5/32` | yes (PSK, rotated 2026-05-28) | Was PSK-less before 2026-05-28. PSK added to both sides via `wg syncconf`; backups at `wg0.conf.bak-2026-05-28` on both nodes. |
 | LA wg0 | Hillsboro | wg0 | `10.8.0.6/32, 10.8.0.0/24` | yes (PSK) | The catch-all `10.8.0.0/24` means Hillsboro answers for mesh broadcast paths. |
-| LA wg0 | FRA (via wg1 on FRA side) | wg0 | `0.0.0.0/0` | yes (PSK) | LA reaches FRA's 10.9.0.0/24 via the FRA peer. The `0.0.0.0/0` here is what makes the SOCKS scrape egress work. |
 | LA wg0 | Operator workstation 10.8.0.4 | wg0 | `10.8.0.4/32` | yes (PSK) | High-traffic peer (5.5 GB rx / 38 GB tx). |
 | LA wg0 | Operator workstation 10.8.0.2 | wg0 | `10.8.0.2/32` | yes (PSK) | Second operator endpoint (1.67 GB rx / 19.3 GB tx). |
 | NJ wg0 | LA | wg0 | `10.8.0.0/24` | yes (PSK, rotated 2026-05-28) | Matching side of the LA↔NJ rotation. |
 | Hillsboro wg0 | LA | wg0 | `10.8.0.0/24` | yes (PSK) | Primary mesh return path. |
 | Hillsboro wg0 | LA wg1 (point-to-point) | wg0 | `10.10.0.0/30` | **none** | The 10.10.0.0/30 link. Returns keepalive every ~25s. |
-| FRA wg1 | LA | wg1 | `10.8.0.0/24` | yes (PSK) | LA reaches FRA, FRA reaches LA's mesh. |
+| ~~LA wg0 → FRA~~ | ~~FRA (via wg1 on FRA side)~~ | ~~wg0~~ | ~~`0.0.0.0/0`~~ | — | **Retired 2026-05-28.** FRA peer block removed from LA `wg0.conf`. Used to carry the SOCKS scrape egress; replaced by `curl_cffi` impersonation from LA's own IP. |
+| ~~FRA wg1 → LA~~ | — | — | — | — | **Retired 2026-05-28** — FRA server destroyed. |
 
 ## What is `wg1` on LA?
 
@@ -87,7 +88,7 @@ For grep-ability when comparing audit dumps:
 | LA wg0 | `TOYnFt18v4NynEN91o6zkmV5hsvHBLJTb8qL7GG/KAo=` |
 | NJ wg0 | `ylnSJOqwkqrNZwt/saJdqoMG7j3l35hoUk+zejru1Sk=` |
 | Hillsboro wg0 | `EwBHwkT4iJXzhJZMvtlo70NOLx+wPv8IXmAGSa89zBg=` |
-| FRA wg1 | `zkfJNbdL9Ptdxv+fxwV2e1q0mbCR5Z/9T80QanSxKA8=` |
+| ~~FRA wg1~~ | ~~`zkfJNbdL9Ptdxv+fxwV2e1q0mbCR5Z/9T80QanSxKA8=`~~ — retired 2026-05-28 |
 | LA wg1 (alt-egress to Hillsboro) | `V3RenHJ/3UQTD1gl3bfqWnAC/iaqXGvVCzogVlDH8GQ=` |
 | Operator workstation #1 (10.8.0.4) | `y+ekkxKZsCn9LERiQ3unZxn2zDjsS1yqbz12limv1kA=` |
 | Operator workstation #2 (10.8.0.2) | `N9Tg0dOEE7GQgE7lG1FgfI+pGSQoIo9+EmSUucnEAVA=` |
