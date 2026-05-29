@@ -33,45 +33,49 @@ Retired:
 | ~~LA wg0 → FRA~~ | ~~FRA (via wg1 on FRA side)~~ | ~~wg0~~ | ~~`0.0.0.0/0`~~ | — | **Retired 2026-05-28.** FRA peer block removed from LA `wg0.conf`. Used to carry the SOCKS scrape egress; replaced by `curl_cffi` impersonation from LA's own IP. |
 | ~~FRA wg1 → LA~~ | — | — | — | — | **Retired 2026-05-28** — FRA server destroyed. |
 
-## What is `wg1` on LA?
+## `wg1` on LA — full-tunnel client egress to Hillsboro
 
-**Identified 2026-05-28.** This was flagged as a mystery in the
-2026-05-28 node audit because it wasn't documented anywhere. It is:
+**Activated 2026-05-28 (late).** Replaced the Frankfurt-based full-tunnel
+egress retired earlier that day. Prior to activation, `wg1` had been
+provisioned-but-dormant since May.
 
 A **dedicated point-to-point WireGuard tunnel between LA and Hillsboro,
-parallel to the main `wg0` mesh.**
+parallel to the main `wg0` mesh**, used to forward full-tunnel client
+traffic through Hillsboro's public IP `5.78.94.237`.
 
-- LA side: `wg1` interface, key `V3RenHJ/3UQTD1gl3bfqWnAC/iaqXGvVCzogVlDH8GQ=`, listens on `51822`, self IP `10.10.0.1`
-- Hillsboro side: a `[Peer]` block in `wg0.conf` (not a separate interface) for pubkey `V3RenH...` with `AllowedIPs = 10.10.0.0/30`
-- LA's `wg1.conf` declares the Hillsboro endpoint at `5.78.94.237:51821` (Hillsboro's wg0 listener)
-- `AllowedIPs = 0.0.0.0/0` on the LA side — so if a route ever pointed default-via-wg1, ALL LA outbound would tunnel through Hillsboro
+- LA side: `wg1` interface, key `V3RenHJ/3UQTD1gl3bfqWnAC/iaqXGvVCzogVlDH8GQ=`, listens on `51822`, self IP `10.10.0.1/30`, `fwmark 0xca6c` (same as wg0 — keeps wg1's underlay packets out of table `51820`).
+- Hillsboro side: a `[Peer]` block in `wg0.conf` for pubkey `V3RenH...` with `AllowedIPs = 10.10.0.0/30`. Endpoint learned dynamically. Return route `10.10.0.0/30 dev wg0` added 2026-05-28.
+- LA's wg1 peer endpoint: `5.78.94.237:51821` (Hillsboro's wg0 listener — same port as the wg0 peer; demultiplexed by handshake key).
 
-### Current state
-- Handshake: active (~25s keepalive)
-- Traffic: 3 MiB total since last boot (keepalive only — no app traffic)
-- Routing table: **wg1 is NOT a default route on LA.** Only the kernel
-  link-scope route `10.10.0.0/30 dev wg1` exists. So the interface is
-  up, the tunnel is established, but no application traffic uses it.
+### How traffic actually moves
 
-### Why it exists
-Almost certainly **a provisioned-but-dormant alternate egress path** to
-complement (or replace) the tinyproxy on `10.8.0.6:8888`. Two options
-explain why it's there:
+Lifecycle is driven by `/etc/wireguard/bhn-wg1-hillsboro.sh` (repo copy:
+`infrastructure/wg-clients/bhn-wg1-hillsboro.sh`), invoked from wg0's
+`PostUp` so wg1 comes up whenever wg0 comes up.
 
-1. **Kernel-level egress backup:** if tinyproxy ever fails, the operator
-   could promote `wg1` to default route on LA with one command and route
-   ALL outbound (not just HTTP) through Hillsboro's public IP. tinyproxy
-   only intercepts HTTP/HTTPS; many tools (Node native fetch, pg-client,
-   anything not using `HTTP_PROXY`) bypass it. wg1 would catch all of it.
-2. **Future migration target:** if the eBay TLS-fingerprint approach
-   ever requires also rotating exit IP, flipping LA's outbound through
-   wg1→Hillsboro→internet gives a different egress IP without code
-   changes.
+The script wires:
+1. `wg1` interface up with the Hillsboro peer.
+2. Routing table `200`: `default dev wg1`, `10.8.0.0/24 dev wg0`, `10.10.0.0/30 dev wg1`.
+3. `ip rule from {10.8.0.2, 10.8.0.4, 10.8.0.7, 10.8.0.8, 10.8.0.9, 10.10.0.0/30} lookup 200 priority 201`. Mesh peers (NJ `10.8.0.5`, Hillsboro `10.8.0.6`, LA itself `10.8.0.1`) are intentionally NOT in this list — they keep their existing egress.
+4. `iptables FORWARD wg0↔wg1 ACCEPT`, `OUTPUT wg1 ACCEPT`, `nat POSTROUTING -o wg1 MASQUERADE` (SNATs to `10.10.0.1` so Hillsboro's V3RenH `AllowedIPs = 10.10.0.0/30` matches), `mangle FORWARD -o wg1 TCPMSS --clamp-mss-to-pmtu`.
 
-### Do not modify
+On Hillsboro: the existing `iptables nat POSTROUTING -o eth0 MASQUERADE` SNATs again to `5.78.94.237`. UFW rule 12 (`Anywhere on eth0 ALLOW FWD Anywhere on wg0`) covers the forward path. UFW egress rule on Hillsboro now also allows UDP `51822` back to LA (needed for wg1 handshake replies).
 
-Removing wg1 on LA or the matching `[Peer]` block on Hillsboro would
-break this redundancy. Both sides hold legitimate config. Leave alone.
+### Verifying it works
+
+From LA: `curl --interface wg1 --noproxy '*' -k -s https://1.1.1.1/cdn-cgi/trace | grep ip=` → returns `ip=5.78.94.237`. From a client running a full-tunnel profile: `curl https://1.1.1.1/cdn-cgi/trace` should likewise show Hillsboro's IP.
+
+### Adding a new full-tunnel client peer
+
+When provisioning a new wg0 client that should egress via Hillsboro:
+1. Add the peer block in `/etc/wireguard/wg0.conf` (assign next free `10.8.0.X/32`).
+2. Add `10.8.0.X` to the `CLIENT_IPS` array in `bhn-wg1-hillsboro.sh`.
+3. Re-run `bash bhn-wg1-hillsboro.sh down && bash bhn-wg1-hillsboro.sh up` (or restart wg0 if convenient).
+
+### Do not modify by hand
+
+Both ends of the tunnel hold legitimate config that the script depends on.
+Edit the script (and the repo copy) rather than poking at runtime state.
 
 ## PSK gaps (work queued)
 
