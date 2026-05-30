@@ -383,26 +383,36 @@ function parseListings($, cardDef) {
   return results;
 }
 
-// Fetch one URL with full browser-like headers; return response text or throw.
-// Cookie header is explicitly deleted — guest-only sessions, never authenticated.
-async function fetchPage(url, sessionUA, timeoutMs = 25000) {
-  const ac  = new AbortController();
-  const tid = setTimeout(() => ac.abort(), timeoutMs);
-  const headers = { ...BROWSER_HEADERS, 'User-Agent': sessionUA };
-  delete headers['Cookie'];   // belt-and-suspenders: no auth cookies ever sent to eBay
-  delete headers['cookie'];
-  try {
-    const res = await fetch(url, {
-      signal: ac.signal,
-      headers,
-      redirect: 'follow',
-      credentials: 'omit',    // Node fetch: omit any credential storage
-    });
-    const text = await res.text();
-    return { status: res.status, text };
-  } finally {
-    clearTimeout(tid);
-  }
+// impers is ESM-only (lexiforest/impers — a Node port of curl_cffi). This module
+// is CJS, so cache the dynamic import once and reuse it.
+let _impersMod = null;
+async function getImpers() {
+  if (!_impersMod) _impersMod = await import('impers');
+  return _impersMod;
+}
+
+// Fetch one URL using a Firefox-144 TLS/HTTP fingerprint via impers.
+//
+// WHY firefox144 (verified empirically 2026-05-28, see
+// project_ebay_tls_fingerprint_impers_2026-05-28): eBay's /sch/i.html Akamai
+// anti-bot scores on the TLS/JA3 + HTTP-2 fingerprint as the dominant signal.
+// Node fetch/undici, curl, and even Chrome/Safari/Edge impersonation get an
+// Akamai challenge stub (~13 KB), while firefox/firefox144 returns the real
+// ~1.5 MB listings page — even from LA's "burned" IP. No proxy needed.
+//
+// Guest-only: impers.get is stateless per call (no cookie jar, no auth), so the
+// no-cookies/no-login rule is preserved. Do NOT inject a custom User-Agent or
+// the old BROWSER_HEADERS — impers sets firefox-consistent headers to match the
+// firefox144 handshake, and a mismatched UA would re-trip the fingerprint check.
+async function fetchPage(url, _sessionUA, timeoutMs = 30000) {
+  const impers = await getImpers();
+  // impers 0.0.6 has no documented timeout option; guard with a race so a stalled
+  // connection can't hang the unattended scraper (replaces the old AbortController).
+  const r = await Promise.race([
+    impers.get(url, { impersonate: 'firefox144' }),
+    new Promise((_, rej) => setTimeout(() => rej(new Error(`impers timeout after ${timeoutMs}ms`)), timeoutMs)),
+  ]);
+  return { status: r.status, text: String(r.text || '') };
 }
 
 // Detect rate-limiting from status or HTML content
@@ -597,7 +607,7 @@ async function scrapeSet(cards, config, callbacks, checkpointDir, seenItemIds) {
   const sessionUA = pickSessionUA();
   const setCode   = (SET_MAP[cards[0]?.set_name] || {}).code || 'UNK';
 
-  callbacks.onLog && callbacks.onLog(`[SESSION] UA: ${sessionUA.slice(0, 40)}…`, 'info');
+  callbacks.onLog && callbacks.onLog(`[SESSION] TLS impersonation: firefox144 (headers/UA set by impers)`, 'info');
 
   // Load checkpoint if present
   let checkpoint = loadCheckpoint(checkpointDir, setCode);

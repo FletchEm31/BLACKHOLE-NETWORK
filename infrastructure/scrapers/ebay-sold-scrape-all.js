@@ -48,55 +48,14 @@
   }
 })();
 
-// ── SOCKS5 dispatcher — route ALL fetch() through FRA tunnel ─────────────────
-// LA's public IP 149.28.91.100 is rate-limited/burned by eBay. Production
-// scraping MUST route via a SOCKS5 tunnel to an unburned exit (Frankfurt:
-// 192.248.187.208). The tunnel is set up by the operator on LA via:
-//   screen -dmS fra-socks ssh -i /root/.ssh/eh_frankfurt -N -D 127.0.0.1:10808 root@10.9.0.2
-// See infrastructure/docs/pokemonbhn/fra-socks5-scrape-runbook.md.
-(function configureSocksDispatcher() {
-  const onLA       = process.env.BHN_RUN_ON_LA === '1';
-  const forceLocal = process.argv.includes('--force-local');
-  const proxy      = process.env.BHN_SOCKS_PROXY;  // e.g. "socks5h://127.0.0.1:10808"
-  if (!onLA || forceLocal) return;
-  if (!proxy) {
-    console.error(
-      '\nFATAL: BHN_SOCKS_PROXY not set but BHN_RUN_ON_LA=1.\n' +
-      'LA IP 149.28.91.100 is burned by eBay. All scraper egress MUST go\n' +
-      'through a SOCKS5 tunnel. Start the FRA tunnel in a screen on LA:\n' +
-      '  screen -dmS fra-socks ssh -i /root/.ssh/eh_frankfurt -N \\\n' +
-      '         -D 127.0.0.1:10808 root@10.9.0.2\n' +
-      'Then re-run with:\n' +
-      '  BHN_RUN_ON_LA=1 BHN_SOCKS_PROXY=socks5h://127.0.0.1:10808 node ebay-sold-scrape-all.js …\n'
-    );
-    process.exit(1);
-  }
-  const { setGlobalDispatcher, Agent } = require('undici');
-  const { SocksClient } = require('socks');
-  const purl = new URL(proxy);
-  setGlobalDispatcher(new Agent({
-    connect: async (opts) => {
-      // undici passes port as '' when the URL has no explicit port (e.g. https://www.ebay.com).
-      // socks library rejects empty/non-numeric port — default to scheme's standard.
-      const destPort = opts.port
-        ? Number(opts.port)
-        : (opts.protocol === 'https:' ? 443 : 80);
-      const { socket } = await SocksClient.createConnection({
-        proxy: { host: purl.hostname, port: Number(purl.port), type: 5 },
-        command: 'connect',
-        destination: { host: opts.hostname, port: destPort },
-      });
-      if (opts.protocol === 'https:') {
-        return require('tls').connect({
-          socket,
-          servername: opts.servername || opts.hostname,
-        });
-      }
-      return socket;
-    },
-  }));
-  console.log(`[proxy] All fetch() calls routed through SOCKS5 @ ${purl.hostname}:${purl.port} (eBay sees the tunnel's exit IP)`);
-})();
+// ── Egress: LA-direct, no proxy ──────────────────────────────────────────────
+// The old FRA SOCKS5 tunnel (Frankfurt 10.9.0.2 / 192.248.187.208) was RETIRED
+// 2026-05-28 when Frankfurt was decommissioned — 10.9.0.2 is unreachable. It is
+// also no longer needed: the 2026-05-28 TLS-fingerprint finding showed the eBay
+// block is TLS/JA3-fingerprint-based, not IP reputation, and impers+firefox144
+// returns real listings directly from LA's own IP (see fetchPage in
+// ebay-sold-scrape.js, and project_ebay_tls_fingerprint_impers_2026-05-28).
+// The scraper now egresses LA-direct via impers — no SOCKS, no BHN_SOCKS_PROXY.
 
 const fs   = require('fs');
 const path = require('path');
