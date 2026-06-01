@@ -101,6 +101,13 @@ function normalizeGrade(grader, grade, valid) {
     const cand = String(f);
     if (valid.has(`${grader}|${cand}`)) return { grade: cand, normalized: true, orig: grade };
   }
+  // Dropped-decimal recovery: a bare integer > 10 is almost always a lost decimal point
+  // ("85"→"8.5", "40"→"4.0"→"4"). Guarded by the catalog — value/10 must itself be a valid grade,
+  // which naturally rejects garbage (year leakage "1999"→199.9, "7004"→700.4 are not grades).
+  if (/^\d+$/.test(grade) && Number(grade) > 10) {
+    const cand = String(Number(grade) / 10);
+    if (valid.has(`${grader}|${cand}`)) return { grade: cand, normalized: true, orig: grade };
+  }
   return { grade: null, rejected: true, orig: grade };  // keep grader, NULL grade → FK exempt
 }
 
@@ -150,7 +157,9 @@ for (const { itemId, row } of seen.values()) {
   // sale_type
   let saleRaw = nz(row.sale_type);
   let sale = saleRaw ? saleRaw.toLowerCase() : null;
-  if (sale === 'best_offer') { sale = 'offer_accepted'; counters.saleCoerced++; }
+  // eBay Best Offer sales aren't in the sale_type vocab → map to offer_accepted.
+  // Accept spacing/casing variants: best_offer, "best offer", best-offer.
+  if (sale && /^best[\s_-]?offer$/.test(sale)) { sale = 'offer_accepted'; counters.saleCoerced++; }
   if (sale !== null && !SALE_TYPES.has(sale)) { counters.saleNulled++; sale = null; }
 
   // raw_payload kept as an object here; grade normalization (needs the live catalog) and
