@@ -8,15 +8,16 @@ wins**; where this file disagrees with the live DB, **the live DB wins** and thi
 
 Last full conformance pass against the live DB: **2026-05-27** (see [§9 Conformance status](#9-conformance-status)).
 PBDD-overhaul diagnostics (set codes, grade catalog, resolver) re-verified **2026-06-01**.
+PBDD Phases 3–6 applied and verified **2026-06-02** (card_code live BAS-style, short_code populated, reholder fields set, `pbdd_grade_code()` live, `slab_code()` dropped, n8n workflow + scrapers migrated).
 
-> **PBDD naming (2026-06-01):** the identifier system is now **PBDD — PokemonBHN Dewey Decimal**.
-> `pbds_code → pbdd_code`, `slab_code()/slab_code → pbdd_grade_code()`, `bhn_slab_id → pbdd_slab_number`,
+> **PBDD naming (2026-06-01, live 2026-06-02):** the identifier system is now **PBDD — PokemonBHN Dewey Decimal**.
+> `pbds_code → pbdd_code`, `slab_code() → pbdd_grade_code()`, `bhn_slab_id → pbdd_slab_number` (rename pending — Open Item #8),
 > and the integer join-key concept `card_id → pbdd_card_id` (the `master_card_catalog.id` PK column
-> name is unchanged). Several of these are **target-ahead-of-live** — the live FK column is still
-> `card_id`, the live `card_code` is still BST-style, and the live function is still `slab_code()`.
-> See [§9](#9-conformance-status) for the per-item target-vs-live state.
+> name is unchanged; FK column rename on 18 tables is Open Item #14).
+> As of 2026-06-02: `card_code` is live BAS-style, `pbdd_grade_code()` is live, `slab_code()` is dropped,
+> `short_code` is populated, reholder fields are set. See [§9](#9-conformance-status) for remaining items.
 
-**Session Start Protocol:** At the start of any Claude Code session touching PokemonBHN data, run the grade catalog verification query in [§9](#9-conformance-status) (`SELECT grader, raw_label FROM master_grade_catalog ORDER BY grader, numeric_grade DESC NULLS LAST`) before writing any grade logic. Expected: 88 rows (CGC 25 / PSA 20 / BGS 21 / SGC 22). If the DB result disagrees with this document, the DB wins — correct this document first.
+**Session Start Protocol:** At the start of any Claude Code session touching PokemonBHN data, run the grade catalog verification query in [§9](#9-conformance-status) (`SELECT grader, COUNT(*) FROM master_grade_catalog GROUP BY grader ORDER BY grader`) before writing any grade logic. Expected: BGS 22 / CGC 26 / PSA 20 / RAW 1 / SGC 22 / TAG 24 / UNKNOWN 1 = 116 total. If the DB result disagrees with this document, the DB wins — correct this document first.
 
 PokemonBHN is one of three data domains (PokemonBHN, FinancialBHN, SecurityBHN) inside the
 **BLACKHOLE-NETWORK** repo, over shared infra (HORIZON, WireGuard, PostgreSQL, n8n).
@@ -468,16 +469,16 @@ worse than nothing.
 | `ebay_listings` columns/FK | `edition`,`card_number`,`grade_tier` + soft validate | ⏳ missing 3 cols; `grade` is `numeric`; no FK; `grader` has descriptors |
 | `pop_reports.card_set` | rename to `set_name` | ⏳ pending |
 | `pbdd_card_id` on observations (concept) | FK to `master_card_catalog.id`; column renamed `card_id → pbdd_card_id` | ⏳ live column still named `card_id` on 17 tables (rename pending). FK + `resolve_card_id()` added 2026-05-27. **`ebay_transactions` re-resolved 2026-06-02 via `infrastructure/scrapers/ebay-title-reparse.js` → card_id 17,075/20,588 = 82.9%** (was 609/3% — the resolver had never been run with the V8-populated card_number/edition; the "56% unmatched" came from a buggy dry-run query, not `resolve_card_id()`). Remaining ~3,500 lack a parseable set/number in the title. |
-| `card_code` / `pbdd_code` display identifier | §2.1 — BAS-style, concatenated, STN explicit, no year | ⏳ live is still **BST-style** (`BST-004-1E`, hyphenated, STN omitted) from `sql/card-code-system.sql`, 1,354/1,354 populated. PBDD Phase 4 (`sql/migrations/2026-06-01-pbdd-system.sql`) regenerates to BAS-style; `card-code-system.sql` superseded. |
-| `pbdd_grade_code()` derived identifier | §2.2 — `{pbdd_code}-{GRADER}{NUMERIC}{SHORT_CODE}` | ⏳ live function is still `slab_code(card_code, grader, grade)` (granted `n8n_user`/`log_shipper`/`ehuser`/`agent_reader`). PBDD Phase 5 creates `pbdd_grade_code(...)`; old dropped after callers migrate (Phase 6). |
-| `master_grade_catalog.short_code` | §2.2 / §3.5 — abbreviated tier suffix | ⏳ column ABSENT on live (2026-06-01). PBDD Phase 3 adds + populates all 88 gradeable rows; sentinels/fallbacks stay NULL. |
-| 2026-05-28 grade-catalog migration | reholder cols + RAW/UNKNOWN sentinels + BGS Gold/Black Label 10 | ⏳ **NOT applied** on live (2026-06-01: only a stray `Black Label 10` present; no reholder cols, no sentinels, no Gold Label 10). Idempotent — run as PBDD Phase 3A. |
+| `card_code` / `pbdd_code` display identifier | §2.1 — BAS-style, concatenated, STN explicit, no year | ✅ live is BAS-style (`BAS001-1E-STN`, etc.), 1,354/1,354 populated. `sql/card-code-system.sql` superseded by `sql/migrations/2026-06-01-pbdd-system.sql`. Applied 2026-06-02. |
+| `pbdd_grade_code()` derived identifier | §2.2 — `{pbdd_code}-{GRADER}{NUMERIC}{SHORT_CODE}` | ✅ live function `pbdd_grade_code()` created and verified 2026-06-02. Old `slab_code()` dropped. Granted `ehuser`/`agent_reader`. n8n arbitrage workflow + scrapers migrated (Phase 6 done). |
+| `master_grade_catalog.short_code` | §2.2 / §3.5 — abbreviated tier suffix | ✅ column present and populated 2026-06-02. All 88 authoritative rows have `short_code`; parser-fallback rows (bare `10`/`9.5`) stay NULL as intended. |
+| 2026-05-28 grade-catalog migration | reholder cols + RAW/UNKNOWN sentinels + BGS Gold/Black Label 10 | ✅ applied (was already live as of 2026-06-02 diagnostics). Reholder fields populated: CGC Gem Mint 9.5 → Gem Mint 10 ($5-10); Perfect 10 → Pristine 10 (fee TBD). |
 | `courtyard_listings`, `courtyard_sales`, `collector_crypt_sales`, `tokenized_arbitrage_signals` | day-one compliant per [§10](#10-tokenized-market-stream) | ✅ created 2026-05-22 with edition+print_variant NOT NULL, grader/edition/print_variant CHECK, grade TEXT, sold_price separate from listed_price |
 | `seller_profiles` | cross-platform seller dimension per [§11](#11-seller-profile-dimension) | ✅ created 2026-05-22; UNIQUE (seller_username, platform); self-ref `linked_seller_id` (INT references BIGINT - implicit cast at FK lookup, low-impact precision drift) |
 | `ebay_listings` enrichment cols | observation-history + slab-identity + demand columns | ✅ added 2026-05-22: `auction_end_time`, `first_seen_at`, `last_seen_at`, `original_item_id`, `relist_count INT DEFAULT 0`, `original_listed_at`, `cert_number`, `location`, `watchers`. `obo_min_price` preserved as legacy NUMERIC (operator spec asked for DECIMAL(10,2); operationally equivalent; rewrite scheduled separately) |
 | `sold_listings` enrichment cols | same set as ebay_listings | ✅ added 2026-05-22: all 10 columns including a fresh `obo_min_price DECIMAL(10,2)` |
-| `pbdd_grade_code` format | §2.2 — `{pbdd_code}-{GRADER}{NUMERIC}{SHORT_CODE}`, no separators | ⏳ locked 2026-06-01; supersedes the old `[PBDS]-[GRADER+GRADE]` separator format. Live function not yet rebuilt (Phase 5). |
-| `pbdd_grade_code` raw/ungraded | §2.2 — `{pbdd_code}-RAW[-{CONDITION}]` (NM/LP/MP/HP/DMG) | ⏳ locked 2026-06-01 (was `-RAW`, never NULL). |
+| `pbdd_grade_code` format | §2.2 — `{pbdd_code}-{GRADER}{NUMERIC}{SHORT_CODE}`, no separators | ✅ live and verified 2026-06-02. Examples: `TRK014-1E-HOLO-PSA10GM`, `TRK014-1E-HOLO-CGC10PR`, `TRK014-1E-HOLO-CGC9.5M+`. |
+| `pbdd_grade_code` raw/ungraded | §2.2 — `{pbdd_code}-RAW[-{CONDITION}]` (NM/LP/MP/HP/DMG) | ✅ live and verified 2026-06-02. `TRK014-1E-HOLO-RAW-NM`, `TRK014-1E-HOLO-RAW`. |
 | `pbdd_slab_number` | §2.3 — 15-char random alphanumeric per unique `pbdd_grade_code` — on `ebay_transactions` + `ebay_asks`, NULL for ungraded | ⏳ not yet built; live columns still named `bhn_slab_id` (rename pending). |
 | `grade_label` column | §3.8 — tier name parsed from title, nullable, never blocks load | ⏳ not yet on `ebay_transactions` |
 | `currency` standardization | `currency TEXT` present on all `_transactions` tables, `USD`/`CAD`/`GBP` | ⏳ `ebay_transactions` has column; other tables pending audit |
@@ -496,9 +497,9 @@ worse than nothing.
 | 8 | `pbdd_slab_number` | Defined §2.3 — not yet built; add column to `ebay_transactions` + `ebay_asks` (live columns currently `bhn_slab_id` — rename as part of this) |
 | 9 | `grade_label` column | Defined §3.8 — not yet on `ebay_transactions`; scraper will populate |
 | 10 | `currency` audit | Confirm `currency TEXT` present and populated on all `_bids`, `_asks`, `_transactions` tables |
-| 11 | PBDD Phase 3A — apply 2026-05-28 migration | NOT applied on live; idempotent; prerequisite for `short_code` population |
-| 12 | PBDD Phase 4 — `card_code` BAS regen | Overwrite 1,354 rows to BAS-style; deprecate `sql/card-code-system.sql` |
-| 13 | PBDD Phase 5/6 — `slab_code()` → `pbdd_grade_code()` | Create new fn (Phase 5); migrate n8n arbitrage workflow + SQL callers, then DROP old (Phase 6) |
+| 11 | ✅ PBDD Phase 3A — apply 2026-05-28 migration | DONE 2026-06-02 — was already live. Reholder cols, RAW/UNKNOWN sentinels, BGS Gold/Black Label 10 all present. |
+| 12 | ✅ PBDD Phase 4 — `card_code` BAS regen | DONE (prior session). Live is BAS-style; `sql/card-code-system.sql` superseded. |
+| 13 | ✅ PBDD Phase 5/6 — `slab_code()` → `pbdd_grade_code()` | DONE 2026-06-02. `pbdd_grade_code()` live and verified; `slab_code()` dropped; n8n arbitrage workflow + scraper files migrated. |
 | 14 | `card_id` → `pbdd_card_id` column rename | Physical rename on 17 observation/signal tables + `resolve_card_id()`; touches back-compat views — schedule carefully |
 | 15 | ✅ Re-resolve card_id after V8 load | DONE 2026-06-02 — `ebay-title-reparse.js` backfilled NULL components from title_raw + ran `resolve_card_id()` → 82.9% resolved (17,075/20,588). |
 
