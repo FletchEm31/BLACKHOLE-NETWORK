@@ -387,6 +387,18 @@ Every graded-card observation row carries three grade-related fields:
   `Pristine 10` vs `Gem Mint 10` without seeing the physical slab). Do not guess.
 - All other graders: bare numeric resolves unambiguously from the catalog.
 
+#### 3.8.1 Bronze vs Silver — derived-value storage (medallion exception)
+
+**Bronze observation tables must not store derived values** — `grade_numeric`, `tier_label`, and
+PBDD codes are derived via JOIN only. **Silver (analytical) layer tables MAY store
+computed/derived values for query performance**, provided they are populated and kept in sync by
+the promotion function (`promote_bronze_to_silver`). Storing derived values on Silver is
+intentional and correct.
+
+In practice: `silver_ebay_transactions` materializes `card_code` (PBDD code), `pbdd_grade_code`,
+and `grade_numeric` — which the "never stored" rule above forbids on Bronze. That is the point of
+the Silver layer. See [§14](#14-silver-layer--silver_ebay_transactions).
+
 ---
 
 ## 4. Enforcement tiers (by table role)
@@ -717,6 +729,92 @@ Present on EVERY `_bids`, `_asks`, `_transactions` table:
 
 eBay can only populate `ebay_bids` from YOUR own listings (Trading API limitation) — this table will be sparse. OpenSea and Magic Eden expose full bid feeds.
 
+### 12.7 Bronze column reference — `ebay_transactions` (verified 2026-06-02)
+
+Authoritative live column list for the Bronze table `ebay_transactions` (the eBay sold-comps
+landing table), pulled directly from `information_schema.columns` on 2026-06-02. This is the
+source-of-truth Bronze column map; Silver ([§14](#14-silver-layer--silver_ebay_transactions))
+component/transaction/seller columns are named to match these.
+
+```
+column_name                 data_type                    nullable
+--------------------------- ---------------------------- --------
+id                          integer                      NO
+card_name                   text                         YES
+set_name                    text                         YES
+card_number                 text                         YES
+edition                     text                         YES
+grader                      text                         YES
+grade                       text                         YES
+sold_date                   date                         YES
+sold_price                  numeric                      YES
+shipping                    numeric                      YES
+sale_type                   text                         YES
+bid_count                   integer                      YES
+item_id                     text                         YES
+seller                      text                         YES
+seller_feedback_pct         numeric                      YES
+auth_guarantee              boolean                      YES
+language                    text                         YES
+title_raw                   text                         YES
+inserted_at                 timestamptz                  YES
+auction_end_time            timestamptz                  YES
+first_seen_at               timestamptz                  YES
+last_seen_at                timestamptz                  YES
+original_item_id            text                         YES
+relist_count                integer                      YES
+original_listed_at          timestamptz                  YES
+obo_min_price               numeric                      YES
+cert_number                 text                         YES
+location                    text                         YES
+watchers                    integer                      YES
+card_id                     integer                      YES
+card_code                   text                         YES
+print_variant               text                         NO
+platform                    text                         NO
+currency                    text                         YES
+raw_payload                 jsonb                        YES
+listed_price                numeric                      YES
+sold_at                     timestamptz                  YES
+buyer_username              text                         YES
+platform_fee_pct            numeric                      YES
+platform_fee_amt            numeric                      YES
+royalty_fee_pct             numeric                      YES
+royalty_fee_amt             numeric                      YES
+payment_processing_pct      numeric                      YES
+payment_processing_amt      numeric                      YES
+shipping_cost               numeric                      YES
+insurance_cost              numeric                      YES
+packaging_cost              numeric                      YES
+authentication_fee          numeric                      YES
+sales_tax_collected         numeric                      YES
+sales_tax_rate              numeric                      YES
+income_tax_liability        numeric                      YES
+acquisition_price           numeric                      YES
+acquisition_market          text                         YES
+acquisition_date            timestamptz                  YES
+total_fees                  numeric                      YES
+total_cost_basis            numeric                      YES
+gross_profit                numeric                      YES
+net_profit                  numeric                      YES
+profit_margin_pct           numeric                      YES
+roi_pct                     numeric                      YES
+market_platform_fee_est     numeric                      YES
+market_processing_fee_est   numeric                      YES
+market_shipping_est         numeric                      YES
+market_auth_fee_est         numeric                      YES
+market_total_costs_est      numeric                      YES
+market_net_to_seller_est    numeric                      YES
+grade_label                 text                         YES
+bhn_slab_id                 text                         YES
+seller_username             text                         YES
+seller_feedback_score       integer                      YES
+condition                   text                         YES
+```
+(71 columns. The 22 accounting/P&L cols — `platform_fee_*` … `market_*` — are the
+Sonnet-designed actual-fee/acquisition set, not individually operator-reviewed; see project
+notes. `seller` vs `seller_username` and `card_set`-style drift tracked in §3.7 / §9.)
+
 ---
 
 ## 13. Fee Schedule & Cost Estimation (2026-05-27)
@@ -798,3 +896,49 @@ Worked example: a PSA-10 selling for $1,000 on eBay vs $900 on Courtyard — the
 | 06 — `fee_schedule.tier` + tier-aware function | `sql/market-data-standard-06-fee-tier-fix.sql` |
 
 Out of scope for this batch: n8n workflow migration off the back-compat views, HORIZON SMS query wiring (Part 2 §4, Part 3 §5), calibration cron (Part 3 §4). Each is gated on operator decisions and goes in a follow-up.
+
+---
+
+## 14. Silver Layer — `silver_ebay_transactions`
+
+PokemonBHN uses a **Bronze / Silver / Gold medallion architecture**:
+
+| Layer | Table | Role |
+|---|---|---|
+| Bronze | `ebay_transactions` | raw scraped eBay sold comps (see [§12.7](#127-bronze-column-reference--ebay_transactions-verified-2026-06-02)) |
+| **Silver** | **`silver_ebay_transactions`** | cleaned, `card_id`-resolved, PBDD-coded analytical table — the main query surface |
+| Gold | `card_valuations` (matview) | per-card valuations — not yet built; depends on Silver |
+
+Created `sql/migrations/2026-06-02-silver-ebay-transactions.sql`. Empty until populated by the
+`promote_bronze_to_silver()` function, driven by the `BRONZE_TO_SILVER_EBAY_TRANSACTIONS` n8n
+workflow (not yet built).
+
+### 14.1 Promotion gate
+A Bronze row promotes to Silver only if ALL pass: `card_id IS NOT NULL`; `edition IS NOT NULL`
+and `!= 'N/A'` (unless promo set); `grader IN ('PSA','CGC','BGS','SGC')`; `grade IS NOT NULL`;
+`sold_price > 0`; `sold_date IS NOT NULL`. Failures route to `grade_reject_log` — never silently dropped.
+
+### 14.2 Column naming
+Component / transaction / seller columns use the **same names as Bronze** (§12.7) so promotion
+needs no remap: `item_id`, `shipping`, `sold_date`, `sold_at`, `sale_type`, `grade_label`,
+`seller_feedback_score`, `location`, `platform`, `card_code`. (`card_code` holds the PBDD-format
+value, e.g. `TRK014-1E-HOLO`.) The 10 names were reconciled 2026-06-02 from initial drift.
+
+### 14.3 Materialized derived values (Silver exception — see [§3.8.1](#381-bronze-vs-silver--derived-value-storage-medallion-exception))
+Silver intentionally STORES `card_code`, `pbdd_grade_code`, and `grade_numeric` — derived values
+the Bronze "never stored" rule forbids — for query performance. Kept in sync by the promotion function.
+
+### 14.4 Silver-specific columns
+`grade_tier`→`grade_label` per §3.8; plus audit/provenance: `bronze_id` (FK →
+`ebay_transactions.id`, hard provenance), `promoted_at`, `promotion_method`
+(`exact_match`/`fuzzy_match`/`manual`), `total_price` (GENERATED `sold_price + COALESCE(shipping,0)`).
+
+### 14.5 Vocab note
+`sale_type` on Silver uses the CHECK vocab `{BIN, auction, OBO}` (unchanged from the initial
+build). Bronze `sale_type` uses `{fixed_price, auction, offer_accepted, …}` — the
+Bronze→Silver mapping (`fixed_price→BIN`, `offer_accepted→OBO`, `auction→auction`) is handled in
+`promote_bronze_to_silver()`. ⚠ Reconcile these vocabs when building the promotion function.
+
+### 14.6 Grants
+`agent_reader` / `grafana_reader` / `ehuser`: SELECT. `n8n_user`: INSERT, UPDATE + sequence USAGE
+(it runs the promotion).
