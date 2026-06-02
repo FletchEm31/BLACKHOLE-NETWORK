@@ -147,7 +147,10 @@ function buildPbddCode(set_name, card_number, edition, print_variant) {
 
 // Build eBay sold-listings search URL for one card, one page
 function buildSearchUrl(cardDef, page) {
-  const query = `pokemon ${cardDef.set_name} 1st edition graded PSA CGC ${cardDef.card_name}`;
+  const editionTerm = cardDef.edition === 'Unlimited' ? 'unlimited'
+    : cardDef.edition === 'Shadowless' ? 'shadowless'
+    : '1st edition';
+  const query = `pokemon ${cardDef.set_name} ${editionTerm} graded PSA CGC ${cardDef.card_name}`;
   const qs = new URLSearchParams({
     _nkw:        query,
     _sacat:      '0',
@@ -709,7 +712,7 @@ function hotReloadConfig(configPath) {
 module.exports = {
   scrapeCard,
   scrapeSet,
-  buildPbdsCode,
+  buildPbddCode,
   buildSearchUrl,
   parseGradeFromTitle,
   parsePriceAndCurrency,

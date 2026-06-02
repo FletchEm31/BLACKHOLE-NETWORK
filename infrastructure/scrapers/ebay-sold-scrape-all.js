@@ -62,7 +62,7 @@ const path = require('path');
 const { Client } = require('pg');
 
 const {
-  scrapeSet, buildPbdsCode, hotReloadConfig, pickSessionUA,
+  scrapeSet, buildPbddCode, hotReloadConfig, pickSessionUA,
 } = require('./ebay-sold-scrape');
 
 // ── CLI flags ──────────────────────────────────────────────────────────────────
