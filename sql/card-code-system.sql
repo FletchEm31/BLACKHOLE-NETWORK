@@ -1,5 +1,15 @@
 -- card-code-system.sql
--- BHN — card_code + slab_code human-readable identifier system.
+-- ⚠️ DEPRECATED 2026-06-01 — SUPERSEDED by the PBDD overhaul. DO NOT RE-RUN.
+--   This file populated card_code in the legacy BST-style format
+--   (BST-004-1E, hyphenated, Standard variant omitted) and defined slab_code().
+--   The PBDD migration `sql/migrations/2026-06-01-pbdd-system.sql` re-points the
+--   set_codes to the BAS family and regenerates card_code to the BAS-style format
+--   (BAS004-1E-STN, concatenated, STN explicit, no year), and replaces slab_code()
+--   with pbdd_grade_code(). Re-running THIS file would overwrite the live card_code
+--   back to the obsolete BST format. Kept for history only.
+--   Authoritative card_code/pbdd_grade_code definitions: infrastructure/docs/pokemonbhn/collectibles-data-standard.md §2.1–2.2.
+--
+-- BHN — card_code + slab_code human-readable identifier system. (LEGACY — see banner above.)
 -- Spec: infrastructure/docs/BHN session updates/BHN-SESSION-HANDOFF/BHN-CARD-CODE-SPEC-2026-05-27.txt
 --
 -- Two derived identifiers:
