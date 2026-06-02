@@ -1,0 +1,265 @@
+CLAUDE CODE BRIEFING — 2026-06-02
+TASK: Create silver_ebay_transactions table
+================================================
+
+CONTEXT
+-------
+PokemonBHN uses a Bronze/Silver/Gold medallion architecture on PostgreSQL
+(database: eventhorizon, LA node).
+
+Bronze = raw scraped data (ebay_transactions — 17,634 rows of eBay sold comps)
+Silver = cleaned, identity-resolved, PBDD-coded layer (what we are building now)
+Gold   = card_valuations materialized view (not yet built, depends on Silver)
+
+The Silver layer is the main analytical table. Every Bronze row gets promoted
+to Silver once card_id is resolved and all fields are normalized. Rows that
+fail promotion go to grade_reject_log (separate task, not today).
+
+The n8n workflow BRONZE_TO_SILVER_EBAY_TRANSACTIONS will automate promotion
+once built. Today we are just creating the table.
+
+PBDD IDENTITY SYSTEM (important for understanding the table)
+------------------------------------------------------------
+pbdd_code       = human card label       e.g. TRK014-1E-HOLO
+                  format: [SETCODE+NUM]-[EDITION]-[VARIANT]
+
+pbdd_grade_code = computed grade tier    e.g. PSA10GM / CGC9.5M+
+                  computed via pbdd_grade_code() function (already exists in DB)
+
+Both codes are DERIVED — they are computed from the component columns,
+not entered manually. Component columns (set_name, card_number, edition,
+print_variant, grader, grade, grade_tier) are what get populated on promotion.
+
+PREREQS — CHECK THESE FIRST
+----------------------------
+Before running the migration, verify these tables exist in eventhorizon:
+
+  SELECT table_name FROM information_schema.tables
+  WHERE table_name IN (
+    'master_card_catalog',
+    'master_grade_catalog',
+    'ebay_transactions'
+  ) AND table_schema = 'public';
+
+Expected: all 3 rows returned.
+
+NOTE: The Bronze table is named ebay_transactions (was renamed from
+sold_listings in a prior session). If only sold_listings exists and NOT
+ebay_transactions, STOP and report back — do not rename it here.
+
+Also verify pbdd_grade_code() function exists:
+  SELECT proname FROM pg_proc WHERE proname = 'pbdd_grade_code';
+
+Also verify roles exist:
+  SELECT rolname FROM pg_roles
+  WHERE rolname IN ('agent_reader','grafana_reader','ehuser','n8n_user');
+
+TASK
+----
+1. Copy the SQL below into:
+   sql/migrations/2026-06-02-silver-ebay-transactions.sql
+
+2. Apply on LA:
+   sudo -u postgres psql -d eventhorizon \
+     -f sql/migrations/2026-06-02-silver-ebay-transactions.sql
+
+3. Verify:
+   -- Table exists with correct column count
+   SELECT COUNT(*) FROM information_schema.columns
+   WHERE table_name = 'silver_ebay_transactions';
+   -- Expected: 30 columns
+
+   -- Indexes created
+   SELECT indexname FROM pg_indexes
+   WHERE tablename = 'silver_ebay_transactions';
+   -- Expected: 8 indexes + primary key
+
+   -- Grants in place
+   SELECT grantee, privilege_type FROM information_schema.role_table_grants
+   WHERE table_name = 'silver_ebay_transactions';
+
+   -- Confirm table is empty and ready
+   SELECT COUNT(*) FROM silver_ebay_transactions;
+   -- Expected: 0 (no rows yet, promotion is a separate step)
+
+4. Commit to branch fix/ebay-scraper-impers-rework
+   Summary: feat: create silver_ebay_transactions table
+   Description:
+     Creates the Silver layer table for PokemonBHN medallion architecture.
+     Promoted from ebay_transactions (Bronze) via BRONZE_TO_SILVER_EBAY_TRANSACTIONS
+     n8n workflow (not yet built). Contains full PBDD identity system (pbdd_code,
+     pbdd_grade_code) plus all component fields, transaction detail, seller info,
+     and audit provenance. Includes 8 indexes, check constraints on all controlled
+     vocab fields, and grants for all existing roles.
+
+================================================
+SQL — paste into sql/migrations/2026-06-02-silver-ebay-transactions.sql
+================================================
+
+-- ============================================================================
+-- PokemonBHN — Silver Layer
+-- silver_ebay_transactions
+-- ============================================================================
+-- Unified Silver layer for ALL eBay sold comps.
+-- Promoted from ebay_transactions (Bronze) via BRONZE_TO_SILVER_EBAY_TRANSACTIONS
+-- n8n workflow → promote_bronze_to_silver() PostgreSQL function.
+--
+-- Promotion gate (row only enters Silver if ALL pass):
+--   card_id IS NOT NULL
+--   edition IS NOT NULL AND edition != 'N/A' (unless promo set)
+--   grader IN ('PSA','CGC','BGS','SGC')
+--   grade IS NOT NULL
+--   sold_price > 0
+--   sale_date IS NOT NULL
+--
+-- Failures route to grade_reject_log — never silently dropped.
+-- Authority: infrastructure/docs/pokemonbhn/pokemonbhn-data-architecture.md
+-- ============================================================================
+
+\set ON_ERROR_STOP on
+BEGIN;
+
+CREATE TABLE IF NOT EXISTS silver_ebay_transactions (
+
+    id                  BIGSERIAL PRIMARY KEY,
+
+    -- -------------------------------------------------------------------------
+    -- PBDD identity
+    -- -------------------------------------------------------------------------
+    pbdd_code           TEXT NOT NULL,
+    pbdd_grade_code     TEXT NOT NULL,
+    card_id             INTEGER NOT NULL
+                        REFERENCES master_card_catalog(id) ON DELETE RESTRICT,
+
+    -- -------------------------------------------------------------------------
+    -- pbdd_code components
+    -- -------------------------------------------------------------------------
+    set_name            TEXT NOT NULL,
+    card_number         TEXT NOT NULL,
+    edition             TEXT NOT NULL,
+    print_variant       TEXT NOT NULL DEFAULT 'Standard',
+
+    -- -------------------------------------------------------------------------
+    -- pbdd_grade_code components
+    -- -------------------------------------------------------------------------
+    grader              TEXT NOT NULL,
+    grade               TEXT NOT NULL,
+    grade_numeric       DECIMAL(3,1),
+    grade_tier          TEXT NOT NULL,
+
+    -- -------------------------------------------------------------------------
+    -- Transaction detail
+    -- -------------------------------------------------------------------------
+    cert_number         TEXT,
+    sold_price          DECIMAL(10,2) NOT NULL,
+    shipping_price      DECIMAL(8,2),
+    total_price         DECIMAL(10,2)
+                        GENERATED ALWAYS AS (
+                            sold_price + COALESCE(shipping_price, 0)
+                        ) STORED,
+    currency            CHAR(3) NOT NULL DEFAULT 'USD',
+    ebay_item_id        TEXT NOT NULL,
+    sale_date           DATE NOT NULL,
+    sale_datetime       TIMESTAMPTZ,
+    transaction_type    TEXT,
+    listing_url         TEXT,
+
+    -- -------------------------------------------------------------------------
+    -- Seller info
+    -- -------------------------------------------------------------------------
+    seller_username     TEXT,
+    seller_feedback     INT,
+    seller_location     TEXT,
+
+    -- -------------------------------------------------------------------------
+    -- Audit / source
+    -- -------------------------------------------------------------------------
+    title_raw           TEXT,
+    source              TEXT NOT NULL DEFAULT 'ebay',
+    bronze_id           BIGINT NOT NULL
+                        REFERENCES ebay_transactions(id) ON DELETE RESTRICT,
+    promoted_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    promotion_method    TEXT NOT NULL,
+
+    -- -------------------------------------------------------------------------
+    -- Constraints
+    -- -------------------------------------------------------------------------
+    CONSTRAINT chk_grader
+        CHECK (grader IN ('PSA','CGC','BGS','SGC')),
+    CONSTRAINT chk_edition
+        CHECK (edition IN ('1st Edition','Unlimited','Shadowless','N/A')),
+    CONSTRAINT chk_transaction_type
+        CHECK (transaction_type IS NULL OR
+               transaction_type IN ('BIN','auction','OBO')),
+    CONSTRAINT chk_promotion_method
+        CHECK (promotion_method IN ('exact_match','fuzzy_match','manual')),
+    CONSTRAINT chk_currency
+        CHECK (currency IN ('USD','GBP','EUR','CAD','AUD')),
+    CONSTRAINT chk_sold_price
+        CHECK (sold_price > 0),
+    CONSTRAINT chk_grade_numeric
+        CHECK (grade_numeric IS NULL OR
+               (grade_numeric >= 1.0 AND grade_numeric <= 10.0)),
+
+    UNIQUE (pbdd_code, pbdd_grade_code, bronze_id)
+);
+
+-- ============================================================================
+-- Indexes
+-- ============================================================================
+
+CREATE INDEX IF NOT EXISTS idx_silver_ebay_pbdd
+    ON silver_ebay_transactions (pbdd_code, pbdd_grade_code);
+
+CREATE INDEX IF NOT EXISTS idx_silver_ebay_card_id
+    ON silver_ebay_transactions (card_id);
+
+CREATE INDEX IF NOT EXISTS idx_silver_ebay_sale_date
+    ON silver_ebay_transactions (sale_date DESC);
+
+CREATE INDEX IF NOT EXISTS idx_silver_ebay_set_edition
+    ON silver_ebay_transactions (set_name, edition);
+
+CREATE INDEX IF NOT EXISTS idx_silver_ebay_grader_grade
+    ON silver_ebay_transactions (grader, grade_numeric);
+
+CREATE INDEX IF NOT EXISTS idx_silver_ebay_cert
+    ON silver_ebay_transactions (cert_number)
+    WHERE cert_number IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_silver_ebay_bronze_id
+    ON silver_ebay_transactions (bronze_id);
+
+CREATE INDEX IF NOT EXISTS idx_silver_ebay_promoted_at
+    ON silver_ebay_transactions (promoted_at DESC);
+
+-- ============================================================================
+-- Grants
+-- ============================================================================
+
+GRANT SELECT ON silver_ebay_transactions TO agent_reader;
+GRANT SELECT ON silver_ebay_transactions TO grafana_reader;
+GRANT SELECT ON silver_ebay_transactions TO ehuser;
+GRANT INSERT, UPDATE ON silver_ebay_transactions TO n8n_user;
+GRANT USAGE ON SEQUENCE silver_ebay_transactions_id_seq TO n8n_user;
+
+-- ============================================================================
+-- Comments
+-- ============================================================================
+
+COMMENT ON TABLE silver_ebay_transactions IS
+    'Silver layer — eBay sold comps promoted from ebay_transactions (Bronze). '
+    'card_id resolved, PBDD codes computed, grader/grade/edition normalized. '
+    'Feeds card_valuations (Gold). Promoted via BRONZE_TO_SILVER_EBAY_TRANSACTIONS n8n workflow.';
+
+COMMENT ON COLUMN silver_ebay_transactions.pbdd_code        IS 'PBDD human card identifier — TRK014-1E-HOLO. Derived, display only.';
+COMMENT ON COLUMN silver_ebay_transactions.pbdd_grade_code  IS 'PBDD grade tier code — PSA10GM / CGC9.5M+. Computed via pbdd_grade_code().';
+COMMENT ON COLUMN silver_ebay_transactions.card_id          IS 'FK → master_card_catalog.id. Resolved by title re-parser during promotion.';
+COMMENT ON COLUMN silver_ebay_transactions.grade            IS 'Verbatim raw_label from source. FK → master_grade_catalog.';
+COMMENT ON COLUMN silver_ebay_transactions.total_price      IS 'sold_price + shipping_price. Generated — do not set directly.';
+COMMENT ON COLUMN silver_ebay_transactions.title_raw        IS 'Original eBay title preserved for re-parsing audit.';
+COMMENT ON COLUMN silver_ebay_transactions.bronze_id        IS 'FK → ebay_transactions.id. Hard provenance link to Bronze source row.';
+COMMENT ON COLUMN silver_ebay_transactions.promotion_method IS 'How card_id was resolved: exact_match / fuzzy_match / manual override.';
+COMMENT ON COLUMN silver_ebay_transactions.source           IS 'Source platform. Always ebay here — future tables: tcgplayer etc.';
+
+COMMIT;
