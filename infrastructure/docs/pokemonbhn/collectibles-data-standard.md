@@ -463,7 +463,7 @@ worse than nothing.
 | `grade_reject_log` + staging-filter | §4 | ⏳ **not built** (loaders are all-or-nothing) |
 | `ebay_listings` columns/FK | `edition`,`card_number`,`grade_tier` + soft validate | ⏳ missing 3 cols; `grade` is `numeric`; no FK; `grader` has descriptors |
 | `pop_reports.card_set` | rename to `set_name` | ⏳ pending |
-| `pbdd_card_id` on observations (concept) | FK to `master_card_catalog.id`; column renamed `card_id → pbdd_card_id` | ⏳ live column still named `card_id` on 17 tables (rename pending). FK + `resolve_card_id()` added 2026-05-27 (granted `n8n_user`/`log_shipper`/`ehuser`). Backfill as of 2026-06-01: `ebay_transactions`/`sold_listings` only 609/16,589 filled (predates the 15,497-row V8 load); resolver dry-run on the full table = HIGH 41% / MED 2% / **UNMATCHED 56%** — re-resolve needed (Open #8). |
+| `pbdd_card_id` on observations (concept) | FK to `master_card_catalog.id`; column renamed `card_id → pbdd_card_id` | ⏳ live column still named `card_id` on 17 tables (rename pending). FK + `resolve_card_id()` added 2026-05-27. **`ebay_transactions` re-resolved 2026-06-02 via `infrastructure/scrapers/ebay-title-reparse.js` → card_id 17,075/20,588 = 82.9%** (was 609/3% — the resolver had never been run with the V8-populated card_number/edition; the "56% unmatched" came from a buggy dry-run query, not `resolve_card_id()`). Remaining ~3,500 lack a parseable set/number in the title. |
 | `card_code` / `pbdd_code` display identifier | §2.1 — BAS-style, concatenated, STN explicit, no year | ⏳ live is still **BST-style** (`BST-004-1E`, hyphenated, STN omitted) from `sql/card-code-system.sql`, 1,354/1,354 populated. PBDD Phase 4 (`sql/migrations/2026-06-01-pbdd-system.sql`) regenerates to BAS-style; `card-code-system.sql` superseded. |
 | `pbdd_grade_code()` derived identifier | §2.2 — `{pbdd_code}-{GRADER}{NUMERIC}{SHORT_CODE}` | ⏳ live function is still `slab_code(card_code, grader, grade)` (granted `n8n_user`/`log_shipper`/`ehuser`/`agent_reader`). PBDD Phase 5 creates `pbdd_grade_code(...)`; old dropped after callers migrate (Phase 6). |
 | `master_grade_catalog.short_code` | §2.2 / §3.5 — abbreviated tier suffix | ⏳ column ABSENT on live (2026-06-01). PBDD Phase 3 adds + populates all 88 gradeable rows; sentinels/fallbacks stay NULL. |
@@ -496,7 +496,7 @@ worse than nothing.
 | 12 | PBDD Phase 4 — `card_code` BAS regen | Overwrite 1,354 rows to BAS-style; deprecate `sql/card-code-system.sql` |
 | 13 | PBDD Phase 5/6 — `slab_code()` → `pbdd_grade_code()` | Create new fn (Phase 5); migrate n8n arbitrage workflow + SQL callers, then DROP old (Phase 6) |
 | 14 | `card_id` → `pbdd_card_id` column rename | Physical rename on 17 observation/signal tables + `resolve_card_id()`; touches back-compat views — schedule carefully |
-| 15 | Re-resolve `pbdd_card_id` after V8 load | Full table now 56% UNMATCHED (was 93.5% on the pre-V8 651 rows); review stratified sample before writes |
+| 15 | ✅ Re-resolve card_id after V8 load | DONE 2026-06-02 — `ebay-title-reparse.js` backfilled NULL components from title_raw + ran `resolve_card_id()` → 82.9% resolved (17,075/20,588). |
 
 ---
 
