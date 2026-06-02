@@ -133,8 +133,8 @@ function pickSessionUA() {
   return USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
 }
 
-// Build PBDS code: TRK014-2000-1E-HOL
-function buildPbdsCode(set_name, card_number, edition, print_variant) {
+// Build PBDD code: TRK014-1E-STN
+function buildPbddCode(set_name, card_number, edition, print_variant) {
   const setInfo = SET_MAP[set_name];
   if (!setInfo) return null;
   const num     = String(card_number).padStart(3, '0');
@@ -338,15 +338,15 @@ function parseListings($, cardDef) {
       const cnMatch = titleText.match(/#(\d+)(?:\/\d+)?/);
       if (cnMatch) card_number = cnMatch[1];
 
-      // PBDS code
+      // PBDD code
       const edition       = cardDef.edition       || '1st Edition';
       const print_variant = cardDef.print_variant  || 'Standard';
-      const pbds_code = buildPbdsCode(
+      const pbdd_code = buildPbddCode(
         cardDef.set_name, card_number, edition, print_variant
       );
 
       results.push({
-        pbds_code,
+        pbdd_code,
         item_id:            itemId,
         title:              titleText,
         card_name:          cardDef.card_name,
@@ -756,7 +756,7 @@ async function main() {
     onStats:  (delta) => {},
     onResult: (row) => {
       if (dryRun) {
-        console.log(`  ${row.pbds_code || '?'} | ${row.grader || 'RAW'} ${row.grade || ''} | $${row.sold_price || '?'} | ${row.title?.slice(0,60)}`);
+        console.log(`  ${row.pbdd_code || '?'} | ${row.grader || 'RAW'} ${row.grade || ''} | $${row.sold_price || '?'} | ${row.title?.slice(0,60)}`);
       }
     },
     onCheckpoint: (s) => {},

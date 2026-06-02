@@ -356,7 +356,7 @@ async function insertRow(client, row, sellerCol, hasGradeLabel, validGrades) {
   }
 
   // Map row keys (legacy CSV-shape) to live v2 ebay_transactions columns.
-  // Renames: pbds_code→card_code, title→title_raw, transaction_type→sale_type, created_at→sold_at.
+  // Renames: pbdd_code→card_code, title→title_raw, transaction_type→sale_type, created_at→sold_at.
   // Dropped (live on ebay_asks per v2 §12) preserved in raw_payload.
   const saleTypeRaw = row.transaction_type;
   let saleType = null;
@@ -387,7 +387,7 @@ async function insertRow(client, row, sellerCol, hasGradeLabel, validGrades) {
     'obo_min_price','watchers','raw_payload',
   ];
   const vals = [
-    row.pbds_code, row.item_id, row.title, row.card_name, row.set_name,
+    row.pbdd_code, row.item_id, row.title, row.card_name, row.set_name,
     row.card_number, row.edition, row.print_variant, grader, grade,
     row.sold_price, row.currency, row.shipping,
     saleType, row.bid_count, row.created_at,

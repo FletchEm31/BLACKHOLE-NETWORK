@@ -304,7 +304,7 @@ async function main() {
     }
 
     // Build column/value lists mapped to live v2 ebay_transactions schema.
-    // Renames: pbds_code→card_code, title→title_raw, transaction_type→sale_type, created_at→sold_at.
+    // Renames: pbdd_code→card_code, title→title_raw, transaction_type→sale_type, created_at→sold_at.
     // Dropped columns (live on ebay_asks per v2 §12, not on transactions) preserved in raw_payload:
     //   listing_url, condition, returns_accepted, current_bid, seller_feedback.
     const rawPayload = {
@@ -334,7 +334,7 @@ async function main() {
     );
 
     const vals = [
-      row.pbds_code || null,
+      row.pbdd_code || null,
       itemId,
       row.title     || null,
       row.card_name || null,
