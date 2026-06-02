@@ -909,9 +909,12 @@ PokemonBHN uses a **Bronze / Silver / Gold medallion architecture**:
 | **Silver** | **`silver_ebay_transactions`** | cleaned, `card_id`-resolved, PBDD-coded analytical table — the main query surface |
 | Gold | `card_valuations` (matview) | per-card valuations — not yet built; depends on Silver |
 
-Created `sql/migrations/2026-06-02-silver-ebay-transactions.sql`. Empty until populated by the
-`promote_bronze_to_silver()` function, driven by the `BRONZE_TO_SILVER_EBAY_TRANSACTIONS` n8n
-workflow (not yet built).
+Created `sql/migrations/2026-06-02-silver-ebay-transactions.sql`. Populated by
+`promote_bronze_to_silver()` (`sql/migrations/2026-06-02-promote-bronze-to-silver.sql`, built
+2026-06-02) — **first run promoted 15,616 rows** (PSA 11,570 / CGC 3,742 / BGS 240 / SGC 64).
+The function is idempotent (additive on `bronze_id`); the `BRONZE_TO_SILVER_EBAY_TRANSACTIONS`
+n8n workflow that schedules it is **not yet built** (the function is callable today; `n8n_user`
+has EXECUTE).
 
 ### 14.1 Promotion gate
 A Bronze row promotes to Silver only if ALL pass: `card_id IS NOT NULL`; `edition IS NOT NULL`
