@@ -10,7 +10,7 @@
 -- parse — so the Silver NOT-NULL identity columns are always populated and canonical.
 -- Derived values (pbdd_grade_code, grade_numeric, grade_label) computed at promotion.
 --
--- Promotion gate (ALL must pass): card_id resolved (JOIN), grader ∈ PSA/CGC/BGS/SGC,
+-- Promotion gate (ALL must pass): card_id resolved (JOIN), grader ∈ PSA/CGC/BGS/SGC/TAG,
 -- grade NOT NULL, sold_price > 0, sold_date NOT NULL, item_id NOT NULL, edition NOT NULL
 -- and != 'N/A' (unless the set is a promo set). sale_type mapped Bronze→Silver vocab.
 --
@@ -74,7 +74,7 @@ BEGIN
   JOIN master_card_catalog  mcc ON b.card_id = mcc.id
   LEFT JOIN master_set_catalog   msc ON mcc.set_name = msc.set_name
   LEFT JOIN master_grade_catalog mgc ON mgc.grader = b.grader AND mgc.raw_label = b.grade
-  WHERE b.grader IN ('PSA','CGC','BGS','SGC')
+  WHERE b.grader IN ('PSA','CGC','BGS','SGC','TAG')
     AND b.grade       IS NOT NULL
     AND b.sold_price  > 0
     AND b.sold_date   IS NOT NULL

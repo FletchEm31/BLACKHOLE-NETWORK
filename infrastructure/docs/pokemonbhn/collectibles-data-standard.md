@@ -207,7 +207,11 @@ columns. Both are **NOT NULL** (NULLs are distinct in a UNIQUE index and would b
   *distinguishing* alternates get a non-`Standard` value.
 
 ### 3.4 `grader` — codes only
-`{CGC, PSA, BGS, SGC}`. Never full descriptors (`Professional Sports Authenticator (PSA)`).
+Real graders: `{CGC, PSA, BGS, SGC, TAG}` (TAG = Trading Card Grader, UK, 1–10 numeric scale;
+onboarded 2026-06-02 — `sql/migrations/2026-06-02-onboard-tag-grader.sql`). Plus the sentinels
+`RAW` / `UNKNOWN` (see [§3.5.3](#353-grader-sentinel-values--disambiguating-null)); `grader = NULL`
+is a data gap. Never full descriptors (`Professional Sports Authenticator (PSA)`). Grade FK +
+fact-table grader CHECKs accept all of the above.
 
 ### 3.5 `grade` — verbatim raw_label
 - `grade` = the exact label observed, and **must exist in `master_grade_catalog.raw_label`**
