@@ -71,6 +71,7 @@ const flag   = (k) => { const i = args.indexOf(k); return i >= 0 && args[i+1] ? 
 const hasF   = (k) => args.includes(k);
 
 const SETS_FILTER    = flag('--sets')           ? flag('--sets').split(',').map(s=>s.trim().toUpperCase()) : null;
+const EDITION_FILTER = flag('--edition')        ? flag('--edition').split(',').map(s=>s.trim()) : null;
 const CHECKPOINT_DIR = flag('--checkpoint-dir') || path.join(__dirname, 'checkpoints');
 const CONFIG_PATH    = flag('--config')         || path.join(__dirname, 'ebay_scraper_config.json');
 const NO_UI          = hasF('--no-ui');
@@ -446,12 +447,14 @@ async function main() {
   // Query active cards from master_card_catalog
   let cards = [];
   if (!DRY_RUN) {
-    const res = await client.query(`
-      SELECT card_name, card_number, set_name, edition, print_variant
-      FROM master_card_catalog
-      WHERE active = true
-      ORDER BY set_name, card_number::int
-    `);
+    const res = await client.query(
+      `SELECT card_name, card_number, set_name, edition, print_variant
+       FROM master_card_catalog
+       WHERE active = true
+       ${EDITION_FILTER ? 'AND edition = ANY($1)' : ''}
+       ORDER BY set_name, card_number::int`,
+      EDITION_FILTER ? [EDITION_FILTER] : []
+    );
     cards = res.rows;
   }
 
