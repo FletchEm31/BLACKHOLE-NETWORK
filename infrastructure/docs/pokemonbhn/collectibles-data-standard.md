@@ -6,7 +6,15 @@ written and maintained by Claude Code from the **live `eventhorizon` DB**. Where
 (the `PokemonBHN_*` planning set, the retired `BHN-*` docs) disagrees with this file, **this file
 wins**; where this file disagrees with the live DB, **the live DB wins** and this file is corrected.
 
-Last verified against the live DB: **2026-05-27** (see [§9 Conformance status](#9-conformance-status)).
+Last full conformance pass against the live DB: **2026-05-27** (see [§9 Conformance status](#9-conformance-status)).
+PBDD-overhaul diagnostics (set codes, grade catalog, resolver) re-verified **2026-06-01**.
+
+> **PBDD naming (2026-06-01):** the identifier system is now **PBDD — PokemonBHN Dewey Decimal**.
+> `pbds_code → pbdd_code`, `slab_code()/slab_code → pbdd_grade_code()`, `bhn_slab_id → pbdd_slab_number`,
+> and the integer join-key concept `card_id → pbdd_card_id` (the `master_card_catalog.id` PK column
+> name is unchanged). Several of these are **target-ahead-of-live** — the live FK column is still
+> `card_id`, the live `card_code` is still BST-style, and the live function is still `slab_code()`.
+> See [§9](#9-conformance-status) for the per-item target-vs-live state.
 
 **Session Start Protocol:** At the start of any Claude Code session touching PokemonBHN data, run the grade catalog verification query in [§9](#9-conformance-status) (`SELECT grader, raw_label FROM master_grade_catalog ORDER BY grader, numeric_grade DESC NULLS LAST`) before writing any grade logic. Expected: 88 rows (CGC 25 / PSA 20 / BGS 21 / SGC 22). If the DB result disagrees with this document, the DB wins — correct this document first.
 
@@ -53,87 +61,116 @@ Unlike the `master_*` authorities (externally curated), derived dimensions are *
 ### Three concepts that must never fuse
 | Concept | Identifies | Lives where | Cardinality |
 |---------|-----------|-------------|-------------|
-| `card_id` | a card-variant ("this kind of card exists") | `master_card_catalog.id` (serial PK) | 1,354 |
+| `pbdd_card_id` | a card-variant ("this kind of card exists") | `master_card_catalog.id` (serial PK); FK on observation tables (live column still named `card_id` — rename pending) | 1,354 |
 | `cert_number` | one physical graded slab | `ebay_listings.cert_number`, `sold_listings.cert_number` (added 2026-05-22); other observation streams pending | thousands+ |
 | `card_number` | within-set number (a **field**, not a key) | all tables | repeats per set |
 
-Observations should resolve to `card_id` (the dumb surrogate). Do **not** encode meaning into the
-key (no smart keys); the **`card_code`** (e.g. `BST-004-1E`) and derived **`slab_code`** (e.g.
-`BST-004-1E-PSA-10`) are human-readable identifiers **for display only** — they are never used as
-join keys. See [§2.1](#21-card_code--display-identifier) and [§2.2](#22-slab_code--derived-identifier).
+Observations should resolve to `pbdd_card_id` (the dumb surrogate). Do **not** encode meaning into the
+key (no smart keys); the **`pbdd_code`** (e.g. `BAS004-1E-STN`) and derived **`pbdd_grade_code`** (e.g.
+`BAS004-1E-STN-PSA10GM`) are human-readable identifiers **for display only** — they are never used as
+join keys. See [§2.1](#21-card_code--pbdd_code--display-identifier) and [§2.2](#22-pbdd_grade_code--derived-identifier).
 
 ---
 
 ## 2. Authorities & keys
 
-- **`card_id`** = `master_card_catalog.id` — existing serial PK. Use it; never mint a parallel key.
+- **`pbdd_card_id`** (concept) = `master_card_catalog.id` — existing serial PK. Use it; never mint a
+  parallel key. The PK column keeps the name `id`; the FK columns on observation tables are the
+  `pbdd_card_id` concept (live columns are still named `card_id` — physical rename pending, see [§9](#9-conformance-status)).
   (Internal objects `card_catalog_id_seq` / `card_catalog_pkey` retain pre-rename names; harmless.)
-- Card identity is the composite **`(set_name, card_number, edition, print_variant)`**, surfaced as `card_id`.
+- Card identity is the composite **`(set_name, card_number, edition, print_variant)`**, surfaced as `pbdd_card_id`.
 - `card_number` alone is **not** unique — a `4` exists in every set.
 
-### 2.1 `card_code` — display identifier
+### 2.1 `card_code` / `pbdd_code` — display identifier
 
 A stored human-readable label on every `master_card_catalog` row. Lives at
-`master_card_catalog.card_code` (TEXT, UNIQUE), added 2026-05-27. **Display / label only —
-never use as a join key.** All joins remain on `card_id` (integer).
+`master_card_catalog.card_code` (TEXT, UNIQUE). The value held in `card_code` **is** the `pbdd_code`
+(the names are used interchangeably; the column stays `card_code`). **Display / label only — never
+use as a join key.** All joins remain on `pbdd_card_id` (integer).
 
-Format: `SET_CODE-NNN-EDITION_CODE[-VARIANT_CODE]`
+**PBDD format (2026-06-01, locked):** `SETCODE+NNN-EDITION_CODE-VARIANT_CODE`
 
-- `SET_CODE` — 3 letters per set (column `master_set_catalog.set_code`, UNIQUE):
-  `BST` Base Set · `FSL` Fossil · `JGL` Jungle · `TRK` Team Rocket · `GYH` Gym Heroes ·
-  `GYC` Gym Challenge · `WSP` Wizards Black Star Promos · `BOG` Best of Game.
+- Concatenated set code + number (no hyphen between them), **no year**, and the **standard variant
+  is always explicit (`STN`)** — never omitted.
+- `SETCODE` — 3 letters per set (column `master_set_catalog.set_code`, UNIQUE):
+  `BAS` Base Set · `FOS` Fossil · `JUN` Jungle · `TRK` Team Rocket · `GYH` Gym Heroes ·
+  `GYC` Gym Challenge · `BOG` Best of Game · `WBS` Wizards Black Star Promos.
 - `NNN` — `card_number` zero-padded to 3 digits (`4 → 004`, `132 → 132`).
 - `EDITION_CODE` — `1E` 1st Edition · `SH` Shadowless · `UN` Unlimited · `NA` N/A (promos).
-- `VARIANT_CODE` (optional, omitted when `print_variant='Standard'`):
-  `HOL` Holo · `ERR` Error · `NOS` No Symbol · `WST` W Stamp · `WIN` Winner · `JMB` Jumbo ·
-  `PRE` Prerelease · `GLB` Gold Border · `RCK` Red Cheeks · `WBM` WB Movie · `NTP` Nintendo Power ·
-  `WTC` WOTC · `C99` 1999-2000 Copyright.
+- `VARIANT_CODE` (always present; `STN` for the default Standard print):
+  `STN` Standard · `HOLO` Holo · `ERR` Error · `NOSYM` No Symbol · `WSTAMP` W Stamp · `WIN` Winner ·
+  `JUMBO` Jumbo · `PRE` Prerelease · `GOLD` Gold Border · `RCK` Red Cheeks · `WBM` WB Movie ·
+  `NP` Nintendo Power · `WOTC` WOTC · `C2000` 1999-2000 Copyright.
 
-Examples: `BST-004-1E` (Base Set #4 Charizard 1st Edition), `BST-058-1E-ERR` (Base Set #58 Potion
-1st Edition Error print), `TRK-004-UN` (Team Rocket #4 Dark Charizard Unlimited), `BOG-001-NA-WIN`
-(Best of Game #1 Winner).
+Examples: `BAS004-1E-STN` (Base Set #4 Charizard 1st Edition), `BAS058-1E-ERR` (Base Set #58 Potion
+1st Edition Error print), `TRK004-UN-STN` (Team Rocket #4 Dark Charizard Unlimited), `BOG001-NA-WIN`
+(Best of Game #1 Winner), `TRK014-1E-HOLO` (Team Rocket #14 1st Edition Holo).
 
-The full populate logic lives in [`sql/card-code-system.sql`](../../../sql/card-code-system.sql).
-Future sets (Neo Genesis etc.) get their own 3-letter `set_code` when added to `master_set_catalog`.
+The PBDD regen logic lives in
+[`sql/migrations/2026-06-01-pbdd-system.sql`](../../../sql/migrations/2026-06-01-pbdd-system.sql)
+(Phase 4). The earlier BST-style populate logic in `sql/card-code-system.sql` is **superseded /
+deprecated** by that regen. Future sets (Neo Genesis etc.) get their own 3-letter `set_code` when
+added to `master_set_catalog`.
 
-### 2.2 `slab_code` — derived identifier
+> ⏳ **Target-ahead-of-live:** as of 2026-06-01 the live `card_code` column still holds the prior
+> **BST-style** values (`BST-004-1E`, hyphenated, STN omitted: BST/FSL/JGL/WSP). Phase 4 of the
+> PBDD migration overwrites all 1,354 rows to the BAS-style format above. Until that runs, the DB
+> wins for the *current* value; this section is the *target*.
 
-Identifies one **graded** card variant — `pbds_code` + grader + grade. **Never stored** —
-always derived on demand via `slab_code(p_card_code, p_grader, p_grade)` (PL/pgSQL function,
-`STABLE`, granted to `n8n_user`, `log_shipper`, `ehuser`, `agent_reader`).
+### 2.2 `pbdd_grade_code` — derived identifier
 
-Format: `[PBDS_CODE]-[GRADER+GRADE]` — **no separator between grader and grade** (locked 2026-05-27):
+Identifies one **graded** (or explicitly raw) card variant — `pbdd_code` + grader + grade +
+tier short_code. **Never stored** — always derived on demand via
+`pbdd_grade_code(p_pbdd_code, p_grader, p_grade, p_condition)` (function, `STABLE`, granted to
+`n8n_user`, `log_shipper`, `ehuser`, `agent_reader`).
+
+**PBDD format (2026-06-01, locked):**
+
+- **Graded:** `{pbdd_code}-{GRADER}{NUMERIC}{SHORT_CODE}` — no separators between grader, numeric,
+  and short_code. `SHORT_CODE` is `master_grade_catalog.short_code` (the abbreviated tier).
+- **Raw:** `{pbdd_code}-RAW[-{CONDITION}]` — `CONDITION ∈ {NM, LP, MP, HP, DMG}` when credibly
+  stated; bare `-RAW` when condition unknown.
 
 ```
-TRK014-2000-1E-HOL-PSA10      (not PSA-10)
-TRK014-2000-1E-HOL-CGC9.5     (not CGC-9.5)
-TRK014-2000-1E-HOL-RAW        (ungraded — always RAW, never NULL)
+TRK014-1E-HOLO-PSA10GM        PSA 10 (Gem Mint)
+TRK014-1E-HOLO-CGC10PR        CGC Pristine 10
+TRK014-1E-HOLO-CGC9.5M+       CGC Mint+ 9.5 (Black, current)
+TRK014-1E-HOLO-CGC9.5GM       CGC Gem Mint 9.5 (Blue, legacy)
+TRK014-1E-HOLO-RAW-NM         raw, Near Mint
+TRK014-1E-HOLO-RAW            raw, condition unknown
 ```
 
-- Grader: `PSA` · `CGC` · `BGS` · `SGC` (codes only per [§3.4](#34-grader--codes-only)).
-- Grade: `numeric_grade` from `master_grade_catalog`, formatted without trailing `.0`
-  (`10` not `10.0`; `9.5` stays `9.5`). Returns `RAW` when grader or grade is NULL.
-  Returns NULL if the `(grader, grade)` pair doesn't resolve in the catalog.
-- Note: distinct raw_labels with the same `numeric_grade` collapse — e.g. CGC `Gem Mint 10`
-  and `Pristine 10` both yield `…-CGC10`. The slab_code is a comparison key for
-  cross-platform overlap; if the tier distinction matters, use the raw_label directly.
+- Grader: `PSA` · `CGC` · `BGS` · `SGC` (codes only per [§3.4](#34-grader--codes-only)); plus the
+  sentinels `RAW` (→ `-RAW…`) and `UNKNOWN` (→ returns NULL; grade unparseable).
+- Numeric: `numeric_grade` from `master_grade_catalog`, formatted without trailing `.0`
+  (`10` not `10.0`; `9.5` stays `9.5`).
+- The added `SHORT_CODE` **disambiguates** raw_labels that share a `numeric_grade` — e.g. CGC
+  `Gem Mint 10` (`…CGC10GM`), `Pristine 10` (`…CGC10PR`) and `Perfect 10` (`…CGC10PF`) no longer
+  collapse, unlike the old `slab_code` which yielded a bare `…-CGC10` for all three.
 
-Examples: `BST004-1999-1E-PSA10` · `BST004-1999-SH-CGC10` · `TRK004-2000-1E-BGS9.5` · `TRK014-2000-1E-HOL-RAW`.
+Examples: `BAS004-1E-STN-PSA10GM` · `BAS004-SH-STN-CGC10GM` · `TRK004-1E-STN-BGS9.5GM` ·
+`TRK014-1E-HOLO-RAW`.
 
 Used for HORIZON alert payloads and arbitrage signal display — see
 [`tokenized_arbitrage_signals.card_code`](#106-tokenized_arbitrage_signals--signal-table) (added
-2026-05-27 for in-row labelling; the slab_code itself is composed at alert time).
+2026-05-27 for in-row labelling; the `pbdd_grade_code` itself is composed at alert time).
 
-### 2.3 `bhn_slab_id` — unique physical card identifier
+> ⏳ **Target-ahead-of-live:** the live function is still `slab_code(p_card_code, p_grader, p_grade)`
+> producing the old `BST-004-1E-PSA-10` separator format with no short_code. Phase 5 of the PBDD
+> migration creates `pbdd_grade_code()`; the old `slab_code()` is dropped only after the n8n
+> arbitrage workflow + SQL callers are migrated (Phase 6).
+
+### 2.3 `pbdd_slab_number` — unique physical card identifier
 
 A **15-character randomly generated alphanumeric** identifier (A–Z, 0–9) assigned once per unique
-`slab_code`. Stored on `ebay_transactions` and `ebay_asks`; NULL for ungraded rows.
+`pbdd_grade_code`. Stored on `ebay_transactions` and `ebay_asks`; NULL for ungraded rows.
+(Live columns are currently named `bhn_slab_id` — rename to `pbdd_slab_number` pending; see [§9](#9-conformance-status).)
 
-- Assigned at first observation of a `slab_code` — the same physical slab always gets the same
-  `bhn_slab_id` across relists or platform transfers.
+- Assigned at first observation of a `pbdd_grade_code` — the same physical slab always gets the
+  same `pbdd_slab_number` across relists or platform transfers.
 - Used to resolve ambiguous grades (e.g. CGC 10 → Pristine vs Gem Mint) when the `grade_label`
   has been captured from at least one listing title.
-- Never blocks a row from loading — informational / display aid only; absence of a `bhn_slab_id`
+- Never blocks a row from loading — informational / display aid only; absence of a `pbdd_slab_number`
   is valid and expected for ungraded cards and early-backfill rows.
 - Generation: `crypto.randomBytes(12).toString('base64').toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,15)`
   (re-draw if collision with existing rows — expected frequency: negligible at current cardinality).
@@ -174,11 +211,17 @@ columns. Both are **NOT NULL** (NULLs are distinct in a UNIQUE index and would b
 
 ### 3.5 `grade` — verbatim raw_label
 - `grade` = the exact label observed, and **must exist in `master_grade_catalog.raw_label`**
-  (88 labels: CGC 25 / PSA 20 / BGS 21 / SGC 22). `numeric_grade`, `tier_label`, `market_equiv_10`
-  are derived by JOIN — never stored on the fact.
-- Raw / ungraded sales: **`grade = NULL`** (no placeholder).
+  (88 gradeable labels: CGC 25 / PSA 20 / BGS 21 / SGC 22). `numeric_grade`, `tier_label`,
+  `market_equiv_10`, and `short_code` are derived by JOIN — never stored on the fact.
+- `short_code` (added by the PBDD 2026-06-01 migration) is the abbreviated tier suffix used in
+  `pbdd_grade_code` (see [§2.2](#22-pbdd_grade_code--derived-identifier)); NULL for parser-fallback
+  rows and the `RAW`/`UNKNOWN` sentinels.
+- Raw / ungraded sales: **`grade = NULL`** (no placeholder); use the `RAW` grader sentinel and the
+  `raw_*` tables ([§3.5.3](#353-grader-sentinel-values--disambiguating-null)).
 - New labels must be added to `master_grade_catalog` **first** (deliberate vocab control).
 - CGC `Perfect 10` is a **legacy** row (retired 2023) kept for backfill — not a current tier.
+- The **`pbdd_code`** these grades attach to is `[SETCODE+NUM]-[EDITION]-[VARIANT]` — no year, `STN`
+  explicit. Full definition in [§2.1](#21-card_code--pbdd_code--display-identifier).
 
 #### 3.5.1 CGC label colors & reholder/crossover service — pricing signal
 
@@ -394,7 +437,7 @@ worse than nothing.
 
 ---
 
-## 9. Conformance status (target vs. live, 2026-05-27)
+## 9. Conformance status (target vs. live, 2026-05-27; PBDD items 2026-06-01)
 
 | Item | Standard (target) | Live state |
 |------|-------------------|------------|
@@ -408,16 +451,18 @@ worse than nothing.
 | `grade_reject_log` + staging-filter | §4 | ⏳ **not built** (loaders are all-or-nothing) |
 | `ebay_listings` columns/FK | `edition`,`card_number`,`grade_tier` + soft validate | ⏳ missing 3 cols; `grade` is `numeric`; no FK; `grader` has descriptors |
 | `pop_reports.card_set` | rename to `set_name` | ⏳ pending |
-| `card_id` on observations | FK to `master_card_catalog.id` | ✅ added 2026-05-27 to `ebay_listings`, `sold_listings`, `courtyard_listings`, `courtyard_sales`, `collector_crypt_sales`, `tokenized_arbitrage_signals` via `sql/card-id-resolver.sql`. `resolve_card_id()` PL/pgSQL function granted to `n8n_user`/`log_shipper`/`ehuser`. Backfill: sold_listings 93.5% resolved (609/651); ebay_listings 0% — known data-quality issue (set_name='Base' drift, card_name NULL) tracked separately. |
-| `card_code` display identifier | §2.1 | ✅ added 2026-05-27 — `set_code` on `master_set_catalog` (8 codes, UNIQUE) + `card_code` on `master_card_catalog` (1,354/1,354 populated, UNIQUE) via `sql/card-code-system.sql` |
-| `slab_code()` derived identifier | §2.2 | ✅ added 2026-05-27 — PL/pgSQL function `slab_code(card_code, grader, grade)` granted to `n8n_user`/`log_shipper`/`ehuser`/`agent_reader`; never stored |
+| `pbdd_card_id` on observations (concept) | FK to `master_card_catalog.id`; column renamed `card_id → pbdd_card_id` | ⏳ live column still named `card_id` on 17 tables (rename pending). FK + `resolve_card_id()` added 2026-05-27 (granted `n8n_user`/`log_shipper`/`ehuser`). Backfill as of 2026-06-01: `ebay_transactions`/`sold_listings` only 609/16,589 filled (predates the 15,497-row V8 load); resolver dry-run on the full table = HIGH 41% / MED 2% / **UNMATCHED 56%** — re-resolve needed (Open #8). |
+| `card_code` / `pbdd_code` display identifier | §2.1 — BAS-style, concatenated, STN explicit, no year | ⏳ live is still **BST-style** (`BST-004-1E`, hyphenated, STN omitted) from `sql/card-code-system.sql`, 1,354/1,354 populated. PBDD Phase 4 (`sql/migrations/2026-06-01-pbdd-system.sql`) regenerates to BAS-style; `card-code-system.sql` superseded. |
+| `pbdd_grade_code()` derived identifier | §2.2 — `{pbdd_code}-{GRADER}{NUMERIC}{SHORT_CODE}` | ⏳ live function is still `slab_code(card_code, grader, grade)` (granted `n8n_user`/`log_shipper`/`ehuser`/`agent_reader`). PBDD Phase 5 creates `pbdd_grade_code(...)`; old dropped after callers migrate (Phase 6). |
+| `master_grade_catalog.short_code` | §2.2 / §3.5 — abbreviated tier suffix | ⏳ column ABSENT on live (2026-06-01). PBDD Phase 3 adds + populates all 88 gradeable rows; sentinels/fallbacks stay NULL. |
+| 2026-05-28 grade-catalog migration | reholder cols + RAW/UNKNOWN sentinels + BGS Gold/Black Label 10 | ⏳ **NOT applied** on live (2026-06-01: only a stray `Black Label 10` present; no reholder cols, no sentinels, no Gold Label 10). Idempotent — run as PBDD Phase 3A. |
 | `courtyard_listings`, `courtyard_sales`, `collector_crypt_sales`, `tokenized_arbitrage_signals` | day-one compliant per [§10](#10-tokenized-market-stream) | ✅ created 2026-05-22 with edition+print_variant NOT NULL, grader/edition/print_variant CHECK, grade TEXT, sold_price separate from listed_price |
 | `seller_profiles` | cross-platform seller dimension per [§11](#11-seller-profile-dimension) | ✅ created 2026-05-22; UNIQUE (seller_username, platform); self-ref `linked_seller_id` (INT references BIGINT - implicit cast at FK lookup, low-impact precision drift) |
 | `ebay_listings` enrichment cols | observation-history + slab-identity + demand columns | ✅ added 2026-05-22: `auction_end_time`, `first_seen_at`, `last_seen_at`, `original_item_id`, `relist_count INT DEFAULT 0`, `original_listed_at`, `cert_number`, `location`, `watchers`. `obo_min_price` preserved as legacy NUMERIC (operator spec asked for DECIMAL(10,2); operationally equivalent; rewrite scheduled separately) |
 | `sold_listings` enrichment cols | same set as ebay_listings | ✅ added 2026-05-22: all 10 columns including a fresh `obo_min_price DECIMAL(10,2)` |
-| `slab_code` format | §2.2 — `[PBDS]-[GRADER+GRADE]`, no separator between grader and grade | ✅ locked 2026-05-27 |
-| `slab_code` ungraded | §2.2 — `-RAW` suffix, never NULL | ✅ locked 2026-05-27 |
-| `bhn_slab_id` | §2.3 — 15-char random alphanumeric per unique slab_code — stored on `ebay_transactions` + `ebay_asks`, NULL for ungraded | ⏳ not yet built |
+| `pbdd_grade_code` format | §2.2 — `{pbdd_code}-{GRADER}{NUMERIC}{SHORT_CODE}`, no separators | ⏳ locked 2026-06-01; supersedes the old `[PBDS]-[GRADER+GRADE]` separator format. Live function not yet rebuilt (Phase 5). |
+| `pbdd_grade_code` raw/ungraded | §2.2 — `{pbdd_code}-RAW[-{CONDITION}]` (NM/LP/MP/HP/DMG) | ⏳ locked 2026-06-01 (was `-RAW`, never NULL). |
+| `pbdd_slab_number` | §2.3 — 15-char random alphanumeric per unique `pbdd_grade_code` — on `ebay_transactions` + `ebay_asks`, NULL for ungraded | ⏳ not yet built; live columns still named `bhn_slab_id` (rename pending). |
 | `grade_label` column | §3.8 — tier name parsed from title, nullable, never blocks load | ⏳ not yet on `ebay_transactions` |
 | `currency` standardization | `currency TEXT` present on all `_transactions` tables, `USD`/`CAD`/`GBP` | ⏳ `ebay_transactions` has column; other tables pending audit |
 
@@ -432,9 +477,14 @@ worse than nothing.
 | 5 | `seller_feedback` name unification | `ebay_listings.seller_feedback` vs `seller_profiles.seller_feedback_score` |
 | 6 | `linked_seller_id INT` type drift | Should be `BIGINT`; acceptable until seller count approaches 2.1B |
 | 7 | `ebay_listings.obo_min_price` type | Is `NUMERIC` (legacy); target `DECIMAL(10,2)` |
-| 8 | `bhn_slab_id` | Defined §2.3 — not yet built; add column to `ebay_transactions` + `ebay_asks` |
+| 8 | `pbdd_slab_number` | Defined §2.3 — not yet built; add column to `ebay_transactions` + `ebay_asks` (live columns currently `bhn_slab_id` — rename as part of this) |
 | 9 | `grade_label` column | Defined §3.8 — not yet on `ebay_transactions`; scraper will populate |
 | 10 | `currency` audit | Confirm `currency TEXT` present and populated on all `_bids`, `_asks`, `_transactions` tables |
+| 11 | PBDD Phase 3A — apply 2026-05-28 migration | NOT applied on live; idempotent; prerequisite for `short_code` population |
+| 12 | PBDD Phase 4 — `card_code` BAS regen | Overwrite 1,354 rows to BAS-style; deprecate `sql/card-code-system.sql` |
+| 13 | PBDD Phase 5/6 — `slab_code()` → `pbdd_grade_code()` | Create new fn (Phase 5); migrate n8n arbitrage workflow + SQL callers, then DROP old (Phase 6) |
+| 14 | `card_id` → `pbdd_card_id` column rename | Physical rename on 17 observation/signal tables + `resolve_card_id()`; touches back-compat views — schedule carefully |
+| 15 | Re-resolve `pbdd_card_id` after V8 load | Full table now 56% UNMATCHED (was 93.5% on the pre-V8 651 rows); review stratified sample before writes |
 
 ---
 
