@@ -22,12 +22,22 @@ function parseIntOrNull(v) {
   const n = parseInt(v, 10);
   return isNaN(n) ? null : n;
 }
+const SALE_TYPE_MAP = {
+  fixed_price: 'fixed_price', bin: 'fixed_price', 'buy it now': 'fixed_price',
+  auction: 'auction',
+  best_offer: 'offer_accepted', offer_accepted: 'offer_accepted',
+  buyback: 'buyback', peer_to_peer: 'peer_to_peer',
+};
+function normSaleType(v) {
+  if (!v) return null;
+  return SALE_TYPE_MAP[String(v).toLowerCase().trim()] || null;
+}
 
 const SQL = [
   'INSERT INTO ebay_transactions',
   '  (item_id, title_raw, sold_at, sold_date, sold_price, currency, shipping,',
-  '   sale_type, bid_count, raw_payload)',
-  'VALUES ($1,$2,$3,$3::date,$4,$5,$6,$7,$8,$9)',
+  '   sale_type, bid_count, seller_username, seller_feedback_pct, raw_payload)',
+  'VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)',
   'ON CONFLICT (item_id) DO NOTHING',
 ].join('\n');
 
@@ -55,16 +65,21 @@ const SQL = [
     console.log(`${f}: ${rows.length} rows`);
     for (const r of rows) {
       try {
+        const soldAt   = r.sold_date || null;
+        const soldDate = soldAt ? soldAt.slice(0, 10) : null;
         const res = await client.query(SQL, [
-          r.item_id                   || null,
-          r.title_raw                 || null,
-          r.sold_date                 || null,
-          parseMoney(r.sold_price),
-          'USD',
-          parseMoney(r.shipping),
-          r.sale_type                 || null,
-          parseIntOrNull(r.bid_count),
-          JSON.stringify({ source: 'chrome-mcp', listing_url: r.listing_url || null }),
+          r.item_id                        || null,  // $1  item_id
+          r.title_raw                      || null,  // $2  title_raw
+          soldAt,                                    // $3  sold_at (timestamp)
+          soldDate,                                  // $4  sold_date (date)
+          parseMoney(r.sold_price),                  // $5  sold_price
+          'USD',                                     // $6  currency
+          parseMoney(r.shipping),                    // $7  shipping
+          normSaleType(r.sale_type),                 // $8  sale_type
+          parseIntOrNull(r.bid_count),               // $9  bid_count
+          r.seller_username                || null,  // $10 seller_username
+          parseMoney(r.seller_feedback_pct),         // $11 seller_feedback_pct
+          JSON.stringify({ source: 'chrome-mcp', listing_url: r.listing_url || null }), // $12
         ]);
         res.rowCount > 0 ? inserted++ : skipped++;
       } catch (e) {
