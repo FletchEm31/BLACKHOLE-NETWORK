@@ -458,7 +458,7 @@ worse than nothing.
 | grade FK on `pop_reports`/`sold_listings` | hard FK | ✅ in place |
 | `sold_listings.grade` | text raw_label | ✅ migrated |
 | `card_number` bare | §3.2 | ✅ migrated 2026-05-27 — `#` stripped from all 1,354 catalog rows via `sql/card-id-resolver.sql` |
-| variant SPLIT | `edition` + `print_variant` | ✅ done 2026-05-21 — split live + parity-verified; 1 dedup resolved (TR #5 Holo/Unlimited). Legacy `variant` column + `mcc_variant_split_trg` trigger + `idx_card_catalog_unique` dropped 2026-05-27 via `sql/migrations/2026-05-27-drop-mcc-variant.sql` (consumer audit: zero readers across n8n-workflows/, scripts/, infrastructure/scrapers/). |
+| variant SPLIT | `edition` + `print_variant` | ✅ done 2026-05-21 — split live + parity-verified; 1 dedup resolved (TR #5 Holo/Unlimited). Legacy `variant` column + `mcc_variant_split_trg` trigger + `mcc_fill_variant_split()` + `idx_card_catalog_unique` **dropped 2026-06-02** via `sql/migrations/2026-06-02-drop-mcc-variant.sql`. (The earlier `2026-05-27-drop-mcc-variant.sql` never applied — it failed on the `card_catalog` view dependency; the 2026-06-02 version drops + recreates that back-compat view without `variant`. Consumer audit 2026-06-02: zero readers of `variant` or `card_catalog` in n8n-workflows/, scripts/, infrastructure/scrapers/.) |
 | `master_set_catalog` | §1 / §3.3 | ✅ built 2026-05-21 — 8 sets, legal_editions + PSA headings; `set_name` FK-bound; DDL in `sql/` |
 | `grade_reject_log` + staging-filter | §4 | ⏳ **not built** (loaders are all-or-nothing) |
 | `ebay_listings` columns/FK | `edition`,`card_number`,`grade_tier` + soft validate | ⏳ missing 3 cols; `grade` is `numeric`; no FK; `grader` has descriptors |

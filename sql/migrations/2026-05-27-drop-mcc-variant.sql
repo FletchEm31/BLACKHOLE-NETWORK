@@ -1,3 +1,8 @@
+-- ⚠️ SUPERSEDED — DO NOT RUN. Use sql/migrations/2026-06-02-drop-mcc-variant.sql instead.
+--   This version FAILS: it does not handle the `card_catalog` back-compat view, which depends on
+--   master_card_catalog.variant (DROP COLUMN errors without dropping/recreating the view first).
+--   It was never successfully applied. The 2026-06-02 version is view-aware and was applied 2026-06-02.
+--
 -- Drop the legacy master_card_catalog.variant column + its trigger-bridge.
 --
 -- Context: variant was split into (edition, print_variant) on 2026-05-21 per
