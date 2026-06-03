@@ -1,0 +1,329 @@
+================================================================================
+BHN SESSION HANDOFF — 2026-06-03
+================================================================================
+Branch: fix/ebay-scraper-impers-rework (merged to main early session)
+Working tree: C:\GITHUB REPOSITORY\BLACKHOLE-NETWORK
+LA node: ssh root@10.8.0.1 (via WireGuard tunnel; public IP 149.28.91.100 was
+         unreachable this session — use the 10.8.0.1 tunnel IP)
+PostgreSQL: sudo -u postgres psql -d eventhorizon (peer auth, no -h flag)
+
+================================================================================
+1. WHAT WAS COMPLETED THIS SESSION
+================================================================================
+
+PBDD SYSTEM (Phases 1-7) — fully diagnosed, applied, verified
+  - Phase 1 diagnostics confirmed card_code already BAS-style, short_code
+    populated, reholder fields set, pbdd_grade_code() live, slab_code() dropped.
+  - Phase 3E: verified reholder fields (CGC Gem Mint 9.5 -> Gem Mint 10 $5-10;
+    Perfect 10 -> Pristine 10 fee TBD).
+  - Phase 5C: verified pbdd_grade_code() returns correct values for all 6 test
+    cases; dropped legacy slab_code().
+  - Phase 6: migrated scrapers + n8n arbitrage workflow off slab_code/pbds_code.
+  - Phase 7: card_id resolver. Found + fixed the SPLIT_PART bug (spec query
+    turned '60/64' -> '6064', causing 47% false-unmatched). Corrected resolver
+    ran: ebay_transactions 17,075/20,588 = 82.9% resolved.
+
+EBAY DATA PIPELINE
+  - Built ebay-json-load.js for Chrome-MCP scraped JSON files.
+  - Loaded 20 JSON files: Bronze 20,588 -> 23,606 (+3,018 new, 1,594 dupes).
+  - Title-reparse + promote: Silver 16,184 -> 18,069 (+1,885).
+  - The "unlimited" Pokemon files were already loaded (all dupes).
+
+SCRAPER FIXES
+  - Added --edition filter flag to ebay-sold-scrape-all.js.
+  - Fixed buildSearchUrl: was hardcoding "1st edition" for ALL editions.
+    Now edition-aware: Unlimited->"unlimited", Shadowless->"shadowless",
+    N/A->"" (promo sets BOG/WBS strip the term entirely), else "1st edition".
+  - Fixed buildPbdsCode -> buildPbddCode rename (missed in earlier PBDD pass).
+  - eBay scraper hit persistent 403 rate-limiting this session. The unlimited
+    pass and promo (BOG/WBS) re-runs captured 0 NEW rows (all dupes or 403s).
+    The CODE is now correct; eBay's WAF is the blocker.
+
+COVERAGE GAP ANALYSIS
+  - Full audit at infrastructure/docs/pokemonbhn/coverage-gap-analysis-2026-06-03.md
+  - Key gaps: BOG 0%, WBS 5.7% (promo blind spot). GYH/GYC Unlimited 57.6%
+    with most covered cards under 3 comps. 231 catalog rows zero data.
+  - PSA 10 Charizard has 1 comp, Blastoise/Venusaur 0 — high-grade gap.
+  - RECOMMENDATION: do NOT expand to new sets until existing gaps filled.
+
+COURTYARD (Polygon, tokenized)
+  - Audit: 546 rows, 97.6% non-WOTC modern cards (correct — Courtyard is a
+    general platform). 252 distinct non-WOTC sets, avg 2.1 rows/set — NOT worth
+    cataloging modern sets.
+  - Backfilled language column (546/546: English 391, Japanese 152, Chinese 2,
+    Korean 1).
+  - FOUND + FIXED THE REAL BUG: n8n Courtyard collector had been failing
+    SILENTLY since 2026-05-28 with "permission denied for table fee_schedule".
+    courtyard_sales is a VIEW on courtyard_transactions; INSERT fires
+    courtyard_transactions_fill_market_est() trigger -> compute_market_seller_
+    estimates() -> reads fee_schedule. n8n_user had INSERT/UPDATE but not SELECT
+    on fee_schedule. FIXED via GRANT SELECT ON fee_schedule TO n8n_user.
+    Courtyard ingestion resumes on next 30-min n8n tick.
+  - Historical Polygonscan backfill: attempted, but OpenSea events API does not
+    index transfers older than its rolling window — all historical rows came
+    back with NULL price. Stopped + cleaned up the 200 bare rows. The n8n live
+    collector is the right tool for ongoing data.
+
+UNIFIED VIEW (target architecture from planning chat)
+  - Built tokenized_sales_unified materialized view: UNION ALL across
+    courtyard_sales + collector_crypt_sales, card_id-resolved + priced rows
+    only, normalized to USD. Indexes for REFRESH CONCURRENTLY + queries.
+  - Current state: 13 Courtyard sales (avg $139.28), 0 CC (no data yet).
+  - This is the foundation for arbitrage signals + price history going forward.
+
+COLLECTOR CRYPT (Solana) — schema + collector built
+  - See sections 3, 5, 6 below.
+
+================================================================================
+2. CURRENT STATE OF ALL SYSTEMS
+================================================================================
+
+DATABASE (eventhorizon @ LA)
+  ebay_transactions (Bronze):        23,606 rows
+  silver_ebay_transactions (Silver): 18,069 rows
+  courtyard_transactions:               546 rows (language now populated)
+  collector_crypt_transactions:           0 rows (schema ready, collector built)
+  tokenized_sales_unified (matview):     13 rows (Courtyard only)
+  master_card_catalog:                1,354 rows
+  master_grade_catalog:                 116 rows (BGS 22/CGC 26/PSA 20/RAW 1/
+                                        SGC 22/TAG 24/UNKNOWN 1)
+
+N8N (LA, 10.8.0.1:5678)
+  COURTYARD-BHN | SALES-COLLECTOR     ACTIVE — UNBLOCKED this session (was
+                                       silently failing since 05-28). Watch for
+                                       new rows on next tick.
+  COURTYARD-BHN | LISTINGS-COLLECTOR  ACTIVE
+  COURTYARD-BHN | ARBITRAGE-SIGNALS   ACTIVE (gue1SZnC5saDa4Po — migrated to
+                                       pbdd_grade_code this session). Old
+                                       slab_code workflow LLBYRqFJOiTFHUpt
+                                       DEACTIVATED (not deleted — left in place).
+
+SCRAPERS (LA, /opt/bhn/ebay-sold-scraper/)
+  eBay scraper: code correct, blocked by eBay 403 rate-limiting. Not running.
+  libcurl-impersonate.so installed at /usr/local/lib/ (fixed impers crash).
+
+================================================================================
+3. CC COLLECTOR SCRAPER STATUS
+================================================================================
+
+BUILT: scripts/collector-crypt-backfill.js (committed this session)
+
+  Data source: Magic Eden activities API (buyNow type) + Helius DAS getAssetBatch
+               for trait enrichment + CoinGecko historical SOL/USD daily rate.
+  Collection:  CCryptWBYktukHDQ2vHGtVcmtjXxYzvw8XNVY64YN2Yf
+  Filter:      Category trait == 'POKEMON' strictly (skips Moonbirds, Bowman,
+               Panini, Topps, etc.)
+  Idempotent:  ON CONFLICT (item_id) DO NOTHING. State file at
+               /var/lib/bhn-cc-backfill/state.json for kill/resume.
+  Proxy-aware: httpGet/httpPost honor HTTPS_PROXY (LA egress via tinyproxy
+               10.8.0.6:8888 — REQUIRED, DNS fails without it).
+
+  Field mapping (from CC NFT traits via Helius DAS):
+    item_id          = Solana tx signature (activity.signature)
+    nft_contract     = NFT mint address (activity.tokenMint)
+    grader           = normalized from 'Grading Company' trait
+    grade/grade_label= normalizeGrade() per locked strategy (section 4 #3)
+    cert_number      = 'Grading ID' trait
+    set_name         = WOTC map OR NULL (non-WOTC)
+    cc_set_name      = raw 'Set' trait (always preserved)
+    language         = 'Language' trait
+    card_number      = 'Serial Number' trait (bare integer)
+    card_name        = 'Title/Subject' trait
+    edition          = 'N/A' (all modern)
+    sol_price        = activity.price
+    sol_usd_rate     = CoinGecko daily rate at blockTime
+    sold_price       = sol_price * sol_usd_rate (USD-pegged)
+
+PENDING / NOT YET DONE (next session):
+  *** THE CC COLLECTOR HAS NOT BEEN RUN OR TESTED. ***
+  - Not deployed to LA yet (scp to /opt/bhn/ then run).
+  - Needs Node 'pg' module available to the postgres user on LA (the eBay
+    scraper has node_modules at /opt/bhn/ebay-sold-scraper/ — may need to run
+    from there or install pg).
+  - Run order:
+      1. Dry-run first:  HELIUS_API_KEY=xxx node collector-crypt-backfill.js --dry-run --max-pages 1
+      2. Verify trait parsing + grade normalization on real data.
+      3. Then full run as postgres w/ proxy:
+         sudo -u postgres env HELIUS_API_KEY=xxx HTTPS_PROXY=http://10.8.0.6:8888 \
+           node collector-crypt-backfill.js --host /var/run/postgresql
+  - Magic Eden activities API pagination behavior unverified (offset/limit caps).
+  - CoinGecko free tier is ~50 req/min — script sleeps 1.2s per unique date;
+    may be slow over large history. Consider a Helius-native price source.
+  - grade_reject_log table still does not exist — unmapped grades currently
+    insert with grade=NULL rather than diverting to a reject log (Open Item #1).
+  - After CC data lands: REFRESH MATERIALIZED VIEW CONCURRENTLY
+    tokenized_sales_unified to surface CC rows.
+
+================================================================================
+4. THE 6 SCHEMA DECISIONS — HOW RESOLVED
+================================================================================
+
+1. cert_number missing      -> ADDED. ALTER TABLE ADD COLUMN cert_number TEXT.
+                               Sourced from CC 'Grading ID' trait.
+2. grade_label missing      -> ADDED. ALTER TABLE ADD COLUMN grade_label TEXT.
+                               Derived from CC label during normalization (§3.8).
+3. Grade -> raw_label map   -> RESOLVED with corrected strategy (operator's
+                               initial CGC/BGS/SGC 9-and-below mappings were wrong
+                               vs master_grade_catalog which uses bare numerics
+                               for grade 9 and below). Final locked logic:
+                                 PSA/TAG: bare GradeNum always
+                                 CGC 10:  CC label -> Gem Mint/Pristine/Perfect 10
+                                 CGC 9.5: CC label -> Mint+ 9.5 (default) or
+                                          Gem Mint 9.5 (legacy blue)
+                                 CGC <=9: bare numeric
+                                 BGS 10:  bare "10" (can't distinguish 3 BGS 10s)
+                                 BGS <=9.5: bare numeric
+                                 SGC 10:  CC label -> Gem Mint 10 / Pristine 10
+                                 SGC <=9.5: bare numeric
+                                 Unmapped: grade=NULL (reject-log intent)
+4. item_id ambiguity        -> RESOLVED. item_id = Solana tx signature (unique
+                               per sale). NFT mint address -> nft_contract.
+5. TAG not in grader CHECK  -> FIXED. CHECK now allows CGC/PSA/BGS/SGC/TAG.
+6. set_name for non-WOTC    -> RESOLVED. set_name = NULL (standard-compliant);
+                               raw label preserved in new cc_set_name column.
+
+================================================================================
+5. ALTER TABLE MIGRATIONS — APPLIED THIS SESSION
+================================================================================
+
+NOTE: All of these were APPLIED with Fletch's explicit approval during the
+session (snapshot taken before each). Listed here for the record. The migration
+files are committed under sql/migrations/.
+
+APPLIED — sql/migrations/2026-06-03-fix-n8n-fee-schedule-grant.sql
+  GRANT SELECT ON fee_schedule TO n8n_user;
+  (Unblocked Courtyard ingestion — the silent-failure root cause.)
+
+APPLIED — sql/migrations/2026-06-03-courtyard-backfill-language-cert.sql
+  UPDATE courtyard_transactions SET language = <from traits> (546 rows).
+  (cert_number portion removed — courtyard has no cert_number column.)
+
+APPLIED — sql/migrations/2026-06-03-cc-schema-additions.sql
+  ALTER TABLE collector_crypt_transactions
+    ADD COLUMN cert_number TEXT;
+    ADD COLUMN grade_label TEXT;
+    ADD COLUMN cc_set_name TEXT;
+    DROP/ADD grader CHECK to include TAG.
+
+APPLIED — sql/tokenized-sales-unified.sql
+  CREATE MATERIALIZED VIEW tokenized_sales_unified (+ 4 indexes + grants).
+
+NOTHING IS PENDING FLETCH APPROVAL — all schema changes this session were
+approved and applied. The one thing NOT done: running the CC collector itself.
+
+================================================================================
+6. API KEYS ACQUIRED TONIGHT
+================================================================================
+*** KEY VALUES ARE NOT STORED IN THIS REPO (credential hygiene). ***
+Full plaintext keys live ONLY in the local memory file:
+  C:\Users\fletc\.claude\projects\<proj>\memory\reference_api_keys.md
+  (outside the git repo). Also store each in Proton Pass.
+
+Etherscan/Polygonscan (one key works across all EVM chains via chainid param):
+  Free: 5 req/s, 100k calls/day. Chain 137 = Polygon (Courtyard).
+  Account label: Blackhole-NETWORK. Proton Pass: BHN-Polygonscan-APIKey.
+  WARNING: July 1, 2026 — free tier max records/request drops 10k -> 1k.
+  Operator can make 2 more keys for parallel backfills before then.
+
+OpenSea:
+  Free. Used by Courtyard n8n collectors + historical backfill.
+  (Also lives in n8n credential "OpenSea API Key".)
+
+Solscan (Solana explorer):
+  Email: solscan.struggle475@passmail.com. Free L1: 10M CU/mo, 60 req/min.
+  v2 token-api key.
+
+Helius (Solana RPC + Enhanced/DAS APIs):
+  Free (~100k credits/day). Endpoints (key appended as ?api-key=...):
+    RPC:        https://mainnet.helius-rpc.com/
+    Enhanced TX:https://api-mainnet.helius-rpc.com/v0/transactions/
+    Addr hist:  https://api-mainnet.helius-rpc.com/v0/addresses/{addr}/transactions/
+  DAS getAsset / getAssetBatch via the RPC URL. CC collector's enrichment source.
+
+GIVERQUARTZ — operator mentioned having a key; never clarified what service.
+  Not used. Flag to identify next session.
+
+================================================================================
+7. WALLET SETUP (completed by operator tonight)
+================================================================================
+
+Courtyard (Polygon):
+  Trezor PolygonPoS_TS3: 0x13E3Ecd10554F9253e76a019dE7102002CF2C8D5
+  Linked as external default wallet via WalletConnect. Verified in Suite.
+
+Collector Crypt (Solana):
+  CC custodial wallet: BnMxMYpcbyvK9h43kYMS2kvP4gotmikzA39NwAdfpL1u
+  (CC platform-generated, not Trezor.)
+  Trezor Solana_TS3: 13VNhBiFXAuSQxczRcDDyarBbTTwgyq5o62zmr2BpQ7A (0.19 SOL)
+
+Two UNIDENTIFIED OpenSea-linked wallets (account fletchem) — INVESTIGATED:
+  EVM 0x3afdc93264eb217c98fcbce1e364b4381f78a2be — EMPTY, 0 tx, never used.
+  SOL GwTBSCzyXrycuApHEsgkbpqkgJj9pJkeP1EPRmYQgp7Y — EMPTY, 0 SOL, 0 tokens.
+  Both are freshly-generated, never funded. No risk. Likely auto-derived by a
+  wallet app. Do NOT send funds until identified (check Phantom/Exodus).
+
+USDC SWAP (operator manual task — Claude can't drive Trezor Suite):
+  BTC -> USDC on Polygon PoS, receive PolygonPoS_TS3, ~$25. Tor OFF in Suite.
+  Status unknown at session end — operator to verify in Suite activity log.
+
+================================================================================
+8. FIRST COURTYARD PURCHASE
+================================================================================
+  Blaine's Gamble — CGC 10 GEM MINT — $15
+  First live tokenized-market acquisition. (Trainer card, Gym Challenge-era.)
+  Logged here for P&L provenance once arbitrage_positions tracking is wired.
+
+================================================================================
+9. PENDING TASKS FOR NEXT SESSION
+================================================================================
+
+HIGH PRIORITY
+  1. TEST + RUN the CC collector (scripts/collector-crypt-backfill.js).
+     Dry-run first, verify grade normalization on real CC Pokemon NFTs, then
+     full run on LA. This is the main unfinished deliverable.
+  2. Verify Courtyard n8n collector resumed (check courtyard_transactions row
+     count grew past 546 after the fee_schedule grant fix).
+  3. REFRESH tokenized_sales_unified after CC data lands.
+
+MEDIUM
+  4. Build grade_reject_log table (Open Item #1) — currently unmapped grades
+     insert as grade=NULL instead of diverting to a reject log.
+  5. Wire REFRESH MATERIALIZED VIEW CONCURRENTLY tokenized_sales_unified into an
+     n8n hourly schedule.
+  6. Update n8n arbitrage signals workflow to query tokenized_sales_unified
+     instead of raw courtyard_sales (needs Fletch n8n approval).
+  7. eBay 403 problem: the card-by-card scraper is rate-limited hard. Chrome MCP
+     bulk scraping is higher-yield. Decide strategy for filling Unlimited +
+     promo gaps from the coverage analysis.
+
+LOWER
+  8. Add language + cert columns to n8n Courtyard collector INSERTs (the column
+     exists but the workflow INSERT doesn't populate language).
+  9. Identify GIVERQUARTZ key / service.
+  10. pbdd_slab_number (Open Item #8), card_id->pbdd_card_id rename (Open #14).
+
+================================================================================
+10. COMMITS THIS SESSION (newest first)
+================================================================================
+  11fb400  feat: collector_crypt_transactions schema additions for CC collector
+  fa02c1d  feat: tokenized_sales_unified matview + Polygonscan V2 API fix
+  ddbdf08  fix: grant SELECT on fee_schedule to n8n_user — unblocks Courtyard
+  2cfdde6  fix: courtyard backfill — language only (no cert_number column)
+  ec10250  docs+sql: courtyard sales audit and language/cert_number backfill
+  bfa1d13  docs: sold comps coverage gap analysis — 2026-06-03
+  3bb0282  fix: handle N/A edition in buildSearchUrl (BOG and WBS promos)
+  9e40869  fix: edition-aware search URLs and buildPbddCode export rename
+  1828dd3  feat: add --edition filter flag to ebay-sold-scrape-all.js
+  16b184e  fix: ebay-json-load.js — separate sold_date param, normalize sale_type
+  235013c  feat: add ebay-json-load.js for Chrome-MCP scraped JSON files
+  8135053  docs: record Phase 7 card_id resolver results and SPLIT_PART fix
+  e3247ff  feat: migrate PBDS->PBDD naming in scrapers and n8n arbitrage workflow
+  592f5e0  docs: update PokemonBHN standard to PBDD system (v4)
+  (+ the CC collector script + this handoff committed at session close)
+
+  Branch fix/ebay-scraper-impers-rework was merged to main early session
+  (fast-forward d01af7c..8135053), then work continued directly on main.
+
+================================================================================
+END HANDOFF — 2026-06-03
+================================================================================
