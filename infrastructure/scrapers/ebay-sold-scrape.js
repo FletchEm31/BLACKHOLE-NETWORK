@@ -147,10 +147,17 @@ function buildPbddCode(set_name, card_number, edition, print_variant) {
 
 // Build eBay sold-listings search URL for one card, one page
 function buildSearchUrl(cardDef, page) {
-  const editionTerm = cardDef.edition === 'Unlimited' ? 'unlimited'
+  // N/A = promo sets (BOG, WBS) that never had edition variants — omit term entirely.
+  // Unlimited = default print; most sellers omit the word, so we still include it for
+  // disambiguation on sets that also have 1E (Base/Fossil/Jungle/TRK/GYH/GYC).
+  const editionTerm = cardDef.edition === 'Unlimited'  ? 'unlimited'
     : cardDef.edition === 'Shadowless' ? 'shadowless'
+    : cardDef.edition === 'N/A'        ? ''
     : '1st edition';
-  const query = `pokemon ${cardDef.set_name} ${editionTerm} graded PSA CGC ${cardDef.card_name}`;
+  const parts = ['pokemon', cardDef.set_name];
+  if (editionTerm) parts.push(editionTerm);
+  parts.push('graded PSA CGC', cardDef.card_name);
+  const query = parts.join(' ');
   const qs = new URLSearchParams({
     _nkw:        query,
     _sacat:      '0',
