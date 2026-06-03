@@ -47,7 +47,7 @@ import requests
 CONTRACT = "0x251be3a17af4892035c37ebf5890f4a4d889dcad"
 NULL_ADDR = "0x0000000000000000000000000000000000000000"
 
-POLYGONSCAN_URL = "https://api.polygonscan.com/api"
+POLYGONSCAN_URL = "https://api.etherscan.io/v2/api"  # V2 endpoint; chainid=137 = Polygon PoS
 OPENSEA_EVENT_BY_TX = "https://api.opensea.io/api/v2/events"  # filter param: ?after=&before=
 
 DEFAULT_DSN = "postgresql://log_shipper:BHN-LogShipper-2026@10.8.0.1/eventhorizon"
@@ -93,6 +93,7 @@ class State:
 def polygonscan_page(api_key: str, page: int, offset: int = 100) -> list[dict[str, Any]]:
     """One page of Courtyard transfer events, sorted desc by block."""
     params = {
+        "chainid": "137",
         "module": "account",
         "action": "tokennfttx",
         "contractaddress": CONTRACT,
