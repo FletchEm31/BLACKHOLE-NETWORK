@@ -112,24 +112,25 @@ logger = tc.get_logger("strat_9_weather_alpha_collector")
 
 @dataclass(frozen=True)
 class City:
-    icao:        str       # ASOS station code (e.g. 'KNYC')
-    nws_office:  str       # NWS WFO office code (e.g. 'OKX')
-    name:        str
-    state:       str
-    lat:         float
-    lon:         float
+    icao:         str       # ASOS station code (e.g. 'KNYC')
+    nws_office:   str       # NWS WFO office code (e.g. 'OKX')
+    name:         str
+    state:        str
+    lat:          float
+    lon:          float
+    asos_network: str       # Iowa State ASOS network code (e.g. 'NY_ASOS')
 
 
 # Kalshi-aligned 4-city set with explicit NWS office mapping per operator
 # (research findings: Kalshi weather contracts only cover these 4 markets,
 # and they settle on the matching NWS office's Daily Climate Report).
 CITIES: tuple[City, ...] = (
-    City("KNYC", "OKX", "New York City",   "NY", 40.7831,  -73.9712),  # Central Park
-    City("KORD", "LOT", "Chicago O'Hare",  "IL", 41.9742,  -87.9073),
-    City("KMIA", "MFL", "Miami",           "FL", 25.7959,  -80.2870),
-    City("KAUS", "EWX", "Austin",          "TX", 30.1944,  -97.6700),  # Austin-Bergstrom
-    City("KPHX", "PSR", "Phoenix",         "AZ", 33.4373, -112.0078),  # Phoenix Sky Harbor
-    City("KDEN", "BOU", "Denver",          "CO", 39.8561, -104.6737),  # Denver Intl
+    City("KNYC", "OKX", "New York City",   "NY", 40.7831,  -73.9712, "NY_ASOS"),  # Central Park
+    City("KORD", "LOT", "Chicago O'Hare",  "IL", 41.9742,  -87.9073, "IL_ASOS"),
+    City("KMIA", "MFL", "Miami",           "FL", 25.7959,  -80.2870, "FL_ASOS"),
+    City("KAUS", "EWX", "Austin",          "TX", 30.1944,  -97.6700, "TX_ASOS"),  # Austin-Bergstrom
+    City("KPHX", "PSR", "Phoenix",         "AZ", 33.4373, -112.0078, "AZ_ASOS"),  # Phoenix Sky Harbor
+    City("KDEN", "BOU", "Denver",          "CO", 39.8561, -104.6737, "CO_ASOS"),  # Denver Intl
 )
 
 VARIABLES = ("tmax_f", "tmin_f", "precip_in", "snow_in")
@@ -319,7 +320,7 @@ def fetch_asos(days_lookback: int = 3, dry_run: bool = False) -> int:
         # most stations; Iowa State accepts the K-prefixed form too.
         station = city.icao[1:] if city.icao.startswith("K") else city.icao
         params = {
-            "network": "US_ASOS",     # any US ASOS station
+            "network": city.asos_network,
             "stations": station,
             "year1": start.year, "month1": start.month, "day1": start.day,
             "year2": end.year,   "month2": end.month,   "day2": end.day,
