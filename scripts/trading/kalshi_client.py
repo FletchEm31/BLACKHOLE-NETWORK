@@ -561,17 +561,19 @@ class KalshiClient:
         except KalshiAPIError as e:
             logger.warning(f"get_weather_market_price({ticker}): {e}")
             return None
-        # Kalshi orderbook shape: {"orderbook": {"yes": [[price, count], ...],
-        #                                          "no":  [[price, count], ...]}}
-        # YES asks are typically sorted ascending; best ask = first entry.
-        ob = (book or {}).get("orderbook") or {}
-        yes_side = ob.get("yes") or []
+        # Kalshi v2 returns 'orderbook_fp' with yes_dollars/no_dollars price
+        # strings in 0-1 fractional form (e.g. "0.0100" = 1¢ = 1% probability).
+        # Older 'orderbook' key used integer cents — fallback kept for safety.
+        ob = ((book or {}).get("orderbook_fp")
+              or (book or {}).get("orderbook") or {})
+        yes_side = ob.get("yes_dollars") or ob.get("yes") or []
         if not yes_side:
             return None
-        best_yes_cents = yes_side[0][0] if isinstance(yes_side[0], list) else None
-        if best_yes_cents is None:
+        raw = yes_side[0][0] if isinstance(yes_side[0], (list, tuple)) else None
+        if raw is None:
             return None
-        return float(best_yes_cents) / 100.0
+        price = float(raw)
+        return price if price <= 1.0 else price / 100.0
 
     # ─────────────────────────────────────────────────────────────────────
     # PG audit — UPSERT discovered markets into prediction_contracts

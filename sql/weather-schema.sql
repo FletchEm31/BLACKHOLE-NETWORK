@@ -327,6 +327,43 @@ CREATE INDEX IF NOT EXISTS crop_conditions_commodity_week_idx
 
 
 -- ────────────────────────────────────────────────────────────────────────
+-- 11. weather_contract_prices — live Kalshi/Polymarket price snapshots
+--     One row per (exchange, contract_id, captured_at) inserted by the
+--     weather collector every 30 minutes. strategy_prediction_alpha reads
+--     the most-recent snapshot per contract for edge calculation.
+-- ────────────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS weather_contract_prices (
+    id                   BIGSERIAL PRIMARY KEY,
+    captured_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    exchange             TEXT NOT NULL CHECK (exchange IN ('kalshi', 'polymarket')),
+    contract_id          TEXT NOT NULL,            -- Kalshi ticker e.g. 'KXHIGHMIA-26JUN10-T92'
+    contract_title       TEXT NOT NULL,
+    implied_probability  NUMERIC NOT NULL CHECK (implied_probability >= 0 AND implied_probability <= 1),
+    yes_price            NUMERIC,                  -- best YES ask (0-1 fractional)
+    no_price             NUMERIC,                  -- best NO ask (0-1 fractional)
+    volume_24h           NUMERIC,
+    open_interest        NUMERIC,
+    resolution_date      DATE,
+    region               TEXT,                     -- ICAO station code mapped from ticker
+    variable             TEXT,                     -- 'tmax_f' | 'tmin_f' etc.
+    raw_payload          JSONB
+);
+
+CREATE INDEX IF NOT EXISTS weather_contract_prices_contract_time_idx
+    ON weather_contract_prices (contract_id, captured_at DESC);
+CREATE INDEX IF NOT EXISTS weather_contract_prices_region_var_idx
+    ON weather_contract_prices (region, variable, captured_at DESC)
+    WHERE region IS NOT NULL AND variable IS NOT NULL;
+CREATE INDEX IF NOT EXISTS weather_contract_prices_resolution_idx
+    ON weather_contract_prices (resolution_date, captured_at DESC);
+
+COMMENT ON TABLE weather_contract_prices IS
+    'Live price snapshots from Kalshi (and future Polymarket) weather contracts. '
+    'Inserted every 30 min by fetch_kalshi_markets(). strategy_prediction_alpha '
+    'reads latest snapshot per contract to compute edge vs BHN model probability.';
+
+
+-- ────────────────────────────────────────────────────────────────────────
 -- Grants — match the pattern from trading-schema.sql
 -- ────────────────────────────────────────────────────────────────────────
 
@@ -336,7 +373,8 @@ DO $$ BEGIN
         GRANT SELECT, INSERT, UPDATE ON
             weather_forecasts, weather_observations, model_calibration,
             prediction_contracts, weather_bets, weather_commodity_signals,
-            degree_days, enso_index, crop_conditions, gfs_window_stats
+            degree_days, enso_index, crop_conditions, gfs_window_stats,
+            weather_contract_prices
             TO bhn_trader;
         GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO bhn_trader;
     END IF;
@@ -347,7 +385,8 @@ DO $$ BEGIN
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'log_shipper') THEN
         GRANT INSERT ON
             weather_forecasts, weather_observations,
-            degree_days, enso_index, crop_conditions
+            degree_days, enso_index, crop_conditions,
+            weather_contract_prices
             TO log_shipper;
         GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO log_shipper;
     END IF;
@@ -359,11 +398,21 @@ DO $$ BEGIN
         GRANT SELECT ON
             weather_forecasts, weather_observations, model_calibration,
             prediction_contracts, weather_bets, weather_commodity_signals,
-            degree_days, enso_index, crop_conditions, gfs_window_stats
+            degree_days, enso_index, crop_conditions, gfs_window_stats,
+            weather_contract_prices
             TO agent_reader;
     END IF;
 END $$;
 
+-- DEFAULT PRIVILEGES: any future tables created in public are accessible
+-- to bhn_trader and PUBLIC automatically — prevents permission drift when
+-- new tables are added without re-running the full grant block.
+GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA public TO PUBLIC;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO PUBLIC;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+    GRANT SELECT, INSERT, UPDATE ON TABLES TO PUBLIC;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+    GRANT USAGE, SELECT ON SEQUENCES TO PUBLIC;
 
 COMMIT;
 

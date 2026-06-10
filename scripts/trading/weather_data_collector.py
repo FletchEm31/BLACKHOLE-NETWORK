@@ -32,6 +32,8 @@ Model hierarchy (post-research-findings update, 2026-05-13):
   Iowa State ASOS         → weather_observations         ✅ implemented
   NOAA CPC ENSO           → enso_index                   ✅ implemented
   USDA NASS crops         → crop_conditions              ⚠  scaffold (needs key)
+  Kalshi weather markets  → prediction_contracts         ✅ implemented
+                          → weather_contract_prices      ✅ implemented
 
 Cities — 6 (original 4 + Phoenix and Denver added for Phase 3).
 Phase 3 trading scope: Miami, Phoenix, Denver (High + Low on Kalshi).
@@ -80,11 +82,11 @@ Dependencies (one-time on LA when promoting scaffolds to full):
 
 CLI:
   python3 weather_data_collector.py              # full cycle (all sources)
-  python3 weather_data_collector.py --source nws_forecast
-  python3 weather_data_collector.py --source nws_cli
+  python3 weather_data_collector.py --source nws
   python3 weather_data_collector.py --source open_meteo
   python3 weather_data_collector.py --source asos
   python3 weather_data_collector.py --source enso
+  python3 weather_data_collector.py --source kalshi_markets
   python3 weather_data_collector.py --source degree_days
   python3 weather_data_collector.py --dry-run    # log only, no PG writes
 """
@@ -97,6 +99,8 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, date, timedelta, timezone
 from typing import Any, Iterable, Optional
+
+import re
 
 import requests
 
@@ -431,25 +435,21 @@ def fetch_enso(dry_run: bool = False) -> int:
 
     rows_inserted = 0
     for line in text.splitlines():
-        line = line.rstrip()
-        if not line or line.startswith("Week") or line.startswith(" "):
+        # NOAA file has leading spaces on every data line — strip before any checks.
+        line = line.strip()
+        if not line or line.lower().startswith("week") or line.startswith("#"):
             continue
-        if len(line) < 50:  # data lines are wide
+        if len(line) < 20:
             continue
-        # First token is the date in DDMMMYYYY format, e.g. "02JAN1990"
-        date_token = line[:9].strip()
+        # First token is the date in DDMMMYYYY format, e.g. "02SEP1981"
+        date_token = line[:9]
         try:
             week_ending = datetime.strptime(date_token, "%d%b%Y").date()
         except ValueError:
             continue
-        # Parse remaining whitespace-delimited floats
-        rest = line[9:].split()
-        floats: list[float] = []
-        for tok in rest:
-            try:
-                floats.append(float(tok))
-            except ValueError:
-                pass
+        # Values are packed without whitespace between SST and SSTA
+        # (e.g. "20.6-0.1") — regex extracts all signed floats.
+        floats = [float(m) for m in re.findall(r"-?\d+\.\d+", line[9:])]
         # Expect 8 floats (4 regions × {SST, SSTA}). Niño 3.4 SSTA = index 5.
         if len(floats) < 6:
             continue
@@ -509,22 +509,108 @@ def fetch_usda_crops(dry_run: bool = False) -> int:
 
 
 # ─────────────────────────────────────────────────────────────────────────
-# Source 5: NWS API — scaffold
+# Source 5: NWS gridpoints API — 7-day high/low forecasts
 # ─────────────────────────────────────────────────────────────────────────
 
 NWS_API_BASE = "https://api.weather.gov"
 
+# Module-level cache: icao → (forecast_url, office, gridX, gridY).
+# Gridpoints never change for a given lat/lon — safe to cache for process lifetime.
+NWS_GRIDPOINTS: dict[str, tuple[str, str, int, int]] = {}
+
+
+def _discover_nws_gridpoint(city: "City") -> Optional[tuple[str, str, int, int]]:
+    """GET /points/{lat},{lon} and cache the result.
+    Returns (forecast_url, office, gridX, gridY) or None on failure."""
+    if city.icao in NWS_GRIDPOINTS:
+        return NWS_GRIDPOINTS[city.icao]
+    url = f"{NWS_API_BASE}/points/{city.lat},{city.lon}"
+    data = _http_get_json(url)
+    if not data:
+        logger.warning(f"{city.icao}: NWS /points returned no data")
+        return None
+    props = (data.get("properties") or {})
+    office = props.get("gridId")
+    grid_x = props.get("gridX")
+    grid_y = props.get("gridY")
+    forecast_url = props.get("forecast")
+    if not (office and grid_x is not None and grid_y is not None and forecast_url):
+        logger.warning(f"{city.icao}: NWS /points response missing fields: {list(props)}")
+        return None
+    result: tuple[str, str, int, int] = (forecast_url, office, int(grid_x), int(grid_y))
+    NWS_GRIDPOINTS[city.icao] = result
+    logger.debug(f"{city.icao}: NWS gridpoint → {office} {grid_x},{grid_y}")
+    return result
+
 
 def fetch_nws(dry_run: bool = False) -> int:
-    """NWS point forecasts per city. Each city has a grid point that's
-    discovered via /points/{lat},{lon} then forecasts at /gridpoints/{office}/{x},{y}/forecast.
+    """Pull 7-day high/low forecasts from NWS gridpoints API for each city.
+    Two-step: /points/{lat},{lon} discovery (cached) → /gridpoints/{office}/{x},{y}/forecast.
+    NWS is the authoritative source for Kalshi weather contract settlement.
+    Writes to weather_forecasts as source_model='nws_gridpoints'.
+    Returns rows inserted."""
+    today = datetime.now(timezone.utc).date()
+    rows_inserted = 0
 
-    SCAFFOLD: two-step API discovery + parse not yet implemented. Free,
-    no key, but rate-limited; needs User-Agent header (already set).
-    """
-    logger.info("nws: SCAFFOLD — two-step (/points → /gridpoints) discovery not "
-                "yet implemented. Phase 1.5 work.")
-    return 0
+    for city in CITIES:
+        try:
+            gridpoint = _discover_nws_gridpoint(city)
+        except Exception as e:
+            logger.warning(f"{city.icao}: NWS gridpoint discovery error — {e}")
+            continue
+        if gridpoint is None:
+            continue
+
+        forecast_url, office, grid_x, grid_y = gridpoint
+        data = _http_get_json(forecast_url)
+        if not data:
+            logger.warning(f"{city.icao}: NWS forecast fetch failed ({forecast_url})")
+            continue
+
+        periods = ((data.get("properties") or {}).get("periods") or [])
+        if not periods:
+            logger.warning(f"{city.icao}: NWS forecast: empty periods")
+            continue
+
+        for period in periods:
+            is_daytime: bool = bool(period.get("isDaytime", True))
+            temp = period.get("temperature")
+            temp_unit: str = period.get("temperatureUnit", "F")
+            start_str: str = period.get("startTime", "")
+
+            if temp is None or not start_str:
+                continue
+
+            temp_f = float(temp) if temp_unit == "F" else _c_to_f(float(temp))
+            if temp_f is None:
+                continue
+
+            try:
+                target_date = date.fromisoformat(start_str[:10])
+            except (ValueError, IndexError):
+                logger.warning(f"{city.icao}: NWS bad startTime: {start_str!r}")
+                continue
+
+            lead_days = (target_date - today).days
+            if lead_days < 0 or lead_days > 7:
+                continue
+
+            variable = "tmax_f" if is_daytime else "tmin_f"
+            if not dry_run:
+                _insert_forecast(
+                    station_code=city.icao,
+                    variable=variable,
+                    value=temp_f,
+                    target_date=target_date,
+                    lead_time_hours=lead_days * 24,
+                    source_model="nws_gridpoints",
+                    season=_season_for(target_date),
+                    raw_payload=None,
+                )
+            rows_inserted += 1
+
+    logger.info(f"nws: {rows_inserted} forecast rows {'(dry-run)' if dry_run else 'inserted'}")
+    return rows_inserted
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -588,6 +674,141 @@ def compute_degree_days_from_observations(dry_run: bool = False) -> int:
 
 
 # ─────────────────────────────────────────────────────────────────────────
+# Source 8: Kalshi market prices
+# ─────────────────────────────────────────────────────────────────────────
+
+# Ticker prefix → ICAO station code
+_KALSHI_TICKER_STATION: dict[str, str] = {
+    "KXHIGHMIA": "KMIA", "KXLOWMIA":  "KMIA",
+    "KXHIGHDEN": "KDEN", "KXLOWDEN":  "KDEN",
+    "KXHIGHPHX": "KPHX", "KXLOWPHX":  "KPHX",
+    "KXHIGHNY":  "KNYC", "KXLOWNY":   "KNYC",
+    "KXHIGHCHI": "KORD", "KXLOWCHI":  "KORD",
+}
+
+
+def _station_from_kalshi_ticker(ticker: str) -> Optional[str]:
+    for prefix, code in _KALSHI_TICKER_STATION.items():
+        if ticker.startswith(prefix):
+            return code
+    return None
+
+
+def _variable_from_kalshi_ticker(ticker: str) -> Optional[str]:
+    if ticker.startswith("KXHIGH"):
+        return "tmax_f"
+    if ticker.startswith("KXLOW"):
+        return "tmin_f"
+    return None
+
+
+def fetch_kalshi_markets(dry_run: bool = False) -> int:
+    """Fetch open Kalshi weather markets and snapshot prices to
+    weather_contract_prices. The KalshiClient.get_weather_markets() call
+    also auto-UPSERTs contracts into prediction_contracts.
+    Returns rows inserted to weather_contract_prices."""
+    try:
+        from kalshi_client import KalshiClient  # co-located on LA
+    except ImportError:
+        logger.warning("kalshi_markets: kalshi_client not importable — skipping")
+        return 0
+
+    try:
+        client = KalshiClient()
+    except Exception as e:
+        logger.warning(f"kalshi_markets: KalshiClient init failed: {e}")
+        return 0
+
+    try:
+        markets = client.get_weather_markets(status="open")
+    except Exception as e:
+        logger.warning(f"kalshi_markets: get_weather_markets failed: {e}")
+        return 0
+
+    if not markets:
+        logger.info("kalshi_markets: no open weather markets returned")
+        return 0
+
+    rows_inserted = 0
+    for market in markets:
+        ticker = market.get("ticker")
+        if not ticker:
+            continue
+
+        title = market.get("title") or market.get("subtitle") or ""
+        close_str = market.get("close_time") or market.get("expiration_time")
+        resolution_date: Optional[date] = None
+        if close_str:
+            try:
+                resolution_date = date.fromisoformat(close_str[:10])
+            except (ValueError, TypeError):
+                pass
+
+        # Try price fields from the market object (integer cents), then
+        # fall back to an orderbook fetch if both are absent.
+        yes_cents = market.get("yes_ask") or market.get("yes_bid")
+        no_cents  = market.get("no_ask")  or market.get("no_bid")
+        yes_price: Optional[float] = float(yes_cents) / 100.0 if yes_cents else None
+        no_price:  Optional[float] = float(no_cents)  / 100.0 if no_cents  else None
+
+        if yes_price is None and no_price is None:
+            try:
+                book = client.get_orderbook(ticker)
+                # Kalshi v2 returns 'orderbook_fp' with fractional-dollar price
+                # strings (e.g. "0.0100" = $0.01 = 1% probability, already 0-1).
+                # Older 'orderbook' key had integer cents — keep fallback for safety.
+                ob = ((book or {}).get("orderbook_fp")
+                      or (book or {}).get("orderbook") or {})
+                yes_side = ob.get("yes_dollars") or ob.get("yes") or []
+                no_side  = ob.get("no_dollars")  or ob.get("no")  or []
+                if yes_side and isinstance(yes_side[0], (list, tuple)):
+                    raw = float(yes_side[0][0])
+                    # If > 1 it's legacy integer-cent format; divide by 100.
+                    yes_price = raw if raw <= 1.0 else raw / 100.0
+                if no_side and isinstance(no_side[0], (list, tuple)):
+                    raw = float(no_side[0][0])
+                    no_price = raw if raw <= 1.0 else raw / 100.0
+            except Exception as e:
+                logger.debug(f"kalshi_markets: orderbook fetch failed for {ticker}: {e}")
+
+        if yes_price is not None:
+            implied_prob = yes_price
+        elif no_price is not None:
+            implied_prob = 1.0 - no_price
+        else:
+            logger.debug(f"kalshi_markets: no price data for {ticker} — skipping")
+            continue
+
+        volume_raw = market.get("volume_24h") or market.get("volume")
+        open_int_raw = market.get("open_interest")
+        volume_24h = float(volume_raw) if volume_raw is not None else None
+        open_interest = float(open_int_raw) if open_int_raw is not None else None
+
+        if not dry_run:
+            _insert_contract_price(
+                exchange="kalshi",
+                contract_id=ticker,
+                contract_title=title,
+                implied_probability=implied_prob,
+                yes_price=yes_price,
+                no_price=no_price,
+                volume_24h=volume_24h,
+                open_interest=open_interest,
+                resolution_date=resolution_date,
+                region=_station_from_kalshi_ticker(ticker),
+                variable=_variable_from_kalshi_ticker(ticker),
+                raw_payload=market,
+            )
+        rows_inserted += 1
+
+    logger.info(
+        f"kalshi_markets: {rows_inserted} price snapshots "
+        f"{'(dry-run)' if dry_run else 'inserted'}"
+    )
+    return rows_inserted
+
+
+# ─────────────────────────────────────────────────────────────────────────
 # PG insert helpers
 # ─────────────────────────────────────────────────────────────────────────
 
@@ -639,6 +860,26 @@ def _insert_enso(*, week_ending: date, nino34_sst_anomaly: float,
             """, (week_ending, nino34_sst_anomaly, oni_value, phase))
 
 
+def _insert_contract_price(*, exchange: str, contract_id: str,
+                            contract_title: str, implied_probability: float,
+                            yes_price: Optional[float], no_price: Optional[float],
+                            volume_24h: Optional[float], open_interest: Optional[float],
+                            resolution_date: Optional[date], region: Optional[str],
+                            variable: Optional[str], raw_payload: Optional[dict]) -> None:
+    with tc.get_pg_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO weather_contract_prices
+                    (exchange, contract_id, contract_title, implied_probability,
+                     yes_price, no_price, volume_24h, open_interest,
+                     resolution_date, region, variable, raw_payload)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+            """, (exchange, contract_id, contract_title, implied_probability,
+                  yes_price, no_price, volume_24h, open_interest,
+                  resolution_date, region, variable,
+                  json.dumps(raw_payload) if raw_payload else None))
+
+
 def _upsert_degree_days(*, station_code: str, target_date: date,
                          tmin_f: float, tmax_f: float, mean_temp_f: float,
                          hdd: float, cdd: float, is_forecast: bool) -> None:
@@ -665,13 +906,14 @@ def _upsert_degree_days(*, station_code: str, target_date: date,
 # ─────────────────────────────────────────────────────────────────────────
 
 SOURCES = {
-    "open_meteo":  fetch_open_meteo,
-    "asos":        fetch_asos,
-    "enso":        fetch_enso,
-    "usda_crops":  fetch_usda_crops,
-    "nws":         fetch_nws,
-    "nomads":      fetch_nomads_gfs_ensemble,
-    "degree_days": compute_degree_days_from_observations,
+    "open_meteo":     fetch_open_meteo,
+    "asos":           fetch_asos,
+    "enso":           fetch_enso,
+    "usda_crops":     fetch_usda_crops,
+    "nws":            fetch_nws,
+    "kalshi_markets": fetch_kalshi_markets,
+    "nomads":         fetch_nomads_gfs_ensemble,
+    "degree_days":    compute_degree_days_from_observations,
 }
 
 
