@@ -1,0 +1,5 @@
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+# Hourly snapshot of pg_stat_user_tables -> pg_table_stats. Populates Metabase
+# delta columns once 24h of data exist.
+0 * * * *  postgres  psql -d eventhorizon -c "INSERT INTO pg_table_stats (measured_at, schema_name, table_name, n_live_tup, n_dead_tup, total_bytes, last_vacuum, last_autovacuum, last_analyze) SELECT NOW(), schemaname, relname, n_live_tup, n_dead_tup, pg_total_relation_size(relid), last_vacuum, last_autovacuum, last_analyze FROM pg_stat_user_tables WHERE schemaname = 'public';" >> /var/log/bhn-pg-table-stats.log 2>&1
