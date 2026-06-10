@@ -87,7 +87,7 @@ CREATE TABLE IF NOT EXISTS weather_observations (
 CREATE INDEX IF NOT EXISTS weather_observations_station_var_idx
     ON weather_observations (station_code, variable, observed_at DESC);
 CREATE INDEX IF NOT EXISTS weather_observations_date_idx
-    ON weather_observations ((observed_at::date), station_code);
+    ON weather_observations (station_code, observed_at);
 
 COMMENT ON TABLE weather_observations IS
     'Ground truth — historical observations from Iowa State ASOS (primary) + NWS (cross-check). UNIQUE constraint prevents duplicate inserts across re-runs. Joined with weather_forecasts for bias-correction calibration in model_calibration.';
