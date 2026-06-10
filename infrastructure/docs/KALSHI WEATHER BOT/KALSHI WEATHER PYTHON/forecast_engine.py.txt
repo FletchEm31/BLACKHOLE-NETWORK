@@ -1,0 +1,28 @@
+forecast_engine.py
+
+import numpy as np
+from scipy.stats import norm
+
+def build_raw_distribution(weather_payload, city, side, bias=0.0, sigma_mult=1.0):
+    temps = np.array(weather_payload["hourly"]["temperature_2m"], dtype=float)
+    mu = float(np.mean(temps) + bias)
+    sigma = float(np.std(temps, ddof=1)) if len(temps) > 1 else 1.5
+    sigma = max(sigma * sigma_mult, 0.5)
+    return {"mu": mu, "sigma": sigma}
+
+def raw_bucket_probability(raw_dist, strike_low, strike_high, whole_degree=False):
+    mu = raw_dist["mu"]
+    sigma = raw_dist["sigma"]
+    if whole_degree:
+        return float(norm.cdf(strike_high + 0.5, mu, sigma) - norm.cdf(strike_low - 0.5, mu, sigma))
+    return float(norm.cdf(strike_high, mu, sigma) - norm.cdf(strike_low, mu, sigma))
+
+def extract_features(weather_payload):
+    hourly = weather_payload.get("hourly", {})
+    return {
+        "temperature_2m": hourly.get("temperature_2m", []),
+        "dew_point": hourly.get("dew_point_2m", []),
+        "relative_humidity": hourly.get("relative_humidity_2m", []),
+        "wind_speed": hourly.get("wind_speed_10m", []),
+        "cloud_cover": hourly.get("cloud_cover", []),
+    }

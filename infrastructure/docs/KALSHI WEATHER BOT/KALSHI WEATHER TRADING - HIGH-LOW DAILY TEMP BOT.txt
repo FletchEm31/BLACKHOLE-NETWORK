@@ -1,0 +1,45 @@
+KALSHI WEATHER TRADING - HIGH/LOW DAILY TEMP BOT
+
+Objective
+Build a daily automated trading system for Kalshi temperature markets only, focused on high and low contracts in Miami, Phoenix, and Denver. The system should ingest forecast data and Kalshi market data through APIs, produce calibrated probabilities for each of the six contracts, rank them by edge, and place orders only when expected value is positive after fees and slippage.
+
+Market Scope
+The bot will trade exactly six recurring contract types: Miami High, Miami Low, Phoenix High, Phoenix Low, Denver High, Denver Low. Each market should be modeled independently at the calibration layer because each city has different climate behavior and each side of day has different error structure. The shared forecast engine can be reused, but the final probability output must be market-specific.
+
+Settlement Rule Summary
+Kalshi weather contracts settle from the official National Weather Service daily climate report for the relevant station and date. The model should therefore be trained and calibrated against the official reported high or low, not consumer forecast outputs or summary websites. For low-temperature contracts, the same rule applies: the settlement value is the officially reported minimum for that city and date.
+
+Required APIs
+1. Kalshi Market Data API: public market data endpoints and authenticated trade endpoints.
+2. Weather Forecast API: use an ensemble-capable forecast API such as Open-Meteo’s ensemble endpoint.
+3. Historical Weather API: use historical weather data for backtesting and bias correction.
+
+Core Modeling Approach
+1. One shared forecast engine that estimates the daily temperature distribution for each city and side.
+2. Six calibration layers, one per city-side combination.
+3. Settlement mapping to the exact Kalshi bucket.
+4. Trade scoring versus live market price.
+
+Forecast Engine
+The forecast engine should produce a raw distribution for each of the following: Miami High, Miami Low, Phoenix High, Phoenix Low, Denver High, Denver Low. A practical first-pass model is to estimate a bias-corrected mean mu, estimate uncertainty sigma, optionally estimate skew or tail shape, assume a distribution such as normal or skew-normal, and calculate the probability mass inside the contract bucket. The input features should include ensemble mean temperature, ensemble spread, hourly temperature path, dew point, cloud cover, wind speed, humidity, day-of-year seasonality, and recent station bias.
+
+City/Side Calibration Layers
+Each of the six calibration layers should map raw model probabilities to calibrated probabilities. Suggested methods: Platt scaling, isotonic regression, or bias correction plus probability calibration. The layers should be Miami_High, Miami_Low, Phoenix_High, Phoenix_Low, Denver_High, Denver_Low. Each layer should be fit independently because high and low temperature errors behave differently, and different cities have different climatology and different error distributions.
+
+Probability Construction
+For each market: build the raw forecast distribution, compute raw bucket probability, pass that raw probability into the matching calibrator, get calibrated ModelP, and compare ModelP to Kalshi market price. A simple mathematical version is T ~ Normal(mu, sigma), then P(bucket) = CDF(high bound) - CDF(low bound). The output of that step is the raw probability, which is then calibrated.
+
+Trading Logic
+Use Edge = P_model - P_market. Buy YES if Edge >= threshold, buy NO if Edge <= -threshold, otherwise skip. A practical threshold is about 5% after fees and slippage. Avoid low-priced trades that are too small to overcome friction.
+
+Backtesting
+Backtest each city-side pair independently: raw probability, calibrated probability, realized settlement, Brier score, calibration curve, hit rate by probability decile.
+
+Suggested File Layout
+forecast_engine.py, calibration.py, score.py, run_daily.py
+
+Operational Workflow
+Daily process: pull forecast data from weather API, pull live Kalshi market data, build raw probabilities for all six contracts, apply the relevant calibrator, rank all six by edge, trade only the strongest ones, and log everything for backtesting and retraining.
+
+Practical Guardrails
+Use minimum edge threshold, maximum position size, maximum daily exposure, dry-run mode at first, and manual approval for large trades.

@@ -59,10 +59,24 @@ COURTYARD (Polygon, tokenized)
     estimates() -> reads fee_schedule. n8n_user had INSERT/UPDATE but not SELECT
     on fee_schedule. FIXED via GRANT SELECT ON fee_schedule TO n8n_user.
     Courtyard ingestion resumes on next 30-min n8n tick.
-  - Historical Polygonscan backfill: attempted, but OpenSea events API does not
-    index transfers older than its rolling window — all historical rows came
-    back with NULL price. Stopped + cleaned up the 200 bare rows. The n8n live
-    collector is the right tool for ongoing data.
+  - Historical price backfill: attempted via Polygonscan token-transfer queries,
+    all rows came back NULL price. Stopped + cleaned up the 200 bare rows.
+    ROOT CAUSE (corrected): the sale PRICE is not in the ERC-721 Transfer event.
+    Courtyard settles through SEAPORT (OpenSea's settlement contract); the USD
+    amount lives in the Seaport OrderFulfilled event log emitted at settlement,
+    decoded from consideration[] payment legs. The transfer backfill read the
+    wrong on-chain source. This is also why the live OpenSea n8n collector works
+    (it reads OpenSea's own settlement layer) while the transfer backfill did not.
+    PROPER FIX (next session, try in order — ~30 min each):
+      1. Reservoir API /sales for the Courtyard contract on Polygon. FIRST verify
+         Reservoir's hosted API is still live (they restructured away from the
+         free indexer model — a single curl confirms before investing time).
+      2. Alchemy getLogs over the Courtyard contract, Seaport OrderFulfilled topic,
+         with enhanced decoding. More durable provider bet than Reservoir.
+      3. Raw eth_getLogs + manual Seaport OrderFulfilled decode (sum consideration[]
+         payment legs). No-dependency floor — most code, cannot be deprecated.
+    The n8n live collector remains correct for ongoing data; the above is only for
+    backfilling pre-collector history.
 
 UNIFIED VIEW (target architecture from planning chat)
   - Built tokenized_sales_unified materialized view: UNION ALL across
@@ -222,8 +236,12 @@ Full plaintext keys live ONLY in the local memory file:
 Etherscan/Polygonscan (one key works across all EVM chains via chainid param):
   Free: 5 req/s, 100k calls/day. Chain 137 = Polygon (Courtyard).
   Account label: Blackhole-NETWORK. Proton Pass: BHN-Polygonscan-APIKey.
-  WARNING: July 1, 2026 — free tier max records/request drops 10k -> 1k.
-  Operator can make 2 more keys for parallel backfills before then.
+  NOTE: July 1, 2026 free-tier downgrade (max records/request 10k -> 1k) only
+  affects account/token-transfer queries, NOT eth_getLogs topic filters. It is
+  therefore IRRELEVANT to the historical price backfill if that runs on an
+  aggregator (Reservoir/Alchemy) or getLogs (see section 1, Courtyard). The July 1
+  urgency applies ONLY if you stay on Polygonscan token-transfer pagination — which
+  the corrected plan abandons. Strike this note once an aggregator/getLogs path lands.
 
 OpenSea:
   Free. Used by Courtyard n8n collectors + historical backfill.
@@ -296,11 +314,17 @@ MEDIUM
      bulk scraping is higher-yield. Decide strategy for filling Unlimited +
      promo gaps from the coverage analysis.
 
+  8. Courtyard historical price backfill — proper fix (see section 1 for root
+     cause: prices are in Seaport OrderFulfilled logs, not ERC-721 Transfers).
+     Try in order: (a) Reservoir /sales (verify API still live first),
+     (b) Alchemy getLogs + Seaport decode, (c) raw eth_getLogs + manual decode.
+     Only needed for pre-collector history; live n8n collector covers ongoing.
+
 LOWER
-  8. Add language + cert columns to n8n Courtyard collector INSERTs (the column
+  9. Add language + cert columns to n8n Courtyard collector INSERTs (the column
      exists but the workflow INSERT doesn't populate language).
-  9. Identify GIVERQUARTZ key / service.
-  10. pbdd_slab_number (Open Item #8), card_id->pbdd_card_id rename (Open #14).
+  10. Identify GIVERQUARTZ key / service.
+  11. pbdd_slab_number (Open Item #8), card_id->pbdd_card_id rename (Open #14).
 
 ================================================================================
 10. COMMITS THIS SESSION (newest first)

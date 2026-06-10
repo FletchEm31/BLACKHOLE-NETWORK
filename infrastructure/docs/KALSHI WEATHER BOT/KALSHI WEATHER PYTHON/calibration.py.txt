@@ -1,0 +1,38 @@
+calibration.py
+
+import numpy as np
+from sklearn.isotonic import IsotonicRegression
+from sklearn.linear_model import LogisticRegression
+import joblib
+
+class CitySideCalibrator:
+    def __init__(self, method="isotonic"):
+        self.method = method
+        self.model = None
+
+    def fit(self, raw_probs, outcomes):
+        x = np.asarray(raw_probs, dtype=float)
+        y = np.asarray(outcomes, dtype=int)
+        if self.method == "isotonic":
+            self.model = IsotonicRegression(out_of_bounds="clip")
+            self.model.fit(x, y)
+        else:
+            self.model = LogisticRegression()
+            self.model.fit(x.reshape(-1, 1), y)
+
+    def predict(self, raw_prob):
+        if self.model is None:
+            return float(raw_prob)
+        if self.method == "isotonic":
+            return float(self.model.predict([raw_prob])[0])
+        return float(self.model.predict_proba([[raw_prob]])[0, 1])
+
+    def save(self, path):
+        joblib.dump({"method": self.method, "model": self.model}, path)
+
+    @classmethod
+    def load(cls, path):
+        data = joblib.load(path)
+        obj = cls(method=data["method"])
+        obj.model = data["model"]
+        return obj

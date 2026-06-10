@@ -1,0 +1,32 @@
+market_data.py
+
+import requests
+
+KALSHI_BASE = "https://external-api.kalshi.com/trade-api/v2"
+
+def fetch_market_list(series_ticker):
+    url = f"{KALSHI_BASE}/markets"
+    r = requests.get(url, params={"series_ticker": series_ticker, "status": "open"}, timeout=20)
+    r.raise_for_status()
+    return r.json()
+
+def fetch_orderbook(market_ticker):
+    url = f"{KALSHI_BASE}/markets/{market_ticker}/orderbook"
+    r = requests.get(url, timeout=20)
+    r.raise_for_status()
+    return r.json()
+
+def fetch_market_snapshot(series_ticker):
+    data = fetch_market_list(series_ticker)
+    snapshot = []
+    for m in data.get("markets", []):
+        ob = fetch_orderbook(m["ticker"])
+        snapshot.append({
+            "market_ticker": m["ticker"],
+            "event_ticker": m.get("event_ticker"),
+            "title": m.get("title"),
+            "yes_bid": m.get("yes_bid_dollars"),
+            "volume": m.get("volume_fp"),
+            "orderbook": ob,
+        })
+    return snapshot

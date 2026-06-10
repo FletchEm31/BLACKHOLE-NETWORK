@@ -1,0 +1,237 @@
+#!/usr/bin/env python3
+import os
+import json
+import math
+import time
+import requests
+import numpy as np
+import pandas as pd
+from dataclasses import dataclass
+from scipy.stats import norm
+from sklearn.isotonic import IsotonicRegression
+import joblib
+
+BANKROLL = 10000
+MIN_EDGE = 0.05
+FEE_BUFFER = 0.02
+KELLY_SCALE = 0.15
+MAX_TRADE_PCT = 0.02
+MAX_DAILY_PCT = 0.05
+DRY_RUN = True
+
+OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
+KALSHI_BASE = "https://external-api.kalshi.com/trade-api/v2"
+
+CITY_CONFIG = {
+    "Miami": {"lat": 25.7906, "lon": -80.3164, "tz": "America/New_York"},
+    "Phoenix": {"lat": 33.4342, "lon": -112.0116, "tz": "America/Phoenix"},
+    "Denver": {"lat": 39.8561, "lon": -104.6737, "tz": "America/Denver"},
+}
+
+MARKETS = {
+    "Miami_High": {"city": "Miami", "side": "high", "low": 87, "high": 88},
+    "Miami_Low": {"city": "Miami", "side": "low", "low": 76, "high": 77},
+    "Phoenix_High": {"city": "Phoenix", "side": "high", "low": 107, "high": 108},
+    "Phoenix_Low": {"city": "Phoenix", "side": "low", "low": 80, "high": 81},
+    "Denver_High": {"city": "Denver", "side": "high", "low": 85, "high": 86},
+    "Denver_Low": {"city": "Denver", "side": "low", "low": 55, "high": 56},
+}
+
+CALIBRATOR_PATHS = {
+    "Miami_High": "calibrators/miami_high.joblib",
+    "Miami_Low": "calibrators/miami_low.joblib",
+    "Phoenix_High": "calibrators/phoenix_high.joblib",
+    "Phoenix_Low": "calibrators/phoenix_low.joblib",
+    "Denver_High": "calibrators/denver_high.joblib",
+    "Denver_Low": "calibrators/denver_low.joblib",
+}
+
+def ensure_dirs():
+    os.makedirs("calibrators", exist_ok=True)
+    os.makedirs("logs", exist_ok=True)
+
+def fetch_weather(city_cfg):
+    params = {
+        "latitude": city_cfg["lat"],
+        "longitude": city_cfg["lon"],
+        "hourly": [
+            "temperature_2m",
+            "dew_point_2m",
+            "relative_humidity_2m",
+            "wind_speed_10m",
+            "cloud_cover",
+        ],
+        "forecast_days": 2,
+        "timezone": city_cfg["tz"],
+    }
+    r = requests.get(OPEN_METEO_URL, params=params, timeout=30)
+    r.raise_for_status()
+    return r.json()
+
+def fetch_kalshi_markets_stub():
+    out = {}
+    for market_key in MARKETS:
+        out[market_key] = {
+            "market_ticker": market_key,
+            "yes_bid": 0.50,
+            "yes_ask": 0.52,
+            "no_bid": 0.48,
+            "last_price": 0.50,
+            "volume": 0,
+            "open_interest": 0,
+        }
+    return out
+
+def fetch_orderbook_stub(market_ticker):
+    return {"yes_bids": [{"price": 50, "size": 100}], "no_bids": [{"price": 50, "size": 100}]}
+
+def build_raw_distribution(weather_payload, city, side, bias=0.0, sigma_mult=1.0):
+    hourly = weather_payload.get("hourly", {})
+    temps = np.array(hourly.get("temperature_2m", []), dtype=float)
+    if len(temps) == 0:
+        raise ValueError(f"No hourly temperature data for {city}")
+    mu = float(np.mean(temps) + bias)
+    sigma = float(np.std(temps, ddof=1)) if len(temps) > 1 else 1.5
+    sigma = max(sigma * sigma_mult, 0.5)
+    return {"mu": mu, "sigma": sigma}
+
+def raw_bucket_probability(raw_dist, strike_low, strike_high, whole_degree=False):
+    mu = raw_dist["mu"]
+    sigma = raw_dist["sigma"]
+    if whole_degree:
+        return float(norm.cdf(strike_high + 0.5, mu, sigma) - norm.cdf(strike_low - 0.5, mu, sigma))
+    return float(norm.cdf(strike_high, mu, sigma) - norm.cdf(strike_low, mu, sigma))
+
+class CitySideCalibrator:
+    def __init__(self, method="isotonic"):
+        self.method = method
+        self.model = None
+
+    def fit(self, raw_probs, outcomes):
+        x = np.asarray(raw_probs, dtype=float)
+        y = np.asarray(outcomes, dtype=int)
+        if len(np.unique(y)) < 2:
+            self.model = None
+            return
+        self.model = IsotonicRegression(out_of_bounds="clip")
+        self.model.fit(x, y)
+
+    def predict(self, raw_prob):
+        if self.model is None:
+            return float(raw_prob)
+        return float(self.model.predict([raw_prob])[0])
+
+    def save(self, path):
+        joblib.dump({"method": self.method, "model": self.model}, path)
+
+    @classmethod
+    def load(cls, path):
+        data = joblib.load(path)
+        obj = cls(method=data["method"])
+        obj.model = data["model"]
+        return obj
+
+def load_calibrators():
+    calibrators = {}
+    for market_key, path in CALIBRATOR_PATHS.items():
+        if os.path.exists(path):
+            calibrators[market_key] = CitySideCalibrator.load(path)
+        else:
+            calibrators[market_key] = CitySideCalibrator()
+    return calibrators
+
+def score_market(model_p, market_p):
+    edge = model_p - market_p
+    adj_edge = edge - FEE_BUFFER
+    return edge, adj_edge
+
+def kelly_fraction(p, market_price):
+    market_price = min(max(float(market_price), 1e-6), 1 - 1e-6)
+    b = (1 - market_price) / market_price
+    q = 1 - p
+    return max(0.0, (b * p - q) / b)
+
+def stake_size(kelly_f, bankroll=BANKROLL):
+    stake = bankroll * kelly_f * KELLY_SCALE
+    return round(min(max(stake, 0.0), bankroll * MAX_TRADE_PCT), 2)
+
+def trade_action(edge):
+    if edge >= MIN_EDGE:
+        return "BUY YES"
+    if edge <= -MIN_EDGE:
+        return "BUY NO"
+    return "SKIP"
+
+def place_order_stub(trade):
+    return {
+        "status": "simulated" if DRY_RUN else "live_placeholder",
+        "market": trade["market"],
+        "action": trade["action"],
+        "size": trade["stake"],
+        "price": trade["market_p"],
+    }
+
+def run():
+    ensure_dirs()
+    calibrators = load_calibrators()
+    city_weather = {city: fetch_weather(cfg) for city, cfg in CITY_CONFIG.items()}
+    kalshi_markets = fetch_kalshi_markets_stub()
+
+    rows = []
+    for market_key, m in MARKETS.items():
+        city = m["city"]
+        side = m["side"]
+        raw_dist = build_raw_distribution(city_weather[city], city, side)
+        raw_p = raw_bucket_probability(raw_dist, m["low"], m["high"])
+        model_p = calibrators[market_key].predict(raw_p)
+
+        market_snapshot = kalshi_markets.get(market_key, {})
+        market_p = float(market_snapshot.get("yes_bid", 0.50))
+        edge, adj_edge = score_market(model_p, market_p)
+        kf = kelly_fraction(model_p, market_p)
+        stake = stake_size(kf)
+
+        rows.append({
+            "market": market_key,
+            "city": city,
+            "side": side,
+            "low": m["low"],
+            "high": m["high"],
+            "raw_p": round(raw_p, 4),
+            "model_p": round(model_p, 4),
+            "market_p": round(market_p, 4),
+            "edge": round(edge, 4),
+            "adj_edge": round(adj_edge, 4),
+            "kelly_f": round(kf, 4),
+            "stake": stake,
+            "action": trade_action(edge),
+        })
+
+    df = pd.DataFrame(rows).sort_values("edge", ascending=False)
+    daily_cap = BANKROLL * MAX_DAILY_PCT
+    chosen = []
+    used = 0.0
+    for _, r in df.iterrows():
+        if r["action"] == "SKIP":
+            continue
+        if used + float(r["stake"]) > daily_cap:
+            continue
+        chosen.append(r.to_dict())
+        used += float(r["stake"])
+
+    trade_results = [place_order_stub(t) for t in chosen]
+
+    ts = time.strftime("%Y%m%d_%H%M%S", time.gmtime())
+    df.to_csv(f"logs/daily_scores_{ts}.csv", index=False)
+    pd.DataFrame(chosen).to_csv(f"logs/daily_trades_{ts}.csv", index=False)
+    with open(f"logs/daily_results_{ts}.json", "w") as f:
+        json.dump({"scores": rows, "trades": chosen, "results": trade_results}, f, indent=2)
+
+    print(df.to_string(index=False))
+    print("\nCHOSEN TRADES:")
+    print(pd.DataFrame(chosen).to_string(index=False) if chosen else "None")
+    print("\nEXECUTION:")
+    print(json.dumps(trade_results, indent=2))
+
+if __name__ == "__main__":
+    run()

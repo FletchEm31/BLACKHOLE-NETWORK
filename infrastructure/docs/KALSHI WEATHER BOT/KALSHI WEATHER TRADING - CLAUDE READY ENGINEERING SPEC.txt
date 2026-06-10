@@ -1,0 +1,184 @@
+Claude-Ready Engineering Spec
+
+Project Name
+Kalshi Weather Bot for Miami, Phoenix, Denver high/low markets.
+
+Goal
+Build a production-ready daily bot that ingests forecast and market data through APIs, computes calibrated probabilities for six Kalshi weather contracts, ranks opportunities by edge, and places orders with risk limits.
+
+Functional Requirements
+1. Support exactly six live markets: Miami High, Miami Low, Phoenix High, Phoenix Low, Denver High, Denver Low.
+2. Use one shared forecast engine.
+3. Use six calibration layers, one per city-side pair.
+4. Score all markets against live Kalshi order books.
+5. Rank opportunities by edge and only trade above threshold.
+6. Support dry-run and live-execution modes.
+7. Log all inputs, outputs, scores, and orders.
+
+Non-Functional Requirements
+1. Deterministic daily runs.
+2. Safe failure behavior: if API data missing, do not trade.
+3. Reproducible model versions and calibration versions.
+4. Audit trail for every order.
+5. Config-driven parameters.
+
+APIs Needed
+1. Kalshi market data API.
+2. Kalshi trade execution API.
+3. Weather forecast API with ensemble support.
+4. Historical weather API for calibration and backtesting.
+
+Data Inputs
+Kalshi market input fields:
+- market_ticker
+- event_ticker
+- city
+- side
+- strike_low
+- strike_high
+- yes_bid
+- no_bid
+- last_price
+- volume
+- open_interest
+- expiration_time
+- status
+- orderbook depth if available
+
+Weather input fields:
+- hourly_temperature_2m
+- daily_high_forecast
+- daily_low_forecast
+- dew_point
+- relative_humidity
+- wind_speed
+- cloud_cover
+- pressure
+- ensemble_members
+- ensemble_mean
+- ensemble_spread
+
+Historical calibration fields:
+- observed_daily_high
+- observed_daily_low
+- station_id
+- date
+- official_report_value
+- preliminary_flag
+- revision_flag
+
+Module Breakdown
+1. forecast_engine.py
+Inputs: weather payload, city, side.
+Outputs: raw distribution parameters and raw bucket probability.
+Functions:
+- build_raw_distribution(weather_payload, city, side)
+- raw_bucket_probability(raw_dist, strike_low, strike_high)
+- extract_features(weather_payload)
+
+2. calibration.py
+Inputs: raw probabilities, historical outcomes.
+Outputs: calibrated probabilities.
+Functions:
+- fit_calibrator(raw_probs, outcomes, method)
+- predict_calibrated_prob(raw_prob, city, side)
+- save_calibrator(path)
+- load_calibrator(path)
+
+3. market_data.py
+Inputs: Kalshi API credentials.
+Outputs: live market snapshot for six contracts.
+Functions:
+- fetch_market_list()
+- fetch_orderbook(market_ticker)
+- fetch_market_snapshot()
+
+4. score.py
+Inputs: calibrated probability, market price, bankroll, fee parameters.
+Outputs: edge, adjusted edge, Kelly size, action.
+Functions:
+- score_market(model_p, market_p, fee_buffer)
+- kelly_fraction(model_p, market_p)
+- stake_size(kelly_f, bankroll, scale, max_trade_pct)
+- trade_action(edge, min_edge)
+
+5. execution.py
+Inputs: scored trades.
+Outputs: submitted orders or simulated orders.
+Functions:
+- place_order(market_ticker, side, price, size)
+- place_limit_orders(trades)
+- dry_run_order(trade)
+
+6. backtest.py
+Inputs: historical forecasts, historical outcomes, historical market prices.
+Outputs: calibration metrics and performance metrics.
+Functions:
+- compute_brier_score()
+- compute_calibration_curve()
+- evaluate_trade_performance()
+- retrain_calibration_layers()
+
+7. run_daily.py
+Orchestrates full workflow.
+Functions:
+- main()
+- load_config()
+- run_forecast_pipeline()
+- run_scoring_pipeline()
+- run_execution_pipeline()
+
+Configuration Parameters
+- bankroll
+- min_edge
+- fee_buffer
+- fractional_kelly_scale
+- max_trade_pct
+- max_daily_pct
+- dry_run
+- api credentials
+- market mapping table
+- calibrator version ids
+
+Market Mapping Table
+- Miami High -> city=Miami, side=high
+- Miami Low -> city=Miami, side=low
+- Phoenix High -> city=Phoenix, side=high
+- Phoenix Low -> city=Phoenix, side=low
+- Denver High -> city=Denver, side=high
+- Denver Low -> city=Denver, side=low
+
+Decision Rule
+1. Compute ModelP for each market.
+2. Compute Edge = ModelP - MarketP.
+3. Apply fee buffer.
+4. Rank all six markets.
+5. Trade only if edge clears threshold and daily exposure remains under cap.
+
+Error Handling
+- If weather API missing, skip trading.
+- If Kalshi API missing, skip trading.
+- If calibrator missing, skip trading.
+- If orderbook illiquid, skip trading.
+- If confidence is too low, skip trading.
+
+Logging
+Store the following for every run:
+- timestamp
+- inputs
+- raw probabilities
+- calibrated probabilities
+- market prices
+- edges
+- stake sizes
+- actions
+- order results
+- errors
+
+Acceptance Criteria
+1. Bot produces six scores daily.
+2. Bot logs all runs.
+3. Bot can run in dry-run mode.
+4. Bot places live orders only when enabled.
+5. Calibration layers improve Brier score versus raw probabilities.
+6. Market-specific outputs are distinct for all six contracts.

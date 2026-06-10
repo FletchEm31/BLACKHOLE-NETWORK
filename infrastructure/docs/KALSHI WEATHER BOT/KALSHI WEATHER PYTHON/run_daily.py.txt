@@ -1,0 +1,86 @@
+run_daily.py
+
+import pandas as pd
+import requests
+from config import CITY_CONFIG, MARKETS, BANKROLL, MAX_DAILY_PCT, DRY_RUN
+from forecast_engine import build_raw_distribution, raw_bucket_probability
+from calibration import CitySideCalibrator
+from score import kelly_fraction, stake_size, score_market, trade_action
+from execution import place_limit_orders
+
+def fetch_weather(city_cfg):
+    url = "https://api.open-meteo.com/v1/forecast"
+    params = {
+        "latitude": city_cfg["lat"],
+        "longitude": city_cfg["lon"],
+        "hourly": ["temperature_2m", "dew_point_2m", "relative_humidity_2m", "wind_speed_10m", "cloud_cover"],
+        "forecast_days": 2,
+        "timezone": city_cfg["tz"],
+    }
+    r = requests.get(url, params=params, timeout=20)
+    r.raise_for_status()
+    return r.json()
+
+def fetch_kalshi_market_price_stub(market_key):
+    return 0.50
+
+def load_calibrators():
+    calibrators = {}
+    for key in MARKETS:
+        calibrators[key] = CitySideCalibrator(method="isotonic")
+    return calibrators
+
+def run():
+    calibrators = load_calibrators()
+    city_weather = {city: fetch_weather(cfg) for city, cfg in CITY_CONFIG.items()}
+    rows = []
+
+    for market_key, m in MARKETS.items():
+        city = m["city"]
+        side = m["side"]
+        raw_dist = build_raw_distribution(city_weather[city], city, side)
+        raw_p = raw_bucket_probability(raw_dist, m["low"], m["high"])
+        model_p = calibrators[market_key].predict(raw_p)
+        market_p = fetch_kalshi_market_price_stub(market_key)
+        edge, adj_edge = score_market(model_p, market_p)
+        kf = kelly_fraction(model_p, market_p)
+        stake = stake_size(kf)
+
+        rows.append({
+            "market": market_key,
+            "city": city,
+            "side": side,
+            "low": m["low"],
+            "high": m["high"],
+            "raw_p": round(raw_p, 4),
+            "model_p": round(model_p, 4),
+            "market_p": round(market_p, 4),
+            "edge": round(edge, 4),
+            "adj_edge": round(adj_edge, 4),
+            "kelly_f": round(kf, 4),
+            "stake": stake,
+            "action": trade_action(edge),
+        })
+
+    df = pd.DataFrame(rows).sort_values("edge", ascending=False)
+    daily_cap = BANKROLL * MAX_DAILY_PCT
+    chosen = []
+    used = 0.0
+    for _, r in df.iterrows():
+        if r["action"] == "SKIP":
+            continue
+        if used + r["stake"] > daily_cap:
+            continue
+        chosen.append(r.to_dict())
+        used += r["stake"]
+
+    results = place_limit_orders(chosen, dry_run=DRY_RUN)
+    df.to_csv("daily_scores.csv", index=False)
+    pd.DataFrame(chosen).to_csv("daily_trades.csv", index=False)
+    return df, chosen, results
+
+if __name__ == "__main__":
+    df, chosen, results = run()
+    print(df.to_string(index=False))
+    print(chosen)
+    print(results)

@@ -1,0 +1,6 @@
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+# Refresh tokenized_sales_unified hourly at :07. CONCURRENTLY so dashboard reads
+# never block on the rebuild. Surfaces new Courtyard + Collector Crypt sales into
+# the unified price-history layer that arbitrage + price queries read from.
+7 * * * *  postgres  psql -d eventhorizon -c "REFRESH MATERIALIZED VIEW CONCURRENTLY tokenized_sales_unified;" >> /var/log/bhn-matview-refresh.log 2>&1

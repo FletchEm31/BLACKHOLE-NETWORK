@@ -1,0 +1,41 @@
+import requests
+import pandas as pd
+
+OPEN_METEO_FORECAST = "https://api.open-meteo.com/v1/forecast"
+OPEN_METEO_ENSEMBLE = "https://api.open-meteo.com/v1/ensemble"
+
+def fetch_open_meteo_forecast(lat, lon, timezone):
+    params = {
+        "latitude": lat,
+        "longitude": lon,
+        "hourly": [
+            "temperature_2m",
+            "dew_point_2m",
+            "relative_humidity_2m",
+            "wind_speed_10m",
+            "cloud_cover",
+            "surface_pressure",
+        ],
+        "forecast_days": 2,
+        "timezone": timezone,
+    }
+    r = requests.get(OPEN_METEO_FORECAST, params=params, timeout=20)
+    r.raise_for_status()
+    return r.json()
+
+def fetch_open_meteo_ensemble(lat, lon, timezone):
+    params = {
+        "latitude": lat,
+        "longitude": lon,
+        "hourly": [
+            "temperature_2m",
+            "dew_point_2m",
+            "relative_humidity_2m",
+            "wind_speed_10m",
+            "cloud_cover",
+        ],
+        "timezone": timezone,
+    }
+    r = requests.get(OPEN_METEO_ENSEMBLE, params=params, timeout=20)
+    r.raise_for_status()
+    return r.json()

@@ -1,0 +1,12 @@
+execution.py
+
+def place_order(market_ticker, side, price, size, dry_run=True):
+    if dry_run:
+        return {"status": "simulated", "market_ticker": market_ticker, "side": side, "price": price, "size": size}
+    return {"status": "live_placeholder", "market_ticker": market_ticker, "side": side, "price": price, "size": size}
+
+def place_limit_orders(trades, dry_run=True):
+    results = []
+    for t in trades:
+        results.append(place_order(t["market_ticker"], t["side"], t["price"], t["size"], dry_run=dry_run))
+    return results

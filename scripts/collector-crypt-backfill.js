@@ -27,6 +27,21 @@ const fs     = require('fs');
 const path   = require('path');
 const { Client } = require('pg');
 
+// Proxy agent — tinyproxy requires CONNECT tunnelling for https targets, which a
+// plain absolute-URL GET does not provide. HttpsProxyAgent does it correctly.
+// Handles both the v5 (default export) and v6+ ({ HttpsProxyAgent }) export shapes.
+let HttpsProxyAgent;
+try {
+  const _m = require('https-proxy-agent');
+  HttpsProxyAgent = _m.HttpsProxyAgent || _m;
+} catch { /* no proxy agent installed — direct only */ }
+
+function proxyAgent() {
+  const proxy = process.env.HTTPS_PROXY || process.env.https_proxy;
+  if (!proxy || !HttpsProxyAgent) return undefined;
+  return new HttpsProxyAgent(proxy);
+}
+
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const ME_BASE      = 'https://api-mainnet.magiceden.dev/v2';
@@ -67,25 +82,16 @@ if (!process.env.HELIUS_API_KEY) {
 
 function httpGet(url, headers = {}) {
   return new Promise((resolve, reject) => {
-    const proxy = process.env.HTTPS_PROXY || process.env.https_proxy;
-    let opts, transport;
+    const u = new URL(url);
+    const opts = {
+      hostname: u.hostname,
+      path: u.pathname + u.search,
+      // CoinGecko 403s requests without a descriptive User-Agent; harmless elsewhere.
+      headers: { 'User-Agent': 'BHN-collector/1.0', ...headers },
+      agent: proxyAgent(),   // CONNECT tunnel through tinyproxy when HTTPS_PROXY set
+    };
 
-    if (proxy) {
-      const p = new URL(proxy);
-      const target = new URL(url);
-      opts = {
-        host: p.hostname, port: parseInt(p.port, 10),
-        path: url,
-        headers: { Host: target.hostname, ...headers },
-      };
-      transport = http;
-    } else {
-      const u = new URL(url);
-      opts = { hostname: u.hostname, path: u.pathname + u.search, headers };
-      transport = https;
-    }
-
-    const req = transport.get(opts, res => {
+    const req = https.get(opts, res => {
       const chunks = [];
       res.on('data', c => chunks.push(c));
       res.on('end', () => {
@@ -102,28 +108,17 @@ function httpGet(url, headers = {}) {
 
 function httpPost(url, body) {
   return new Promise((resolve, reject) => {
-    const proxy = process.env.HTTPS_PROXY || process.env.https_proxy;
+    const u = new URL(url);
     const payload = JSON.stringify(body);
-    let opts, transport;
+    const opts = {
+      hostname: u.hostname,
+      path: u.pathname + u.search,
+      method: 'POST',
+      headers: { 'User-Agent': 'BHN-collector/1.0', 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) },
+      agent: proxyAgent(),   // CONNECT tunnel through tinyproxy when HTTPS_PROXY set
+    };
 
-    if (proxy) {
-      const p = new URL(proxy);
-      opts = {
-        host: p.hostname, port: parseInt(p.port, 10),
-        method: 'POST', path: url,
-        headers: { 'Host': new URL(url).hostname, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) },
-      };
-      transport = http;
-    } else {
-      const u = new URL(url);
-      opts = {
-        hostname: u.hostname, path: u.pathname + u.search, method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) },
-      };
-      transport = https;
-    }
-
-    const req = transport.request(opts, res => {
+    const req = https.request(opts, res => {
       const chunks = [];
       res.on('data', c => chunks.push(c));
       res.on('end', () => {
@@ -248,21 +243,29 @@ function normalizeCardNumber(raw) {
 // ── CoinGecko SOL/USD daily rate (cached) ─────────────────────────────────────
 
 const solRateCache = {};
+const CG_KEY = process.env.COINGECKO_API_KEY || '';
 
 async function getSolUsdRate(blockTime) {
   const d = new Date(blockTime * 1000);
   const key = `${String(d.getUTCDate()).padStart(2,'0')}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${d.getUTCFullYear()}`;
   if (solRateCache[key]) return solRateCache[key];
-  try {
-    const url = `${CG_BASE}/coins/solana/history?date=${key}&localization=false`;
-    const data = await httpGet(url, { 'x-cg-demo-api-key': '' });
-    const rate = data?.market_data?.current_price?.usd || null;
-    if (rate) solRateCache[key] = rate;
-    await sleep(1200); // CoinGecko free: ~50 req/min
-    return rate;
-  } catch {
-    return null;
+  const url = `${CG_BASE}/coins/solana/history?date=${key}&localization=false`;
+  // Only send the demo-key header when a REAL key is set. An empty header value
+  // makes CoinGecko's gateway reject the request as an invalid demo key.
+  const headers = CG_KEY ? { 'x-cg-demo-api-key': CG_KEY } : {};
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try {
+      const data = await httpGet(url, headers);
+      const rate = data?.market_data?.current_price?.usd || null;
+      if (rate) solRateCache[key] = rate;
+      await sleep(CG_KEY ? 500 : 2500); // public tier is heavily throttled
+      return rate;
+    } catch (e) {
+      if (String(e && e.message).includes('RATE_LIMIT')) { await sleep(8000); continue; }
+      return null;
+    }
   }
+  return null;
 }
 
 // ── Build row ─────────────────────────────────────────────────────────────────

@@ -1,0 +1,25 @@
+score.py
+
+from config import BANKROLL, MIN_EDGE, FEE_BUFFER, KELLY_SCALE, MAX_TRADE_PCT
+
+def kelly_fraction(p, market_price):
+    market_price = min(max(float(market_price), 1e-6), 1 - 1e-6)
+    b = (1 - market_price) / market_price
+    q = 1 - p
+    return max(0.0, (b * p - q) / b)
+
+def stake_size(kelly_f, bankroll=BANKROLL):
+    stake = bankroll * kelly_f * KELLY_SCALE
+    return round(min(max(stake, 0.0), bankroll * MAX_TRADE_PCT), 2)
+
+def score_market(model_p, market_p):
+    edge = model_p - market_p
+    adj_edge = edge - FEE_BUFFER
+    return edge, adj_edge
+
+def trade_action(edge):
+    if edge >= MIN_EDGE:
+        return "BUY YES"
+    if edge <= -MIN_EDGE:
+        return "BUY NO"
+    return "SKIP"

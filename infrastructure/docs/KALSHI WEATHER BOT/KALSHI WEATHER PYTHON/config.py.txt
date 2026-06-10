@@ -1,0 +1,24 @@
+config.py
+
+BANKROLL = 10000
+MIN_EDGE = 0.05
+FEE_BUFFER = 0.02
+KELLY_SCALE = 0.15
+MAX_TRADE_PCT = 0.02
+MAX_DAILY_PCT = 0.05
+DRY_RUN = True
+
+CITY_CONFIG = {
+    "Miami": {"lat": 25.7906, "lon": -80.3164, "tz": "America/New_York"},
+    "Phoenix": {"lat": 33.4342, "lon": -112.0116, "tz": "America/Phoenix"},
+    "Denver": {"lat": 39.8561, "lon": -104.6737, "tz": "America/Denver"},
+}
+
+MARKETS = {
+    "Miami_High": {"city": "Miami", "side": "high", "low": 87, "high": 88},
+    "Miami_Low": {"city": "Miami", "side": "low", "low": 76, "high": 77},
+    "Phoenix_High": {"city": "Phoenix", "side": "high", "low": 107, "high": 108},
+    "Phoenix_Low": {"city": "Phoenix", "side": "low", "low": 80, "high": 81},
+    "Denver_High": {"city": "Denver", "side": "high", "low": 85, "high": 86},
+    "Denver_Low": {"city": "Denver", "side": "low", "low": 55, "high": 56},
+}
