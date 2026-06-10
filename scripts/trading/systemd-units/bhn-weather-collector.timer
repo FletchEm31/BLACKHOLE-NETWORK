@@ -1,17 +1,11 @@
 # BHN trading — Strat 9 weather collector cadence.
-# Every 6 hours, aligned to 00:00 / 06:00 / 12:00 / 18:00 UTC.
-#
-# Why 6h: Open-Meteo GFS cycles at 00/06/12/18 UTC; ECMWF at 00/12 UTC; NOAA
-# CPC ENSO updates Mondays. 6h alignment catches the freshest model run on
-# each fetch + keeps ASOS observation lag bounded to a single news day.
-# RandomizedDelay spreads our requests off the cycle minute so we don't
-# pound the APIs at the exact moment they're updating.
+# Every 30 minutes.
 
 [Unit]
-Description=BHN Strat 9 weather collector (every 6 hours)
+Description=BHN Strat 9 weather collector (every 30 minutes)
 
 [Timer]
-OnCalendar=*-*-* 00,06,12,18:00:00 UTC
+OnCalendar=*-*-* *:00,30:00
 Unit=bhn-weather-collector.service
 Persistent=true
 RandomizedDelaySec=300
