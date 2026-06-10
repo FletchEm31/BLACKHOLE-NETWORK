@@ -33,12 +33,15 @@ Model hierarchy (post-research-findings update, 2026-05-13):
   NOAA CPC ENSO           → enso_index                   ✅ implemented
   USDA NASS crops         → crop_conditions              ⚠  scaffold (needs key)
 
-Cities — 4 Kalshi-aligned (per research findings, Kalshi weather contracts
-only cover NYC, Chicago, Miami, Austin). NWS office mapping per operator:
+Cities — 6 (original 4 + Phoenix and Denver added for Phase 3).
+Phase 3 trading scope: Miami, Phoenix, Denver (High + Low on Kalshi).
+NWS office mapping per operator:
   NYC      → NWS office OKX, ASOS station KNYC
   Chicago  → NWS office LOT, ASOS station KORD
   Miami    → NWS office MFL, ASOS station KMIA
   Austin   → NWS office EWX, ASOS station KAUS
+  Phoenix  → NWS office PSR, ASOS station KPHX
+  Denver   → NWS office BOU, ASOS station KDEN
 
 After fetch, computes degree_days from the day's observations + tmax/tmin
 forecasts for each station.
@@ -121,10 +124,12 @@ class City:
 # (research findings: Kalshi weather contracts only cover these 4 markets,
 # and they settle on the matching NWS office's Daily Climate Report).
 CITIES: tuple[City, ...] = (
-    City("KNYC", "OKX", "New York City",   "NY", 40.7831, -73.9712),  # Central Park
-    City("KORD", "LOT", "Chicago O'Hare",  "IL", 41.9742, -87.9073),
-    City("KMIA", "MFL", "Miami",           "FL", 25.7959, -80.2870),
-    City("KAUS", "EWX", "Austin",          "TX", 30.1944, -97.6700),  # Austin-Bergstrom
+    City("KNYC", "OKX", "New York City",   "NY", 40.7831,  -73.9712),  # Central Park
+    City("KORD", "LOT", "Chicago O'Hare",  "IL", 41.9742,  -87.9073),
+    City("KMIA", "MFL", "Miami",           "FL", 25.7959,  -80.2870),
+    City("KAUS", "EWX", "Austin",          "TX", 30.1944,  -97.6700),  # Austin-Bergstrom
+    City("KPHX", "PSR", "Phoenix",         "AZ", 33.4373, -112.0078),  # Phoenix Sky Harbor
+    City("KDEN", "BOU", "Denver",          "CO", 39.8561, -104.6737),  # Denver Intl
 )
 
 VARIABLES = ("tmax_f", "tmin_f", "precip_in", "snow_in")
@@ -224,7 +229,7 @@ def fetch_open_meteo(dry_run: bool = False) -> int:
             "longitude": city.lon,
             "daily":     ",".join(OPEN_METEO_VARS_DAILY),
             "models":    ",".join(OPEN_METEO_MODELS),
-            "temperature_unit": "celsius",     # convert to F ourselves
+            "temperature_unit": "fahrenheit",    # request F directly
             "precipitation_unit": "mm",
             "timezone": "America/New_York",
             "forecast_days": 16,
@@ -264,14 +269,14 @@ def fetch_open_meteo(dry_run: bool = False) -> int:
                             return daily[k][idx]
                     return None
 
-                tmax_c = _val("temperature_2m_max")
-                tmin_c = _val("temperature_2m_min")
+                tmax_f_raw = _val("temperature_2m_max")
+                tmin_f_raw = _val("temperature_2m_min")
                 prcp_mm = _val("precipitation_sum")
                 snow_cm = _val("snowfall_sum")
 
                 samples = (
-                    ("tmax_f",    _c_to_f(tmax_c)),
-                    ("tmin_f",    _c_to_f(tmin_c)),
+                    ("tmax_f",    tmax_f_raw),
+                    ("tmin_f",    tmin_f_raw),
                     ("precip_in", _mm_to_in(prcp_mm)),
                     ("snow_in",   _cm_to_in(snow_cm)),
                 )

@@ -75,15 +75,14 @@ DEFAULT_FALLBACK_SIGMA_PRECIP = 0.5   # 0.5 inch for precipitation
 
 
 # Kalshi weather series → (BHN station, variable)
-# KXHIGHNY → NYC daily high temp
-# KXHIGHCHI → Chicago daily high
-# KXHIGHMIA → Miami daily high
-# KXHIGHAUX → Austin daily high
+# Phase 3 scope: Miami, Phoenix, Denver — High (tmax_f) and Low (tmin_f).
 SERIES_TO_STATION_VAR: dict[str, tuple[str, str]] = {
-    "KXHIGHNY":  ("KNYC", "tmax_f"),
-    "KXHIGHCHI": ("KORD", "tmax_f"),
     "KXHIGHMIA": ("KMIA", "tmax_f"),
-    "KXHIGHAUX": ("KAUS", "tmax_f"),
+    "KXLOWMIA":  ("KMIA", "tmin_f"),
+    "KXHIGHPHX": ("KPHX", "tmax_f"),
+    "KXLOWPHX":  ("KPHX", "tmin_f"),
+    "KXHIGHDEN": ("KDEN", "tmax_f"),
+    "KXLOWDEN":  ("KDEN", "tmin_f"),
 }
 
 
@@ -277,7 +276,12 @@ def estimate_model_probability(meta: ContractMetadata,
     if not corrected_values:
         return None, ModelEstimate(None, None, None, [], 0)
 
-    mean = sum(corrected_values) / len(corrected_values)
+    if meta.variable == "tmax_f":
+        mean = max(corrected_values)
+    elif meta.variable == "tmin_f":
+        mean = min(corrected_values)
+    else:
+        mean = sum(corrected_values) / len(corrected_values)
     if spread_values:
         sigma_final = sum(spread_values) / len(spread_values)
     elif meta.variable in ("precip_in", "snow_in"):

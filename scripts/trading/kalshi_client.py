@@ -80,7 +80,7 @@ logger = tc.get_logger("strat_9_prediction_alpha_kalshi")
 # ─────────────────────────────────────────────────────────────────────────
 
 DEMO_HOST = "https://demo-api.kalshi.co"
-PROD_HOST = "https://trading-api.kalshi.com"
+PROD_HOST = "https://api.elections.kalshi.com"  # migrated 2026 from trading-api.kalshi.com
 
 # All v2 endpoints live under this path prefix. The prefix is part of the
 # string fed to the signature payload — DO NOT strip it before signing.
@@ -91,6 +91,7 @@ DEFAULT_PRIVATE_KEY_PATH = "/etc/bhn-trading/kalshi_private.pem"
 
 # Conservative request defaults
 DEFAULT_TIMEOUT = 20
+DEFAULT_RETRY_ATTEMPTS = 3
 
 # Polling cadences (operator-spec'd via research findings):
 # Kalshi rate limits are not publicly documented but community research
@@ -187,7 +188,7 @@ def _sign_request(private_key: rsa.RSAPrivateKey,
             payload,
             padding.PSS(
                 mgf=padding.MGF1(hashes.SHA256()),
-                salt_length=padding.PSS.DIGEST_LENGTH,
+                salt_length=hashes.SHA256().digest_size,  # =32; PSS.DIGEST_LENGTH added in cryptography≥37
             ),
             hashes.SHA256(),
         )
@@ -528,9 +529,14 @@ class KalshiClient:
     # Weather-specific helpers
     # ─────────────────────────────────────────────────────────────────────
 
-    # Kalshi weather series tickers per operator (4 Kalshi-supported cities).
-    # Note: the AUS market uses 'KXHIGHAUX' (not KXHIGHAUS) per operator's spec.
-    WEATHER_SERIES = ("KXHIGHNY", "KXHIGHCHI", "KXHIGHMIA", "KXHIGHAUX")
+    # Kalshi weather series tickers — Phase 3 scope: Miami, Phoenix, Denver
+    # (High + Low). If actual API tickers differ from these assumed names,
+    # update here and in prediction_signal.SERIES_TO_STATION_VAR to match.
+    WEATHER_SERIES = (
+        "KXHIGHMIA", "KXLOWMIA",
+        "KXHIGHPHX", "KXLOWPHX",
+        "KXHIGHDEN", "KXLOWDEN",
+    )
 
     def get_weather_markets(self, *, status: str = "open") -> list:
         """Concatenate get_markets() across the 4 Kalshi weather series.
