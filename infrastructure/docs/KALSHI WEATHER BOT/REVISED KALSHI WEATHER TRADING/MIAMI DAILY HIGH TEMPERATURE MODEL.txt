@@ -1,0 +1,240 @@
+MIAMI DAILY HIGH TEMPERATURE MODEL
+
+GOAL
+Model the final NWS daily high temperature for Miami (KMIA), then convert that forecast into Kalshi bucket probabilities and edge versus live market prices.
+
+============================================================
+1) TARGET
+============================================================
+
+Target:
+- final_tmax_f for KMIA on target_date
+
+This is the settlement truth for the Miami high-temp market.
+
+============================================================
+2) RAW INPUTS
+============================================================
+
+Ingest three raw sources:
+
+A) NWS forecast snapshots
+- city
+- station
+- forecast_run_time
+- target_date
+- lead_hours
+- tmax_f
+- tmin_f
+- dewpoint_f
+- rh_pct
+- wind_speed
+- wind_gust
+- cloud_cover
+- pop
+- qpf
+- snowfall
+- weather
+- hazards
+- source_payload_json
+- retrieved_at
+
+B) Open-Meteo forecast snapshots
+- city
+- lat
+- lon
+- forecast_run_time
+- target_date
+- hour
+- temperature_2m
+- dewpoint_2m
+- relative_humidity_2m
+- cloud_cover
+- precipitation
+- rain
+- snowfall
+- wind_speed_10m
+- wind_gusts_10m
+- surface_pressure
+- weather_code
+- source_payload_json
+- retrieved_at
+
+C) Kalshi market snapshots
+- market_ticker
+- event_ticker
+- city
+- contract_side
+- bucket_type
+- bucket_floor
+- bucket_cap
+- yes_bid
+- yes_ask
+- no_bid
+- no_ask
+- last_price
+- volume
+- open_interest
+- market_status
+- retrieved_at
+- source_payload_json
+
+============================================================
+3) MIAMI FEATURE SET
+============================================================
+
+Key Miami features:
+- latest forecast high
+- latest forecast low
+- forecast change since last run
+- morning vs afternoon temperature trend
+- dew point spread
+- humidity
+- cloud cover trend
+- rain chance
+- thunder chance
+- wind speed
+- wind gusts
+- wind shift
+- forecast lead time
+- disagreement between NWS and Open-Meteo
+
+Miami is coastal, humid, and sensitive to cloud and sea-breeze timing, so those features matter more here than in some inland cities.
+
+============================================================
+4) BASELINE MODEL
+============================================================
+
+Start with a simple baseline:
+- predict final high = latest NWS forecast high
+- optionally blend Open-Meteo
+- compare baseline prediction to actual settlement
+
+This gives you a benchmark before building anything more complex.
+
+============================================================
+5) REAL MODEL
+============================================================
+
+Use a regression model to predict the final Miami high temperature.
+
+Possible first models:
+- gradient boosting
+- random forest
+- linear regression as a baseline
+
+Inputs:
+- Miami weather features
+- forecast timing
+- model disagreement features
+- trend features
+
+Output:
+- predicted final_tmax_f
+
+============================================================
+6) CALIBRATION LAYER
+============================================================
+
+After the point forecast, train calibration on forecast errors.
+
+Error convention:
+- forecast_error_f = actual - forecast
+- positive = NWS ran cold
+- negative = NWS ran hot
+
+Calibration should be separate for Miami and for daily high contracts.
+
+Recommended calibration methods:
+- isotonic regression
+- logistic / sigmoid calibration
+
+Purpose:
+- correct systematic bias
+- improve probability accuracy
+- make bucket probabilities more realistic
+
+============================================================
+7) BUCKET PROBABILITY MAPPING
+============================================================
+
+Convert the predicted Miami high into Kalshi bucket probabilities.
+
+Example buckets:
+- <85
+- 85-86
+- 87-88
+- 89-90
+- 91-92
+- >92
+
+For each bucket:
+- estimate probability from the forecast distribution
+- compare to Kalshi implied probability
+- compute edge = model probability - market implied probability
+
+============================================================
+8) DAILY SCORING
+============================================================
+
+Daily script steps:
+1. Pull latest Miami forecast data.
+2. Build feature row.
+3. Run the forecast model.
+4. Apply calibration.
+5. Convert output to bucket probabilities.
+6. Compare to live Kalshi prices.
+7. Output bet or skip.
+
+This is the production loop.
+
+============================================================
+9) MIAMI-SPECIFIC MODEL LOGIC
+============================================================
+
+Miami is useful because the model must learn:
+- humidity effects
+- sea-breeze timing
+- cloud suppression of afternoon highs
+- rain and thunder impacts
+- day-to-day forecast drift
+
+The model should ask:
+- How likely is the atmosphere to stop the temperature from reaching the forecast high?
+- How likely is the forecast to overshoot due to cloud or storm development?
+
+That is where edge is likely to come from.
+
+============================================================
+10) BUILD ORDER
+============================================================
+
+1. Ingest raw NWS, Open-Meteo, and Kalshi data.
+2. Store everything in bronze tables.
+3. Clean and standardize into silver tables.
+4. Build the Miami feature table.
+5. Train a baseline model.
+6. Train the Miami regression model.
+7. Fit calibration on forecast errors.
+8. Map predictions to Kalshi bucket probabilities.
+9. Compare to live market prices.
+10. Write daily edge outputs to gold tables.
+
+============================================================
+11) FINAL OUTPUT TABLE
+============================================================
+
+gold_daily_edge_sheet should include:
+- city
+- station
+- date
+- bucket
+- calibrated probability
+- market implied probability
+- edge
+- bias-adjusted forecast
+- confidence
+- bet/skip flag
+- notes
+
+This is the final sheet used for trading decisions.

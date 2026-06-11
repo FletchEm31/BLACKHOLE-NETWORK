@@ -1,0 +1,404 @@
+================================================================
+BHN WEATHER TRADING — FIX EDGE VIEW + FAST POLLER + GRAFANA
+Claude Code Session Prompt
+================================================================
+
+READ FIRST:
+1. Read infrastructure/docs/BHN SESSION UPDATES/ for current state
+2. Read these files IN FULL:
+   scripts/trading/kalshi_client.py
+   scripts/trading/weather_data_collector.py
+   scripts/trading/prediction_signal.py
+   scripts/trading/trading_core.py
+3. Run this diagnostic first:
+   sudo -u postgres psql -d eventhorizon -P pager=off -c "
+   SELECT id, station_code, resolution_date, is_active,
+          contract_ticker, series_ticker
+   FROM prediction_contracts LIMIT 5;"
+
+================================================================
+CONTEXT
+================================================================
+
+Metabase Kalshi dashboard is live with 4 questions:
+  ✅ Weather Latest Forecasts (NWS vs GFS + delta)
+  ✅ Kalshi Live Prices
+  ✅ Calibration Progress
+  ✅ Data Freshness
+  ✅ BHN vs Market Edge (PARTIAL — missing NWS forecast column)
+
+The BHN vs Market Edge view is broken because:
+  1. prediction_contracts.station_code is empty
+  2. prediction_contracts.resolution_date may be empty
+  3. Without those fields the join to weather_forecasts fails
+  4. Edge calculation is impossible
+
+Kalshi contract tickers encode all needed info:
+  KXHIGHDEN-26JUN11-B78.5
+  → series: KXHIGHDEN
+  → station: KDEN (strip KX + HIGH/LOW + city code + add K prefix)
+  → date: 26JUN11 = June 11, 2026
+  → threshold: B78.5 = between bucket at 78.5°F
+
+City code mapping:
+  DEN → KDEN  (Denver)
+  MIA → KMIA  (Miami)
+  PHX → KPHX  (Phoenix)
+  LAX → KLAX  (LA)
+  DFW → KDFW  (Dallas)
+  NYC → KNYC  (NYC)
+  CHI → KORD  (Chicago)
+  AUS → KAUS  (Austin)
+
+================================================================
+TASK 1 — FIX prediction_contracts TABLE
+================================================================
+
+In kalshi_client.py in the _upsert_markets_to_pg() function:
+
+Parse station_code from ticker:
+  KXHIGHDEN → DEN → KDEN
+  KXHIGHMIA → MIA → KMIA
+  KXHIGHPHX → PHX → KPHX
+  KXHIGHLAX → LAX → KLAX
+  KXHIGHDFW → DFW → KDFW
+  KXHIGHNY  → NY  → KNYC
+  KXHIGHCHI → CHI → KORD
+  KXHIGHAUX → AUS → KAUS
+
+Parse resolution_date from ticker:
+  KXHIGHDEN-26JUN11-B78.5
+  → date part: 26JUN11
+  → parse as: June 11, 2026
+
+Parse side from ticker:
+  KXHIGH* → side = 'high'
+  KXLOW*  → side = 'low'
+
+Parse strike values from ticker:
+  B78.5  → between bucket, strike = 78.5
+  T86    → threshold, strike = 86
+
+Update the UPSERT to populate:
+  station_code    = parsed from ticker
+  resolution_date = parsed from ticker
+  side            = parsed from ticker
+
+Then backfill existing rows:
+  UPDATE prediction_contracts SET
+    station_code = CASE
+      WHEN series_ticker LIKE '%DEN%' THEN 'KDEN'
+      WHEN series_ticker LIKE '%MIA%' THEN 'KMIA'
+      WHEN series_ticker LIKE '%PHX%' THEN 'KPHX'
+      WHEN series_ticker LIKE '%LAX%' THEN 'KLAX'
+      WHEN series_ticker LIKE '%DFW%' THEN 'KDFW'
+      WHEN series_ticker LIKE '%NY%'  THEN 'KNYC'
+      WHEN series_ticker LIKE '%CHI%' THEN 'KORD'
+      WHEN series_ticker LIKE '%AUX%' THEN 'KAUS'
+    END
+  WHERE station_code IS NULL OR station_code = '';
+
+Verify backfill worked:
+  sudo -u postgres psql -d eventhorizon -P pager=off -c "
+  SELECT station_code, COUNT(*)
+  FROM prediction_contracts
+  GROUP BY station_code;"
+
+================================================================
+TASK 2 — CREATE FAST KALSHI PRICE POLLER
+================================================================
+
+Create new file: scripts/trading/kalshi_price_poller.py
+
+This is a standalone lightweight script:
+  - Imports KalshiClient from kalshi_client.py
+  - Runs in infinite loop
+  - Every 5 seconds: calls get_weather_markets()
+  - Writes to weather_contract_prices table
+  - Logs summary every 60 seconds only (not every 5 — too noisy)
+  - Handles all errors gracefully — never crashes
+  - Reads env from /etc/bhn-trading/strat9.env + /etc/bhn-trading/env
+
+Structure:
+  def poll_once(client, conn):
+      markets = client.get_weather_markets()
+      # upsert to weather_contract_prices
+      return len(markets)
+
+  def main():
+      client = KalshiClient(...)
+      conn = get_pg_connection()
+      while True:
+          try:
+              n = poll_once(client, conn)
+              if time.time() - last_log > 60:
+                  logger.info(f"Kalshi poller: {n} prices updated")
+                  last_log = time.time()
+          except Exception as e:
+              logger.error(f"Poll error: {e}")
+          time.sleep(5)
+
+Create systemd service:
+  /etc/systemd/system/bhn-kalshi-prices.service
+  [Unit]
+  Description=BHN Kalshi price poller (5 second interval)
+  After=network.target postgresql.service
+
+  [Service]
+  Type=simple
+  User=root
+  WorkingDirectory=/opt/bhn/trading
+  ExecStart=/usr/bin/python3 /opt/bhn/trading/kalshi_price_poller.py
+  EnvironmentFile=/etc/bhn-trading/env
+  EnvironmentFile=/etc/bhn-trading/strat9.env
+  Restart=always
+  RestartSec=10
+  StandardOutput=journal
+  StandardError=journal
+
+  [Install]
+  WantedBy=multi-user.target
+
+NOTE: This is a SERVICE not a timer — runs continuously.
+Enable: systemctl enable --now bhn-kalshi-prices.service
+Verify: systemctl status bhn-kalshi-prices.service
+
+================================================================
+TASK 3 — KALSHI PORTFOLIO COLLECTOR
+================================================================
+
+Add to kalshi_client.py:
+
+  def get_portfolio_positions(self) -> list:
+      """GET /portfolio/positions — open positions + P&L"""
+      body = self.get("/portfolio/positions")
+      return body.get("positions") or []
+
+  def get_portfolio_fills(self) -> list:
+      """GET /portfolio/fills — recent settled trades"""
+      body = self.get("/portfolio/fills")
+      return body.get("fills") or []
+
+Create new DB table (OPERATOR APPROVAL REQUIRED):
+Print this message and wait for operator confirmation:
+
+  ╔══════════════════════════════════════════════════════╗
+  ║  SCHEMA CHANGE APPROVAL REQUIRED                     ║
+  ║  Need to create table: kalshi_positions              ║
+  ║  Columns:                                            ║
+  ║    id, contract_ticker, contract_title, side,        ║
+  ║    num_contracts, avg_price_cents, cost_usd,         ║
+  ║    market_value_usd, unrealized_pnl_usd,             ║
+  ║    payout_if_right_usd, captured_at                  ║
+  ║                                                      ║
+  ║  Also: kalshi_fills                                  ║
+  ║    id, contract_ticker, contract_title, side,        ║
+  ║    action, count, price_cents, cost_usd,             ║
+  ║    is_taker, created_time                            ║
+  ║                                                      ║
+  ║  Type YES to approve, NO to skip                     ║
+  ╚══════════════════════════════════════════════════════╝
+
+If approved, create tables and add fetch_kalshi_portfolio()
+to weather_data_collector.py SOURCES dict.
+
+Create systemd timer: bhn-kalshi-portfolio.timer
+→ Runs every 30 seconds
+→ Calls fetch_kalshi_portfolio()
+
+================================================================
+TASK 4 — GRAFANA DASHBOARD
+================================================================
+
+Grafana is running on LA. Find the port:
+  ss -tlnp | grep grafana
+  or check: systemctl status grafana-server
+
+Create dashboard via Grafana API:
+  curl -X POST http://localhost:<port>/api/dashboards/db \
+    -H "Content-Type: application/json" \
+    -u admin:admin \
+    -d @/tmp/kalshi-dashboard.json
+
+Dashboard panels:
+
+PANEL 1 — Kalshi Live Prices (time series)
+  Title: Live Kalshi Prices
+  Query:
+    SELECT captured_at, contract_title, yes_price
+    FROM weather_contract_prices
+    WHERE captured_at > NOW() - INTERVAL '2 hours'
+    AND yes_price IS NOT NULL
+    ORDER BY captured_at
+  Visualization: Time series
+  Refresh: 5s
+
+PANEL 2 — BHN vs Market Edge (table)
+  Title: BHN vs Market Edge
+  Query:
+    SELECT
+      wcp.contract_title,
+      wcp.contract_id AS ticker,
+      ROUND(AVG(wf.predicted_value),1) AS nws_forecast_f,
+      wcp.yes_price AS market_prob,
+      wcp.captured_at
+    FROM weather_contract_prices wcp
+    LEFT JOIN prediction_contracts pc
+      ON pc.station_code IS NOT NULL
+      AND wcp.contract_id LIKE '%' ||
+          REPLACE(pc.station_code,'K','') || '%'
+    LEFT JOIN weather_forecasts wf
+      ON wf.station_code = pc.station_code
+      AND wf.source_model = 'nws_gridpoints'
+      AND wf.target_date = pc.resolution_date
+    WHERE wcp.captured_at > NOW() - INTERVAL '35 minutes'
+    GROUP BY wcp.contract_title, wcp.contract_id,
+             wcp.yes_price, wcp.captured_at
+    ORDER BY wcp.contract_id
+  Visualization: Table
+  Refresh: 30s
+
+PANEL 3 — Open Positions P&L (table)
+  Title: My Kalshi Positions
+  Query:
+    SELECT contract_ticker, contract_title, side,
+           num_contracts, avg_price_cents,
+           cost_usd, market_value_usd,
+           unrealized_pnl_usd, payout_if_right_usd,
+           captured_at
+    FROM kalshi_positions
+    ORDER BY captured_at DESC
+  Visualization: Table
+  Refresh: 30s
+  Note: Empty until kalshi_positions table approved + created
+
+PANEL 4 — Data Freshness (stat panels)
+  Title: Data Freshness
+  Four stat panels:
+    NWS Last Update:
+      SELECT ROUND(EXTRACT(EPOCH FROM
+        (NOW()-MAX(predicted_at)))/60,0) AS minutes_ago
+      FROM weather_forecasts
+      WHERE source_model='nws_gridpoints'
+
+    Kalshi Last Update:
+      SELECT ROUND(EXTRACT(EPOCH FROM
+        (NOW()-MAX(captured_at)))/60,0) AS minutes_ago
+      FROM weather_contract_prices
+
+    ASOS Last Update:
+      SELECT ROUND(EXTRACT(EPOCH FROM
+        (NOW()-MAX(observed_at)))/60,0) AS minutes_ago
+      FROM weather_observations
+
+    Active Contracts:
+      SELECT COUNT(*) FROM prediction_contracts
+      WHERE is_active=true
+  Visualization: Stat
+  Refresh: 30s
+
+PANEL 5 — Calibration Progress (bar gauge)
+  Title: Days to Go-Live (need 30)
+  Query:
+    SELECT station_code,
+           COUNT(DISTINCT target_date) AS days_collected
+    FROM weather_forecasts
+    WHERE source_model = 'nws_gridpoints'
+    AND variable = 'tmax_f'
+    GROUP BY station_code
+    ORDER BY station_code
+  Visualization: Bar gauge (max=30)
+  Refresh: 1h
+
+================================================================
+TASK 5 — UPDATE METABASE BHN vs MARKET EDGE QUERY
+================================================================
+
+After station_code is backfilled in prediction_contracts,
+update the Metabase SQL file:
+  infrastructure/docs/metabase/weather_forecast_vs_market.sql
+
+New working query:
+  SELECT
+      wcp.contract_title,
+      wcp.contract_id AS ticker,
+      pc.station_code,
+      pc.resolution_date,
+      wcp.yes_price AS market_implied_prob,
+      ROUND(AVG(wf.predicted_value), 1) AS nws_forecast_f,
+      ROUND(AVG(wf.predicted_value) - (wcp.yes_price * 100), 1)
+          AS edge_degrees,
+      wcp.captured_at AS price_as_of
+  FROM weather_contract_prices wcp
+  JOIN prediction_contracts pc
+      ON pc.station_code IS NOT NULL
+      AND wcp.contract_id LIKE '%' ||
+          REPLACE(pc.station_code,'K','') || '%'
+  LEFT JOIN weather_forecasts wf
+      ON wf.station_code = pc.station_code
+      AND wf.source_model = 'nws_gridpoints'
+      AND wf.target_date = pc.resolution_date
+  WHERE wcp.captured_at > NOW() - INTERVAL '35 minutes'
+  AND pc.is_active = true
+  GROUP BY wcp.contract_title, wcp.contract_id,
+           pc.station_code, pc.resolution_date,
+           wcp.yes_price, wcp.captured_at
+  ORDER BY pc.resolution_date, pc.station_code;
+
+================================================================
+TASK 6 — COMMIT ALL CHANGES
+================================================================
+
+Summary:
+"feat(strat9): fast Kalshi poller + portfolio + Grafana dashboard"
+
+Description:
+"Completes BHN weather trading live monitoring stack.
+
+TASK 1 — Fixed prediction_contracts:
+  station_code + resolution_date + side now parsed from ticker
+  Backfilled all existing rows
+  BHN vs Market Edge view now joinable to weather_forecasts
+
+TASK 2 — Fast Kalshi price poller:
+  scripts/trading/kalshi_price_poller.py (new)
+  bhn-kalshi-prices.service (continuous, 5 sec interval)
+  weather_contract_prices updating every 5 seconds
+
+TASK 3 — Kalshi portfolio collector:
+  kalshi_client.get_portfolio_positions() + get_portfolio_fills()
+  kalshi_positions + kalshi_fills tables (if approved)
+  bhn-kalshi-portfolio.timer (30 sec interval)
+
+TASK 4 — Grafana dashboard:
+  5 panels: Live Prices, Edge View, Positions P&L,
+            Data Freshness, Calibration Progress
+  infrastructure/docs/grafana/kalshi-live-dashboard.json
+  Imported to Grafana on LA
+
+TASK 5 — Updated Metabase SQL:
+  weather_forecast_vs_market.sql fixed with station_code join
+  BHN vs Market Edge now shows NWS forecast + edge column"
+
+================================================================
+CONSTRAINTS
+================================================================
+
+- LA only (ssh root@10.8.0.1)
+- Get operator approval before creating kalshi_positions table
+- DRY_RUN stays true, enabled stays false in rules.json
+- Do NOT modify existing working collectors
+- Bootstrap uses scp not git clone
+- NJ SSH always port 2222 (not needed this session)
+- Commit requires Summary AND Description
+- Stop and report on any failure
+
+================================================================
+SESSION HANDOFF
+Update BHN-SESSION-HANDOFF.txt with:
+- prediction_contracts station_code backfill confirmed
+- bhn-kalshi-prices.service status
+- Grafana dashboard URL
+- kalshi_positions table approved/skipped
+- Full system status
+================================================================

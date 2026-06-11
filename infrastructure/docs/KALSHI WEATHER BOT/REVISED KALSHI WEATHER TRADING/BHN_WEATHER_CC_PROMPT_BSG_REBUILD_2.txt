@@ -1,0 +1,905 @@
+================================================================
+BHN WEATHER TRADING — FULL BRONZE/SILVER/GOLD SCHEMA REBUILD
+Claude Code Session Prompt
+================================================================
+
+READ FIRST — ALL OF THESE:
+1. Read infrastructure/docs/BHN SESSION UPDATES/ for current state
+2. Read KALSHI_WEATHER_TRADING_-_SQLDATA-_API-TABLE_ORGANIZATION.txt
+3. Read MIAMI_DAILY_HIGH_TEMPERATURE_MODEL.txt
+4. Read scripts/trading/weather_data_collector.py
+5. Read scripts/trading/kalshi_client.py
+6. Read sql/weather-schema.sql
+7. Read sql/strategy-5-weather-schema.sql
+
+Run this diagnostic first so you know what exists:
+  sudo -u postgres psql -d eventhorizon -P pager=off -c "
+  SELECT table_name,
+    (SELECT COUNT(*) FROM information_schema.columns
+     WHERE table_name=t.table_name AND table_schema='public') as cols
+  FROM information_schema.tables t
+  WHERE table_schema='public'
+  ORDER BY table_name;"
+
+================================================================
+CONTEXT
+================================================================
+
+The current weather trading schema is a Phase 1 scratch pad:
+  weather_forecasts        — mixes NWS + GFS in same table
+  weather_observations     — ASOS actuals, minimal fields
+  prediction_contracts     — missing station_code, resolution_date
+  weather_contract_prices  — missing bucket parsing
+  weather_bets             — trade audit stub
+  weather_model_accuracy   — empty
+  degree_days              — computed, keep as-is
+  enso_index               — historical ENSO, keep as-is
+  weather_snapshots        — OWM operator-home, keep as-is
+
+This session replaces the weather trading tables with a proper
+Bronze/Silver/Gold pipeline per the architecture documents.
+
+TARGET CITIES (8 cities, all active on Kalshi):
+  KMIA  Miami         FL_ASOS   NWS:MFL
+  KDEN  Denver        CO_ASOS   NWS:BOU
+  KPHX  Phoenix       AZ_ASOS   NWS:PSR
+  KLAX  Los Angeles   CA_ASOS   NWS:LOX
+  KDFW  Dallas        TX_ASOS   NWS:FWD
+  KNYC  New York      NY_ASOS   NWS:OKX
+  KORD  Chicago       IL_ASOS   NWS:LOT
+  KAUS  Austin        TX_ASOS   NWS:EWX
+
+================================================================
+OPERATOR APPROVAL — SCHEMA CHANGES
+================================================================
+
+This session requires dropping and recreating weather trading
+tables. Print this and wait for explicit YES before proceeding:
+
+  ╔══════════════════════════════════════════════════════════════╗
+  ║  SCHEMA REBUILD APPROVAL REQUIRED                           ║
+  ║                                                             ║
+  ║  Tables to be DROPPED (data will be lost):                  ║
+  ║    weather_forecasts                                        ║
+  ║    weather_observations                                     ║
+  ║    prediction_contracts                                     ║
+  ║    weather_contract_prices                                  ║
+  ║    weather_bets                                             ║
+  ║    weather_model_accuracy                                   ║
+  ║                                                             ║
+  ║  Tables to be CREATED (new schema):                         ║
+  ║    BRONZE: weather_bronze_nws_forecast_snapshots                    ║
+  ║            weather_bronze_openmeteo_forecast_snapshots              ║
+  ║            weather_bronze_kalshi_market_snapshots                   ║
+  ║            weather_bronze_kalshi_trade_history                      ║
+  ║            weather_bronze_nws_actuals                               ║
+  ║                                                             ║
+  ║    SILVER: weather_silver_forecast_conformed                        ║
+  ║            weather_silver_market_conformed                          ║
+  ║            weather_silver_actuals_conformed                         ║
+  ║            weather_silver_forecast_error                            ║
+  ║            weather_silver_calibration_training_set                  ║
+  ║            weather_silver_model_base                                ║
+  ║                                                             ║
+  ║    GOLD:   weather_gold_city_day_features                           ║
+  ║            weather_gold_calibrated_probabilities                    ║
+  ║            weather_gold_daily_edge_sheet                            ║
+  ║                                                             ║
+  ║  Tables to be KEPT (untouched):                             ║
+  ║    degree_days, enso_index, weather_snapshots               ║
+  ║    kalshi_positions, kalshi_fills (if exist)                ║
+  ║                                                             ║
+  ║  Type YES to approve, NO to cancel                          ║
+  ╚══════════════════════════════════════════════════════════════╝
+
+================================================================
+TASK 1 — CREATE BRONZE TABLES
+================================================================
+
+Create sql/weather-bronze-schema.sql with these tables:
+
+------------------------------------------------------------
+weather_bronze_nws_forecast_snapshots
+------------------------------------------------------------
+  id                  BIGSERIAL PRIMARY KEY
+  city                TEXT NOT NULL
+  station_code        TEXT NOT NULL
+  forecast_run_time   TIMESTAMPTZ NOT NULL
+  target_date         DATE NOT NULL
+  lead_hours          INTEGER
+  tmax_f              NUMERIC
+  tmin_f              NUMERIC
+  dewpoint_f          NUMERIC
+  rh_pct              NUMERIC
+  wind_speed          NUMERIC
+  wind_gust           NUMERIC
+  cloud_cover         NUMERIC
+  pop                 NUMERIC
+  qpf                 NUMERIC
+  snowfall            NUMERIC
+  weather_text        TEXT
+  hazards             TEXT
+  source_payload_json JSONB
+  retrieved_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+
+  UNIQUE (station_code, forecast_run_time, target_date)
+
+------------------------------------------------------------
+weather_bronze_openmeteo_forecast_snapshots
+------------------------------------------------------------
+  id                  BIGSERIAL PRIMARY KEY
+  city                TEXT NOT NULL
+  station_code        TEXT NOT NULL
+  lat                 NUMERIC NOT NULL
+  lon                 NUMERIC NOT NULL
+  model               TEXT NOT NULL   -- 'gfs_seamless', 'ecmwf', etc.
+  forecast_run_time   TIMESTAMPTZ NOT NULL
+  target_date         DATE NOT NULL
+  hour                INTEGER         -- 0-23 for hourly
+  temperature_2m      NUMERIC
+  dewpoint_2m         NUMERIC
+  relative_humidity_2m NUMERIC
+  cloud_cover         NUMERIC
+  precipitation       NUMERIC
+  rain                NUMERIC
+  snowfall            NUMERIC
+  wind_speed_10m      NUMERIC
+  wind_gusts_10m      NUMERIC
+  surface_pressure    NUMERIC
+  weather_code        INTEGER
+  source_payload_json JSONB
+  retrieved_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+
+  UNIQUE (station_code, model, forecast_run_time, target_date, hour)
+
+------------------------------------------------------------
+weather_bronze_kalshi_market_snapshots
+------------------------------------------------------------
+  id                  BIGSERIAL PRIMARY KEY
+  market_ticker       TEXT NOT NULL
+  event_ticker        TEXT
+  series_ticker       TEXT
+  city                TEXT
+  station_code        TEXT
+  contract_side       TEXT          -- 'high' or 'low'
+  bucket_type         TEXT          -- 'between', 'above', 'below'
+  bucket_floor        NUMERIC
+  bucket_cap          NUMERIC
+  target_date         DATE
+  yes_bid             NUMERIC
+  yes_ask             NUMERIC
+  no_bid              NUMERIC
+  no_ask              NUMERIC
+  yes_mid             NUMERIC       -- computed: (yes_bid + yes_ask) / 2
+  last_price          NUMERIC
+  volume              NUMERIC
+  open_interest       NUMERIC
+  market_status       TEXT
+  retrieved_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  source_payload_json JSONB
+
+  UNIQUE (market_ticker, retrieved_at)
+
+  INDEX (station_code, target_date, retrieved_at DESC)
+  INDEX (series_ticker, target_date)
+
+------------------------------------------------------------
+weather_bronze_kalshi_trade_history
+------------------------------------------------------------
+  id                  BIGSERIAL PRIMARY KEY
+  market_ticker       TEXT NOT NULL
+  trade_time          TIMESTAMPTZ NOT NULL
+  price               NUMERIC
+  size                INTEGER
+  side                TEXT
+  retrieved_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  source_payload_json JSONB
+
+  UNIQUE (market_ticker, trade_time, price, size)
+
+------------------------------------------------------------
+weather_bronze_nws_actuals
+------------------------------------------------------------
+  id                  BIGSERIAL PRIMARY KEY
+  city                TEXT NOT NULL
+  station_code        TEXT NOT NULL
+  target_date         DATE NOT NULL
+  final_tmax_f        NUMERIC
+  final_tmin_f        NUMERIC
+  report_issued_at    TIMESTAMPTZ
+  source_payload_json JSONB
+  retrieved_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+
+  UNIQUE (station_code, target_date)
+
+================================================================
+TASK 2 — CREATE SILVER TABLES
+================================================================
+
+Create sql/weather-silver-schema.sql with these tables:
+
+------------------------------------------------------------
+weather_silver_forecast_conformed
+------------------------------------------------------------
+  id                  BIGSERIAL PRIMARY KEY
+  city                TEXT NOT NULL
+  station_code        TEXT NOT NULL
+  source_name         TEXT NOT NULL  -- 'nws', 'open_meteo_gfs', etc.
+  forecast_run_time   TIMESTAMPTZ NOT NULL
+  target_date         DATE NOT NULL
+  lead_hours          INTEGER
+  tmax_f              NUMERIC
+  tmin_f              NUMERIC
+  dewpoint_f          NUMERIC
+  rh_pct              NUMERIC
+  wind_speed          NUMERIC
+  wind_gust           NUMERIC
+  cloud_cover         NUMERIC
+  pop                 NUMERIC
+  qpf                 NUMERIC
+  snowfall            NUMERIC
+  is_latest_run       BOOLEAN DEFAULT FALSE
+  is_valid            BOOLEAN DEFAULT TRUE
+  quality_flag        TEXT
+  created_at          TIMESTAMPTZ DEFAULT NOW()
+
+  UNIQUE (station_code, source_name, forecast_run_time, target_date)
+  INDEX (station_code, target_date, is_latest_run)
+
+------------------------------------------------------------
+weather_silver_market_conformed
+------------------------------------------------------------
+  id                  BIGSERIAL PRIMARY KEY
+  market_ticker       TEXT NOT NULL
+  series_ticker       TEXT
+  city                TEXT NOT NULL
+  station_code        TEXT NOT NULL
+  contract_side       TEXT NOT NULL   -- 'high' or 'low'
+  bucket_floor        NUMERIC
+  bucket_cap          NUMERIC
+  bucket_type         TEXT
+  target_date         DATE NOT NULL
+  snapshot_time       TIMESTAMPTZ NOT NULL
+  yes_mid             NUMERIC
+  yes_bid             NUMERIC
+  yes_ask             NUMERIC
+  implied_prob        NUMERIC        -- same as yes_mid, explicit
+  volume              NUMERIC
+  open_interest       NUMERIC
+  market_status       TEXT
+  market_liquidity_flag TEXT         -- 'liquid', 'thin', 'illiquid'
+  is_latest_snapshot  BOOLEAN DEFAULT FALSE
+  created_at          TIMESTAMPTZ DEFAULT NOW()
+
+  UNIQUE (market_ticker, snapshot_time)
+  INDEX (station_code, target_date, is_latest_snapshot)
+  INDEX (series_ticker, target_date)
+
+------------------------------------------------------------
+weather_silver_actuals_conformed
+------------------------------------------------------------
+  id                  BIGSERIAL PRIMARY KEY
+  city                TEXT NOT NULL
+  station_code        TEXT NOT NULL
+  target_date         DATE NOT NULL
+  final_tmax_f        NUMERIC
+  final_tmin_f        NUMERIC
+  actual_source       TEXT          -- 'nws_cli', 'asos'
+  report_issued_at    TIMESTAMPTZ
+  settlement_label_high TEXT        -- the winning bucket label e.g. '88-89'
+  settlement_label_low  TEXT
+  is_final            BOOLEAN DEFAULT FALSE
+  created_at          TIMESTAMPTZ DEFAULT NOW()
+
+  UNIQUE (station_code, target_date, actual_source)
+
+------------------------------------------------------------
+weather_silver_forecast_error
+------------------------------------------------------------
+  id                  BIGSERIAL PRIMARY KEY
+  city                TEXT NOT NULL
+  station_code        TEXT NOT NULL
+  target_date         DATE NOT NULL
+  feature_name        TEXT NOT NULL  -- 'tmax_f' or 'tmin_f'
+  source_name         TEXT NOT NULL
+  forecast_run_time   TIMESTAMPTZ
+  lead_hours          INTEGER
+  forecast_value      NUMERIC
+  actual_value        NUMERIC
+  forecast_error_f    NUMERIC        -- actual - forecast
+                                     -- positive = NWS ran cold
+                                     -- negative = NWS ran hot
+  error_sign          TEXT           -- 'cold', 'hot', 'exact'
+  created_at          TIMESTAMPTZ DEFAULT NOW()
+
+  UNIQUE (station_code, target_date, feature_name,
+          source_name, forecast_run_time)
+  INDEX (station_code, feature_name, target_date DESC)
+
+------------------------------------------------------------
+weather_silver_calibration_training_set
+------------------------------------------------------------
+  id                  BIGSERIAL PRIMARY KEY
+  city                TEXT NOT NULL
+  station_code        TEXT NOT NULL
+  contract_side       TEXT NOT NULL
+  target_date         DATE NOT NULL
+  forecast_run_time   TIMESTAMPTZ
+  lead_hours          INTEGER
+  raw_prob            NUMERIC        -- model raw probability
+  market_price        NUMERIC        -- kalshi yes_mid at time of signal
+  actual_outcome      INTEGER        -- 1 = bucket hit, 0 = miss
+  forecast_error_f    NUMERIC
+  season              TEXT           -- 'spring','summer','fall','winter'
+  calibration_window_flag BOOLEAN DEFAULT FALSE
+  created_at          TIMESTAMPTZ DEFAULT NOW()
+
+  INDEX (station_code, contract_side, target_date DESC)
+
+------------------------------------------------------------
+weather_silver_model_base
+------------------------------------------------------------
+-- One clean row per city + date + contract_side + forecast_run_time
+-- Joins NWS, Open-Meteo, Kalshi, and actuals in one place
+-- This feeds calibration training directly
+
+  id                      BIGSERIAL PRIMARY KEY
+  city                    TEXT NOT NULL
+  station_code            TEXT NOT NULL
+  target_date             DATE NOT NULL
+  contract_side           TEXT NOT NULL
+  forecast_run_time       TIMESTAMPTZ NOT NULL
+  lead_hours              INTEGER
+
+  -- NWS forecast
+  nws_tmax_f              NUMERIC
+  nws_tmin_f              NUMERIC
+  nws_dewpoint_f          NUMERIC
+  nws_rh_pct              NUMERIC
+  nws_wind_speed          NUMERIC
+  nws_cloud_cover         NUMERIC
+  nws_pop                 NUMERIC
+
+  -- Open-Meteo GFS forecast
+  gfs_tmax_f              NUMERIC
+  gfs_tmin_f              NUMERIC
+  gfs_dewpoint_f          NUMERIC
+  gfs_rh_pct              NUMERIC
+  gfs_wind_speed          NUMERIC
+  gfs_cloud_cover         NUMERIC
+
+  -- Model disagreement
+  nws_gfs_tmax_delta      NUMERIC    -- nws_tmax_f - gfs_tmax_f
+  nws_gfs_tmin_delta      NUMERIC
+
+  -- Kalshi market at time of signal
+  market_ticker           TEXT
+  kalshi_yes_mid          NUMERIC
+  kalshi_implied_prob     NUMERIC
+  kalshi_volume           NUMERIC
+  kalshi_snapshot_time    TIMESTAMPTZ
+
+  -- Actual settlement (populated after settlement)
+  actual_tmax_f           NUMERIC
+  actual_tmin_f           NUMERIC
+  is_settled              BOOLEAN DEFAULT FALSE
+
+  -- Validity
+  is_valid                BOOLEAN DEFAULT TRUE
+  quality_flag            TEXT
+  created_at              TIMESTAMPTZ DEFAULT NOW()
+
+  UNIQUE (station_code, target_date, contract_side, forecast_run_time)
+  INDEX (station_code, target_date DESC, contract_side)
+
+================================================================
+TASK 3 — CREATE GOLD TABLES
+================================================================
+
+Create sql/weather-gold-schema.sql with these tables:
+
+------------------------------------------------------------
+weather_gold_city_day_features
+------------------------------------------------------------
+-- Model-ready feature set per city + date + side
+
+  id                      BIGSERIAL PRIMARY KEY
+  city                    TEXT NOT NULL
+  station_code            TEXT NOT NULL
+  target_date             DATE NOT NULL
+  contract_side           TEXT NOT NULL   -- 'high' or 'low'
+
+  -- Latest forecasts
+  latest_nws_tmax_f       NUMERIC
+  latest_nws_tmin_f       NUMERIC
+  latest_gfs_tmax_f       NUMERIC
+  latest_gfs_tmin_f       NUMERIC
+
+  -- Disagreement features
+  forecast_spread         NUMERIC         -- abs(nws - gfs)
+  dewpoint_spread         NUMERIC
+  humidity_spread         NUMERIC
+  cloud_cover_change      NUMERIC
+  wind_shift_flag         BOOLEAN
+
+  -- Timing
+  lead_time_hours         INTEGER
+  season                  TEXT
+
+  -- Historical bias
+  historical_bias_7d      NUMERIC         -- avg forecast_error last 7 days
+  historical_bias_30d     NUMERIC         -- avg forecast_error last 30 days
+  historical_mae_30d      NUMERIC         -- mean absolute error last 30 days
+
+  -- Market
+  market_yes_mid          NUMERIC
+  market_implied_prob     NUMERIC
+
+  -- Label (populated after settlement)
+  target_label            NUMERIC         -- actual_tmax_f or actual_tmin_f
+
+  created_at              TIMESTAMPTZ DEFAULT NOW()
+  updated_at              TIMESTAMPTZ DEFAULT NOW()
+
+  UNIQUE (station_code, target_date, contract_side)
+
+------------------------------------------------------------
+weather_gold_calibrated_probabilities
+------------------------------------------------------------
+-- Per-bucket calibrated probability + edge
+
+  id                      BIGSERIAL PRIMARY KEY
+  city                    TEXT NOT NULL
+  station_code            TEXT NOT NULL
+  target_date             DATE NOT NULL
+  contract_side           TEXT NOT NULL
+  market_ticker           TEXT NOT NULL
+  bucket_floor            NUMERIC
+  bucket_cap              NUMERIC
+  bucket_label            TEXT           -- e.g. '88-89', '<85', '>92'
+
+  raw_model_prob          NUMERIC        -- before calibration
+  calibrated_prob         NUMERIC        -- after isotonic/platt calibration
+  market_implied_prob     NUMERIC        -- kalshi yes_mid
+  edge                    NUMERIC        -- calibrated_prob - market_implied_prob
+  edge_rank               INTEGER        -- 1 = best edge across all contracts
+
+  trade_flag              TEXT           -- 'BET_YES','BET_NO','SKIP'
+  confidence              TEXT           -- 'HIGH','MEDIUM','LOW'
+  model_delta_flag        TEXT           -- 'AGREE','DIVERGE' (NWS vs GFS)
+
+  calibrator_version      TEXT           -- version of calibration model used
+  created_at              TIMESTAMPTZ DEFAULT NOW()
+
+  INDEX (station_code, target_date, contract_side, edge DESC)
+  INDEX (trade_flag, target_date)
+
+------------------------------------------------------------
+weather_gold_daily_edge_sheet
+------------------------------------------------------------
+-- THE MAIN TRADING VIEW
+-- Final decision sheet — one row per tradeable contract
+
+  id                      BIGSERIAL PRIMARY KEY
+  city                    TEXT NOT NULL
+  station_code            TEXT NOT NULL
+  target_date             DATE NOT NULL
+  contract_side           TEXT NOT NULL
+  contract_ticker         TEXT NOT NULL
+  bucket_floor            NUMERIC
+  bucket_cap              NUMERIC
+  bucket_label            TEXT
+
+  -- BHN forecast
+  raw_forecast_f          NUMERIC        -- latest NWS forecast
+  gfs_forecast_f          NUMERIC        -- GFS cross-check
+  model_delta_f           NUMERIC        -- abs(nws - gfs)
+  model_confidence        TEXT           -- HIGH/MEDIUM/LOW based on delta
+
+  -- Calibrated model output
+  calibrated_prob         NUMERIC
+  raw_model_prob          NUMERIC
+
+  -- Market
+  market_implied_prob     NUMERIC
+  market_yes_mid          NUMERIC
+  market_volume           NUMERIC
+  market_liquidity        TEXT           -- 'liquid','thin','illiquid'
+
+  -- Edge
+  edge                    NUMERIC        -- calibrated_prob - market_implied_prob
+  edge_pct                NUMERIC        -- edge * 100 for readability
+  edge_rank               INTEGER        -- 1 = highest edge today
+
+  -- Decision
+  recommended_action      TEXT           -- 'BET_YES','BET_NO','SKIP'
+  stake_fraction          NUMERIC        -- Kelly fraction
+  stake_usd               NUMERIC        -- dollar amount at current bankroll
+  skip_reason             TEXT           -- why skipped if SKIP
+
+  -- Metadata
+  last_updated            TIMESTAMPTZ DEFAULT NOW()
+  calibrator_version      TEXT
+  is_active               BOOLEAN DEFAULT TRUE
+
+  UNIQUE (contract_ticker, last_updated)
+  INDEX (target_date, recommended_action, edge DESC)
+  INDEX (station_code, target_date)
+
+================================================================
+TASK 4 — GRANT PERMISSIONS
+================================================================
+
+After creating all tables:
+
+  sudo -u postgres psql -d eventhorizon -c "
+  GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA public TO bhn_trader;
+  GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO bhn_trader;
+  GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA public TO PUBLIC;
+  ALTER DEFAULT PRIVILEGES IN SCHEMA public
+    GRANT SELECT, INSERT, UPDATE ON TABLES TO PUBLIC;
+  ALTER DEFAULT PRIVILEGES IN SCHEMA public
+    GRANT USAGE, SELECT ON SEQUENCES TO PUBLIC;"
+
+================================================================
+TASK 5 — UPDATE weather_data_collector.py
+================================================================
+
+Rewrite the collector to write to bronze tables instead of
+the old weather_forecasts / weather_observations tables.
+
+Key changes:
+
+1. fetch_nws() → writes to weather_bronze_nws_forecast_snapshots
+   - Store full raw JSON in source_payload_json
+   - Parse all available fields (not just tmax/tmin)
+   - Include lead_hours calculation
+
+2. fetch_open_meteo() → writes to weather_bronze_openmeteo_forecast_snapshots
+   - Store hourly rows (not daily aggregated)
+   - Include model name in each row
+   - Store raw JSON
+
+3. fetch_asos() → writes to weather_bronze_nws_actuals
+   - ASOS daily actuals = settlement truth
+   - Store in weather_bronze_nws_actuals not weather_observations
+
+4. fetch_kalshi_markets() → writes to weather_bronze_kalshi_market_snapshots
+   - Parse bucket_floor, bucket_cap from ticker
+   - Parse contract_side (high/low) from series_ticker
+   - Parse target_date from ticker
+   - Compute yes_mid = (yes_bid + yes_ask) / 2
+   - Store full raw JSON
+
+5. Add silver layer population after each bronze write:
+   After writing to weather_bronze_nws_forecast_snapshots:
+   → Upsert into weather_silver_forecast_conformed
+   → Update is_latest_run flag
+
+   After writing to weather_bronze_kalshi_market_snapshots:
+   → Upsert into weather_silver_market_conformed
+   → Update is_latest_snapshot flag
+   → Compute market_liquidity_flag:
+       volume > 1000 → 'liquid'
+       volume > 100  → 'thin'
+       else          → 'illiquid'
+
+   After writing to weather_bronze_nws_actuals:
+   → Upsert into weather_silver_actuals_conformed
+   → Compute forecast_error and write weather_silver_forecast_error
+       (join with weather_silver_forecast_conformed for same station+date)
+
+================================================================
+TASK 6 — UPDATE kalshi_price_poller.py
+================================================================
+
+Update to write to weather_bronze_kalshi_market_snapshots instead of
+weather_contract_prices.
+
+Parse all fields from Kalshi response:
+  - bucket_floor and bucket_cap from ticker
+  - contract_side from series_ticker (HIGH vs LOW)
+  - target_date from ticker date component
+  - yes_mid = (yes_bid + yes_ask) / 2
+  - market_liquidity_flag based on volume
+
+================================================================
+TASK 7 — CREATE weather_gold_daily_edge_sheet POPULATION SCRIPT
+================================================================
+
+Create scripts/trading/weather_edge_calculator.py
+
+This script:
+1. Reads weather_silver_model_base for today + tomorrow
+2. For each city/date/side:
+   a. Gets latest NWS forecast from weather_silver_forecast_conformed
+   b. Gets latest GFS forecast from weather_silver_forecast_conformed
+   c. Computes model_delta_f
+   d. Gets calibration bias from weather_silver_forecast_error
+      (avg forecast_error last 30 days for this station)
+   e. Applies bias correction to NWS forecast
+   f. Computes raw bucket probability using normal distribution
+   g. Applies calibration (isotonic if available, else passthrough)
+   h. Gets latest Kalshi market price from weather_silver_market_conformed
+   i. Computes edge = calibrated_prob - market_implied_prob
+   j. Determines trade_flag:
+      edge >= 0.05  → 'BET_YES'
+      edge <= -0.05 → 'BET_NO'
+      else          → 'SKIP'
+   k. Determines model_confidence:
+      model_delta_f < 2  → 'HIGH'
+      model_delta_f < 4  → 'MEDIUM'
+      else               → 'LOW'
+   l. Computes Kelly fraction and stake_usd
+   m. Writes to weather_gold_daily_edge_sheet
+
+Run this script after each weather collection cycle:
+  Add to weather_data_collector.py as last step in main()
+
+================================================================
+TASK 8 — METABASE QUERIES (CLEAN VERSIONS)
+================================================================
+
+Create infrastructure/docs/metabase/CLEAN_QUERIES.sql
+with these 6 clean queries that use the new schema:
+
+-- QUERY 1: Daily Edge Sheet (THE MAIN VIEW)
+-- Shows exactly what to trade today and tomorrow
+SELECT
+    city,
+    station_code,
+    target_date,
+    contract_side,
+    bucket_label,
+    contract_ticker,
+    raw_forecast_f        AS nws_forecast,
+    gfs_forecast_f        AS gfs_forecast,
+    model_delta_f         AS model_delta,
+    model_confidence,
+    ROUND(calibrated_prob * 100, 1) AS model_prob_pct,
+    ROUND(market_implied_prob * 100, 1) AS market_prob_pct,
+    ROUND(edge_pct, 1)    AS edge_pct,
+    market_volume,
+    market_liquidity,
+    recommended_action,
+    stake_usd,
+    skip_reason,
+    last_updated
+FROM weather_gold_daily_edge_sheet
+WHERE target_date BETWEEN CURRENT_DATE AND CURRENT_DATE + 1
+AND is_active = TRUE
+ORDER BY target_date, edge DESC;
+
+-- QUERY 2: Latest NWS vs GFS Forecasts
+SELECT
+    city,
+    station_code,
+    target_date,
+    source_name,
+    tmax_f,
+    tmin_f,
+    cloud_cover,
+    pop,
+    wind_speed,
+    is_latest_run,
+    forecast_run_time
+FROM weather_silver_forecast_conformed
+WHERE target_date BETWEEN CURRENT_DATE AND CURRENT_DATE + 2
+AND is_latest_run = TRUE
+ORDER BY target_date, station_code, source_name;
+
+-- QUERY 3: Live Kalshi Market Prices
+SELECT
+    city,
+    station_code,
+    contract_side,
+    bucket_label,
+    market_ticker,
+    target_date,
+    ROUND(implied_prob * 100, 1) AS implied_prob_pct,
+    yes_bid,
+    yes_ask,
+    yes_mid,
+    volume,
+    market_liquidity_flag,
+    snapshot_time
+FROM weather_silver_market_conformed
+WHERE is_latest_snapshot = TRUE
+AND target_date BETWEEN CURRENT_DATE AND CURRENT_DATE + 1
+ORDER BY target_date, station_code, contract_side, bucket_floor;
+
+-- QUERY 4: Forecast Accuracy (NWS Error by City)
+SELECT
+    city,
+    station_code,
+    feature_name,
+    source_name,
+    COUNT(*) AS sample_size,
+    ROUND(AVG(forecast_error_f), 2) AS avg_bias_f,
+    ROUND(AVG(ABS(forecast_error_f)), 2) AS mae_f,
+    ROUND(STDDEV(forecast_error_f), 2) AS std_f,
+    SUM(CASE WHEN error_sign = 'hot' THEN 1 ELSE 0 END) AS times_ran_hot,
+    SUM(CASE WHEN error_sign = 'cold' THEN 1 ELSE 0 END) AS times_ran_cold
+FROM weather_silver_forecast_error
+WHERE target_date > CURRENT_DATE - 30
+GROUP BY city, station_code, feature_name, source_name
+ORDER BY station_code, feature_name, source_name;
+
+-- QUERY 5: Calibration Progress
+SELECT
+    sfc.station_code,
+    sfc.city,
+    sfc.contract_side,
+    COUNT(DISTINCT sfc.target_date) AS forecast_days,
+    COUNT(DISTINCT sa.target_date) AS settled_days,
+    COUNT(DISTINCT sfe.target_date) AS error_pairs,
+    CASE
+        WHEN COUNT(DISTINCT sfe.target_date) >= 30
+        THEN 'READY TO CALIBRATE'
+        ELSE CONCAT(
+            CAST(30 - COUNT(DISTINCT sfe.target_date) AS TEXT),
+            ' days remaining'
+        )
+    END AS calibration_status,
+    MIN(sfc.target_date) AS earliest_forecast,
+    MAX(sa.target_date) AS latest_settlement
+FROM weather_silver_forecast_conformed sfc
+LEFT JOIN weather_silver_actuals_conformed sa
+    ON sa.station_code = sfc.station_code
+    AND sa.target_date = sfc.target_date
+LEFT JOIN weather_silver_forecast_error sfe
+    ON sfe.station_code = sfc.station_code
+    AND sfe.target_date = sfc.target_date
+WHERE sfc.is_latest_run = TRUE
+AND sfc.source_name = 'nws'
+GROUP BY sfc.station_code, sfc.city, sfc.contract_side
+ORDER BY sfc.station_code, sfc.contract_side;
+
+-- QUERY 6: Data Freshness
+SELECT
+    source_label,
+    station_code,
+    MAX(last_update) AS last_update,
+    ROUND(EXTRACT(EPOCH FROM (NOW() - MAX(last_update)))/60, 0)
+        AS minutes_ago
+FROM (
+    SELECT 'NWS Forecast' AS source_label,
+           station_code,
+           MAX(retrieved_at) AS last_update
+    FROM weather_bronze_nws_forecast_snapshots
+    GROUP BY station_code
+
+    UNION ALL
+    SELECT 'Open-Meteo GFS',
+           station_code,
+           MAX(retrieved_at)
+    FROM weather_bronze_openmeteo_forecast_snapshots
+    WHERE model = 'gfs_seamless'
+    GROUP BY station_code
+
+    UNION ALL
+    SELECT 'Kalshi Prices',
+           station_code,
+           MAX(retrieved_at)
+    FROM weather_bronze_kalshi_market_snapshots
+    GROUP BY station_code
+
+    UNION ALL
+    SELECT 'NWS Actuals',
+           station_code,
+           MAX(retrieved_at)
+    FROM weather_bronze_nws_actuals
+    GROUP BY station_code
+) t
+GROUP BY source_label, station_code
+ORDER BY source_label, station_code;
+
+================================================================
+TASK 9 — DEPLOY AND VERIFY
+================================================================
+
+Deploy all scripts to LA:
+  scp scripts/trading/weather_data_collector.py root@10.8.0.1:/opt/bhn/trading/
+  scp scripts/trading/kalshi_price_poller.py root@10.8.0.1:/opt/bhn/trading/
+  scp scripts/trading/weather_edge_calculator.py root@10.8.0.1:/opt/bhn/trading/
+
+Run full collector cycle:
+  set -a && source /etc/bhn-trading/env && \
+  source /etc/bhn-trading/strat9.env && set +a && \
+  python3 weather_data_collector.py
+
+Verify bronze tables populated:
+  sudo -u postgres psql -d eventhorizon -P pager=off -c "
+  SELECT 'weather_bronze_nws_forecast_snapshots' AS tbl, COUNT(*) FROM weather_bronze_nws_forecast_snapshots
+  UNION ALL SELECT 'weather_bronze_openmeteo_forecast_snapshots', COUNT(*) FROM weather_bronze_openmeteo_forecast_snapshots
+  UNION ALL SELECT 'weather_bronze_kalshi_market_snapshots', COUNT(*) FROM weather_bronze_kalshi_market_snapshots
+  UNION ALL SELECT 'weather_bronze_nws_actuals', COUNT(*) FROM weather_bronze_nws_actuals
+  UNION ALL SELECT 'weather_silver_forecast_conformed', COUNT(*) FROM weather_silver_forecast_conformed
+  UNION ALL SELECT 'weather_silver_market_conformed', COUNT(*) FROM weather_silver_market_conformed
+  UNION ALL SELECT 'weather_gold_daily_edge_sheet', COUNT(*) FROM weather_gold_daily_edge_sheet;"
+
+Run edge calculator:
+  set -a && source /etc/bhn-trading/env && \
+  source /etc/bhn-trading/strat9.env && set +a && \
+  python3 weather_edge_calculator.py
+
+Verify weather_gold_daily_edge_sheet has rows:
+  sudo -u postgres psql -d eventhorizon -P pager=off -c "
+  SELECT city, target_date, contract_side, bucket_label,
+         raw_forecast_f, model_delta_f, model_confidence,
+         ROUND(edge_pct,1) AS edge_pct, recommended_action
+  FROM weather_gold_daily_edge_sheet
+  WHERE target_date BETWEEN CURRENT_DATE AND CURRENT_DATE + 1
+  ORDER BY target_date, edge_pct DESC;"
+
+================================================================
+TASK 10 — COMMIT
+================================================================
+
+Summary:
+"feat(strat9): Bronze/Silver/Gold schema rebuild"
+
+Description:
+"Full rebuild of BHN weather trading data pipeline.
+
+Replaces Phase 1 scratch tables with proper Bronze/Silver/Gold
+architecture per KALSHI_WEATHER_TRADING_-_SQLDATA-_API-TABLE_ORGANIZATION.txt
+and MIAMI_DAILY_HIGH_TEMPERATURE_MODEL.txt.
+
+BRONZE (raw ingestion, preserve everything):
+  weather_bronze_nws_forecast_snapshots
+  weather_bronze_openmeteo_forecast_snapshots
+  weather_bronze_kalshi_market_snapshots
+  weather_bronze_kalshi_trade_history
+  weather_bronze_nws_actuals
+
+SILVER (clean + standardized):
+  weather_silver_forecast_conformed   (NWS + GFS unified, is_latest_run flag)
+  weather_silver_market_conformed     (Kalshi prices with bucket parsing)
+  weather_silver_actuals_conformed    (NWS settlement truth)
+  weather_silver_forecast_error       (forecast vs actual pairs for calibration)
+  weather_silver_calibration_training_set
+  weather_silver_model_base           (one row per city/date/side/run)
+
+GOLD (model-ready + trading outputs):
+  weather_gold_city_day_features      (feature engineering)
+  weather_gold_calibrated_probabilities (per-bucket model output)
+  weather_gold_daily_edge_sheet       (MAIN TRADING VIEW — bet/skip decisions)
+
+Scripts updated:
+  weather_data_collector.py → writes to bronze tables
+  kalshi_price_poller.py    → writes to weather_bronze_kalshi_market_snapshots
+  weather_edge_calculator.py → NEW: populates weather_gold_daily_edge_sheet
+
+Metabase queries:
+  infrastructure/docs/metabase/CLEAN_QUERIES.sql
+  6 clean queries using new schema
+
+Deployed and verified on LA. weather_gold_daily_edge_sheet producing
+rows for today + tomorrow across all 8 cities."
+
+================================================================
+CONSTRAINTS
+================================================================
+
+- LA only (ssh root@10.8.0.1)
+- Do NOT drop degree_days, enso_index, weather_snapshots
+- Do NOT drop kalshi_positions or kalshi_fills if they exist
+- Get explicit operator YES before dropping old tables
+- DRY_RUN stays true, enabled stays false in rules.json
+- Bootstrap uses scp not git clone
+- NJ SSH always port 2222 (not needed this session)
+- Commit requires Summary AND Description
+- Stop and report on any failure — do not skip ahead
+
+================================================================
+SESSION HANDOFF
+Update BHN-SESSION-HANDOFF.txt with:
+- Old tables dropped (after approval)
+- New schema deployed
+- Bronze row counts per table
+- Silver row counts per table
+- Gold daily_edge_sheet row count
+- Metabase query file location
+- Any errors encountered
+================================================================

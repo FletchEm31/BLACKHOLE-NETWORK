@@ -184,6 +184,25 @@ def _get_latest_gfs_forecast(conn, station_code: str,
         return dict(zip(cols, row))
 
 
+def _get_ensemble_spread(conn, station_code: str,
+                          target_date: date) -> Optional[float]:
+    """Get today's ensemble spread (stddev of member daily highs) from bronze.
+    Returns None if no ensemble data available for this station/date.
+    """
+    with conn.cursor() as cur:
+        cur.execute("""
+            SELECT ensemble_spread_tmax
+            FROM weather_bronze_openmeteo_forecast_snapshots
+            WHERE station_code = %s AND model = 'open_meteo_ensemble'
+              AND target_date = %s AND hour = -1
+              AND ensemble_spread_tmax IS NOT NULL
+            ORDER BY retrieved_at DESC
+            LIMIT 1
+        """, (station_code, target_date))
+        row = cur.fetchone()
+        return float(row[0]) if row else None
+
+
 def _get_forecast_stats(conn, station_code: str) -> dict:
     """Get historical bias and MAE from silver_forecast_error, last 30 days."""
     with conn.cursor() as cur:
@@ -272,7 +291,8 @@ def _upsert_edge_sheet(conn, *, city: str, station_code: str,
                         edge: float, edge_pct: float, edge_rank: int,
                         recommended_action: str,
                         stake_fraction: float, stake_usd: float,
-                        skip_reason: Optional[str]) -> None:
+                        skip_reason: Optional[str],
+                        ensemble_spread: Optional[float] = None) -> None:
     sheet_date = datetime.now(timezone.utc).date()
     with conn.cursor() as cur:
         cur.execute("""
@@ -284,10 +304,10 @@ def _upsert_edge_sheet(conn, *, city: str, station_code: str,
                  market_implied_prob, market_yes_mid, market_volume, market_liquidity,
                  edge, edge_pct, edge_rank,
                  recommended_action, stake_fraction, stake_usd, skip_reason,
-                 last_updated, calibrator_version)
+                 ensemble_spread, last_updated, calibrator_version)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s, %s, NOW(), %s)
+                    %s, %s, %s, %s, %s, %s, %s, %s, NOW(), %s)
             ON CONFLICT (contract_ticker, sheet_date) DO UPDATE SET
                 bucket_floor      = EXCLUDED.bucket_floor,
                 bucket_cap        = EXCLUDED.bucket_cap,
@@ -309,6 +329,7 @@ def _upsert_edge_sheet(conn, *, city: str, station_code: str,
                 stake_fraction    = EXCLUDED.stake_fraction,
                 stake_usd         = EXCLUDED.stake_usd,
                 skip_reason       = EXCLUDED.skip_reason,
+                ensemble_spread   = EXCLUDED.ensemble_spread,
                 last_updated      = NOW()
         """, (city, station_code, target_date, ACTIVE_SIDE, contract_ticker,
               bucket_floor, bucket_cap, bucket_label, sheet_date,
@@ -317,7 +338,7 @@ def _upsert_edge_sheet(conn, *, city: str, station_code: str,
               market_implied_prob, market_yes_mid, market_volume, market_liquidity,
               edge, edge_pct, edge_rank,
               recommended_action, stake_fraction, stake_usd, skip_reason,
-              CALIBRATOR_VERSION))
+              ensemble_spread, CALIBRATOR_VERSION))
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -371,22 +392,32 @@ def run_edge_calc(stations: Optional[list[str]] = None,
                 # Bias-adjusted point forecast
                 mu = nws_tmax + bias
 
-                # Model confidence from NWS-GFS disagreement
+                # Model confidence: ensemble spread is primary signal; NWS-GFS delta is fallback
+                ensemble_spread = _get_ensemble_spread(conn, station_code, target_date)
                 if gfs_tmax is not None:
                     model_delta = abs(nws_tmax - gfs_tmax)
-                    if model_delta < 2.0:
-                        confidence = "HIGH"
-                        model_delta_flag = "AGREE"
-                    elif model_delta < 4.0:
-                        confidence = "MEDIUM"
-                        model_delta_flag = "DIVERGE"
-                    else:
-                        confidence = "LOW"
-                        model_delta_flag = "DIVERGE"
+                    model_delta_flag = "AGREE" if model_delta < 2.0 else "DIVERGE"
                 else:
                     model_delta = None
-                    confidence = "MEDIUM"
                     model_delta_flag = "NO_GFS"
+
+                if ensemble_spread is not None:
+                    # Ensemble spread overrides NWS-GFS delta for confidence
+                    if ensemble_spread <= 2.0:
+                        confidence = "HIGH"
+                    elif ensemble_spread <= 4.0:
+                        confidence = "MEDIUM"
+                    else:
+                        confidence = "LOW"
+                elif gfs_tmax is not None:
+                    if model_delta < 2.0:       # type: ignore[operator]
+                        confidence = "HIGH"
+                    elif model_delta < 4.0:     # type: ignore[operator]
+                        confidence = "MEDIUM"
+                    else:
+                        confidence = "LOW"
+                else:
+                    confidence = "MEDIUM"
 
                 # Get all active contracts for this station/date
                 contracts = _get_active_contracts(conn, station_code, [target_date])
@@ -503,6 +534,7 @@ def run_edge_calc(stations: Optional[list[str]] = None,
                                 stake_fraction=kelly,
                                 stake_usd=stake_usd,
                                 skip_reason=skip_reason,
+                                ensemble_spread=ensemble_spread,
                             )
                             rows_written += 1
                         except Exception as e:

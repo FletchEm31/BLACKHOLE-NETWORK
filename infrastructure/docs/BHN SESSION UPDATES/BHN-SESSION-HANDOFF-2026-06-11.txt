@@ -1,0 +1,140 @@
+================================================================
+BHN SESSION HANDOFF — 2026-06-11
+Workstream: strat9 (Kalshi Weather Trading)
+================================================================
+
+── SYSTEM STATE (verified 15:03 UTC) ────────────────────────────
+
+Table                                     Rows    Latest
+-----------------------------------------  ------  ---------------------------
+weather_bronze_nws_forecast_snapshots      2,675   2026-06-11 21:54 UTC
+weather_bronze_openmeteo_forecast_snapshots 9,240+  2026-06-11 21:54 UTC
+weather_bronze_kalshi_market_snapshots     54,780  2026-06-11 15:04 UTC
+weather_bronze_nws_actuals                     8   2026-06-11 11:09 UTC (June 10 actuals — correct)
+weather_silver_forecast_conformed            688   2026-06-11 15:03 UTC
+weather_silver_market_conformed              252   2026-06-11 15:04 UTC
+weather_silver_forecast_error                  0   — (calibration Day 2 of 30)
+weather_gold_daily_edge_sheet                 12   2026-06-11 21:56 UTC
+weather_kalshi_contract_catalog               54   2026-06-11 15:04 UTC
+kalshi_positions                              16+  2026-06-11 15:41 UTC (new today)
+kalshi_fills                                 100+  2026-06-11 15:41 UTC (new today)
+
+Calibration status: Day 2 of 30. Go-live target: 2026-07-11.
+silver_forecast_error will begin populating as daily actuals accumulate.
+
+── NWS ACTUALS ─────────────────────────────────────────────────
+
+All 8 cities populated for June 10 (yesterday — NWS CLI publishes T-1):
+  KMIA  tmax=88°F  tmin=79°F
+  KDEN  tmax=86°F  tmin=50°F  ← note: live collector logged 61°F (parsing discrepancy) — DB upsert DO NOTHING preserved correct 86°F. Investigate next session.
+  KPHX  tmax=107°F tmin=78°F
+  KLAX  tmax=75°F  tmin=63°F
+  KDFW  tmax=94°F  tmin=78°F
+  KAUS  tmax=91°F  tmin=76°F
+  KORD  tmax=91°F  tmin=67°F
+  KNYC  tmax=82°F  tmin=69°F
+
+── TIMER STATUS ────────────────────────────────────────────────
+
+bhn-weather-collector.timer         → fires every ~30 min ✅
+bhn-strategy-prediction-alpha.timer → last fired 15:25 UTC; next: n/a ⚠️ INVESTIGATE
+
+FLAG: prediction-alpha timer shows 'next: n/a'. May be a one-shot unit or
+misconfigured OnCalendar. Check:
+  systemctl status bhn-strategy-prediction-alpha.timer
+  cat /etc/systemd/system/bhn-strategy-prediction-alpha.timer
+
+── GOLD EDGE SHEET (live signals, June 11) ─────────────────────
+
+Miami HIGH (spread=1.00°F → confidence=HIGH):
+  BET_YES: 89-90 (+14.5% edge)
+  BET_NO:  <85 (-93.5%), 85-86 (-93%), >92 (-84.5%), 87-88 (-73.7%), 91-92 (-62.3%)
+
+Denver HIGH (spread=2.83°F → confidence=MEDIUM):
+  BET_YES: 76-77 (+10.2%), 78-79 (+9.4%), 80-81 (+5.9%)
+  BET_NO:  <76 (-52.2%), 82-83 (-51.7%), >83 (-45.7%)
+
+All DRY_RUN=true — no real bets placed.
+
+── WHAT WAS DONE TODAY ─────────────────────────────────────────
+
+Task 1: System state verified ✅
+Task 2: NWS actuals KMIA/KDEN verified ✅
+Task 3: Full collector cycle ran cleanly ✅
+        16 Kalshi positions + 100 fills writing (new tables created)
+Task 4: Gold edge sheet reviewed — 12 rows, correct signals ✅
+Task 5: Visual Crossing backfill — BLOCKED (spec file not found in repo)
+        User references BHN_WEATHER_CC_PROMPT_BSG_REBUILD.txt Task 11
+        Only _2 version exists; no Task 11. Needs spec written next session.
+Task 6: CLEAN_QUERIES.sql written — 7 validated Metabase queries ✅
+Task 7: This file + git commit ✅
+Task 8: kalshi_positions + kalshi_fills tables created; bhn_trader grants applied ✅
+        Data flowing: 16 positions, 100 fills per collection cycle
+Task 9A: Open-Meteo Ensemble source added ✅
+        fetch_open_meteo_ensemble() → ensemble-api.open-meteo.com/v1/ensemble
+        56 daily aggregate rows (8 cities × 7 days)
+        model='open_meteo_ensemble', hour=-1 sentinel
+        Writes: tmax_f=mean, tmin_f=mean, ensemble_spread_tmax/tmin=stddev
+Task 9B: NWS Hourly source added ✅
+        fetch_nws_hourly() → /gridpoints/{office}/{x},{y}/forecast/hourly
+        260 hourly rows inserted (today + tomorrow, all 8 cities)
+        source_name='nws_hourly', hour=0-23 (local time)
+Ensemble → model_confidence: live in gold edge sheet ✅
+        Miami spread=1.0°F → HIGH; Denver spread=2.83°F → MEDIUM
+
+── SCHEMA CHANGES (applied to LA today) ────────────────────────
+
+Tables modified (ADD COLUMN IF NOT EXISTS):
+  weather_bronze_nws_forecast_snapshots:
+    hour INTEGER
+    source_name TEXT DEFAULT 'nws_gridpoints'
+    (unique constraint replaced with two partial indexes: brnws_daily_unique, brnws_hourly_unique)
+
+  weather_bronze_openmeteo_forecast_snapshots:
+    tmax_f NUMERIC
+    tmin_f NUMERIC
+    ensemble_spread_tmax NUMERIC
+    ensemble_spread_tmin NUMERIC
+
+  weather_silver_model_base:
+    ensemble_spread_tmax NUMERIC
+    ensemble_spread_tmin NUMERIC
+
+  weather_gold_daily_edge_sheet:
+    ensemble_spread NUMERIC
+
+New tables created:
+  kalshi_positions (via migration 2026-06-11-kalshi-positions.sql)
+  kalshi_fills     (via migration 2026-06-11-kalshi-fills.sql)
+  GRANT SELECT, INSERT ON both TO bhn_trader
+
+Migration files: sql/migrations/2026-06-11-*.sql
+
+── CONSTRAINTS (carry forward) ─────────────────────────────────
+
+- LA only: ssh root@10.8.0.1
+- Do NOT drop legacy tables (weather_forecasts, weather_observations,
+  prediction_contracts, weather_contract_prices, weather_bets)
+- DRY_RUN=true, enabled=false in rules.json — DO NOT CHANGE
+- Commit requires Summary AND Description
+- Stop and report on any failure
+
+── NEXT SESSION PRIORITIES ─────────────────────────────────────
+
+HIGH:
+  1. Investigate bhn-strategy-prediction-alpha.timer showing 'next: n/a'
+  2. Fix KDEN CLI parsing discrepancy (collector logs 61°F, actual=86°F)
+  3. Task 5 — Visual Crossing backfill (operator needs to write/provide spec)
+     Key: VISUAL_CROSSING_API_KEY must be added to /etc/bhn-trading/strat9.env
+
+MEDIUM:
+  4. Wire ensemble_spread into weather_silver_model_base (currently in bronze+gold only)
+  5. NWS hourly afternoon peak logic in edge calculator (nws_hourly_peak hours 12-18,
+     quality_flag='hourly_override' when differs from daily high)
+  6. Monitor calibration: silver_forecast_error should get first rows ~June 12 morning
+
+LOW:
+  7. Rotate Kalshi private key (pasted in prior session — security debt)
+  8. Verify Courtyard n8n row count grew past 546
+
+================================================================

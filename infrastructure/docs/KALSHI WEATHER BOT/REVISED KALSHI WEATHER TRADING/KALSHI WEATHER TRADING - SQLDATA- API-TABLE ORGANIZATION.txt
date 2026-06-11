@@ -1,0 +1,372 @@
+WEATHER BETTING DATA ARCHITECTURE
+Bronze / Silver / Gold Tables
+
+GOAL
+Build a clean pipeline for Kalshi weather markets using NWS forecasts, Open-Meteo forecasts, Kalshi market prices, and NWS actual settlement data.
+The system should preserve raw data, clean and standardize it, then create model-ready features and edge outputs.
+
+============================================================
+BRONZE TABLES
+============================================================
+
+1) bronze_nws_forecast_snapshots
+Purpose:
+Raw NWS forecast snapshots.
+
+Include:
+- city
+- station
+- forecast_run_time
+- target_date
+- lead_hours
+- tmax_f
+- tmin_f
+- dewpoint_f
+- rh_pct
+- wind_speed
+- wind_gust
+- cloud_cover
+- pop
+- qpf
+- snowfall
+- weather
+- hazards
+- source_payload_json
+- retrieved_at
+
+Source/API:
+- NWS API
+- Gridpoints / forecast endpoints
+
+2) bronze_openmeteo_forecast_snapshots
+Purpose:
+Raw Open-Meteo forecast snapshots.
+
+Include:
+- city
+- lat
+- lon
+- forecast_run_time
+- target_date
+- hour
+- temperature_2m
+- dewpoint_2m
+- relative_humidity_2m
+- cloud_cover
+- precipitation
+- rain
+- snowfall
+- wind_speed_10m
+- wind_gusts_10m
+- surface_pressure
+- weather_code
+- source_payload_json
+- retrieved_at
+
+Source/API:
+- Open-Meteo Forecast API
+- Open-Meteo Historical Forecast API
+
+3) bronze_kalshi_market_snapshots
+Purpose:
+Raw Kalshi live market snapshots.
+
+Include:
+- market_ticker
+- event_ticker
+- city
+- contract_side
+- bucket_type
+- bucket_floor
+- bucket_cap
+- yes_bid
+- yes_ask
+- no_bid
+- no_ask
+- last_price
+- volume
+- open_interest
+- market_status
+- retrieved_at
+- source_payload_json
+
+Source/API:
+- Kalshi live market data
+- Kalshi historical market and candlestick endpoints
+
+4) bronze_kalshi_trade_history
+Purpose:
+Raw Kalshi trade history.
+
+Include:
+- market_ticker
+- trade_time
+- price
+- size
+- side
+- retrieved_at
+- source_payload_json
+
+Source/API:
+- Kalshi historical trades endpoint
+
+5) bronze_nws_actuals
+Purpose:
+Raw settlement truth from NWS.
+
+Include:
+- city
+- station
+- target_date
+- final_tmax_f
+- final_tmin_f
+- report_issued_at
+- source_payload_json
+- retrieved_at
+
+Source/API:
+- NWS Daily Climate Report
+- Official settlement source for Kalshi weather markets
+
+============================================================
+SILVER TABLES
+============================================================
+
+1) silver_forecast_conformed
+Purpose:
+Clean and standardized forecast data.
+
+Include:
+- city
+- station
+- forecast_run_time
+- target_date
+- lead_hours
+- source_name
+- tmax_f
+- tmin_f
+- dewpoint_f
+- rh_pct
+- wind_speed
+- wind_gust
+- cloud_cover
+- pop
+- qpf
+- snowfall
+- weather_code
+- is_latest_run
+- is_valid
+- quality_flag
+
+2) silver_market_conformed
+Purpose:
+Clean and standardized market data.
+
+Include:
+- market_ticker
+- city
+- contract_side
+- bucket_floor
+- bucket_cap
+- snapshot_time
+- yes_mid
+- yes_bid
+- yes_ask
+- implied_prob
+- market_liquidity_flag
+- is_latest_snapshot
+
+3) silver_actuals_conformed
+Purpose:
+Clean settlement outcomes.
+
+Include:
+- city
+- station
+- target_date
+- final_tmax_f
+- final_tmin_f
+- actual_source
+- report_issued_at
+- settlement_label_high
+- settlement_label_low
+- is_final
+
+4) silver_forecast_error
+Purpose:
+Forecast error labels for calibration.
+
+Include:
+- city
+- station
+- target_date
+- feature_name
+- forecast_value
+- actual_value
+- forecast_error_f
+- lead_hours
+- forecast_run_time
+- source_name
+- error_sign
+
+Error convention:
+- forecast_error_f = actual - forecast
+- positive = NWS ran cold
+- negative = NWS ran hot
+
+5) silver_calibration_training_set
+Purpose:
+Training data for calibration layer.
+
+Include:
+- city
+- station
+- contract_side
+- target_date
+- forecast_run_time
+- raw_prob
+- market_price
+- actual_outcome
+- forecast_error_f
+- lead_hours
+- season
+- calibration_window_flag
+
+============================================================
+GOLD TABLES
+============================================================
+
+1) gold_city_day_features
+Purpose:
+Model-ready features.
+
+Include:
+- city
+- station
+- target_date
+- contract_side
+- latest_nws_tmax_f
+- latest_nws_tmin_f
+- latest_openmeteo_tmax_f
+- latest_openmeteo_tmin_f
+- forecast_spread
+- dewpoint_spread
+- humidity_spread
+- cloud_cover_change
+- wind_shift_flag
+- lead_time_hours
+- season
+- historical_bias_7d
+- historical_bias_30d
+- historical_mae_30d
+- market_yes_mid
+- market_implied_prob
+- target_label
+
+2) gold_calibrated_probabilities
+Purpose:
+Calibrated probabilities and edge.
+
+Include:
+- city
+- station
+- target_date
+- contract_side
+- bucket_floor
+- bucket_cap
+- raw_model_prob
+- calibrated_prob
+- market_implied_prob
+- edge
+- edge_rank
+- trade_flag
+
+3) gold_daily_betting_sheet
+Purpose:
+Final decision sheet.
+
+Include:
+- city
+- station
+- target_date
+- contract_ticker
+- contract_side
+- bucket
+- raw_forecast
+- calibrated_prob
+- market_price
+- edge
+- recommended_action
+- stake_fraction
+- last_updated
+
+============================================================
+REFINED SILVER
+============================================================
+
+Table:
+- silver_model_base
+
+Purpose:
+One clean row per city, date, run time, and contract side.
+
+Include:
+- latest NWS forecast
+- latest Open-Meteo forecast
+- latest Kalshi market snapshot
+- actual settlement label when available
+- forecast error fields
+- validity flags
+- deduped timestamps
+
+Use:
+This table feeds calibration and training without extra joins.
+
+============================================================
+PERFECTED GOLD
+============================================================
+
+Table:
+- gold_daily_edge_sheet
+
+Purpose:
+Final trading sheet.
+
+Include:
+- city
+- station
+- date
+- high/low bucket
+- latest calibrated probability
+- market implied probability
+- edge
+- bias-adjusted forecast
+- confidence
+- bet/skip flag
+- notes
+
+Use:
+This is the sheet the daily scanner should read first.
+
+============================================================
+BUILD ORDER
+============================================================
+
+1) Ingest raw API data into bronze tables.
+2) Clean and standardize into silver tables.
+3) Join forecasts, prices, and actuals into silver_model_base.
+4) Train calibration on forecast error labels.
+5) Generate calibrated probabilities.
+6) Write edge outputs into gold tables.
+7) Use gold_daily_edge_sheet for daily betting decisions.
+
+============================================================
+NOTES
+============================================================
+
+- Preserve raw API payloads in bronze tables.
+- Do not mix forecast issue times with target dates.
+- Keep high and low contract sides separate.
+- Use actual - forecast for error labeling.
+- Train calibration after enough matched history is collected.
+- Keep source, timestamp, and station mapping explicit for every row.

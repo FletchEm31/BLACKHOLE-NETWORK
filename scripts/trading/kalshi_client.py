@@ -466,25 +466,29 @@ class KalshiClient:
         return self.get("/portfolio/fills", params=params)
 
     def fetch_kalshi_portfolio(self) -> dict:
-        """Fetch current positions + recent fills and upsert to kalshi_positions.
+        """Fetch current positions + recent fills; write both to DB.
 
         Returns dict with keys:
           positions_fetched: int
           fills_fetched: int
-          rows_upserted: int
+          positions_upserted: int
+          fills_inserted: int
         """
         positions_body = self.get_positions(limit=200)
-        fills_body     = self.list_fills(limit=50)
+        fills_body     = self.list_fills(limit=100)
 
-        positions = positions_body.get("market_positions") or []
+        positions = (positions_body.get("market_positions")
+                     or positions_body.get("positions") or [])
         fills     = fills_body.get("fills") or []
 
-        rows_upserted = _upsert_positions_to_pg(positions)
+        pos_rows  = _upsert_positions_to_pg(positions)
+        fill_rows = _upsert_fills_to_pg(fills)
 
         return {
-            "positions_fetched": len(positions),
-            "fills_fetched":     len(fills),
-            "rows_upserted":     rows_upserted,
+            "positions_fetched":  len(positions),
+            "fills_fetched":      len(fills),
+            "positions_upserted": pos_rows,
+            "fills_inserted":     fill_rows,
         }
 
     # ─────────────────────────────────────────────────────────────────────
@@ -618,37 +622,57 @@ class KalshiClient:
                         if not ticker:
                             continue
                         title = m.get("title") or m.get("subtitle") or ""
-                        close_str = m.get("close_time") or m.get("expiration_time")
-                        # Kalshi returns ISO 8601 strings; we only need the date
-                        resolution_date = None
-                        if close_str:
-                            try:
-                                resolution_date = close_str[:10]  # YYYY-MM-DD
-                            except (TypeError, IndexError):
-                                resolution_date = None
-                        # Derive station_code from the title for the 4 weather
-                        # series; leave NULL for other markets.
-                        station_code = _station_from_kalshi_title(title)
-                        variable = _variable_from_kalshi_title(title)
+
+                        # Parse station_code / variable / resolution_date /
+                        # threshold from the ticker — more reliable than title.
+                        meta = _parse_ticker_metadata(ticker)
+                        station_code    = meta["station_code"] or _station_from_kalshi_title(title)
+                        variable        = meta["variable"]     or _variable_from_kalshi_title(title)
+                        resolution_date = meta["resolution_date"]
+                        threshold_op    = meta["threshold_op"]
+                        threshold_value = meta["threshold_value"]
+
+                        # resolution_date fallback: close_time from API payload
+                        if resolution_date is None:
+                            close_str = m.get("close_time") or m.get("expiration_time")
+                            if close_str:
+                                try:
+                                    resolution_date = close_str[:10]
+                                except (TypeError, IndexError):
+                                    pass
+
+                        # threshold_op fallback: parse from title text
+                        if threshold_op is None and threshold_value is not None:
+                            tl = title.lower()
+                            if ">" in tl:
+                                threshold_op = ">"
+                            elif "<" in tl:
+                                threshold_op = "<"
+
                         cur.execute("""
                             INSERT INTO prediction_contracts
                                 (exchange, contract_id, title,
                                  station_code, variable,
-                                 resolution_date, is_active, raw_payload, last_seen_at)
+                                 resolution_date, is_active,
+                                 threshold_op, threshold_value,
+                                 raw_payload, last_seen_at)
                             VALUES ('kalshi', %s, %s, %s, %s, %s,
-                                    %s, %s::jsonb, NOW())
+                                    %s, %s, %s, %s::jsonb, NOW())
                             ON CONFLICT (exchange, contract_id) DO UPDATE SET
                                 title           = EXCLUDED.title,
                                 station_code    = EXCLUDED.station_code,
                                 variable        = EXCLUDED.variable,
                                 resolution_date = EXCLUDED.resolution_date,
                                 is_active       = EXCLUDED.is_active,
+                                threshold_op    = EXCLUDED.threshold_op,
+                                threshold_value = EXCLUDED.threshold_value,
                                 raw_payload     = EXCLUDED.raw_payload,
                                 last_seen_at    = NOW()
                         """, (
                             ticker, title, station_code, variable,
                             resolution_date,
                             (m.get("status") or "").lower() in ("open", "active"),
+                            threshold_op, threshold_value,
                             json.dumps(m),
                         ))
                         n += 1
@@ -981,6 +1005,48 @@ class KalshiClient:
 # Portfolio DB helper
 # ─────────────────────────────────────────────────────────────────────────
 
+def _upsert_fills_to_pg(fills: list) -> int:
+    """Insert fill records from /portfolio/fills into kalshi_fills.
+    Each fill is one matched order leg — insert-only (no conflict update).
+    """
+    if not fills:
+        return 0
+    n = 0
+    try:
+        with tc.get_pg_conn() as conn:
+            with conn.cursor() as cur:
+                for f in fills:
+                    ticker = f.get("market_ticker") or f.get("ticker")
+                    if not ticker:
+                        continue
+                    title  = f.get("market_title") or f.get("title") or ""
+                    side   = (f.get("side") or "yes").lower()
+                    action = (f.get("action") or "buy").lower()
+                    count  = int(f.get("count") or 0)
+                    # price is in cents (integer 1..99)
+                    price_cents = int(f.get("yes_price") or f.get("price") or 0)
+                    cost_usd    = round(count * price_cents / 100.0, 4) if count and price_cents else None
+                    is_taker    = bool(f.get("is_taker"))
+                    created_str = f.get("created_time") or f.get("created_at")
+                    cur.execute("""
+                        INSERT INTO kalshi_fills
+                            (contract_ticker, contract_title, side, action,
+                             count, price_cents, cost_usd, is_taker, created_time)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        ON CONFLICT DO NOTHING
+                    """, (
+                        ticker, title, side, action,
+                        count, price_cents, cost_usd, is_taker, created_str,
+                    ))
+                    n += 1
+            conn.commit()
+    except Exception as e:
+        logger.warning(f"_upsert_fills_to_pg failed (non-fatal): {e}")
+        return 0
+    logger.debug(f"kalshi_fills: inserted {n} rows")
+    return n
+
+
 def _upsert_positions_to_pg(positions: list) -> int:
     """Upsert a /portfolio/positions payload into kalshi_positions.
 
@@ -1053,12 +1119,88 @@ _KALSHI_TITLE_STATION_MAP = (
     ("nyc",        "KNYC"),
     ("chicago",    "KORD"),
     ("miami",      "KMIA"),
-    ("austin",      "KAUS"),
+    ("austin",     "KAUS"),
+    ("denver",     "KDEN"),
+    ("phoenix",    "KPHX"),
     ("los angeles", "KLAX"),
     ("lax",         "KLAX"),
     ("dallas",      "KDFW"),
     ("dfw",         "KDFW"),
 )
+
+# Ticker series prefix → ICAO station code
+# Parsed directly from ticker (e.g. KXHIGHDEN → DEN → KDEN).
+# More reliable than title text matching — use as primary source.
+_TICKER_CITY_TO_STATION: dict[str, str] = {
+    "DEN": "KDEN", "MIA": "KMIA", "PHX": "KPHX",
+    "LAX": "KLAX", "DFW": "KDFW", "NYC": "KNYC",
+    "CHI": "KORD", "AUS": "KAUS", "NY":  "KNYC",
+}
+
+
+def _parse_ticker_metadata(ticker: str) -> dict:
+    """Extract station_code, variable, resolution_date, threshold_value
+    from a Kalshi weather ticker string.
+
+    Format: KXHIGH{CITY}-{YYMONDD}-{B|T}{value}
+    Examples:
+      KXHIGHDEN-26JUN11-B78.5  → KDEN, tmax_f, 2026-06-11, between, 78.5
+      KXHIGHMIA-26JUN10-T92    → KMIA, tmax_f, 2026-06-10, >, 92.0
+      KXLOWMIA-26JUN10-T85     → KMIA, tmin_f, 2026-06-10, <, 85.0
+    """
+    result: dict = {
+        "station_code": None, "variable": None,
+        "resolution_date": None,
+        "threshold_op": None, "threshold_value": None,
+    }
+    parts = ticker.split("-")
+    if len(parts) < 2:
+        return result
+
+    series = parts[0]  # e.g. "KXHIGHDEN"
+
+    # Variable + city code
+    if series.startswith("KXHIGH"):
+        result["variable"] = "tmax_f"
+        city_code = series[6:]  # strip "KXHIGH"
+    elif series.startswith("KXLOW"):
+        result["variable"] = "tmin_f"
+        city_code = series[5:]  # strip "KXLOW"
+    else:
+        city_code = ""
+
+    result["station_code"] = _TICKER_CITY_TO_STATION.get(city_code)
+
+    # Resolution date  e.g. "26JUN11" → 2026-06-11
+    if len(parts) >= 2:
+        _MONTH = {"JAN":1,"FEB":2,"MAR":3,"APR":4,"MAY":5,"JUN":6,
+                  "JUL":7,"AUG":8,"SEP":9,"OCT":10,"NOV":11,"DEC":12}
+        import re as _re
+        m = _re.match(r'(\d{2})([A-Z]{3})(\d{2})', parts[1])
+        if m:
+            yy, mon, dd = m.groups()
+            mo = _MONTH.get(mon)
+            if mo:
+                from datetime import date as _date
+                try:
+                    result["resolution_date"] = _date(2000 + int(yy), mo, int(dd))
+                except ValueError:
+                    pass
+
+    # Threshold  e.g. "T92" → (>, 92.0)  "B78.5" → (between, 78.5)
+    if len(parts) >= 3:
+        thresh = parts[2]
+        try:
+            if thresh.startswith("B"):
+                result["threshold_op"]    = "between"
+                result["threshold_value"] = float(thresh[1:])
+            elif thresh.startswith("T"):
+                result["threshold_value"] = float(thresh[1:])
+                # op determined from title text in the caller
+        except ValueError:
+            pass
+
+    return result
 
 
 def _station_from_kalshi_title(title: str) -> Optional[str]:

@@ -1326,9 +1326,10 @@ def _insert_bronze_nws_forecast(*, city: str, station_code: str, nws_office: str
                     (city, station_code, nws_office, forecast_run_time, target_date,
                      lead_hours, tmax_f, tmin_f, dewpoint_f, rh_pct,
                      wind_speed_mph, wind_gust_mph, cloud_cover_pct, pop_pct,
-                     weather_text, source_payload_json)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
-                ON CONFLICT (station_code, forecast_run_time, target_date) DO NOTHING
+                     weather_text, source_name, source_payload_json)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'nws_gridpoints', %s::jsonb)
+                ON CONFLICT (station_code, forecast_run_time, target_date)
+                WHERE source_name = 'nws_gridpoints' DO NOTHING
             """, (city, station_code, nws_office, forecast_run_time, target_date,
                   lead_hours, tmax_f, tmin_f, dewpoint_f, rh_pct,
                   wind_speed_mph, wind_gust_mph, cloud_cover_pct, pop_pct,
@@ -1341,18 +1342,24 @@ def _insert_bronze_openmeteo_snapshot(*, city: str, station_code: str,
                                         model: str, forecast_run_time: datetime,
                                         target_date: date, hour: Optional[int],
                                         temperature_2m: Optional[float],
-                                        source_payload_json: Optional[dict]) -> None:
+                                        tmax_f: Optional[float] = None,
+                                        tmin_f: Optional[float] = None,
+                                        ensemble_spread_tmax: Optional[float] = None,
+                                        ensemble_spread_tmin: Optional[float] = None,
+                                        source_payload_json: Optional[dict] = None) -> None:
     with tc.get_pg_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
                 INSERT INTO weather_bronze_openmeteo_forecast_snapshots
                     (city, station_code, lat, lon, model,
                      forecast_run_time, target_date, hour, temperature_2m,
+                     tmax_f, tmin_f, ensemble_spread_tmax, ensemble_spread_tmin,
                      source_payload_json)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
                 ON CONFLICT (station_code, model, forecast_run_time, target_date, hour) DO NOTHING
             """, (city, station_code, lat, lon, model,
                   forecast_run_time, target_date, hour, temperature_2m,
+                  tmax_f, tmin_f, ensemble_spread_tmax, ensemble_spread_tmin,
                   json.dumps(source_payload_json) if source_payload_json else None))
 
 
@@ -1671,17 +1678,240 @@ def fetch_kalshi_portfolio(dry_run: bool = False) -> int:
     return total
 
 
+def fetch_open_meteo_ensemble(dry_run: bool = False) -> int:
+    """Fetch Open-Meteo ensemble forecast (31 GFS members) for each city.
+
+    Computes per city per target_date:
+      ensemble_mean_tmax  = mean of all-member daily highs
+      ensemble_spread_tmax = stddev of all-member daily highs (uncertainty signal)
+      ensemble_mean_tmin  = mean of all-member daily lows
+      ensemble_spread_tmin = stddev of all-member daily lows
+
+    Writes to weather_bronze_openmeteo_forecast_snapshots with:
+      model = 'open_meteo_ensemble', hour = -1 (sentinel for daily aggregate)
+      tmax_f = mean_tmax, tmin_f = mean_tmin
+      ensemble_spread_tmax, ensemble_spread_tmin
+
+    Spread thresholds used downstream in edge calculator:
+      > 4°F → model_confidence = LOW  (skip trade)
+      2-4°F → model_confidence = MEDIUM
+      ≤ 2°F → model_confidence = HIGH  (bet with confidence)
+    """
+    import statistics as _stats
+    from collections import defaultdict as _dd
+
+    ENSEMBLE_URL = "https://ensemble-api.open-meteo.com/v1/ensemble"
+    TIMEZONE_MAP = {
+        "KNYC": "America/New_York",  "KORD": "America/Chicago",
+        "KMIA": "America/New_York",  "KAUS": "America/Chicago",
+        "KPHX": "America/Phoenix",   "KDEN": "America/Denver",
+        "KLAX": "America/Los_Angeles", "KDFW": "America/Chicago",
+    }
+    n = 0
+    run_time = datetime.now(timezone.utc)
+
+    for city in CITIES:
+        tz = TIMEZONE_MAP.get(city.icao, "UTC")
+        params = {
+            "latitude": city.lat, "longitude": city.lon, "timezone": tz,
+            "models": "gfs_seamless",
+            "hourly": "temperature_2m",
+            "temperature_unit": "fahrenheit",
+            "forecast_days": 7,
+        }
+        data = _http_get_json(ENSEMBLE_URL, params=params, timeout=60)
+        if not data:
+            logger.warning(f"open_meteo_ensemble {city.icao}: fetch failed")
+            continue
+
+        hourly = data.get("hourly") or {}
+        times = hourly.get("time") or []
+        member_keys = [k for k in hourly if k.startswith("temperature_2m_member")]
+        if not member_keys:
+            logger.warning(f"open_meteo_ensemble {city.icao}: no member columns in response")
+            continue
+
+        # Group hourly values by (date, member)
+        by_date_member: dict = _dd(lambda: _dd(list))
+        for i, t_str in enumerate(times):
+            d_str = t_str[:10]
+            for mk in member_keys:
+                vals = hourly.get(mk) or []
+                if i < len(vals) and vals[i] is not None:
+                    by_date_member[d_str][mk].append(float(vals[i]))
+
+        for d_str, member_data in sorted(by_date_member.items()):
+            try:
+                target_date = date.fromisoformat(d_str)
+            except ValueError:
+                continue
+            member_highs = [max(temps) for temps in member_data.values() if temps]
+            member_lows  = [min(temps) for temps in member_data.values() if temps]
+            if len(member_highs) < 2:
+                continue
+
+            mean_tmax   = _stats.mean(member_highs)
+            spread_tmax = _stats.stdev(member_highs)
+            mean_tmin   = _stats.mean(member_lows)
+            spread_tmin = _stats.stdev(member_lows)
+
+            if not dry_run:
+                try:
+                    _insert_bronze_openmeteo_snapshot(
+                        city=city.name, station_code=city.icao,
+                        lat=city.lat, lon=city.lon,
+                        model="open_meteo_ensemble",
+                        forecast_run_time=run_time,
+                        target_date=target_date,
+                        hour=-1,  # sentinel: daily aggregate row
+                        temperature_2m=None,
+                        tmax_f=round(mean_tmax, 2),
+                        tmin_f=round(mean_tmin, 2),
+                        ensemble_spread_tmax=round(spread_tmax, 3),
+                        ensemble_spread_tmin=round(spread_tmin, 3),
+                    )
+                    n += 1
+                except Exception as e:
+                    logger.warning(f"open_meteo_ensemble {city.icao}/{d_str}: write failed: {e}")
+            else:
+                logger.debug(f"open_meteo_ensemble dry-run {city.icao}/{d_str}: "
+                             f"tmax={mean_tmax:.1f}±{spread_tmax:.1f} "
+                             f"tmin={mean_tmin:.1f}±{spread_tmin:.1f}")
+                n += 1
+
+    logger.info(f"open_meteo_ensemble: {n} rows {'(dry-run)' if dry_run else 'inserted'}")
+    return n
+
+
+def fetch_nws_hourly(dry_run: bool = False) -> int:
+    """Fetch NWS hourly gridpoints forecast for each city.
+
+    Extracts per hour for today + tomorrow:
+      temperature_f, dewpoint_f, wind_speed_mph, cloud_cover_pct, pop_pct
+
+    Writes to weather_bronze_nws_forecast_snapshots with source_name='nws_hourly'.
+    tmax_f stores the hourly temperature (not a daily max).
+
+    Afternoon peak logic: max(temperature_f, hours 12-18 local) is used by the
+    edge calculator as nws_hourly_peak. If it differs from daily NWS high, the
+    edge sheet uses the hourly peak and flags quality_flag='hourly_override'.
+    """
+    today = datetime.now(timezone.utc).date()
+    target_dates = {today, today + timedelta(days=1)}
+    run_time = datetime.now(timezone.utc)
+    n = 0
+
+    for city in CITIES:
+        gridpoint = _discover_nws_gridpoint(city)
+        if gridpoint is None:
+            continue
+        _, office, grid_x, grid_y = gridpoint
+
+        hourly_url = f"{NWS_API_BASE}/gridpoints/{office}/{grid_x},{grid_y}/forecast/hourly"
+        data = _http_get_json(hourly_url, timeout=30)
+        if not data:
+            logger.warning(f"nws_hourly {city.icao}: fetch failed")
+            continue
+
+        periods = ((data.get("properties") or {}).get("periods") or [])
+        if not periods:
+            logger.warning(f"nws_hourly {city.icao}: empty periods")
+            continue
+
+        rows_city = 0
+        for period in periods:
+            start_str = period.get("startTime") or ""
+            if not start_str:
+                continue
+            try:
+                dt_local = datetime.fromisoformat(start_str)
+                target_date = dt_local.date()
+                hour_local = dt_local.hour
+            except (ValueError, AttributeError):
+                continue
+
+            if target_date not in target_dates:
+                continue
+
+            temp = period.get("temperature")
+            temp_unit = period.get("temperatureUnit", "F")
+            if temp is None:
+                continue
+            temp_f = float(temp) if temp_unit == "F" else _c_to_f(float(temp))
+            if temp_f is None:
+                continue
+
+            # Extract extended fields where available
+            dewpoint_raw = (period.get("dewpoint") or {}).get("value")
+            dewpoint_f = _c_to_f(dewpoint_raw) if dewpoint_raw is not None else None
+
+            wind_raw = period.get("windSpeed") or ""
+            wind_f: Optional[float] = None
+            if wind_raw:
+                try:
+                    wind_f = float(str(wind_raw).split()[0])
+                except (ValueError, IndexError):
+                    pass
+
+            cloud_raw = (period.get("skyCover") or period.get("relativeHumidity") or {})
+            cloud_f: Optional[float] = None
+            if isinstance(cloud_raw, dict):
+                v = cloud_raw.get("value")
+                cloud_f = float(v) if v is not None else None
+
+            pop_raw = (period.get("probabilityOfPrecipitation") or {}).get("value")
+            pop_f = float(pop_raw) if pop_raw is not None else None
+
+            if dry_run:
+                n += 1
+                continue
+
+            try:
+                with tc.get_pg_conn() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute("""
+                            INSERT INTO weather_bronze_nws_forecast_snapshots
+                                (city, station_code, nws_office, forecast_run_time,
+                                 target_date, lead_hours, hour,
+                                 tmax_f, dewpoint_f, wind_speed_mph,
+                                 cloud_cover_pct, pop_pct,
+                                 source_name, source_payload_json)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'nws_hourly', NULL)
+                            ON CONFLICT (station_code, source_name, forecast_run_time, target_date, hour)
+                            WHERE source_name = 'nws_hourly' DO NOTHING
+                        """, (
+                            city.name, city.icao, office, run_time,
+                            target_date,
+                            (target_date - today).days * 24 + hour_local,
+                            hour_local,
+                            temp_f, dewpoint_f, wind_f,
+                            cloud_f, pop_f,
+                        ))
+                n += 1
+                rows_city += 1
+            except Exception as e:
+                logger.warning(f"nws_hourly {city.icao}/{target_date}/{hour_local}: write failed: {e}")
+
+        if rows_city or dry_run:
+            logger.debug(f"nws_hourly {city.icao}: {rows_city} hourly rows inserted")
+
+    logger.info(f"nws_hourly: {n} rows {'(dry-run)' if dry_run else 'inserted'}")
+    return n
+
+
 SOURCES = {
-    "open_meteo":        fetch_open_meteo,
-    "asos":              fetch_asos,
-    "enso":              fetch_enso,
-    "usda_crops":        fetch_usda_crops,
-    "nws":               fetch_nws,
-    "nws_actuals":       fetch_nws_actuals,
-    "kalshi_markets":    fetch_kalshi_markets,
-    "kalshi_portfolio":  fetch_kalshi_portfolio,
-    "nomads":            fetch_nomads_gfs_ensemble,
-    "degree_days":       compute_degree_days_from_observations,
+    "open_meteo":           fetch_open_meteo,
+    "open_meteo_ensemble":  fetch_open_meteo_ensemble,
+    "asos":                 fetch_asos,
+    "enso":                 fetch_enso,
+    "usda_crops":           fetch_usda_crops,
+    "nws":                  fetch_nws,
+    "nws_hourly":           fetch_nws_hourly,
+    "nws_actuals":          fetch_nws_actuals,
+    "kalshi_markets":       fetch_kalshi_markets,
+    "kalshi_portfolio":     fetch_kalshi_portfolio,
+    "nomads":               fetch_nomads_gfs_ensemble,
+    "degree_days":          compute_degree_days_from_observations,
 }
 
 

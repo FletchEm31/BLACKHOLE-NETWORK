@@ -1,0 +1,78 @@
+Core betting terms
+Actual outcome means what really happened. For your model, that is the official NWS settlement value for Miami or Denver, like the final daily high temperature.
+
+Market implied probability means the probability the market is assigning to a bucket based on its price. If a Kalshi bucket trades at 0.62, the market is basically saying “about 62%” before fees and spread adjustments.
+
+Model probability means your model’s own estimate of how likely that bucket is. This comes from your forecast, calibration, and temperature distribution, not from the market.
+
+Edge is the difference between your model probability and the market implied probability. If your model says 70% and the market says 60%, your edge is 10 percentage points.
+
+Forecast terms
+Point forecast is one best estimate, like “Miami high will be 89.3°F.” It is not a probability by itself; it is just the center of the forecast.
+
+Probability distribution is the full spread of possible outcomes around that point forecast. Instead of saying only one number, the model says how likely each temperature range is.
+
+Calibration means correcting your model so its probabilities are trustworthy. If you say 70% repeatedly, those events should actually happen about 70% of the time over the long run.
+
+Bias means the model tends to be too high or too low in a consistent way. If Miami forecasts are usually 1 degree too hot, that is a warm bias.
+
+Market and contract terms
+Bucket means one of the temperature ranges Kalshi offers, like 85–86 or 89–90. Your model needs to assign a probability to each bucket.
+
+Contract side usually means the specific yes/no contract for a bucket. You are not just predicting temperature; you are predicting whether the final temperature falls inside that range.
+
+Yes bid / ask are the buy and sell prices for the “yes” contract. The mid price is usually the simple average of bid and ask.
+
+Implied odds is another way people describe market implied probability. If a contract is trading at 0.40, the implied odds are roughly 40%, though you still have to think about spread and fees.
+
+Model workflow terms
+Bronze means raw data exactly as it came from the source. Nothing fancy yet — just stored and traceable.
+
+Silver means cleaned, standardized data. This is where you align timestamps, units, and station mapping so the model can actually use it.
+
+Gold means the final decision layer. This is where you store the calibrated probabilities, edge, and bet/skip recommendation.
+
+Snapshot means a frozen copy of the data at one point in time. That lets you backtest the model as if you were standing in that hour and making the decision live.
+
+Backtesting terms
+Backtest means replaying past snapshots through the model to see how it would have performed. You use this to test whether the model had real edge or just looked good in hindsight.
+
+Forecast error is actual minus forecast. If the actual high was 91 and the forecast was 89, the error is +2, which means the forecast ran cold.
+
+Historical bias is the average forecast error over a past window, like 7 days or 30 days. It helps the model know whether it usually over- or under-shoots in that city.
+
+Decision terms
+Recommended action is the final model answer: bet, skip, or sometimes bet smaller. It comes from edge, confidence, and your threshold rules.
+
+Stake fraction is how much of your bankroll to risk. Bigger edge or better confidence can justify a larger stake, but you still want to keep it controlled.
+
+Confidence is not the same as probability. Probability is the chance of a bucket; confidence is how much you trust the model’s estimate, often based on agreement across sources, calibration quality, and forecast stability.
+
+Miami-specific weather terms
+Dew point is a moisture measure. In Miami, it matters because humid air and cloud development can cap the high temperature.
+
+Cloud cover is how much of the sky is covered by clouds. More clouds can reduce heating and keep the high lower than the raw forecast suggests.
+
+Sea-breeze timing is the coastal wind shift that can change how hot the afternoon gets. In Miami, this is one of the most important reasons the realized high may differ from the forecast.
+
+Thunder chance / rain chance matter because storms can limit the peak temperature even if the morning looks sunny.
+
+Putting it all together
+Here’s the full logic in one sentence:
+
+You take a raw forecast snapshot, clean it in silver, convert it into a point forecast and then a probability distribution, compare that to the market’s implied probability, compute edge, and then decide whether to bet or skip.
+
+The most important ones to remember
+If you only remember a few, remember these:
+
+Actual = what happened.
+
+Model probability = what you think will happen.
+
+Market implied probability = what the market thinks will happen.
+
+Edge = the difference between the two.
+
+Calibration = making sure your probabilities are honest.
+
+I can also turn this into a glossary sheet for your workbook so every term lives in one tab next to the model.
