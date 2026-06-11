@@ -536,6 +536,8 @@ class KalshiClient:
         "KXHIGHMIA", "KXLOWMIA",
         "KXHIGHPHX", "KXLOWPHX",
         "KXHIGHDEN", "KXLOWDEN",
+        "KXHIGHLAX", "KXLOWLAX",
+        "KXHIGHDFW", "KXLOWDFW",
     )
 
     def get_weather_markets(self, *, status: str = "open") -> list:
@@ -963,7 +965,11 @@ _KALSHI_TITLE_STATION_MAP = (
     ("nyc",        "KNYC"),
     ("chicago",    "KORD"),
     ("miami",      "KMIA"),
-    ("austin",     "KAUS"),
+    ("austin",      "KAUS"),
+    ("los angeles", "KLAX"),
+    ("lax",         "KLAX"),
+    ("dallas",      "KDFW"),
+    ("dfw",         "KDFW"),
 )
 
 

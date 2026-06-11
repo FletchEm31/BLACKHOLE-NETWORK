@@ -135,6 +135,8 @@ CITIES: tuple[City, ...] = (
     City("KAUS", "EWX", "Austin",          "TX", 30.1944,  -97.6700, "TX_ASOS"),  # Austin-Bergstrom
     City("KPHX", "PSR", "Phoenix",         "AZ", 33.4373, -112.0078, "AZ_ASOS"),  # Phoenix Sky Harbor
     City("KDEN", "BOU", "Denver",          "CO", 39.8561, -104.6737, "CO_ASOS"),  # Denver Intl
+    City("KLAX", "LOX", "Los Angeles",    "CA", 33.9425, -118.4081, "CA_ASOS"),  # LAX
+    City("KDFW", "FWD", "Dallas/Fort Worth", "TX", 32.8998,  -97.0403, "TX_ASOS"),  # DFW
 )
 
 VARIABLES = ("tmax_f", "tmin_f", "precip_in", "snow_in")
@@ -684,6 +686,8 @@ _KALSHI_TICKER_STATION: dict[str, str] = {
     "KXHIGHPHX": "KPHX", "KXLOWPHX":  "KPHX",
     "KXHIGHNY":  "KNYC", "KXLOWNY":   "KNYC",
     "KXHIGHCHI": "KORD", "KXLOWCHI":  "KORD",
+    "KXHIGHLAX": "KLAX", "KXLOWLAX":  "KLAX",
+    "KXHIGHDFW": "KDFW", "KXLOWDFW":  "KDFW",
 }
 
 

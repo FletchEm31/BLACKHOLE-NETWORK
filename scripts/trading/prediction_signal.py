@@ -83,6 +83,10 @@ SERIES_TO_STATION_VAR: dict[str, tuple[str, str]] = {
     "KXLOWPHX":  ("KPHX", "tmin_f"),
     "KXHIGHDEN": ("KDEN", "tmax_f"),
     "KXLOWDEN":  ("KDEN", "tmin_f"),
+    "KXHIGHLAX": ("KLAX", "tmax_f"),
+    "KXLOWLAX":  ("KLAX", "tmin_f"),
+    "KXHIGHDFW": ("KDFW", "tmax_f"),
+    "KXLOWDFW":  ("KDFW", "tmin_f"),
 }
 
 
