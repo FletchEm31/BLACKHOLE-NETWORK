@@ -33,11 +33,11 @@ FROM weather_forecasts wf
 
 -- Match observations by station + variable + date
 LEFT JOIN weather_observations wo
-    ON wo.station_code = wf.station_code
-    AND wo.variable    = wf.variable
+    ON wo.station_code   = wf.station_code
+    AND wo.variable      = wf.variable
     AND wo.observed_at::date = wf.target_date
 
-WHERE wf.source_model = 'nws'
+WHERE wf.source_model = 'nws_gridpoints'
 
 GROUP BY wf.station_code, wf.variable
 ORDER BY wf.station_code, wf.variable;

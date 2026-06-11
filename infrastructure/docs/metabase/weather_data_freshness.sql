@@ -1,6 +1,6 @@
 -- Collector health — data freshness per city and source
 -- Paste as Native Query in Metabase
--- Any source with latest_row > 2 hours ago needs investigation
+-- Any source with minutes_ago > 120 needs investigation (collectors run every 30 min)
 
 SELECT
     source_label,
@@ -33,15 +33,15 @@ FROM (
 
     UNION ALL
 
-    -- Kalshi market prices
+    -- Kalshi market prices (join on text contract_id)
     SELECT
         'Kalshi prices'                         AS source_label,
         pc.station_code,
-        CASE WHEN pc.side = 'high' THEN 'tmax_f' ELSE 'tmin_f' END AS variable,
+        pc.variable,
         MAX(wcp.captured_at)                    AS latest_row
     FROM weather_contract_prices wcp
-    JOIN prediction_contracts pc ON pc.id = wcp.contract_id
-    GROUP BY pc.station_code, pc.side
+    JOIN prediction_contracts pc ON pc.contract_id = wcp.contract_id
+    GROUP BY pc.station_code, pc.variable
 
 ) t
 GROUP BY source_label, station_code, variable

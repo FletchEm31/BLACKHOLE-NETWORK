@@ -626,7 +626,7 @@ class KalshiClient:
                         """, (
                             ticker, title, station_code, variable,
                             resolution_date,
-                            (m.get("status") or "").lower() == "open",
+                            (m.get("status") or "").lower() in ("open", "active"),
                             json.dumps(m),
                         ))
                         n += 1
