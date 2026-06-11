@@ -1,0 +1,36 @@
+# BHN trading — Fast Kalshi price poller.
+# Polls Kalshi weather markets every 5 seconds and writes price
+# snapshots to weather_contract_prices for live Grafana dashboards.
+#
+# Deploy:
+#   sudo cp bhn-kalshi-prices.service /etc/systemd/system/
+#   sudo cp bhn-kalshi-prices.timer   /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now bhn-kalshi-prices.timer
+
+[Unit]
+Description=BHN Kalshi live price poller (5s cadence)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/bhn/trading
+
+EnvironmentFile=/etc/bhn-trading/env
+EnvironmentFile=-/etc/bhn-trading/strat9.env
+
+ExecStart=/usr/bin/python3 /opt/bhn/trading/kalshi_price_poller.py
+
+StandardOutput=append:/var/log/bhn-trading/kalshi-prices.log
+StandardError=append:/var/log/bhn-trading/kalshi-prices.log
+
+# Restart immediately on any exit — the poller must never be down
+Restart=always
+RestartSec=10
+
+TimeoutStopSec=15
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,15 @@
+# BHN trading — Kalshi portfolio poller start trigger.
+# 30-second polling cadence is handled by the script's internal loop.
+# This timer provides boot-start and restarts if the service stops.
+
+[Unit]
+Description=BHN Kalshi portfolio poller timer
+Requires=bhn-kalshi-portfolio.service
+
+[Timer]
+OnBootSec=20
+OnUnitActiveSec=30
+Unit=bhn-kalshi-portfolio.service
+
+[Install]
+WantedBy=timers.target

@@ -465,6 +465,28 @@ class KalshiClient:
             params["cursor"] = cursor
         return self.get("/portfolio/fills", params=params)
 
+    def fetch_kalshi_portfolio(self) -> dict:
+        """Fetch current positions + recent fills and upsert to kalshi_positions.
+
+        Returns dict with keys:
+          positions_fetched: int
+          fills_fetched: int
+          rows_upserted: int
+        """
+        positions_body = self.get_positions(limit=200)
+        fills_body     = self.list_fills(limit=50)
+
+        positions = positions_body.get("market_positions") or []
+        fills     = fills_body.get("fills") or []
+
+        rows_upserted = _upsert_positions_to_pg(positions)
+
+        return {
+            "positions_fetched": len(positions),
+            "fills_fetched":     len(fills),
+            "rows_upserted":     rows_upserted,
+        }
+
     # ─────────────────────────────────────────────────────────────────────
     # Order placement — Phase 3+ uses these. Phase 1 deliberately doesn't.
     # ─────────────────────────────────────────────────────────────────────
@@ -953,6 +975,72 @@ class KalshiClient:
             tc._send_alert(severity="info", message=msg)
         except Exception as e:
             logger.warning(f"_send_window_sms failed (non-fatal): {e}")
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Portfolio DB helper
+# ─────────────────────────────────────────────────────────────────────────
+
+def _upsert_positions_to_pg(positions: list) -> int:
+    """Upsert a /portfolio/positions payload into kalshi_positions.
+
+    Each call snapshots the full position state at the current moment.
+    Kalshi API field names (v2):
+      ticker, market_title, side, position (# contracts),
+      market_exposure (cents), total_traded (cents),
+      realized_pnl (cents), unrealized_pnl (cents)
+    """
+    if not positions:
+        return 0
+    n = 0
+    try:
+        with tc.get_pg_conn() as conn:
+            with conn.cursor() as cur:
+                for p in positions:
+                    ticker = p.get("ticker") or p.get("market_ticker")
+                    if not ticker:
+                        continue
+                    title      = p.get("market_title") or p.get("title") or ""
+                    # 'side' in positions is 'yes'|'no'; fallback if absent
+                    side       = (p.get("side") or "yes").lower()
+                    # Number of contracts held (integer)
+                    contracts  = int(p.get("position") or p.get("quantity") or 0)
+                    # All monetary fields come in cents from Kalshi
+                    def _cents(key: str) -> Optional[float]:
+                        v = p.get(key)
+                        return float(v) / 100.0 if v is not None else None
+                    cost_usd           = _cents("total_traded")
+                    unrealized_pnl_usd = _cents("unrealized_pnl")
+                    realized_pnl_usd   = _cents("realized_pnl")
+                    market_exposure    = _cents("market_exposure")
+                    # avg_price per contract in fractional dollars (0-1)
+                    avg_price: Optional[float] = None
+                    if cost_usd is not None and contracts > 0:
+                        avg_price = cost_usd / contracts
+                    # market value ≈ market_exposure or best estimate
+                    market_value_usd = market_exposure
+                    # max payout if YES wins = contracts × $1.00
+                    payout_if_right  = float(contracts) if side == "yes" else None
+
+                    cur.execute("""
+                        INSERT INTO kalshi_positions
+                            (contract_ticker, contract_title, side, contracts,
+                             avg_price, cost_usd, market_value_usd,
+                             unrealized_pnl_usd, payout_if_right_usd,
+                             captured_at)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+                    """, (
+                        ticker, title, side, contracts,
+                        avg_price, cost_usd, market_value_usd,
+                        unrealized_pnl_usd, payout_if_right,
+                    ))
+                    n += 1
+            conn.commit()
+    except Exception as e:
+        logger.warning(f"_upsert_positions_to_pg failed (non-fatal): {e}")
+        return 0
+    logger.debug(f"kalshi_positions: inserted {n} rows")
+    return n
 
 
 # ─────────────────────────────────────────────────────────────────────────

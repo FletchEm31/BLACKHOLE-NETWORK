@@ -1,0 +1,35 @@
+# BHN trading — Kalshi portfolio poller.
+# Polls /portfolio/positions + /portfolio/fills every 30 seconds
+# and writes snapshots to kalshi_positions for live P&L tracking.
+#
+# Deploy:
+#   sudo cp bhn-kalshi-portfolio.service /etc/systemd/system/
+#   sudo cp bhn-kalshi-portfolio.timer   /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now bhn-kalshi-portfolio.timer
+
+[Unit]
+Description=BHN Kalshi portfolio poller (30s cadence)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/bhn/trading
+
+EnvironmentFile=/etc/bhn-trading/env
+EnvironmentFile=-/etc/bhn-trading/strat9.env
+
+ExecStart=/usr/bin/python3 /opt/bhn/trading/kalshi_portfolio_poller.py
+
+StandardOutput=append:/var/log/bhn-trading/kalshi-portfolio.log
+StandardError=append:/var/log/bhn-trading/kalshi-portfolio.log
+
+Restart=always
+RestartSec=15
+
+TimeoutStopSec=15
+
+[Install]
+WantedBy=multi-user.target

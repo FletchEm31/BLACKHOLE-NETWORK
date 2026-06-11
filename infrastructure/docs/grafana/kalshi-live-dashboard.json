@@ -1,0 +1,394 @@
+{
+  "__inputs": [
+    {
+      "name": "DS_POSTGRESQL",
+      "label": "eventhorizon (PostgreSQL)",
+      "description": "PostgreSQL on LA node — database: eventhorizon",
+      "type": "datasource",
+      "pluginId": "postgres",
+      "pluginName": "PostgreSQL"
+    }
+  ],
+  "__requires": [
+    {
+      "type": "grafana",
+      "id": "grafana",
+      "name": "Grafana",
+      "version": "10.0.0"
+    },
+    {
+      "type": "datasource",
+      "id": "postgres",
+      "name": "PostgreSQL",
+      "version": "1.0.0"
+    },
+    {
+      "type": "panel",
+      "id": "timeseries",
+      "name": "Time series",
+      "version": ""
+    },
+    {
+      "type": "panel",
+      "id": "table",
+      "name": "Table",
+      "version": ""
+    },
+    {
+      "type": "panel",
+      "id": "stat",
+      "name": "Stat",
+      "version": ""
+    }
+  ],
+  "annotations": {
+    "list": []
+  },
+  "description": "Kalshi weather contract live prices, open positions, BHN vs market edge, and data freshness",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 10,
+      "title": "Live Prices",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "${DS_POSTGRESQL}" },
+      "description": "Kalshi YES price (implied probability 0-1) per contract over the last 2 hours. Each line is one contract.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "implied prob",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 3,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "decimals": 3,
+          "max": 1,
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 80 }
+            ]
+          },
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 1 },
+      "id": 1,
+      "options": {
+        "legend": { "calcs": ["last"], "displayMode": "table", "placement": "right", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "${DS_POSTGRESQL}" },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT\n  captured_at AS time,\n  implied_probability AS value,\n  contract_id AS metric\nFROM weather_contract_prices\nWHERE $__timeFilter(captured_at)\nORDER BY captured_at ASC",
+          "refId": "A",
+          "sql": { "columns": [], "groupBy": [], "limit": 250 }
+        }
+      ],
+      "title": "Kalshi Live Prices — Implied Probability",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 11 },
+      "id": 11,
+      "title": "Open Positions",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "${DS_POSTGRESQL}" },
+      "description": "Current Kalshi positions (latest snapshot per contract). Empty until strategy goes live.",
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto", "cellOptions": { "type": "auto" }, "inspect": false } },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "unrealized_pnl_usd" },
+            "properties": [
+              { "id": "custom.cellOptions", "value": { "mode": "basic", "type": "color-background" } },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [
+                { "color": "red", "value": null },
+                { "color": "green", "value": 0 }
+              ]}}
+            ]
+          },
+          {
+            "matcher": { "id": "byNames", "options": { "names": ["cost_usd","market_value_usd","unrealized_pnl_usd","payout_if_right_usd"] } },
+            "properties": [{ "id": "unit", "value": "currencyUSD" }, { "id": "decimals", "value": 2 }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "avg_price" },
+            "properties": [{ "id": "unit", "value": "percentunit" }, { "id": "decimals", "value": 3 }]
+          }
+        ]
+      },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 12 },
+      "id": 2,
+      "options": {
+        "footer": {
+          "enablePagination": false,
+          "fields": ["cost_usd","unrealized_pnl_usd"],
+          "reducer": ["sum"],
+          "show": true
+        },
+        "showHeader": true,
+        "sortBy": [{ "desc": true, "displayName": "captured_at" }]
+      },
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "${DS_POSTGRESQL}" },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT\n  kp.contract_ticker,\n  kp.contract_title,\n  kp.side,\n  kp.contracts,\n  kp.avg_price,\n  kp.cost_usd,\n  kp.market_value_usd,\n  kp.unrealized_pnl_usd,\n  kp.payout_if_right_usd,\n  kp.captured_at\nFROM kalshi_positions kp\nWHERE kp.captured_at = (\n  SELECT MAX(captured_at)\n  FROM kalshi_positions\n  WHERE contract_ticker = kp.contract_ticker\n)\nAND kp.contracts > 0\nORDER BY kp.unrealized_pnl_usd DESC NULLS LAST",
+          "refId": "A"
+        }
+      ],
+      "title": "Open Positions + Unrealized P&L",
+      "type": "table"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 20 },
+      "id": 12,
+      "title": "BHN vs Market Edge",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "${DS_POSTGRESQL}" },
+      "description": "BHN NWS forecast vs Kalshi market implied probability. Rows highlighted in red/green when |delta| > 5% (potential edge).",
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto", "cellOptions": { "type": "auto" }, "inspect": false } },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "implied_probability" },
+            "properties": [{ "id": "unit", "value": "percentunit" }, { "id": "decimals", "value": 3 }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "nws_forecast_f" },
+            "properties": [{ "id": "unit", "value": "fahrenheit" }, { "id": "decimals", "value": 1 }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "threshold_value" },
+            "properties": [{ "id": "unit", "value": "fahrenheit" }, { "id": "decimals", "value": 1 }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "delta_pct" },
+            "properties": [
+              { "id": "unit", "value": "percentunit" },
+              { "id": "decimals", "value": 3 },
+              { "id": "custom.cellOptions", "value": { "mode": "basic", "type": "color-background" } },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [
+                { "color": "red", "value": null },
+                { "color": "yellow", "value": -0.05 },
+                { "color": "transparent", "value": -0.02 },
+                { "color": "transparent", "value": 0.02 },
+                { "color": "green", "value": 0.05 }
+              ]}}
+            ]
+          }
+        ]
+      },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 21 },
+      "id": 3,
+      "options": { "showHeader": true, "sortBy": [{ "desc": true, "displayName": "delta_pct" }] },
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "${DS_POSTGRESQL}" },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT\n  pc.station_code,\n  CASE WHEN pc.variable = 'tmax_f' THEN 'high' ELSE 'low' END AS side,\n  pc.title,\n  pc.threshold_op,\n  pc.threshold_value,\n  pc.resolution_date,\n  wcp.implied_probability,\n  wf.predicted_value                          AS nws_forecast_f,\n  ROUND(\n    CAST(wcp.implied_probability AS numeric) -\n    CASE\n      WHEN wf.predicted_value IS NOT NULL AND pc.threshold_op = '>'\n        THEN (CASE WHEN wf.predicted_value > pc.threshold_value THEN 0.92 ELSE 0.08 END)\n      WHEN wf.predicted_value IS NOT NULL AND pc.threshold_op = '<'\n        THEN (CASE WHEN wf.predicted_value < pc.threshold_value THEN 0.92 ELSE 0.08 END)\n      ELSE NULL\n    END\n  , 4) AS delta_pct\nFROM prediction_contracts pc\nJOIN weather_contract_prices wcp\n  ON wcp.contract_id = pc.contract_id\n  AND wcp.captured_at = (SELECT MAX(captured_at) FROM weather_contract_prices WHERE contract_id = pc.contract_id)\nLEFT JOIN weather_forecasts wf\n  ON wf.station_code = pc.station_code\n  AND wf.variable = pc.variable\n  AND wf.source_model = 'nws_gridpoints'\n  AND wf.target_date = pc.resolution_date\n  AND wf.predicted_at = (SELECT MAX(predicted_at) FROM weather_forecasts WHERE station_code = pc.station_code AND source_model = 'nws_gridpoints' AND target_date = pc.resolution_date AND variable = pc.variable)\nWHERE pc.is_active = true\nORDER BY ABS(COALESCE(delta_pct, 0)) DESC, pc.resolution_date",
+          "refId": "A"
+        }
+      ],
+      "title": "BHN vs Market — Edge Detection (>5% highlighted)",
+      "type": "table"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 31 },
+      "id": 13,
+      "title": "Data Freshness",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "${DS_POSTGRESQL}" },
+      "description": "Minutes since last Kalshi price update.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 2 },
+              { "color": "red", "value": 10 }
+            ]
+          },
+          "unit": "m",
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 32 },
+      "id": 4,
+      "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto" },
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "${DS_POSTGRESQL}" },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT ROUND(EXTRACT(EPOCH FROM (NOW() - MAX(captured_at))) / 60.0, 1) AS \"Kalshi Price Age (min)\"\nFROM weather_contract_prices",
+          "refId": "A"
+        }
+      ],
+      "title": "Kalshi Prices",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "${DS_POSTGRESQL}" },
+      "description": "Minutes since last NWS forecast.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 60 },
+              { "color": "red", "value": 120 }
+            ]
+          },
+          "unit": "m",
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 32 },
+      "id": 5,
+      "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto" },
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "${DS_POSTGRESQL}" },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT ROUND(EXTRACT(EPOCH FROM (NOW() - MAX(predicted_at))) / 60.0, 1) AS \"NWS Forecast Age (min)\"\nFROM weather_forecasts\nWHERE source_model = 'nws_gridpoints'",
+          "refId": "A"
+        }
+      ],
+      "title": "NWS Forecast",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "${DS_POSTGRESQL}" },
+      "description": "Minutes since last ASOS observation.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 60 },
+              { "color": "red", "value": 180 }
+            ]
+          },
+          "unit": "m",
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 32 },
+      "id": 6,
+      "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto" },
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "${DS_POSTGRESQL}" },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT ROUND(EXTRACT(EPOCH FROM (NOW() - MAX(observed_at))) / 60.0, 1) AS \"ASOS Obs Age (min)\"\nFROM weather_observations",
+          "refId": "A"
+        }
+      ],
+      "title": "ASOS Observations",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "${DS_POSTGRESQL}" },
+      "description": "Minutes since last portfolio snapshot.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 2 },
+              { "color": "red", "value": 5 }
+            ]
+          },
+          "unit": "m",
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 32 },
+      "id": 7,
+      "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto" },
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "${DS_POSTGRESQL}" },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT ROUND(EXTRACT(EPOCH FROM (NOW() - MAX(captured_at))) / 60.0, 1) AS \"Portfolio Age (min)\"\nFROM kalshi_positions",
+          "refId": "A"
+        }
+      ],
+      "title": "Portfolio Snapshot",
+      "type": "stat"
+    }
+  ],
+  "refresh": "5s",
+  "schemaVersion": 38,
+  "tags": ["kalshi", "weather", "trading", "bhn"],
+  "templating": { "list": [] },
+  "time": { "from": "now-2h", "to": "now" },
+  "timepicker": {},
+  "timezone": "utc",
+  "title": "Kalshi Weather Trading — Live",
+  "uid": "bhn-kalshi-live",
+  "version": 1
+}

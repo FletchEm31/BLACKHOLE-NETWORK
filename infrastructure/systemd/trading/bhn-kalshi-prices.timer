@@ -1,0 +1,16 @@
+# BHN trading — Kalshi price poller start trigger.
+# The service runs as a long-lived process (Restart=always) — this timer
+# just ensures it starts at boot and restarts if it somehow stops.
+# The 5-second polling cadence is handled by the script's internal loop.
+
+[Unit]
+Description=BHN Kalshi price poller timer
+Requires=bhn-kalshi-prices.service
+
+[Timer]
+OnBootSec=15
+OnUnitActiveSec=5
+Unit=bhn-kalshi-prices.service
+
+[Install]
+WantedBy=timers.target
