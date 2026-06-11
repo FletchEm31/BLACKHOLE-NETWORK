@@ -1,0 +1,543 @@
+#!/usr/bin/env python3
+"""
+weather_edge_calculator.py — BHN Strategy 9 Gold Layer edge calculator.
+
+Reads from silver tables → computes bucket probabilities → writes gold edge sheet.
+Scope (Phase 1): Miami (KMIA) + Denver (KDEN), daily HIGH temp only.
+Run every 5 minutes (manual trigger for now; systemd timer added Phase 2).
+
+CLI:
+  python3 weather_edge_calculator.py
+  python3 weather_edge_calculator.py --dry-run
+  python3 weather_edge_calculator.py --city KMIA
+  python3 weather_edge_calculator.py --city KDEN
+  python3 weather_edge_calculator.py --days-ahead 2
+
+Normal distribution CDF via math.erf (no scipy needed):
+  P(X ≤ x) = 0.5 * (1 + erf((x - mu) / (sigma * sqrt(2))))
+
+Calibrator version: v0_passthrough (raw model probs, no isotonic calibration yet).
+Calibration kicks in Phase 2 once 30+ error pairs exist per station.
+
+Sigma defaults (used until 30 days of silver_forecast_error history):
+  KMIA=2.5°F, KDEN=3.5°F, KPHX=2.0°F, KLAX=2.0°F,
+  KDFW=3.0°F, KNYC=3.0°F, KORD=3.5°F, KAUS=3.0°F
+
+Kelly sizing: half-Kelly with 25% bankroll cap per bet.
+Bankroll: KALSHI_BANKROLL env var (default 500).
+
+Edge thresholds: BET_YES if edge ≥ 0.05, BET_NO if edge ≤ -0.05, else SKIP.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import logging
+import math
+import os
+import sys
+from datetime import date, datetime, timedelta, timezone
+from typing import Optional
+
+import trading_core as tc
+
+logger = logging.getLogger("strat9_edge_calculator")
+if not logger.handlers:
+    _h = logging.StreamHandler()
+    _h.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+    logger.addHandler(_h)
+    logger.setLevel(logging.INFO)
+
+CALIBRATOR_VERSION = "v0_passthrough"
+
+ACTIVE_STATIONS = {"KMIA", "KDEN"}     # Phase 1 scope — expand in Phase 2
+ACTIVE_SIDE = "high"                    # daily HIGH temp only in Phase 1
+
+SIGMA_DEFAULTS: dict[str, float] = {
+    "KMIA": 2.5, "KDEN": 3.5, "KPHX": 2.0,
+    "KLAX": 2.0, "KDFW": 3.0, "KNYC": 3.0,
+    "KORD": 3.5, "KAUS": 3.0,
+}
+
+EDGE_THRESHOLD_BET = 0.05   # minimum edge to recommend a YES or NO bet
+MIN_BIAS_ROWS = 7           # need at least this many error pairs to use bias
+MIN_SIGMA_ROWS = 30         # need at least this many to use computed sigma
+KELLY_CAP = 0.25            # cap Kelly fraction at 25% of bankroll
+
+CITY_NAME: dict[str, str] = {
+    "KMIA": "Miami", "KDEN": "Denver", "KPHX": "Phoenix",
+    "KLAX": "Los Angeles", "KDFW": "Dallas/Fort Worth",
+    "KNYC": "New York City", "KORD": "Chicago", "KAUS": "Austin",
+}
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Normal distribution helpers (no scipy)
+# ─────────────────────────────────────────────────────────────────────────
+
+def _norm_cdf(x: float, mu: float, sigma: float) -> float:
+    """CDF of normal distribution at x with mean mu and std sigma."""
+    if sigma <= 0:
+        return 1.0 if x >= mu else 0.0
+    return 0.5 * (1.0 + math.erf((x - mu) / (sigma * math.sqrt(2.0))))
+
+
+def _bucket_prob(bucket_type: str,
+                 bucket_floor: Optional[float],
+                 bucket_cap: Optional[float],
+                 mu: float,
+                 sigma: float) -> float:
+    """Compute P(actual falls in bucket) given normal(mu, sigma).
+    bucket_type: 'between', 'above', 'below', 'threshold'
+    """
+    if bucket_type == "between" and bucket_floor is not None and bucket_cap is not None:
+        return max(0.0, _norm_cdf(bucket_cap, mu, sigma) - _norm_cdf(bucket_floor, mu, sigma))
+    elif bucket_type == "above" and bucket_floor is not None:
+        return max(0.0, 1.0 - _norm_cdf(bucket_floor, mu, sigma))
+    elif bucket_type == "below" and bucket_cap is not None:
+        return max(0.0, _norm_cdf(bucket_cap, mu, sigma))
+    # threshold / unknown — fallback to uniform over +/-3 sigma
+    return 1.0 / 10.0
+
+
+def _half_kelly(edge: float, market_prob: float) -> float:
+    """Half-Kelly stake fraction for a YES bet.
+    Formula: edge / (1 - market_prob) * 0.5, capped at KELLY_CAP.
+    Returns 0 if edge <= 0 or market_prob is degenerate.
+    """
+    if market_prob <= 0.0 or market_prob >= 1.0 or edge <= 0.0:
+        return 0.0
+    return min(edge / (1.0 - market_prob) * 0.5, KELLY_CAP)
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# DB reads
+# ─────────────────────────────────────────────────────────────────────────
+
+def _get_active_contracts(conn, station_code: str,
+                           target_dates: list[date]) -> list[dict]:
+    """Read active contracts from weather_kalshi_contract_catalog."""
+    with conn.cursor() as cur:
+        cur.execute("""
+            SELECT market_ticker, event_ticker, series_ticker,
+                   contract_side, bucket_type, bucket_floor, bucket_cap, bucket_label,
+                   target_date, market_status
+            FROM weather_kalshi_contract_catalog
+            WHERE station_code = %s
+              AND contract_side = %s
+              AND target_date = ANY(%s)
+              AND is_active = TRUE
+            ORDER BY target_date, bucket_floor NULLS LAST
+        """, (station_code, ACTIVE_SIDE, target_dates))
+        cols = [d[0] for d in cur.description]
+        return [dict(zip(cols, row)) for row in cur.fetchall()]
+
+
+def _get_latest_nws_forecast(conn, station_code: str,
+                              target_date: date) -> Optional[dict]:
+    """Get most recent NWS forecast for station/date from silver."""
+    with conn.cursor() as cur:
+        cur.execute("""
+            SELECT tmax_f, tmin_f, forecast_run_time, lead_hours,
+                   dewpoint_f, rh_pct, cloud_cover_pct, pop_pct
+            FROM weather_silver_forecast_conformed
+            WHERE station_code = %s AND source_name = 'nws'
+              AND target_date = %s AND is_latest_run = TRUE
+              AND tmax_f IS NOT NULL
+            LIMIT 1
+        """, (station_code, target_date))
+        row = cur.fetchone()
+        if not row:
+            return None
+        cols = [d[0] for d in cur.description]
+        return dict(zip(cols, row))
+
+
+def _get_latest_gfs_forecast(conn, station_code: str,
+                              target_date: date) -> Optional[dict]:
+    """Get most recent GFS/Open-Meteo forecast for station/date from silver."""
+    with conn.cursor() as cur:
+        cur.execute("""
+            SELECT tmax_f, tmin_f, forecast_run_time
+            FROM weather_silver_forecast_conformed
+            WHERE station_code = %s AND source_name = 'open_meteo_gfs_seamless'
+              AND target_date = %s AND is_latest_run = TRUE
+              AND tmax_f IS NOT NULL
+            LIMIT 1
+        """, (station_code, target_date))
+        row = cur.fetchone()
+        if not row:
+            # Fallback: any open_meteo source
+            cur.execute("""
+                SELECT tmax_f, tmin_f, forecast_run_time
+                FROM weather_silver_forecast_conformed
+                WHERE station_code = %s AND source_name LIKE 'open_meteo%%'
+                  AND target_date = %s AND is_latest_run = TRUE
+                  AND tmax_f IS NOT NULL
+                ORDER BY forecast_run_time DESC
+                LIMIT 1
+            """, (station_code, target_date))
+            row = cur.fetchone()
+        if not row:
+            return None
+        cols = [d[0] for d in cur.description]
+        return dict(zip(cols, row))
+
+
+def _get_forecast_stats(conn, station_code: str) -> dict:
+    """Get historical bias and MAE from silver_forecast_error, last 30 days."""
+    with conn.cursor() as cur:
+        cur.execute("""
+            SELECT
+                COUNT(*) AS row_count,
+                AVG(forecast_error_f) AS mean_bias,
+                AVG(ABS(forecast_error_f)) AS mae
+            FROM weather_silver_forecast_error
+            WHERE station_code = %s
+              AND feature_name = 'tmax_f'
+              AND source_name = 'nws'
+              AND created_at >= NOW() - INTERVAL '30 days'
+        """, (station_code,))
+        row = cur.fetchone()
+        if not row or row[0] == 0:
+            return {"row_count": 0, "mean_bias": None, "mae": None}
+        return {"row_count": row[0], "mean_bias": row[1], "mae": row[2]}
+
+
+def _get_latest_market_snapshot(conn, market_ticker: str) -> Optional[dict]:
+    """Get latest market price from silver_market_conformed."""
+    with conn.cursor() as cur:
+        cur.execute("""
+            SELECT yes_mid, implied_prob, volume, market_status, snapshot_time
+            FROM weather_silver_market_conformed
+            WHERE market_ticker = %s AND is_latest_snapshot = TRUE
+            LIMIT 1
+        """, (market_ticker,))
+        row = cur.fetchone()
+        if not row:
+            return None
+        cols = [d[0] for d in cur.description]
+        return dict(zip(cols, row))
+
+
+def _get_bankroll() -> float:
+    try:
+        return float(os.environ.get("KALSHI_BANKROLL", "500"))
+    except (ValueError, TypeError):
+        return 500.0
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Gold writes
+# ─────────────────────────────────────────────────────────────────────────
+
+def _insert_calibrated_prob(conn, *, city: str, station_code: str,
+                              target_date: date, market_ticker: str,
+                              bucket_floor: Optional[float], bucket_cap: Optional[float],
+                              bucket_label: Optional[str],
+                              raw_model_prob: float, calibrated_prob: float,
+                              market_implied_prob: float,
+                              edge: float, edge_rank: int,
+                              trade_flag: str, confidence: str,
+                              model_delta_flag: str) -> None:
+    with conn.cursor() as cur:
+        cur.execute("""
+            INSERT INTO weather_gold_calibrated_probabilities
+                (city, station_code, target_date, contract_side, market_ticker,
+                 bucket_floor, bucket_cap, bucket_label,
+                 raw_model_prob, calibrated_prob, market_implied_prob,
+                 edge, edge_rank, trade_flag, confidence, model_delta_flag,
+                 calibrator_version)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """, (city, station_code, target_date, ACTIVE_SIDE, market_ticker,
+              bucket_floor, bucket_cap, bucket_label,
+              raw_model_prob, calibrated_prob, market_implied_prob,
+              edge, edge_rank, trade_flag, confidence, model_delta_flag,
+              CALIBRATOR_VERSION))
+
+
+def _upsert_edge_sheet(conn, *, city: str, station_code: str,
+                        target_date: date, contract_ticker: str,
+                        bucket_floor: Optional[float], bucket_cap: Optional[float],
+                        bucket_label: Optional[str],
+                        raw_forecast_f: Optional[float],
+                        gfs_forecast_f: Optional[float],
+                        model_delta_f: Optional[float],
+                        model_confidence: str,
+                        calibrated_prob: float, raw_model_prob: float,
+                        market_implied_prob: Optional[float],
+                        market_yes_mid: Optional[float],
+                        market_volume: Optional[float],
+                        market_liquidity: str,
+                        edge: float, edge_pct: float, edge_rank: int,
+                        recommended_action: str,
+                        stake_fraction: float, stake_usd: float,
+                        skip_reason: Optional[str]) -> None:
+    sheet_date = datetime.now(timezone.utc).date()
+    with conn.cursor() as cur:
+        cur.execute("""
+            INSERT INTO weather_gold_daily_edge_sheet
+                (city, station_code, target_date, contract_side, contract_ticker,
+                 bucket_floor, bucket_cap, bucket_label, sheet_date,
+                 raw_forecast_f, gfs_forecast_f, model_delta_f, model_confidence,
+                 calibrated_prob, raw_model_prob,
+                 market_implied_prob, market_yes_mid, market_volume, market_liquidity,
+                 edge, edge_pct, edge_rank,
+                 recommended_action, stake_fraction, stake_usd, skip_reason,
+                 last_updated, calibrator_version)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s, %s, NOW(), %s)
+            ON CONFLICT (contract_ticker, sheet_date) DO UPDATE SET
+                bucket_floor      = EXCLUDED.bucket_floor,
+                bucket_cap        = EXCLUDED.bucket_cap,
+                bucket_label      = EXCLUDED.bucket_label,
+                raw_forecast_f    = EXCLUDED.raw_forecast_f,
+                gfs_forecast_f    = EXCLUDED.gfs_forecast_f,
+                model_delta_f     = EXCLUDED.model_delta_f,
+                model_confidence  = EXCLUDED.model_confidence,
+                calibrated_prob   = EXCLUDED.calibrated_prob,
+                raw_model_prob    = EXCLUDED.raw_model_prob,
+                market_implied_prob = EXCLUDED.market_implied_prob,
+                market_yes_mid    = EXCLUDED.market_yes_mid,
+                market_volume     = EXCLUDED.market_volume,
+                market_liquidity  = EXCLUDED.market_liquidity,
+                edge              = EXCLUDED.edge,
+                edge_pct          = EXCLUDED.edge_pct,
+                edge_rank         = EXCLUDED.edge_rank,
+                recommended_action = EXCLUDED.recommended_action,
+                stake_fraction    = EXCLUDED.stake_fraction,
+                stake_usd         = EXCLUDED.stake_usd,
+                skip_reason       = EXCLUDED.skip_reason,
+                last_updated      = NOW()
+        """, (city, station_code, target_date, ACTIVE_SIDE, contract_ticker,
+              bucket_floor, bucket_cap, bucket_label, sheet_date,
+              raw_forecast_f, gfs_forecast_f, model_delta_f, model_confidence,
+              calibrated_prob, raw_model_prob,
+              market_implied_prob, market_yes_mid, market_volume, market_liquidity,
+              edge, edge_pct, edge_rank,
+              recommended_action, stake_fraction, stake_usd, skip_reason,
+              CALIBRATOR_VERSION))
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Main calculation loop
+# ─────────────────────────────────────────────────────────────────────────
+
+def run_edge_calc(stations: Optional[list[str]] = None,
+                  days_ahead: int = 1,
+                  dry_run: bool = False) -> int:
+    """Run the edge calculation for all active contracts.
+    Returns number of edge sheet rows written."""
+    target_stations = stations or list(ACTIVE_STATIONS)
+    bankroll = _get_bankroll()
+    today = datetime.now(timezone.utc).date()
+    target_dates = [today + timedelta(days=i) for i in range(days_ahead + 1)]
+
+    rows_written = 0
+    sheet_date = today
+
+    with tc.get_pg_conn() as conn:
+        for station_code in target_stations:
+            city = CITY_NAME.get(station_code, station_code)
+
+            # Historical forecast stats for this station
+            stats = _get_forecast_stats(conn, station_code)
+            n_error_rows = stats["row_count"]
+            mean_bias = float(stats["mean_bias"]) if stats["mean_bias"] is not None else 0.0
+            mae = float(stats["mae"]) if stats["mae"] is not None else None
+
+            # Sigma: use computed MAE if enough data, else default
+            if mae is not None and n_error_rows >= MIN_SIGMA_ROWS:
+                sigma = mae
+            else:
+                sigma = SIGMA_DEFAULTS.get(station_code, 3.0)
+
+            # Use bias only if enough data
+            bias = mean_bias if n_error_rows >= MIN_BIAS_ROWS else 0.0
+
+            for target_date in target_dates:
+                # Get NWS + GFS forecasts
+                nws = _get_latest_nws_forecast(conn, station_code, target_date)
+                gfs = _get_latest_gfs_forecast(conn, station_code, target_date)
+
+                if nws is None:
+                    logger.debug(f"{station_code} {target_date}: no NWS forecast — skipping")
+                    continue
+
+                nws_tmax = float(nws["tmax_f"])
+                gfs_tmax = float(gfs["tmax_f"]) if gfs and gfs.get("tmax_f") else None
+
+                # Bias-adjusted point forecast
+                mu = nws_tmax + bias
+
+                # Model confidence from NWS-GFS disagreement
+                if gfs_tmax is not None:
+                    model_delta = abs(nws_tmax - gfs_tmax)
+                    if model_delta < 2.0:
+                        confidence = "HIGH"
+                        model_delta_flag = "AGREE"
+                    elif model_delta < 4.0:
+                        confidence = "MEDIUM"
+                        model_delta_flag = "DIVERGE"
+                    else:
+                        confidence = "LOW"
+                        model_delta_flag = "DIVERGE"
+                else:
+                    model_delta = None
+                    confidence = "MEDIUM"
+                    model_delta_flag = "NO_GFS"
+
+                # Get all active contracts for this station/date
+                contracts = _get_active_contracts(conn, station_code, [target_date])
+                if not contracts:
+                    logger.debug(f"{station_code} {target_date}: no active contracts in catalog")
+                    continue
+
+                # Compute raw probabilities for all contracts
+                contract_probs: list[tuple[dict, float]] = []
+                for c in contracts:
+                    bucket_type = c["bucket_type"] or "between"
+                    bucket_floor = float(c["bucket_floor"]) if c["bucket_floor"] is not None else None
+                    bucket_cap = float(c["bucket_cap"]) if c["bucket_cap"] is not None else None
+                    raw_prob = _bucket_prob(bucket_type, bucket_floor, bucket_cap, mu, sigma)
+                    contract_probs.append((c, raw_prob))
+
+                # Rank contracts by edge magnitude (need market prices first)
+                edges: list[tuple[dict, float, float, float]] = []
+                for c, raw_prob in contract_probs:
+                    market = _get_latest_market_snapshot(conn, c["market_ticker"])
+                    if market is None:
+                        continue
+                    mip = float(market["yes_mid"]) if market.get("yes_mid") else None
+                    if mip is None:
+                        continue
+                    edge = raw_prob - mip
+                    edges.append((c, raw_prob, mip, edge))
+
+                # Sort by abs(edge) descending for ranking
+                edges.sort(key=lambda x: abs(x[3]), reverse=True)
+
+                for rank, (c, raw_prob, mip, edge) in enumerate(edges, start=1):
+                    market = _get_latest_market_snapshot(conn, c["market_ticker"])
+                    if market is None:
+                        continue
+
+                    calibrated_prob = raw_prob  # passthrough until calibration exists
+
+                    # Trading decision
+                    if edge >= EDGE_THRESHOLD_BET:
+                        action = "BET_YES"
+                        kelly = _half_kelly(edge, mip)
+                        skip_reason = None
+                    elif edge <= -EDGE_THRESHOLD_BET:
+                        action = "BET_NO"
+                        # For NO bet: edge = model_prob_no - market_prob_no
+                        no_prob = 1.0 - calibrated_prob
+                        no_market = 1.0 - mip
+                        kelly = _half_kelly(no_prob - no_market, no_market)
+                        skip_reason = None
+                    else:
+                        action = "SKIP"
+                        kelly = 0.0
+                        skip_reason = f"edge={edge:.3f} below threshold±{EDGE_THRESHOLD_BET}"
+
+                    stake_usd = kelly * bankroll
+
+                    bucket_floor = float(c["bucket_floor"]) if c["bucket_floor"] is not None else None
+                    bucket_cap = float(c["bucket_cap"]) if c["bucket_cap"] is not None else None
+                    vol = float(market.get("volume", 0) or 0)
+                    liquidity = "liquid" if vol > 1000 else ("thin" if vol > 100 else "illiquid")
+
+                    log_msg = (
+                        f"{station_code} {target_date} {c['bucket_label'] or c['market_ticker']}: "
+                        f"model={calibrated_prob:.3f} market={mip:.3f} "
+                        f"edge={edge:+.3f} → {action}"
+                        + (f" (kelly={kelly:.3f} stake=${stake_usd:.2f})" if action != "SKIP" else "")
+                    )
+                    logger.info(log_msg)
+
+                    if not dry_run:
+                        try:
+                            _insert_calibrated_prob(
+                                conn,
+                                city=city,
+                                station_code=station_code,
+                                target_date=target_date,
+                                market_ticker=c["market_ticker"],
+                                bucket_floor=bucket_floor,
+                                bucket_cap=bucket_cap,
+                                bucket_label=c.get("bucket_label"),
+                                raw_model_prob=raw_prob,
+                                calibrated_prob=calibrated_prob,
+                                market_implied_prob=mip,
+                                edge=edge,
+                                edge_rank=rank,
+                                trade_flag=action,
+                                confidence=confidence,
+                                model_delta_flag=model_delta_flag,
+                            )
+                            _upsert_edge_sheet(
+                                conn,
+                                city=city,
+                                station_code=station_code,
+                                target_date=target_date,
+                                contract_ticker=c["market_ticker"],
+                                bucket_floor=bucket_floor,
+                                bucket_cap=bucket_cap,
+                                bucket_label=c.get("bucket_label"),
+                                raw_forecast_f=nws_tmax,
+                                gfs_forecast_f=gfs_tmax,
+                                model_delta_f=model_delta,
+                                model_confidence=confidence,
+                                calibrated_prob=calibrated_prob,
+                                raw_model_prob=raw_prob,
+                                market_implied_prob=mip,
+                                market_yes_mid=float(market.get("yes_mid", mip)),
+                                market_volume=vol if vol > 0 else None,
+                                market_liquidity=liquidity,
+                                edge=edge,
+                                edge_pct=edge * 100.0,
+                                edge_rank=rank,
+                                recommended_action=action,
+                                stake_fraction=kelly,
+                                stake_usd=stake_usd,
+                                skip_reason=skip_reason,
+                            )
+                            rows_written += 1
+                        except Exception as e:
+                            logger.error(
+                                f"{station_code} {target_date} {c['market_ticker']}: "
+                                f"gold write failed: {e}"
+                            )
+
+    logger.info(
+        f"=== edge calc complete: {rows_written} rows written "
+        f"(dry_run={dry_run}, bankroll=${bankroll:.0f}) ==="
+    )
+    return rows_written
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="BHN Strat 9 — gold layer edge calculator"
+    )
+    parser.add_argument("--dry-run", action="store_true",
+                        help="Compute and log but do not write to DB")
+    parser.add_argument("--city", choices=list(ACTIVE_STATIONS),
+                        help="Restrict to one station (default: all active)")
+    parser.add_argument("--days-ahead", type=int, default=1,
+                        help="How many days ahead to compute (default 1)")
+    args = parser.parse_args()
+
+    stations = [args.city] if args.city else None
+    run_edge_calc(
+        stations=stations,
+        days_ahead=args.days_ahead,
+        dry_run=args.dry_run,
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

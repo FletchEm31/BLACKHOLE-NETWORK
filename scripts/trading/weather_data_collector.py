@@ -5,6 +5,11 @@ weather_data_collector.py — BHN Strategy 9 (BHN-PREDICTION-ALPHA) Phase 1 coll
 Polls free weather data sources every 6 hours (via bhn-weather-collector.timer)
 and writes to the weather-schema tables.
 
+BSG dual-write layer (added 2026-06-11):
+  Every bronze table write is followed inline by a silver population helper.
+  Old tables (weather_forecasts, weather_contract_prices, prediction_contracts)
+  are still written to in parallel — no backward-compat break.
+
 Model hierarchy (post-research-findings update, 2026-05-13):
   PRIMARY      NWS gridpoints API  — Kalshi settles weather contracts on
                                      NWS Daily Climate Report (CLI). Same
@@ -22,21 +27,26 @@ Model hierarchy (post-research-findings update, 2026-05-13):
                                      kept as a sanity cross-check against
                                      NWS in case NWS endpoint fails.
 
-  Source                  → Table(s)                     Status
-  ──────────────────────────────────────────────────────────────────────
-  NWS gridpoints forecast → weather_forecasts            ✅ implemented (primary)
-  NWS CLI climate report  → weather_observations         ✅ implemented (settlement)
-  ECMWF open-data         → weather_forecasts (51-mem)   ⚠  scaffold (GRIB parsing)
-  HRRR                    → weather_forecasts            ⚠  scaffold (GRIB parsing)
-  Open-Meteo API          → weather_forecasts            ✅ implemented (redundancy)
-  Iowa State ASOS         → weather_observations         ✅ implemented
-  NOAA CPC ENSO           → enso_index                   ✅ implemented
-  USDA NASS crops         → crop_conditions              ⚠  scaffold (needs key)
-  Kalshi weather markets  → prediction_contracts         ✅ implemented
-                          → weather_contract_prices      ✅ implemented
+  Source                  → Table(s)                               Status
+  ──────────────────────────────────────────────────────────────────────────
+  NWS gridpoints forecast → weather_forecasts (legacy)            ✅ running
+                          → weather_bronze_nws_forecast_snapshots  ✅ new
+                          → weather_silver_forecast_conformed       ✅ new
+  NWS CLI climate report  → weather_observations (legacy)         ✅ running
+                          → weather_bronze_nws_actuals             ✅ new
+                          → weather_silver_actuals_conformed       ✅ new
+  Open-Meteo API          → weather_forecasts (legacy)            ✅ running
+                          → weather_bronze_openmeteo_*            ✅ new
+                          → weather_silver_forecast_conformed      ✅ new
+  Kalshi weather markets  → prediction_contracts (legacy)         ✅ running
+                          → weather_contract_prices (legacy)       ✅ running
+                          → weather_bronze_kalshi_market_snapshots ✅ new
+                          → weather_kalshi_contract_catalog        ✅ new
+                          → weather_silver_market_conformed        ✅ new
+  Iowa State ASOS         → weather_observations                  ✅ running
+  NOAA CPC ENSO           → enso_index                            ✅ running
 
-Cities — 6 (original 4 + Phoenix and Denver added for Phase 3).
-Phase 3 trading scope: Miami, Phoenix, Denver (High + Low on Kalshi).
+Cities — 8 (Kalshi-aligned ICAO codes).
 NWS office mapping per operator:
   NYC      → NWS office OKX, ASOS station KNYC
   Chicago  → NWS office LOT, ASOS station KORD
@@ -44,41 +54,8 @@ NWS office mapping per operator:
   Austin   → NWS office EWX, ASOS station KAUS
   Phoenix  → NWS office PSR, ASOS station KPHX
   Denver   → NWS office BOU, ASOS station KDEN
-
-After fetch, computes degree_days from the day's observations + tmax/tmin
-forecasts for each station.
-
-All data is paper / informational at Phase 1. No betting, no execution,
-no rules.json registration — that comes in Phase 3+.
-
-Cross-platform arb deferred to Phase 3 — same event has resolved differently
-on Kalshi vs Polymarket in 2024, so it's NOT zero-risk. Polymarket US access
-is invite-only + legally uncertain; Phase 1 is Kalshi-only.
-
-Env config (no API keys needed for the implemented sources at Phase 1):
-  PG_HOST, PG_PORT, PG_DB, PG_USER, PG_PASSWORD  (via trading_core._load_env)
-  USDA_NASS_API_KEY                              (scaffold source)
-  KALSHI_KEY_ID                                  (Phase 3 betting — not yet used)
-
-Phase 3 Kalshi setup (NOT in Phase 1, documenting the contract):
-  - Kalshi auth = RSA-PSS, NOT simple API key
-  - Generate RSA key pair; store private key at /etc/bhn-trading/kalshi_private.pem (0600)
-  - Store key id in /etc/bhn-trading/strat9.env as KALSHI_KEY_ID=<id>
-  - SDK: pip install kalshi-python==2.1.4
-  - Demo environment: demo-api.kalshi.co (use for all paper trading)
-  - Production: trading-api.kalshi.com
-
-Phase 2 economics markets pipeline (NOT in this file — separate collector
-when it lands):
-  - FRED API (free key at fred.stlouisfed.org) — GDPNow, treasury yields
-  - BLS API (free key)                          — CPI, NFP, unemployment
-  - Cleveland Fed scraping                      — daily inflation nowcast
-  - pyfedwatch package                          — Fed decision probabilities from SOFR futures
-
-Dependencies (one-time on LA when promoting scaffolds to full):
-  pip install ecmwf-opendata    # ECMWF 51-member open-data client
-  pip install cfgrib eccodes    # GRIB2 parsing (used by both ECMWF and HRRR)
-  pip install herbie-data       # HRRR retrieval wrapper
+  LA       → NWS office LOX, ASOS station KLAX
+  DFW      → NWS office FWD, ASOS station KDFW
 
 CLI:
   python3 weather_data_collector.py              # full cycle (all sources)
@@ -87,6 +64,7 @@ CLI:
   python3 weather_data_collector.py --source asos
   python3 weather_data_collector.py --source enso
   python3 weather_data_collector.py --source kalshi_markets
+  python3 weather_data_collector.py --source nws_actuals
   python3 weather_data_collector.py --source degree_days
   python3 weather_data_collector.py --dry-run    # log only, no PG writes
 """
@@ -94,6 +72,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 import time
 from dataclasses import dataclass
@@ -125,9 +104,7 @@ class City:
     asos_network: str       # Iowa State ASOS network code (e.g. 'NY_ASOS')
 
 
-# Kalshi-aligned 4-city set with explicit NWS office mapping per operator
-# (research findings: Kalshi weather contracts only cover these 4 markets,
-# and they settle on the matching NWS office's Daily Climate Report).
+# Kalshi-aligned 8-city set with explicit NWS office mapping per operator
 CITIES: tuple[City, ...] = (
     City("KNYC", "OKX", "New York City",   "NY", 40.7831,  -73.9712, "NY_ASOS"),  # Central Park
     City("KORD", "LOT", "Chicago O'Hare",  "IL", 41.9742,  -87.9073, "IL_ASOS"),
@@ -203,14 +180,32 @@ def _http_get_text(url: str, params: Optional[dict] = None,
 # ─────────────────────────────────────────────────────────────────────────
 
 OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
-# Open-Meteo "models" parameter — comma-separated. We pull both GFS and ECMWF.
 OPEN_METEO_MODELS = ("gfs_seamless", "ecmwf_ifs04")
 OPEN_METEO_VARS_DAILY = (
     "temperature_2m_max", "temperature_2m_min",
     "precipitation_sum",   "snowfall_sum",
 )
-# Lead times we tag forecasts with (hours from forecast-issue time, approximate)
 LEAD_TIME_DAYS = (0, 1, 2, 3, 5, 7, 10, 14)
+
+OPEN_METEO_VARS_HOURLY = (
+    "temperature_2m", "dewpoint_2m", "relative_humidity_2m",
+    "cloud_cover", "precipitation_probability", "precipitation",
+    "rain", "snowfall", "wind_speed_10m", "wind_gusts_10m",
+    "surface_pressure", "weather_code",
+)
+
+# NWS CLI 3-char location codes for fetching Daily Climate Reports
+_NWS_CLI_LOCATIONS: dict[str, str] = {
+    "KMIA": "MIA", "KDEN": "DEN", "KPHX": "PHX", "KLAX": "LAX",
+    "KDFW": "DFW", "KNYC": "NYC", "KORD": "ORD", "KAUS": "AUS",
+}
+
+# Default sigma (°F) per station until 30 days of calibration history exists
+_SIGMA_DEFAULTS: dict[str, float] = {
+    "KMIA": 2.5, "KDEN": 3.5, "KPHX": 2.0,
+    "KLAX": 2.0, "KDFW": 3.0, "KNYC": 3.0,
+    "KORD": 3.5, "KAUS": 3.0,
+}
 
 
 def _c_to_f(c: Optional[float]) -> Optional[float]:
@@ -225,18 +220,119 @@ def _cm_to_in(cm: Optional[float]) -> Optional[float]:
     return None if cm is None else (cm / 2.54)
 
 
+def _kmh_to_mph(kmh: Optional[float]) -> Optional[float]:
+    return None if kmh is None else (kmh * 0.621371)
+
+
+def _parse_kalshi_ticker(ticker: str) -> dict:
+    """Extract bucket fields from a Kalshi weather ticker.
+    KXHIGHDEN-26JUN11-B78.5 → {contract_side, bucket_type, bucket_floor, bucket_cap, bucket_label}
+    KXHIGHMIA-26JUN15-T90 → above/below depending on T threshold direction.
+    Returns empty dict if parsing fails.
+    """
+    parts = ticker.split("-")
+    if len(parts) < 3:
+        return {}
+    series_part = parts[0].upper()
+    price_part = parts[2]
+
+    contract_side = "high" if "HIGH" in series_part else ("low" if "LOW" in series_part else None)
+    if not contract_side:
+        return {}
+
+    try:
+        if price_part.upper().startswith("B"):
+            mid = float(price_part[1:])
+            floor_v = mid - 0.5
+            cap_v = mid + 0.5
+            label = f"{int(floor_v)}-{int(cap_v)}"
+            return {"contract_side": contract_side, "bucket_type": "between",
+                    "bucket_floor": floor_v, "bucket_cap": cap_v, "bucket_label": label}
+        elif price_part.upper().startswith("T"):
+            val = float(price_part[1:])
+            # Kalshi uses T for top-cap (above) and bottom-floor (below) buckets.
+            # The context (series_ticker structure) disambiguates, but we can't
+            # tell here without more data. Store as-is with bucket_type='threshold'
+            # — the catalog upsert in kalshi_client.py will have the correct op.
+            return {"contract_side": contract_side, "bucket_type": "threshold",
+                    "bucket_floor": val, "bucket_cap": val, "bucket_label": f"T{int(val)}"}
+    except (ValueError, IndexError):
+        pass
+    return {}
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# NWS raw gridpoints value parser
+# ─────────────────────────────────────────────────────────────────────────
+
+def _parse_nws_gridpoints_property(values: list[dict],
+                                    target_dates: set[date]) -> dict[date, list[float]]:
+    """Extract per-date value lists from NWS gridpoints property array.
+    validTime format: '2026-06-11T06:00:00+00:00/PT1H' (duration suffix ignored).
+    """
+    result: dict[date, list[float]] = {}
+    for item in values:
+        vt = item.get("validTime", "")
+        val = item.get("value")
+        if val is None or not vt:
+            continue
+        dt_str = vt.split("/")[0]
+        try:
+            dt = datetime.fromisoformat(dt_str)
+            d = dt.date()
+        except ValueError:
+            continue
+        if d not in target_dates:
+            continue
+        result.setdefault(d, []).append(float(val))
+    return result
+
+
+def _parse_nws_cli_text(text: str) -> tuple[Optional[float], Optional[float]]:
+    """Extract MAX TEMP and MIN TEMP from NWS CLI product text body.
+
+    The NWS CLI format has two relevant line shapes:
+      '  MAXIMUM         88   1:51 PM  96    1994  89  ...'  ← daily observed (first number)
+      '  MAXIMUM TEMPERATURE (F)   89 ...'                   ← normal/record (skip)
+    Anchor to ^MAXIMUM / ^MINIMUM on the stripped line to capture only the observed row.
+    """
+    tmax = tmin = None
+    for raw_line in text.splitlines():
+        line = raw_line.strip().upper()
+        if tmax is None:
+            if m := re.match(r'^MAXIMUM\s+(\d+)', line):
+                try:
+                    tmax = float(m.group(1))
+                except ValueError:
+                    pass
+        if tmin is None:
+            if m := re.match(r'^MINIMUM\s+(\d+)', line):
+                try:
+                    tmin = float(m.group(1))
+                except ValueError:
+                    pass
+        if tmax is not None and tmin is not None:
+            break
+    return tmax, tmin
+
+
 def fetch_open_meteo(dry_run: bool = False) -> int:
     """For each city, pull GFS + ECMWF daily forecasts up to 16 days out.
-    Writes one weather_forecasts row per (city, variable, lead_day, model).
+    Dual-write: legacy weather_forecasts + new bronze/silver tables.
     Returns total rows inserted."""
     rows_inserted = 0
+    now_utc = datetime.now(timezone.utc)
+    # Round down to nearest 6h GFS cycle boundary for bronze forecast_run_time
+    hr_offset = now_utc.hour % 6
+    run_time_6h = now_utc.replace(minute=0, second=0, microsecond=0) - timedelta(hours=hr_offset)
+
     for city in CITIES:
         params = {
             "latitude":  city.lat,
             "longitude": city.lon,
             "daily":     ",".join(OPEN_METEO_VARS_DAILY),
             "models":    ",".join(OPEN_METEO_MODELS),
-            "temperature_unit": "fahrenheit",    # request F directly
+            "temperature_unit": "fahrenheit",
             "precipitation_unit": "mm",
             "timezone": "America/New_York",
             "forecast_days": 16,
@@ -246,34 +342,29 @@ def fetch_open_meteo(dry_run: bool = False) -> int:
             logger.warning(f"{city.icao}: no Open-Meteo daily data")
             continue
 
-        # Open-Meteo returns aligned arrays per model. With multi-model the
-        # response keys get suffixed: e.g. "temperature_2m_max_gfs_seamless".
         daily = data["daily"]
         time_array = daily.get("time") or []
         if not time_array:
             continue
 
-        # Each requested model is suffixed in the response keys
         for model_key in OPEN_METEO_MODELS:
-            # variable_name + "_" + model_key — but Open-Meteo strips
-            # underscores oddly; try the suffixed key first, then bare.
+            # Accumulate tmax/tmin for this model+city to write one bronze row per date
             for idx, day_str in enumerate(time_array):
                 try:
                     target_date = date.fromisoformat(day_str)
                 except ValueError:
                     continue
-                lead_days = (target_date - datetime.now(timezone.utc).date()).days
+                lead_days = (target_date - now_utc.date()).days
                 if lead_days < 0:
                     continue
                 if lead_days not in LEAD_TIME_DAYS:
                     continue
                 lead_hours = lead_days * 24
 
-                def _val(var_base: str) -> Optional[float]:
-                    """Pull arr[idx] for var with model-suffix, fall back to bare."""
-                    for k in (f"{var_base}_{model_key}", var_base):
-                        if k in daily and isinstance(daily[k], list) and idx < len(daily[k]):
-                            return daily[k][idx]
+                def _val(var_base: str, _idx: int = idx, _mk: str = model_key) -> Optional[float]:
+                    for k in (f"{var_base}_{_mk}", var_base):
+                        if k in daily and isinstance(daily[k], list) and _idx < len(daily[k]):
+                            return daily[k][_idx]
                     return None
 
                 tmax_f_raw = _val("temperature_2m_max")
@@ -299,9 +390,34 @@ def fetch_open_meteo(dry_run: bool = False) -> int:
                             lead_time_hours=lead_hours,
                             source_model=f"open-meteo:{model_key}",
                             season=_season_for(target_date),
-                            raw_payload=None,  # full payload not stored per-row
+                            raw_payload=None,
                         )
                     rows_inserted += 1
+
+                # Bronze + silver write (one row per model/city/date)
+                if not dry_run and tmax_f_raw is not None:
+                    source_name = f"open_meteo_{model_key}"
+                    try:
+                        _insert_bronze_openmeteo_snapshot(
+                            city=city.name, station_code=city.icao,
+                            lat=city.lat, lon=city.lon,
+                            model=model_key, forecast_run_time=run_time_6h,
+                            target_date=target_date, hour=None,
+                            temperature_2m=tmax_f_raw,
+                            source_payload_json=None,
+                        )
+                        _populate_silver_openmeteo_forecast(
+                            city=city.name, station_code=city.icao,
+                            source_name=source_name,
+                            forecast_run_time=run_time_6h,
+                            target_date=target_date,
+                            lead_hours=lead_hours,
+                            tmax_f=tmax_f_raw,
+                            tmin_f=tmin_f_raw,
+                        )
+                    except Exception as e:
+                        logger.warning(f"{city.icao}: bronze/silver open_meteo write failed: {e}")
+
     logger.info(f"open_meteo: {rows_inserted} forecast rows {'(dry-run)' if dry_run else 'inserted'}")
     return rows_inserted
 
@@ -322,8 +438,6 @@ def fetch_asos(days_lookback: int = 3, dry_run: bool = False) -> int:
 
     rows_inserted = 0
     for city in CITIES:
-        # Strip leading K — ASOS uses 3-letter codes ('NYC', 'LAX', etc.) for
-        # most stations; Iowa State accepts the K-prefixed form too.
         station = city.icao[1:] if city.icao.startswith("K") else city.icao
         params = {
             "network": city.asos_network,
@@ -339,7 +453,6 @@ def fetch_asos(days_lookback: int = 3, dry_run: bool = False) -> int:
             logger.warning(f"{city.icao}: no ASOS data")
             continue
 
-        # CSV header: station,day,max_temp_f,min_temp_f,precip_in,snow_in
         lines = [ln for ln in csv_text.splitlines() if ln and not ln.startswith("#")]
         if len(lines) < 2:
             continue
@@ -380,8 +493,6 @@ def fetch_asos(days_lookback: int = 3, dry_run: bool = False) -> int:
                 ("precip_in", _parse(col_pcp)),
                 ("snow_in",   _parse(col_snow)),
             )
-            # ASOS reports a single daily summary — bin observation time at
-            # 23:59 UTC of the report day for the timestamp.
             obs_ts = datetime.combine(obs_date, datetime.min.time(),
                                        tzinfo=timezone.utc) + timedelta(hours=23, minutes=59)
             for var, val in samples:
@@ -437,36 +548,27 @@ def fetch_enso(dry_run: bool = False) -> int:
 
     rows_inserted = 0
     for line in text.splitlines():
-        # NOAA file has leading spaces on every data line — strip before any checks.
         line = line.strip()
         if not line or line.lower().startswith("week") or line.startswith("#"):
             continue
         if len(line) < 20:
             continue
-        # First token is the date in DDMMMYYYY format, e.g. "02SEP1981"
         date_token = line[:9]
         try:
             week_ending = datetime.strptime(date_token, "%d%b%Y").date()
         except ValueError:
             continue
-        # Values are packed without whitespace between SST and SSTA
-        # (e.g. "20.6-0.1") — regex extracts all signed floats.
         floats = [float(m) for m in re.findall(r"-?\d+\.\d+", line[9:])]
-        # Expect 8 floats (4 regions × {SST, SSTA}). Niño 3.4 SSTA = index 5.
         if len(floats) < 6:
             continue
         nino34_anom = floats[5]
-        # ONI is a 3-month rolling mean of Niño 3.4 SSTA — we don't compute it
-        # here; we record the weekly anomaly and let the Phase 2 calibration
-        # job derive ONI from rolling windows. Use the weekly anomaly as a
-        # proxy for the phase signal in the meantime.
         phase = _enso_phase(nino34_anom)
 
         if not dry_run:
             _insert_enso(
                 week_ending=week_ending,
                 nino34_sst_anomaly=nino34_anom,
-                oni_value=None,  # populated by Phase 2 rolling-mean job
+                oni_value=None,
                 phase=phase,
             )
         rows_inserted += 1
@@ -483,30 +585,13 @@ USDA_NASS_API_URL = "https://quickstats.nass.usda.gov/api/api_GET/"
 
 def fetch_usda_crops(dry_run: bool = False) -> int:
     """Pull weekly crop progress + conditions from USDA NASS Quick Stats API.
-    Requires USDA_NASS_API_KEY env var (free signup at quickstats.nass.usda.gov).
-
-    SCAFFOLD: query shape known but not yet wired to PG insert. Next session
-    fills in:
-      params = {
-          "key": api_key,
-          "source_desc": "SURVEY",
-          "sector_desc": "CROPS",
-          "group_desc": "FIELD CROPS",
-          "commodity_desc": "CORN",   # or SOYBEANS, WHEAT, etc.
-          "statisticcat_desc": "CONDITION",
-          "year": str(date.today().year),
-          "format": "JSON",
-      }
-    Response yields 5-bucket condition % (VERY POOR / POOR / FAIR / GOOD /
-    EXCELLENT) per state per week. Insert one row per category.
-    """
+    SCAFFOLD: query shape known but not yet wired to PG insert."""
     import os
     api_key = os.environ.get("USDA_NASS_API_KEY")
     if not api_key:
         logger.info("usda_crops: USDA_NASS_API_KEY not set — skipping (Phase 1 scaffold)")
         return 0
-    logger.info("usda_crops: SCAFFOLD — endpoint reachable but PG insert not yet wired. "
-                "Operator: paste actual NASS API query parameters next session.")
+    logger.info("usda_crops: SCAFFOLD — endpoint reachable but PG insert not yet wired.")
     return 0
 
 
@@ -517,7 +602,6 @@ def fetch_usda_crops(dry_run: bool = False) -> int:
 NWS_API_BASE = "https://api.weather.gov"
 
 # Module-level cache: icao → (forecast_url, office, gridX, gridY).
-# Gridpoints never change for a given lat/lon — safe to cache for process lifetime.
 NWS_GRIDPOINTS: dict[str, tuple[str, str, int, int]] = {}
 
 
@@ -547,10 +631,9 @@ def _discover_nws_gridpoint(city: "City") -> Optional[tuple[str, str, int, int]]
 
 def fetch_nws(dry_run: bool = False) -> int:
     """Pull 7-day high/low forecasts from NWS gridpoints API for each city.
-    Two-step: /points/{lat},{lon} discovery (cached) → /gridpoints/{office}/{x},{y}/forecast.
-    NWS is the authoritative source for Kalshi weather contract settlement.
-    Writes to weather_forecasts as source_model='nws_gridpoints'.
-    Returns rows inserted."""
+    Dual-write: legacy weather_forecasts + new bronze/silver tables.
+    Also fetches raw gridpoints endpoint for extended fields (dewpoint, RH, wind, etc.).
+    Returns rows inserted to weather_forecasts."""
     today = datetime.now(timezone.utc).date()
     rows_inserted = 0
 
@@ -573,6 +656,9 @@ def fetch_nws(dry_run: bool = False) -> int:
         if not periods:
             logger.warning(f"{city.icao}: NWS forecast: empty periods")
             continue
+
+        # Accumulate per-date tmax/tmin + weather text
+        date_data: dict[date, dict] = {}
 
         for period in periods:
             is_daytime: bool = bool(period.get("isDaytime", True))
@@ -611,6 +697,125 @@ def fetch_nws(dry_run: bool = False) -> int:
                 )
             rows_inserted += 1
 
+            # Accumulate for bronze write
+            if target_date not in date_data:
+                date_data[target_date] = {"lead_hours": lead_days * 24}
+            if is_daytime:
+                date_data[target_date]["tmax_f"] = temp_f
+                # Capture weather text from daytime period
+                date_data[target_date]["weather_text"] = (
+                    period.get("detailedForecast") or period.get("shortForecast") or ""
+                )
+            else:
+                date_data[target_date]["tmin_f"] = temp_f
+
+        if not date_data or dry_run:
+            if not date_data:
+                continue
+            else:
+                logger.info(f"nws: {city.icao} dry-run; {len(date_data)} dates accumulated")
+                continue
+
+        # Fetch raw gridpoints for extended fields (optional; failure doesn't block bronze write)
+        raw_gridpoints: Optional[dict] = None
+        try:
+            raw_url = f"{NWS_API_BASE}/gridpoints/{office}/{grid_x},{grid_y}"
+            raw_gridpoints = _http_get_json(raw_url, timeout=20)
+        except Exception as e:
+            logger.debug(f"{city.icao}: raw gridpoints fetch skipped: {e}")
+
+        # Parse extended fields if available
+        if raw_gridpoints:
+            gp_props = raw_gridpoints.get("properties") or {}
+            target_set = set(date_data.keys())
+
+            def _gp_max(prop: str, convert=None) -> dict[date, Optional[float]]:
+                vals = _parse_nws_gridpoints_property(
+                    gp_props.get(prop, {}).get("values", []), target_set
+                )
+                out: dict[date, Optional[float]] = {}
+                for d, lst in vals.items():
+                    v = max(lst) if lst else None
+                    out[d] = convert(v) if (v is not None and convert) else v
+                return out
+
+            def _gp_avg(prop: str, convert=None) -> dict[date, Optional[float]]:
+                vals = _parse_nws_gridpoints_property(
+                    gp_props.get(prop, {}).get("values", []), target_set
+                )
+                out: dict[date, Optional[float]] = {}
+                for d, lst in vals.items():
+                    v = sum(lst) / len(lst) if lst else None
+                    out[d] = convert(v) if (v is not None and convert) else v
+                return out
+
+            tmax_gp = _gp_max("temperature", _c_to_f)
+            tmin_gp: dict[date, Optional[float]] = {}
+            temp_all = _parse_nws_gridpoints_property(
+                gp_props.get("temperature", {}).get("values", []), target_set
+            )
+            for d, lst in temp_all.items():
+                tmin_gp[d] = _c_to_f(min(lst)) if lst else None
+
+            dewpoint_gp = _gp_avg("dewpoint", _c_to_f)
+            rh_gp = _gp_avg("relativeHumidity")
+            wind_speed_gp = _gp_avg("windSpeed", _kmh_to_mph)
+            wind_gust_gp = _gp_max("windGust", _kmh_to_mph)
+            cloud_cover_gp = _gp_avg("skyCover")
+            pop_gp = _gp_max("probabilityOfPrecipitation")
+
+            for d, dd in date_data.items():
+                dd.setdefault("tmax_f", tmax_gp.get(d))
+                dd.setdefault("tmin_f", tmin_gp.get(d))
+                dd["dewpoint_f"] = dewpoint_gp.get(d)
+                dd["rh_pct"] = rh_gp.get(d)
+                dd["wind_speed_mph"] = wind_speed_gp.get(d)
+                dd["wind_gust_mph"] = wind_gust_gp.get(d)
+                dd["cloud_cover_pct"] = cloud_cover_gp.get(d)
+                dd["pop_pct"] = pop_gp.get(d)
+
+        run_time_nws = datetime.now(timezone.utc)
+
+        # Write bronze row + silver per date
+        for target_date, dd in date_data.items():
+            lead_hours = dd.get("lead_hours", 0)
+            try:
+                _insert_bronze_nws_forecast(
+                    city=city.name,
+                    station_code=city.icao,
+                    nws_office=office,
+                    forecast_run_time=run_time_nws,
+                    target_date=target_date,
+                    lead_hours=lead_hours,
+                    tmax_f=dd.get("tmax_f"),
+                    tmin_f=dd.get("tmin_f"),
+                    dewpoint_f=dd.get("dewpoint_f"),
+                    rh_pct=dd.get("rh_pct"),
+                    wind_speed_mph=dd.get("wind_speed_mph"),
+                    wind_gust_mph=dd.get("wind_gust_mph"),
+                    cloud_cover_pct=dd.get("cloud_cover_pct"),
+                    pop_pct=dd.get("pop_pct"),
+                    weather_text=dd.get("weather_text"),
+                    source_payload_json=None,
+                )
+                _populate_silver_nws_forecast(
+                    city=city.name,
+                    station_code=city.icao,
+                    forecast_run_time=run_time_nws,
+                    target_date=target_date,
+                    lead_hours=lead_hours,
+                    tmax_f=dd.get("tmax_f"),
+                    tmin_f=dd.get("tmin_f"),
+                    dewpoint_f=dd.get("dewpoint_f"),
+                    rh_pct=dd.get("rh_pct"),
+                    wind_speed_mph=dd.get("wind_speed_mph"),
+                    wind_gust_mph=dd.get("wind_gust_mph"),
+                    cloud_cover_pct=dd.get("cloud_cover_pct"),
+                    pop_pct=dd.get("pop_pct"),
+                )
+            except Exception as e:
+                logger.warning(f"{city.icao}/{target_date}: bronze/silver NWS write failed: {e}")
+
     logger.info(f"nws: {rows_inserted} forecast rows {'(dry-run)' if dry_run else 'inserted'}")
     return rows_inserted
 
@@ -620,16 +825,8 @@ def fetch_nws(dry_run: bool = False) -> int:
 # ─────────────────────────────────────────────────────────────────────────
 
 def fetch_nomads_gfs_ensemble(dry_run: bool = False) -> int:
-    """NOAA NOMADS GFS 50-member ensemble (GEFS). GRIB2 file format — needs
-    pygrib or eccodes for parsing. Each cycle is ~50 GRIB files per forecast
-    hour, lat/lon grids — expensive to fetch + decode.
-
-    SCAFFOLD: deferred to Phase 1.5. Open-Meteo gives ensemble mean+spread
-    via the gfs_seamless model output for now — covers the highest-signal
-    use case without the GRIB plumbing.
-    """
-    logger.info("nomads_gfs_ensemble: SCAFFOLD — GRIB2 parsing not yet implemented. "
-                "Open-Meteo seamless model approximates the ensemble mean.")
+    """SCAFFOLD: deferred. Open-Meteo seamless approximates ensemble mean."""
+    logger.info("nomads_gfs_ensemble: SCAFFOLD — GRIB2 parsing not yet implemented.")
     return 0
 
 
@@ -707,12 +904,11 @@ def _variable_from_kalshi_ticker(ticker: str) -> Optional[str]:
 
 
 def fetch_kalshi_markets(dry_run: bool = False) -> int:
-    """Fetch open Kalshi weather markets and snapshot prices to
-    weather_contract_prices. The KalshiClient.get_weather_markets() call
-    also auto-UPSERTs contracts into prediction_contracts.
+    """Fetch open Kalshi weather markets.
+    Dual-write: legacy tables + new bronze/catalog/silver tables.
     Returns rows inserted to weather_contract_prices."""
     try:
-        from kalshi_client import KalshiClient  # co-located on LA
+        from kalshi_client import KalshiClient
     except ImportError:
         logger.warning("kalshi_markets: kalshi_client not importable — skipping")
         return 0
@@ -734,6 +930,8 @@ def fetch_kalshi_markets(dry_run: bool = False) -> int:
         return 0
 
     rows_inserted = 0
+    snapshot_time = datetime.now(timezone.utc)
+
     for market in markets:
         ticker = market.get("ticker")
         if not ticker:
@@ -748,8 +946,6 @@ def fetch_kalshi_markets(dry_run: bool = False) -> int:
             except (ValueError, TypeError):
                 pass
 
-        # Try price fields from the market object (integer cents), then
-        # fall back to an orderbook fetch if both are absent.
         yes_cents = market.get("yes_ask") or market.get("yes_bid")
         no_cents  = market.get("no_ask")  or market.get("no_bid")
         yes_price: Optional[float] = float(yes_cents) / 100.0 if yes_cents else None
@@ -758,16 +954,12 @@ def fetch_kalshi_markets(dry_run: bool = False) -> int:
         if yes_price is None and no_price is None:
             try:
                 book = client.get_orderbook(ticker)
-                # Kalshi v2 returns 'orderbook_fp' with fractional-dollar price
-                # strings (e.g. "0.0100" = $0.01 = 1% probability, already 0-1).
-                # Older 'orderbook' key had integer cents — keep fallback for safety.
                 ob = ((book or {}).get("orderbook_fp")
                       or (book or {}).get("orderbook") or {})
                 yes_side = ob.get("yes_dollars") or ob.get("yes") or []
                 no_side  = ob.get("no_dollars")  or ob.get("no")  or []
                 if yes_side and isinstance(yes_side[0], (list, tuple)):
                     raw = float(yes_side[0][0])
-                    # If > 1 it's legacy integer-cent format; divide by 100.
                     yes_price = raw if raw <= 1.0 else raw / 100.0
                 if no_side and isinstance(no_side[0], (list, tuple)):
                     raw = float(no_side[0][0])
@@ -783,10 +975,39 @@ def fetch_kalshi_markets(dry_run: bool = False) -> int:
             logger.debug(f"kalshi_markets: no price data for {ticker} — skipping")
             continue
 
+        # Parse yes_bid / yes_ask explicitly
+        yes_bid_val: Optional[float] = (
+            float(market.get("yes_bid")) / 100.0 if market.get("yes_bid") else None
+        )
+        yes_ask_val: Optional[float] = (
+            float(market.get("yes_ask")) / 100.0 if market.get("yes_ask") else None
+        )
+        no_bid_val: Optional[float] = (
+            float(market.get("no_bid")) / 100.0 if market.get("no_bid") else None
+        )
+        no_ask_val: Optional[float] = (
+            float(market.get("no_ask")) / 100.0 if market.get("no_ask") else None
+        )
+        yes_mid: Optional[float] = None
+        if yes_bid_val is not None and yes_ask_val is not None:
+            yes_mid = (yes_bid_val + yes_ask_val) / 2.0
+        elif yes_bid_val is not None:
+            yes_mid = yes_bid_val
+        elif yes_ask_val is not None:
+            yes_mid = yes_ask_val
+        elif implied_prob is not None:
+            yes_mid = implied_prob  # fallback when bid/ask unavailable (e.g. orderbook path)
+
         volume_raw = market.get("volume_24h") or market.get("volume")
         open_int_raw = market.get("open_interest")
         volume_24h = float(volume_raw) if volume_raw is not None else None
         open_interest = float(open_int_raw) if open_int_raw is not None else None
+        market_status = market.get("status", "open")
+        event_ticker = market.get("event_ticker")
+        series_ticker = (ticker.split("-")[0] if "-" in ticker else None)
+
+        station_code = _station_from_kalshi_ticker(ticker)
+        bucket_info = _parse_kalshi_ticker(ticker)
 
         if not dry_run:
             _insert_contract_price(
@@ -799,10 +1020,69 @@ def fetch_kalshi_markets(dry_run: bool = False) -> int:
                 volume_24h=volume_24h,
                 open_interest=open_interest,
                 resolution_date=resolution_date,
-                region=_station_from_kalshi_ticker(ticker),
+                region=station_code,
                 variable=_variable_from_kalshi_ticker(ticker),
                 raw_payload=market,
             )
+
+            # Bronze snapshot
+            try:
+                _insert_bronze_kalshi_snapshot(
+                    market_ticker=ticker,
+                    event_ticker=event_ticker,
+                    series_ticker=series_ticker,
+                    station_code=station_code,
+                    bucket_info=bucket_info,
+                    target_date=resolution_date,
+                    yes_bid=yes_bid_val,
+                    yes_ask=yes_ask_val,
+                    no_bid=no_bid_val,
+                    no_ask=no_ask_val,
+                    yes_mid=yes_mid,
+                    volume=volume_24h,
+                    open_interest=open_interest,
+                    market_status=market_status,
+                    source_payload_json=market,
+                    retrieved_at=snapshot_time,
+                )
+            except Exception as e:
+                logger.warning(f"kalshi_markets: bronze snapshot failed for {ticker}: {e}")
+
+            # Catalog upsert
+            try:
+                _upsert_kalshi_catalog(
+                    market_ticker=ticker,
+                    event_ticker=event_ticker,
+                    series_ticker=series_ticker,
+                    station_code=station_code,
+                    bucket_info=bucket_info,
+                    target_date=resolution_date,
+                    market_status=market_status,
+                    source_payload_json=market,
+                )
+            except Exception as e:
+                logger.warning(f"kalshi_markets: catalog upsert failed for {ticker}: {e}")
+
+            # Silver market
+            if station_code and resolution_date:
+                try:
+                    _populate_silver_market(
+                        market_ticker=ticker,
+                        series_ticker=series_ticker,
+                        station_code=station_code,
+                        bucket_info=bucket_info,
+                        target_date=resolution_date,
+                        snapshot_time=snapshot_time,
+                        yes_mid=yes_mid,
+                        yes_bid=yes_bid_val,
+                        yes_ask=yes_ask_val,
+                        volume=volume_24h,
+                        open_interest=open_interest,
+                        market_status=market_status,
+                    )
+                except Exception as e:
+                    logger.warning(f"kalshi_markets: silver market failed for {ticker}: {e}")
+
         rows_inserted += 1
 
     logger.info(
@@ -813,7 +1093,126 @@ def fetch_kalshi_markets(dry_run: bool = False) -> int:
 
 
 # ─────────────────────────────────────────────────────────────────────────
-# PG insert helpers
+# Source 9: NWS CLI Daily Climate Reports — settlement actuals
+# ─────────────────────────────────────────────────────────────────────────
+
+NWS_PRODUCTS_URL = "https://api.weather.gov/products"
+
+
+def fetch_nws_actuals(dry_run: bool = False) -> int:
+    """Fetch NWS Daily Climate Reports (CLI) for each city.
+    These are the same reports Kalshi uses for weather contract settlement.
+    Dual-write: weather_bronze_nws_actuals + weather_silver_actuals_conformed.
+    Returns rows inserted."""
+    rows_inserted = 0
+    today = datetime.now(timezone.utc).date()
+
+    for city in CITIES:
+        cli_code = _NWS_CLI_LOCATIONS.get(city.icao)
+        if not cli_code:
+            continue
+
+        try:
+            # Get list of recent CLI products for this location
+            products_data = _http_get_json(
+                NWS_PRODUCTS_URL,
+                params={"type": "CLI", "location": cli_code},
+            )
+            if not products_data:
+                logger.warning(f"{city.icao}: no CLI products returned")
+                continue
+
+            product_list = products_data.get("@graph") or []
+            if not product_list:
+                logger.debug(f"{city.icao}: CLI product list empty")
+                continue
+
+            # Most recent product is first
+            latest_product = product_list[0]
+            product_id = latest_product.get("id") or latest_product.get("@id", "").split("/")[-1]
+            issuance_time_str = latest_product.get("issuanceTime")
+            if not product_id:
+                logger.warning(f"{city.icao}: CLI product has no id")
+                continue
+
+            # Parse issuance time — CLI is issued the NEXT day for the previous day's data
+            if issuance_time_str:
+                try:
+                    issuance_dt = datetime.fromisoformat(issuance_time_str.replace("Z", "+00:00"))
+                    # CLI report covers the day before issuance
+                    target_date = (issuance_dt.date() - timedelta(days=1))
+                except (ValueError, TypeError):
+                    target_date = today - timedelta(days=1)
+            else:
+                target_date = today - timedelta(days=1)
+
+            # Fetch full product text
+            product_data = _http_get_json(f"{NWS_PRODUCTS_URL}/{product_id}")
+            if not product_data:
+                logger.warning(f"{city.icao}: CLI product fetch failed for id={product_id}")
+                continue
+
+            product_text = product_data.get("productText", "")
+            if not product_text:
+                logger.debug(f"{city.icao}: CLI product text empty")
+                continue
+
+            tmax_f, tmin_f = _parse_nws_cli_text(product_text)
+            if tmax_f is None and tmin_f is None:
+                logger.debug(f"{city.icao}: CLI text parse yielded no temps for {target_date}")
+                continue
+
+            report_issued_at: Optional[datetime] = None
+            if issuance_time_str:
+                try:
+                    report_issued_at = datetime.fromisoformat(
+                        issuance_time_str.replace("Z", "+00:00")
+                    )
+                except (ValueError, TypeError):
+                    pass
+
+            logger.info(
+                f"{city.icao}: CLI actual {target_date} — "
+                f"tmax={tmax_f}°F tmin={tmin_f}°F"
+            )
+
+            if not dry_run:
+                try:
+                    _insert_bronze_actual(
+                        city=city.name,
+                        station_code=city.icao,
+                        cli_location=cli_code,
+                        target_date=target_date,
+                        final_tmax_f=tmax_f,
+                        final_tmin_f=tmin_f,
+                        report_issued_at=report_issued_at,
+                        source_payload_json={"product_text": product_text[:2000],
+                                              "issuance_time": issuance_time_str},
+                    )
+                    _populate_silver_actuals(
+                        city=city.name,
+                        station_code=city.icao,
+                        target_date=target_date,
+                        final_tmax_f=tmax_f,
+                        final_tmin_f=tmin_f,
+                        report_issued_at=report_issued_at,
+                    )
+                except Exception as e:
+                    logger.warning(f"{city.icao}: CLI bronze/silver write failed: {e}")
+                    continue
+
+            rows_inserted += 1
+
+        except Exception as e:
+            logger.warning(f"{city.icao}: fetch_nws_actuals error: {e}")
+            continue
+
+    logger.info(f"nws_actuals: {rows_inserted} actuals {'(dry-run)' if dry_run else 'upserted'}")
+    return rows_inserted
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# PG insert helpers — legacy tables (unchanged)
 # ─────────────────────────────────────────────────────────────────────────
 
 def _insert_forecast(*, station_code: str, variable: str, value: float,
@@ -906,18 +1305,383 @@ def _upsert_degree_days(*, station_code: str, target_date: date,
 
 
 # ─────────────────────────────────────────────────────────────────────────
+# PG insert helpers — Bronze tables
+# ─────────────────────────────────────────────────────────────────────────
+
+def _insert_bronze_nws_forecast(*, city: str, station_code: str, nws_office: str,
+                                  forecast_run_time: datetime, target_date: date,
+                                  lead_hours: Optional[int],
+                                  tmax_f: Optional[float], tmin_f: Optional[float],
+                                  dewpoint_f: Optional[float], rh_pct: Optional[float],
+                                  wind_speed_mph: Optional[float],
+                                  wind_gust_mph: Optional[float],
+                                  cloud_cover_pct: Optional[float],
+                                  pop_pct: Optional[float],
+                                  weather_text: Optional[str],
+                                  source_payload_json: Optional[dict]) -> None:
+    with tc.get_pg_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO weather_bronze_nws_forecast_snapshots
+                    (city, station_code, nws_office, forecast_run_time, target_date,
+                     lead_hours, tmax_f, tmin_f, dewpoint_f, rh_pct,
+                     wind_speed_mph, wind_gust_mph, cloud_cover_pct, pop_pct,
+                     weather_text, source_payload_json)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+                ON CONFLICT (station_code, forecast_run_time, target_date) DO NOTHING
+            """, (city, station_code, nws_office, forecast_run_time, target_date,
+                  lead_hours, tmax_f, tmin_f, dewpoint_f, rh_pct,
+                  wind_speed_mph, wind_gust_mph, cloud_cover_pct, pop_pct,
+                  weather_text,
+                  json.dumps(source_payload_json) if source_payload_json else None))
+
+
+def _insert_bronze_openmeteo_snapshot(*, city: str, station_code: str,
+                                        lat: Optional[float], lon: Optional[float],
+                                        model: str, forecast_run_time: datetime,
+                                        target_date: date, hour: Optional[int],
+                                        temperature_2m: Optional[float],
+                                        source_payload_json: Optional[dict]) -> None:
+    with tc.get_pg_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO weather_bronze_openmeteo_forecast_snapshots
+                    (city, station_code, lat, lon, model,
+                     forecast_run_time, target_date, hour, temperature_2m,
+                     source_payload_json)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+                ON CONFLICT (station_code, model, forecast_run_time, target_date, hour) DO NOTHING
+            """, (city, station_code, lat, lon, model,
+                  forecast_run_time, target_date, hour, temperature_2m,
+                  json.dumps(source_payload_json) if source_payload_json else None))
+
+
+def _insert_bronze_kalshi_snapshot(*, market_ticker: str,
+                                     event_ticker: Optional[str],
+                                     series_ticker: Optional[str],
+                                     station_code: Optional[str],
+                                     bucket_info: dict,
+                                     target_date: Optional[date],
+                                     yes_bid: Optional[float],
+                                     yes_ask: Optional[float],
+                                     no_bid: Optional[float],
+                                     no_ask: Optional[float],
+                                     yes_mid: Optional[float],
+                                     volume: Optional[float],
+                                     open_interest: Optional[float],
+                                     market_status: Optional[str],
+                                     source_payload_json: Optional[dict],
+                                     retrieved_at: Optional[datetime]) -> None:
+    city = bucket_info.get("contract_side", "")
+    with tc.get_pg_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO weather_bronze_kalshi_market_snapshots
+                    (market_ticker, event_ticker, series_ticker,
+                     station_code, contract_side, bucket_type,
+                     bucket_floor, bucket_cap, bucket_label, target_date,
+                     yes_bid, yes_ask, no_bid, no_ask, yes_mid,
+                     volume, open_interest, market_status,
+                     source_payload_json, retrieved_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s)
+            """, (market_ticker, event_ticker, series_ticker,
+                  station_code,
+                  bucket_info.get("contract_side"),
+                  bucket_info.get("bucket_type"),
+                  bucket_info.get("bucket_floor"),
+                  bucket_info.get("bucket_cap"),
+                  bucket_info.get("bucket_label"),
+                  target_date,
+                  yes_bid, yes_ask, no_bid, no_ask, yes_mid,
+                  volume, open_interest, market_status,
+                  json.dumps(source_payload_json) if source_payload_json else None,
+                  retrieved_at or datetime.now(timezone.utc)))
+
+
+def _upsert_kalshi_catalog(*, market_ticker: str, event_ticker: Optional[str],
+                             series_ticker: Optional[str], station_code: Optional[str],
+                             bucket_info: dict, target_date: Optional[date],
+                             market_status: Optional[str],
+                             source_payload_json: Optional[dict]) -> None:
+    with tc.get_pg_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO weather_kalshi_contract_catalog
+                    (market_ticker, event_ticker, series_ticker,
+                     station_code, contract_side, bucket_type,
+                     bucket_floor, bucket_cap, bucket_label,
+                     target_date, market_status, is_active,
+                     last_seen_at, source_payload_json)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, TRUE, NOW(), %s::jsonb)
+                ON CONFLICT (market_ticker) DO UPDATE SET
+                    market_status  = EXCLUDED.market_status,
+                    is_active      = TRUE,
+                    last_seen_at   = NOW(),
+                    source_payload_json = EXCLUDED.source_payload_json
+            """, (market_ticker, event_ticker, series_ticker,
+                  station_code,
+                  bucket_info.get("contract_side"),
+                  bucket_info.get("bucket_type"),
+                  bucket_info.get("bucket_floor"),
+                  bucket_info.get("bucket_cap"),
+                  bucket_info.get("bucket_label"),
+                  target_date, market_status,
+                  json.dumps(source_payload_json) if source_payload_json else None))
+
+
+def _insert_bronze_actual(*, city: str, station_code: str,
+                            cli_location: Optional[str], target_date: date,
+                            final_tmax_f: Optional[float], final_tmin_f: Optional[float],
+                            report_issued_at: Optional[datetime],
+                            source_payload_json: Optional[dict]) -> None:
+    with tc.get_pg_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO weather_bronze_nws_actuals
+                    (city, station_code, cli_location, target_date,
+                     final_tmax_f, final_tmin_f, report_issued_at,
+                     source_payload_json)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+                ON CONFLICT (station_code, target_date) DO NOTHING
+            """, (city, station_code, cli_location, target_date,
+                  final_tmax_f, final_tmin_f, report_issued_at,
+                  json.dumps(source_payload_json) if source_payload_json else None))
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Silver population helpers (called inline after each bronze write)
+# UPDATE-then-INSERT within the same transaction for is_latest_* flags.
+# ─────────────────────────────────────────────────────────────────────────
+
+def _populate_silver_nws_forecast(*, city: str, station_code: str,
+                                    forecast_run_time: datetime, target_date: date,
+                                    lead_hours: Optional[int],
+                                    tmax_f: Optional[float], tmin_f: Optional[float],
+                                    dewpoint_f: Optional[float], rh_pct: Optional[float],
+                                    wind_speed_mph: Optional[float],
+                                    wind_gust_mph: Optional[float],
+                                    cloud_cover_pct: Optional[float],
+                                    pop_pct: Optional[float]) -> None:
+    with tc.get_pg_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                UPDATE weather_silver_forecast_conformed
+                SET is_latest_run = FALSE
+                WHERE station_code = %s AND source_name = 'nws'
+                  AND target_date = %s AND is_latest_run = TRUE
+            """, (station_code, target_date))
+            cur.execute("""
+                INSERT INTO weather_silver_forecast_conformed
+                    (city, station_code, source_name, forecast_run_time, target_date,
+                     lead_hours, tmax_f, tmin_f, dewpoint_f, rh_pct,
+                     wind_speed_mph, wind_gust_mph, cloud_cover_pct, pop_pct,
+                     is_latest_run)
+                VALUES (%s, %s, 'nws', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, TRUE)
+                ON CONFLICT (station_code, source_name, forecast_run_time, target_date)
+                DO UPDATE SET
+                    tmax_f          = EXCLUDED.tmax_f,
+                    tmin_f          = EXCLUDED.tmin_f,
+                    dewpoint_f      = EXCLUDED.dewpoint_f,
+                    rh_pct          = EXCLUDED.rh_pct,
+                    wind_speed_mph  = EXCLUDED.wind_speed_mph,
+                    wind_gust_mph   = EXCLUDED.wind_gust_mph,
+                    cloud_cover_pct = EXCLUDED.cloud_cover_pct,
+                    pop_pct         = EXCLUDED.pop_pct,
+                    is_latest_run   = TRUE
+            """, (city, station_code, forecast_run_time, target_date,
+                  lead_hours, tmax_f, tmin_f, dewpoint_f, rh_pct,
+                  wind_speed_mph, wind_gust_mph, cloud_cover_pct, pop_pct))
+
+
+def _populate_silver_openmeteo_forecast(*, city: str, station_code: str,
+                                          source_name: str,
+                                          forecast_run_time: datetime,
+                                          target_date: date,
+                                          lead_hours: Optional[int],
+                                          tmax_f: Optional[float],
+                                          tmin_f: Optional[float]) -> None:
+    with tc.get_pg_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                UPDATE weather_silver_forecast_conformed
+                SET is_latest_run = FALSE
+                WHERE station_code = %s AND source_name = %s
+                  AND target_date = %s AND is_latest_run = TRUE
+            """, (station_code, source_name, target_date))
+            cur.execute("""
+                INSERT INTO weather_silver_forecast_conformed
+                    (city, station_code, source_name, forecast_run_time, target_date,
+                     lead_hours, tmax_f, tmin_f, is_latest_run)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, TRUE)
+                ON CONFLICT (station_code, source_name, forecast_run_time, target_date)
+                DO UPDATE SET
+                    tmax_f        = EXCLUDED.tmax_f,
+                    tmin_f        = EXCLUDED.tmin_f,
+                    is_latest_run = TRUE
+            """, (city, station_code, source_name, forecast_run_time, target_date,
+                  lead_hours, tmax_f, tmin_f))
+
+
+def _populate_silver_market(*, market_ticker: str, series_ticker: Optional[str],
+                              station_code: str, bucket_info: dict,
+                              target_date: date, snapshot_time: datetime,
+                              yes_mid: Optional[float], yes_bid: Optional[float],
+                              yes_ask: Optional[float], volume: Optional[float],
+                              open_interest: Optional[float],
+                              market_status: Optional[str]) -> None:
+    contract_side = bucket_info.get("contract_side", "")
+    if not contract_side:
+        return
+
+    # City lookup
+    city_map = {c.icao: c.name for c in CITIES}
+    city = city_map.get(station_code, station_code)
+
+    liquidity = "illiquid"
+    if volume and volume > 1000:
+        liquidity = "liquid"
+    elif volume and volume > 100:
+        liquidity = "thin"
+
+    with tc.get_pg_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                UPDATE weather_silver_market_conformed
+                SET is_latest_snapshot = FALSE
+                WHERE market_ticker = %s AND is_latest_snapshot = TRUE
+            """, (market_ticker,))
+            cur.execute("""
+                INSERT INTO weather_silver_market_conformed
+                    (market_ticker, series_ticker, city, station_code,
+                     contract_side, bucket_floor, bucket_cap, bucket_type, bucket_label,
+                     target_date, snapshot_time, yes_mid, yes_bid, yes_ask, implied_prob,
+                     volume, open_interest, market_status, market_liquidity_flag,
+                     is_latest_snapshot)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                        %s, %s, %s, %s, %s, %s, %s, %s, TRUE)
+                ON CONFLICT (market_ticker, snapshot_time) DO UPDATE SET
+                    yes_mid              = EXCLUDED.yes_mid,
+                    implied_prob         = EXCLUDED.implied_prob,
+                    market_liquidity_flag = EXCLUDED.market_liquidity_flag,
+                    is_latest_snapshot   = TRUE
+            """, (market_ticker, series_ticker, city, station_code,
+                  contract_side,
+                  bucket_info.get("bucket_floor"), bucket_info.get("bucket_cap"),
+                  bucket_info.get("bucket_type"), bucket_info.get("bucket_label"),
+                  target_date, snapshot_time,
+                  yes_mid, yes_bid, yes_ask, yes_mid,
+                  volume, open_interest, market_status, liquidity))
+
+
+def _populate_silver_actuals(*, city: str, station_code: str,
+                               target_date: date,
+                               final_tmax_f: Optional[float],
+                               final_tmin_f: Optional[float],
+                               report_issued_at: Optional[datetime]) -> None:
+    with tc.get_pg_conn() as conn:
+        with conn.cursor() as cur:
+            # Upsert actuals
+            cur.execute("""
+                INSERT INTO weather_silver_actuals_conformed
+                    (city, station_code, target_date, final_tmax_f, final_tmin_f,
+                     actual_source, report_issued_at, is_final)
+                VALUES (%s, %s, %s, %s, %s, 'nws_cli', %s, TRUE)
+                ON CONFLICT (station_code, target_date, actual_source) DO UPDATE SET
+                    final_tmax_f     = EXCLUDED.final_tmax_f,
+                    final_tmin_f     = EXCLUDED.final_tmin_f,
+                    report_issued_at = EXCLUDED.report_issued_at,
+                    is_final         = TRUE
+            """, (city, station_code, target_date, final_tmax_f, final_tmin_f,
+                  report_issued_at))
+
+            # Write forecast error pairs for each source with matching forecasts
+            if final_tmax_f is not None:
+                cur.execute("""
+                    INSERT INTO weather_silver_forecast_error
+                        (city, station_code, target_date, feature_name, source_name,
+                         forecast_run_time, lead_hours, forecast_value, actual_value,
+                         forecast_error_f, error_sign)
+                    SELECT
+                        city, station_code, target_date, 'tmax_f', source_name,
+                        forecast_run_time, lead_hours, tmax_f, %s,
+                        %s - tmax_f,
+                        CASE WHEN %s - tmax_f > 0.1 THEN 'cold'
+                             WHEN %s - tmax_f < -0.1 THEN 'hot'
+                             ELSE 'exact' END
+                    FROM weather_silver_forecast_conformed
+                    WHERE station_code = %s AND target_date = %s AND tmax_f IS NOT NULL
+                    ON CONFLICT (station_code, target_date, feature_name, source_name, forecast_run_time)
+                    DO NOTHING
+                """, (final_tmax_f, final_tmax_f, final_tmax_f, final_tmax_f,
+                      station_code, target_date))
+
+            if final_tmin_f is not None:
+                cur.execute("""
+                    INSERT INTO weather_silver_forecast_error
+                        (city, station_code, target_date, feature_name, source_name,
+                         forecast_run_time, lead_hours, forecast_value, actual_value,
+                         forecast_error_f, error_sign)
+                    SELECT
+                        city, station_code, target_date, 'tmin_f', source_name,
+                        forecast_run_time, lead_hours, tmin_f, %s,
+                        %s - tmin_f,
+                        CASE WHEN %s - tmin_f > 0.1 THEN 'cold'
+                             WHEN %s - tmin_f < -0.1 THEN 'hot'
+                             ELSE 'exact' END
+                    FROM weather_silver_forecast_conformed
+                    WHERE station_code = %s AND target_date = %s AND tmin_f IS NOT NULL
+                    ON CONFLICT (station_code, target_date, feature_name, source_name, forecast_run_time)
+                    DO NOTHING
+                """, (final_tmin_f, final_tmin_f, final_tmin_f, final_tmin_f,
+                      station_code, target_date))
+
+
+# ─────────────────────────────────────────────────────────────────────────
 # Main + CLI
 # ─────────────────────────────────────────────────────────────────────────
 
+def fetch_kalshi_portfolio(dry_run: bool = False) -> int:
+    """Fetch open Kalshi positions + recent fills; write to DB.
+    Returns total rows written (positions + fills)."""
+    try:
+        from kalshi_client import KalshiClient
+    except ImportError:
+        logger.warning("kalshi_portfolio: kalshi_client not importable — skipping")
+        return 0
+    try:
+        client = KalshiClient()
+    except Exception as e:
+        logger.warning(f"kalshi_portfolio: KalshiClient init failed: {e}")
+        return 0
+    try:
+        result = client.fetch_kalshi_portfolio()
+    except Exception as e:
+        logger.warning(f"kalshi_portfolio: fetch failed: {e}")
+        return 0
+    total = result.get("positions_upserted", 0) + result.get("fills_inserted", 0)
+    logger.info(
+        f"kalshi_portfolio: "
+        f"{result.get('positions_fetched',0)} positions "
+        f"({result.get('positions_upserted',0)} rows), "
+        f"{result.get('fills_fetched',0)} fills "
+        f"({result.get('fills_inserted',0)} rows)"
+        + (" (dry-run)" if dry_run else "")
+    )
+    return total
+
+
 SOURCES = {
-    "open_meteo":     fetch_open_meteo,
-    "asos":           fetch_asos,
-    "enso":           fetch_enso,
-    "usda_crops":     fetch_usda_crops,
-    "nws":            fetch_nws,
-    "kalshi_markets": fetch_kalshi_markets,
-    "nomads":         fetch_nomads_gfs_ensemble,
-    "degree_days":    compute_degree_days_from_observations,
+    "open_meteo":        fetch_open_meteo,
+    "asos":              fetch_asos,
+    "enso":              fetch_enso,
+    "usda_crops":        fetch_usda_crops,
+    "nws":               fetch_nws,
+    "nws_actuals":       fetch_nws_actuals,
+    "kalshi_markets":    fetch_kalshi_markets,
+    "kalshi_portfolio":  fetch_kalshi_portfolio,
+    "nomads":            fetch_nomads_gfs_ensemble,
+    "degree_days":       compute_degree_days_from_observations,
 }
 
 
