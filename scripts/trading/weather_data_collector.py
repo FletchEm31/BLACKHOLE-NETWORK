@@ -953,6 +953,13 @@ def fetch_kalshi_markets(dry_run: bool = False) -> int:
     rows_inserted = 0
     snapshot_time = datetime.now(timezone.utc)
 
+    def _cents_to_frac(v: Any) -> Optional[float]:
+        """Convert Kalshi integer-cent price (1–99) or fractional (0–1) to fractional."""
+        if v is None:
+            return None
+        f = float(v)
+        return f / 100.0 if f > 1.0 else f
+
     for market in markets:
         ticker = market.get("ticker")
         if not ticker:
@@ -972,6 +979,11 @@ def fetch_kalshi_markets(dry_run: bool = False) -> int:
         yes_price: Optional[float] = float(yes_cents) / 100.0 if yes_cents else None
         no_price:  Optional[float] = float(no_cents)  / 100.0 if no_cents  else None
 
+        yes_bid_val: Optional[float] = _cents_to_frac(market.get("yes_bid"))
+        yes_ask_val: Optional[float] = _cents_to_frac(market.get("yes_ask"))
+        no_bid_val:  Optional[float] = _cents_to_frac(market.get("no_bid"))
+        no_ask_val:  Optional[float] = _cents_to_frac(market.get("no_ask"))
+
         if yes_price is None and no_price is None:
             try:
                 book = client.get_orderbook(ticker)
@@ -979,12 +991,26 @@ def fetch_kalshi_markets(dry_run: bool = False) -> int:
                       or (book or {}).get("orderbook") or {})
                 yes_side = ob.get("yes_dollars") or ob.get("yes") or []
                 no_side  = ob.get("no_dollars")  or ob.get("no")  or []
+                ob_yes_ask: Optional[float] = None
+                ob_no_ask:  Optional[float] = None
                 if yes_side and isinstance(yes_side[0], (list, tuple)):
                     raw = float(yes_side[0][0])
-                    yes_price = raw if raw <= 1.0 else raw / 100.0
+                    ob_yes_ask = raw if raw <= 1.0 else raw / 100.0
+                    yes_price = ob_yes_ask
                 if no_side and isinstance(no_side[0], (list, tuple)):
                     raw = float(no_side[0][0])
-                    no_price = raw if raw <= 1.0 else raw / 100.0
+                    ob_no_ask = raw if raw <= 1.0 else raw / 100.0
+                    no_price = ob_no_ask
+                # Populate bid/ask from orderbook when market snapshot lacks them
+                if yes_ask_val is None and ob_yes_ask is not None:
+                    yes_ask_val = ob_yes_ask
+                if no_ask_val is None and ob_no_ask is not None:
+                    no_ask_val = ob_no_ask
+                # yes_bid ≈ 1 - best_no_ask (complementary side)
+                if yes_bid_val is None and ob_no_ask is not None:
+                    yes_bid_val = round(1.0 - ob_no_ask, 4)
+                if no_bid_val is None and ob_yes_ask is not None:
+                    no_bid_val = round(1.0 - ob_yes_ask, 4)
             except Exception as e:
                 logger.debug(f"kalshi_markets: orderbook fetch failed for {ticker}: {e}")
 
@@ -995,20 +1021,6 @@ def fetch_kalshi_markets(dry_run: bool = False) -> int:
         else:
             logger.debug(f"kalshi_markets: no price data for {ticker} — skipping")
             continue
-
-        # Parse yes_bid / yes_ask explicitly
-        yes_bid_val: Optional[float] = (
-            float(market.get("yes_bid")) / 100.0 if market.get("yes_bid") else None
-        )
-        yes_ask_val: Optional[float] = (
-            float(market.get("yes_ask")) / 100.0 if market.get("yes_ask") else None
-        )
-        no_bid_val: Optional[float] = (
-            float(market.get("no_bid")) / 100.0 if market.get("no_bid") else None
-        )
-        no_ask_val: Optional[float] = (
-            float(market.get("no_ask")) / 100.0 if market.get("no_ask") else None
-        )
         yes_mid: Optional[float] = None
         if yes_bid_val is not None and yes_ask_val is not None:
             yes_mid = (yes_bid_val + yes_ask_val) / 2.0
@@ -1019,10 +1031,12 @@ def fetch_kalshi_markets(dry_run: bool = False) -> int:
         elif implied_prob is not None:
             yes_mid = implied_prob  # fallback when bid/ask unavailable (e.g. orderbook path)
 
-        volume_raw = market.get("volume_24h") or market.get("volume")
+        _v24 = market.get("volume_24h")
+        volume_raw = _v24 if _v24 is not None else market.get("volume")
         open_int_raw = market.get("open_interest")
         volume_24h = float(volume_raw) if volume_raw is not None else None
         open_interest = float(open_int_raw) if open_int_raw is not None else None
+        last_price_val: Optional[float] = _cents_to_frac(market.get("last_price"))
         market_status = market.get("status", "open")
         event_ticker = market.get("event_ticker")
         series_ticker = (ticker.split("-")[0] if "-" in ticker else None)
@@ -1060,6 +1074,7 @@ def fetch_kalshi_markets(dry_run: bool = False) -> int:
                     no_bid=no_bid_val,
                     no_ask=no_ask_val,
                     yes_mid=yes_mid,
+                    last_price=last_price_val,
                     volume=volume_24h,
                     open_interest=open_interest,
                     market_status=market_status,
@@ -1395,11 +1410,12 @@ def _insert_bronze_kalshi_snapshot(*, market_ticker: str,
                                      no_bid: Optional[float],
                                      no_ask: Optional[float],
                                      yes_mid: Optional[float],
-                                     volume: Optional[float],
-                                     open_interest: Optional[float],
-                                     market_status: Optional[str],
-                                     source_payload_json: Optional[dict],
-                                     retrieved_at: Optional[datetime]) -> None:
+                                     last_price: Optional[float] = None,
+                                     volume: Optional[float] = None,
+                                     open_interest: Optional[float] = None,
+                                     market_status: Optional[str] = None,
+                                     source_payload_json: Optional[dict] = None,
+                                     retrieved_at: Optional[datetime] = None) -> None:
     city = _STATION_CITY_NAME.get(station_code or "", "")
     with tc.get_pg_conn() as conn:
         with conn.cursor() as cur:
@@ -1408,11 +1424,11 @@ def _insert_bronze_kalshi_snapshot(*, market_ticker: str,
                     (market_ticker, event_ticker, series_ticker,
                      city, station_code, contract_side, bucket_type,
                      bucket_floor, bucket_cap, bucket_label, target_date,
-                     yes_bid, yes_ask, no_bid, no_ask, yes_mid,
+                     yes_bid, yes_ask, no_bid, no_ask, yes_mid, last_price,
                      volume, open_interest, market_status,
                      source_payload_json, retrieved_at)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                        %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s)
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s)
             """, (market_ticker, event_ticker, series_ticker,
                   city, station_code,
                   bucket_info.get("contract_side"),
@@ -1421,7 +1437,7 @@ def _insert_bronze_kalshi_snapshot(*, market_ticker: str,
                   bucket_info.get("bucket_cap"),
                   bucket_info.get("bucket_label"),
                   target_date,
-                  yes_bid, yes_ask, no_bid, no_ask, yes_mid,
+                  yes_bid, yes_ask, no_bid, no_ask, yes_mid, last_price,
                   volume, open_interest, market_status,
                   json.dumps(source_payload_json) if source_payload_json else None,
                   retrieved_at or datetime.now(timezone.utc)))
