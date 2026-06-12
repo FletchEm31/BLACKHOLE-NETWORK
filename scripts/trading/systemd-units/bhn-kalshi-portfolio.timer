@@ -1,0 +1,14 @@
+# BHN trading — Strat 9 Kalshi portfolio snapshot cadence.
+# Every 15 minutes. Captures position state and fills for P&L tracking.
+
+[Unit]
+Description=BHN Strat 9 Kalshi portfolio snapshot (every 15 minutes)
+
+[Timer]
+OnCalendar=*-*-* *:00,15,30,45:00
+Unit=bhn-kalshi-portfolio.service
+Persistent=true
+RandomizedDelaySec=30
+
+[Install]
+WantedBy=timers.target
