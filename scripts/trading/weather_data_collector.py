@@ -44,7 +44,6 @@ Model hierarchy (post-research-findings update, 2026-05-13):
                           → weather_kalshi_contract_catalog        ✅ new
                           → weather_silver_market_conformed        ✅ new
   Iowa State ASOS         → weather_observations                  ✅ running
-  NOAA CPC ENSO           → enso_index                            ✅ running
 
 Cities — 8 (Kalshi-aligned ICAO codes).
 NWS office mapping per operator:
@@ -62,10 +61,8 @@ CLI:
   python3 weather_data_collector.py --source nws
   python3 weather_data_collector.py --source open_meteo
   python3 weather_data_collector.py --source asos
-  python3 weather_data_collector.py --source enso
   python3 weather_data_collector.py --source kalshi_markets
   python3 weather_data_collector.py --source nws_actuals
-  python3 weather_data_collector.py --source degree_days
   python3 weather_data_collector.py --dry-run    # log only, no PG writes
 """
 from __future__ import annotations
@@ -1936,11 +1933,12 @@ def fetch_nws_hourly(dry_run: bool = False) -> int:
     return n
 
 
+# WeatherBHN active sources — Kalshi weather trading stack only.
+# fetch_enso / compute_degree_days_from_observations are Phase 2/5 and excluded.
 SOURCES = {
     "open_meteo":           fetch_open_meteo,
     "open_meteo_ensemble":  fetch_open_meteo_ensemble,
     "asos":                 fetch_asos,
-    "enso":                 fetch_enso,
     "usda_crops":           fetch_usda_crops,
     "nws":                  fetch_nws,
     "nws_hourly":           fetch_nws_hourly,
@@ -1948,7 +1946,6 @@ SOURCES = {
     "kalshi_markets":       fetch_kalshi_markets,
     "kalshi_portfolio":     fetch_kalshi_portfolio,
     "nomads":               fetch_nomads_gfs_ensemble,
-    "degree_days":          compute_degree_days_from_observations,
 }
 
 

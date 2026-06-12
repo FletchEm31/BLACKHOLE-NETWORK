@@ -1,8 +1,10 @@
 # WeatherBHN — Metabase Dashboard Setup Guide
 
-**Dashboard:** WeatherBHN  
-**Strategy:** Strat 9 — WeatherBHN (Kalshi temperature contracts)  
+**Dashboard:** WeatherBHN
+**Strategy:** Strat 9 — WeatherBHN (Kalshi temperature contracts)
 **Status:** DRY_RUN=true, enabled=false — calibration phase (started June 10, 2026)
+**Scope:** Bronze/Silver/Gold pipeline only. ENSO, degree_days, weather_commodity_signals,
+and weather_bets are Phase 2/5 and excluded from this dashboard.
 
 ---
 
@@ -10,127 +12,110 @@
 
 1. In Metabase: **New > Question > Native Query**
 2. Select database: **eventhorizon** (PostgreSQL on LA node)
-3. Paste the SQL from the relevant file
+3. Paste the SQL from `infrastructure/docs/metabase/CLEAN_QUERIES.sql`
 4. **Save** the question with the name below
 5. Pin to **WeatherBHN** dashboard
+
+All 7 queries are in a single file: `infrastructure/docs/metabase/CLEAN_QUERIES.sql`
 
 ---
 
 ## Query Reference
 
-### 1. `weather_forecast_vs_market.sql` — Edge Detection (CORE)
-**Save as:** `Weather: Forecast vs Market`
+### 1. Daily Edge Sheet — `QUERY 1`
+**Save as:** `Weather: Daily Edge Sheet`
 
-Shows every open Kalshi contract with:
-- BHN's NWS and GFS model forecast for that city/date
-- Kalshi's implied probability (market price)
-- Raw edge = market price minus what BHN's model implies
-
-This is the primary signal view. A large positive `raw_edge` means the market is pricing the event LOWER than BHN thinks it should be — potential YES bet. Large negative = potential NO bet.
-
-**Returns 0 rows if:** No contracts are in `prediction_contracts` yet, or no recent Kalshi prices in `weather_contract_prices`.
+The main trading view. Shows every open Kalshi contract with BHN's calibrated
+probability, market price, edge, and recommended action (BET_YES / BET_NO / SKIP).
+Scoped to today + tomorrow. Primary signal before each trading session.
 
 ---
 
-### 2. `weather_data_freshness.sql` — Collector Health
-**Save as:** `Weather: Data Freshness`
+### 2. NWS vs GFS Forecasts — `QUERY 2`
+**Save as:** `Weather: NWS vs GFS Forecasts`
 
-Shows the most recent data timestamp per city and source. Columns:
-- `source_label` — NWS gridpoints, open-meteo:gfs_seamless, ASOS observations, Kalshi prices
-- `minutes_ago` — How stale the data is
-
-**Alert threshold:** Any `minutes_ago > 120` means a collector is down (collectors run every 30 min). Investigate with `journalctl -u bhn-weather-collector -n 50` on the LA server.
+Latest forecast for each city from both NWS gridpoints and Open-Meteo GFS.
+`is_latest_run = TRUE` ensures only the most recent run per city is shown.
+Use the `model_delta` column (NWS minus GFS) to gauge confidence.
 
 ---
 
-### 3. `weather_calibration_tracker.sql` — Go-Live Tracker
+### 3. Live Kalshi Market Prices — `QUERY 3`
+**Save as:** `Weather: Kalshi Market Prices`
+
+Current bid/ask/mid and volume for every open Kalshi weather contract.
+`is_latest_snapshot = TRUE` gives one row per market. Check `market_liquidity_flag`
+before placing — illiquid markets (volume < 100) have wide spreads.
+
+---
+
+### 4. Forecast Accuracy — `QUERY 4`
+**Save as:** `Weather: Forecast Accuracy (NWS Error)`
+
+Rolling 30-day NWS bias per city/feature. `avg_bias_f` positive = NWS running cold
+(actual higher than predicted); negative = running hot. Feed this into the edge
+calculator when switching from `SIGMA_DEFAULTS` to computed MAE.
+
+---
+
+### 5. Calibration Progress — `QUERY 5`
 **Save as:** `Weather: Calibration Progress`
 
-Tracks how many days of paired forecast + observation data exist per city. Need **30+ paired days** before going live. Target: **July 10, 2026**.
-
-- `paired_days` — Days with both a NWS forecast AND an ASOS observation (these are what get used for bias correction)
-- `pct_complete` — % of the 30-day requirement met
-- `days_remaining` — Days until strategy can go live
+Tracks paired forecast + observation days per city. Need **≥ 30 paired days**
+before going live. Target: **July 11, 2026**.
+`READY TO CALIBRATE` status = can flip `enabled=true` in rules.json.
 
 ---
 
-### 4. `weather_active_positions.sql` — Live Bets
-**Save as:** `Weather: Active Positions`
+### 6. Data Freshness — `QUERY 6`
+**Save as:** `Weather: Data Freshness`
 
-Shows all weather bets placed via the strategy. Will be **empty** until `rules.json` has `enabled=true` and `live_execution_enabled=true`. Once live, shows:
-- Contract, city, side, stake, edge at entry
-- Win/loss status and P&L
-- Running totals: total P&L, wins, losses
-
----
-
-### 5. `weather_market_prices.sql` — Kalshi Prices
-**Save as:** `Weather: Market Prices`
-
-Live snapshot of what Kalshi is implying for each temperature contract. Columns:
-- `implied_probability` — Market's probability that contract resolves YES (0-1)
-- `threshold_op` / `threshold_value` — The temperature threshold (e.g. `>` `92`)
-- `price_age_minutes` — How fresh the latest price snapshot is
+Most recent ingest timestamp per source (NWS, GFS, Kalshi, Actuals) per city.
+`minutes_ago > 120` means a collector is down. Investigate with:
+`journalctl -u bhn-weather-collector -n 50` on the LA server.
 
 ---
 
-### 6. `weather_quick_check.sql` — Fallback Sanity Checks
-**Save as:** (paste each BLOCK as a separate question)
+### 7. Kalshi P&L and Active Positions — `QUERY 7`
+**Save as:** `Weather: Kalshi Positions & P&L`
 
-Simple no-join queries — useful in Days 1-7 when complex joins may return 0 rows because data is still sparse. Add these as individual cards:
-
-- **Block 1:** Latest forecasts (last 6 hours)
-- **Block 2:** Row counts + coverage per city/model
-- **Block 3:** Latest ASOS observations
-- **Block 4:** Latest Kalshi price snapshots
-- **Block 5:** All known open prediction contracts
-
----
-
-### 7. `weather_forecast_error.sql` — NWS Accuracy Tracker
-**Save as:** `Weather: Forecast Error (NWS vs Actual)`
-
-Once ASOS observations start arriving for dates that also have NWS forecasts, this query shows how accurate NWS was:
-
-- `forecast_error_f` = `observed - predicted`
-  - Negative = NWS ran **COLD** (predicted too low)
-  - Positive = NWS ran **HOT** (predicted too high)
-
-Use this to spot systematic bias before the model_calibration table is populated. If NWS consistently runs 2°F hot in Miami, your YES threshold estimates need adjusting.
-
-**Will return 0 rows until:** At least one `target_date` has both a NWS forecast AND a matching ASOS observation.
+Live positions from `kalshi_positions` table (populated every collector cycle from
+`/portfolio/positions`). Shows unrealized P&L, avg entry price, and payout if right.
+Will show real data once `enabled=true` in rules.json.
 
 ---
 
 ## City Coverage
 
-| ICAO  | City               | Kalshi Series       | Status       |
-|-------|--------------------|---------------------|--------------|
-| KMIA  | Miami              | KXHIGHMIA/KXLOWMIA  | Live + prices |
-| KPHX  | Phoenix            | KXHIGHPHX/KXLOWPHX  | Live + prices |
-| KDEN  | Denver             | KXHIGHDEN/KXLOWDEN  | Live + prices |
-| KNYC  | New York City      | KXHIGHNY/KXLOWNY    | Forecasts only |
-| KORD  | Chicago            | KXHIGHCHI/KXLOWCHI  | Forecasts only |
-| KAUS  | Austin             | —                   | Forecasts only |
-| KLAX  | Los Angeles        | KXHIGHLAX/KXLOWLAX  | Live + prices (added June 10) |
-| KDFW  | Dallas/Fort Worth  | KXHIGHDFW/KXLOWDFW  | Live + prices (added June 10) |
+| ICAO  | City               | Kalshi Series            | Status         |
+|-------|--------------------|--------------------------|----------------|
+| KMIA  | Miami              | KXHIGHMIA / KXLOWMIA    | Live + prices  |
+| KPHX  | Phoenix            | KXHIGHPHX / KXLOWPHX    | Live + prices  |
+| KDEN  | Denver             | KXHIGHDEN / KXLOWDEN    | Live + prices  |
+| KLAX  | Los Angeles        | KXHIGHLAX / KXLOWLAX    | Live + prices  |
+| KDFW  | Dallas/Fort Worth  | KXHIGHDFW / KXLOWDFW    | Live + prices  |
+| KNYC  | New York City      | KXHIGHNY / KXLOWNY      | Forecasts only |
+| KORD  | Chicago            | KXHIGHCHI / KXLOWCHI    | Forecasts only |
+| KAUS  | Austin             | —                        | Forecasts only |
 
 ---
 
 ## Calibration Timeline
 
-| Date          | Milestone                                    |
-|---------------|----------------------------------------------|
-| June 10, 2026 | Calibration start — Day 0                    |
-| July 10, 2026 | Target go-live — Day 30 (if 30 paired days)  |
+| Date          | Milestone                                                     |
+|---------------|---------------------------------------------------------------|
+| June 10, 2026 | Calibration start — Day 0                                     |
+| July 11, 2026 | Target go-live — Day 30 (if paired_days ≥ 30 for all cities) |
 
-Do not flip `enabled=true` in `rules.json` until `weather_calibration_tracker.sql` shows `paired_days >= 30` for all target cities.
+Do not flip `enabled=true` in `rules.json` until Query 5 shows
+`READY TO CALIBRATE` for all target cities.
 
 ---
 
-## Metabase UI Rename
+## Out of Scope (Phase 2/5 — not part of WeatherBHN dashboard)
 
-To rename the dashboard/collection from the old "BHN FULL SYSTEM HEALTH" or "Strat 9 — Weather Alpha":
-1. Open Metabase → Collections → find the collection
-2. Click the three-dot menu → **Edit collection** → rename to **WeatherBHN**
-3. Open the dashboard → **Edit** → rename title to **WeatherBHN**
+These tables exist in the DB but are excluded from this dashboard:
+- `enso_index` — NOAA CPC ENSO phase data (Phase 2 commodity signals)
+- `degree_days` — HDD/CDD accumulation (Phase 2 UNG/natural gas signal)
+- `weather_commodity_signals` — ETF directional signals (Phase 5)
+- `weather_bets` — legacy Phase 1 bet audit stub (replaced by `kalshi_positions` + `kalshi_fills`)
