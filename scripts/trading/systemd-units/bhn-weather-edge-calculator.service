@@ -1,0 +1,36 @@
+# BHN trading — Strat 9 weather edge calculator.
+# Reads bronze/silver tables, computes calibrated probabilities + kelly sizing,
+# upserts weather_gold_daily_edge_sheet for all active stations.
+#
+# Runs every 5 minutes (via bhn-weather-edge-calculator.timer) so the gold
+# edge sheet never goes more than 5 minutes stale. Script is fast (~1s).
+#
+# Deploy:
+#   sudo cp bhn-weather-edge-calculator.service /etc/systemd/system/
+#   sudo cp bhn-weather-edge-calculator.timer   /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now bhn-weather-edge-calculator.timer
+
+[Unit]
+Description=BHN Strat 9 weather edge calculator (gold layer)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/bhn/trading
+
+EnvironmentFile=/etc/bhn-trading/env
+EnvironmentFile=-/etc/bhn-trading/strat9.env
+
+ExecStart=/usr/bin/python3 /opt/bhn/trading/weather_edge_calculator.py
+
+StandardOutput=append:/var/log/bhn-trading/weather-edge-calculator.log
+StandardError=append:/var/log/bhn-trading/weather-edge-calculator.log
+
+TimeoutStartSec=120
+TimeoutStopSec=30
+
+[Install]
+# Started by the timer; not directly enabled.

@@ -1,0 +1,15 @@
+# BHN trading — Strat 9 edge calculator cadence.
+# Every 5 minutes. weather_edge_calculator.py is fast (~1s); keeping the gold
+# edge sheet fresh ensures Metabase dashboards and the prediction-alpha signal
+# callback always read current calibrated probabilities.
+
+[Unit]
+Description=BHN Strat 9 weather edge calculator (every 5 minutes)
+
+[Timer]
+OnCalendar=*-*-* *:*:00/5
+Unit=bhn-weather-edge-calculator.service
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -903,3 +903,75 @@ Update BHN-SESSION-HANDOFF.txt with:
 - Metabase query file location
 - Any errors encountered
 ================================================================
+
+================================================================
+TASK 11: Visual Crossing Historical Actuals Backfill
+================================================================
+
+GOAL
+----
+Backfill 160+ days of historical daily tmax/tmin into the bronze and silver
+layers so weather_silver_forecast_error has enough rows (≥30 per station) to
+switch from hardcoded SIGMA_DEFAULTS to computed MAE in the gold edge calculator.
+
+Without this, all 8 cities use hardcoded sigma fallbacks indefinitely (requires
+30 days of natural NWS CLI accumulation). With this backfill, real calibrated
+sigma is available on the FIRST run after completing the task.
+
+PREREQ
+------
+1. Sign up at https://www.visualcrossing.com (free tier: 1000 records/day;
+   one per-city date-range request returns up to N days — 8 cities × 1 request
+   = 8 API calls, each returning ~160 rows. Free tier covers this in one session.)
+2. Add API key to /etc/bhn-trading/strat9.env on LA server:
+      VISUAL_CROSSING_API_KEY=<your_key>
+
+SCRIPT
+------
+  scripts/trading/weather_vc_backfill.py
+
+WHAT IT DOES
+------------
+- Calls VC timeline API per city:
+    GET https://weather.visualcrossing.com/.../timeline/{ICAO}/{start}/{end}
+    ?unitGroup=us&elements=datetime,tempmax,tempmin&include=days&key={KEY}
+- Date range: 2026-01-01 → yesterday (default; overridable via --start/--end)
+- Writes to weather_bronze_nws_actuals with source_payload_json.source =
+  "visual_crossing_backfill". ON CONFLICT DO NOTHING preserves existing NWS rows.
+- Writes to weather_silver_actuals_conformed with actual_source = 'visual_crossing'
+  (separate rows from 'nws_cli' — both contribute to forecast_error).
+- For each silver row inserted, joins weather_silver_forecast_conformed to populate
+  weather_silver_forecast_error pairs automatically (same logic as NWS path).
+
+USAGE
+-----
+  # Dry-run first to verify connectivity:
+  python3 weather_vc_backfill.py --dry-run
+
+  # Full backfill:
+  python3 weather_vc_backfill.py
+
+  # Custom range:
+  python3 weather_vc_backfill.py --start 2025-10-01 --end 2026-06-10
+
+EXPECTED OUTCOME
+----------------
+  SELECT station_code, COUNT(*) FROM weather_bronze_nws_actuals
+  GROUP BY 1 ORDER BY 1;
+  → ~160+ rows per station (down from 1 row)
+
+  SELECT station_code, COUNT(*) FROM weather_silver_forecast_error
+  GROUP BY 1 ORDER BY 1;
+  → Non-zero rows (depends on how many forecast_conformed rows exist for those dates)
+
+  After running weather_edge_calculator.py:
+  → sigma column in edge sheet switches from SIGMA_DEFAULTS to computed MAE
+    for any station with ≥30 rows in weather_silver_forecast_error
+
+SESSION HANDOFF ADDITION
+------------------------
+After running:
+- bronze actuals row count per station
+- silver_forecast_error row count per station
+- Whether edge calc switched to computed sigma (check logs for "using computed MAE")
+================================================================

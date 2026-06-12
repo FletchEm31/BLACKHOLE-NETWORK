@@ -292,28 +292,46 @@ def _parse_nws_cli_text(text: str) -> tuple[Optional[float], Optional[float]]:
     """Extract MAX TEMP and MIN TEMP from NWS CLI product text body.
 
     The NWS CLI format has two relevant line shapes:
-      '  MAXIMUM         88   1:51 PM  96    1994  89  ...'  ← daily observed (first number)
-      '  MAXIMUM TEMPERATURE (F)   89 ...'                   ← normal/record (skip)
-    Anchor to ^MAXIMUM / ^MINIMUM on the stripped line to capture only the observed row.
+      '  MAXIMUM         88   1:51 PM  96    1994  89  ...'  ← daily observed (has timestamp)
+      '  MAXIMUM         61   NORMAL/AVERAGE ...'            ← normal value (no timestamp)
+      '  MAXIMUM TEMPERATURE (F)   89 ...'                   ← normal/record (skip, non-digit)
+    Some stations (e.g. KDEN) emit a normals line before the observed line, both starting
+    with MAXIMUM. Prefer the observed line (identified by a HH:MM AM/PM timestamp).
+    Fall back to the first bare match if no timestamped line exists.
     """
     tmax = tmin = None
+    tmax_fallback = tmin_fallback = None
     for raw_line in text.splitlines():
         line = raw_line.strip().upper()
+        # Observed line: MAXIMUM  88   1:51 PM ...
         if tmax is None:
-            if m := re.match(r'^MAXIMUM\s+(\d+)', line):
+            if m := re.match(r'^MAXIMUM\s+(\d+)\s+\d{1,2}:\d{2}\s+[AP]M', line):
                 try:
                     tmax = float(m.group(1))
                 except ValueError:
                     pass
         if tmin is None:
-            if m := re.match(r'^MINIMUM\s+(\d+)', line):
+            if m := re.match(r'^MINIMUM\s+(\d+)\s+\d{1,2}:\d{2}\s+[AP]M', line):
                 try:
                     tmin = float(m.group(1))
                 except ValueError:
                     pass
+        # Fallback: any MAXIMUM/MINIMUM line (normals, records, etc.)
+        if tmax_fallback is None:
+            if m := re.match(r'^MAXIMUM\s+(\d+)', line):
+                try:
+                    tmax_fallback = float(m.group(1))
+                except ValueError:
+                    pass
+        if tmin_fallback is None:
+            if m := re.match(r'^MINIMUM\s+(\d+)', line):
+                try:
+                    tmin_fallback = float(m.group(1))
+                except ValueError:
+                    pass
         if tmax is not None and tmin is not None:
             break
-    return tmax, tmin
+    return (tmax or tmax_fallback, tmin or tmin_fallback)
 
 
 def fetch_open_meteo(dry_run: bool = False) -> int:

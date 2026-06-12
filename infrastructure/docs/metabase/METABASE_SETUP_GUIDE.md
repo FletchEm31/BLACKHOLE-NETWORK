@@ -1,8 +1,8 @@
-# BHN Weather Trading — Metabase Dashboard Setup Guide
+# WeatherBHN — Metabase Dashboard Setup Guide
 
-**Dashboard:** BHN FULL SYSTEM HEALTH  
-**Strategy:** Strat 9 — Weather Alpha (Kalshi temperature contracts)  
-**Status:** DRY_RUN=true, enabled=false — calibration phase (Day 1 of 30, started June 10, 2026)
+**Dashboard:** WeatherBHN  
+**Strategy:** Strat 9 — WeatherBHN (Kalshi temperature contracts)  
+**Status:** DRY_RUN=true, enabled=false — calibration phase (started June 10, 2026)
 
 ---
 
@@ -12,7 +12,7 @@
 2. Select database: **eventhorizon** (PostgreSQL on LA node)
 3. Paste the SQL from the relevant file
 4. **Save** the question with the name below
-5. Pin to **BHN FULL SYSTEM HEALTH** dashboard
+5. Pin to **WeatherBHN** dashboard
 
 ---
 
@@ -125,3 +125,12 @@ Use this to spot systematic bias before the model_calibration table is populated
 | July 10, 2026 | Target go-live — Day 30 (if 30 paired days)  |
 
 Do not flip `enabled=true` in `rules.json` until `weather_calibration_tracker.sql` shows `paired_days >= 30` for all target cities.
+
+---
+
+## Metabase UI Rename
+
+To rename the dashboard/collection from the old "BHN FULL SYSTEM HEALTH" or "Strat 9 — Weather Alpha":
+1. Open Metabase → Collections → find the collection
+2. Click the three-dot menu → **Edit collection** → rename to **WeatherBHN**
+3. Open the dashboard → **Edit** → rename title to **WeatherBHN**
