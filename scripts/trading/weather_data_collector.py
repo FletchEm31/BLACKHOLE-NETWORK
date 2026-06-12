@@ -894,6 +894,9 @@ def compute_degree_days_from_observations(dry_run: bool = False) -> int:
 # Source 8: Kalshi market prices
 # ─────────────────────────────────────────────────────────────────────────
 
+# ICAO → human-readable city name (matches weather_bronze_nws_actuals.city)
+_STATION_CITY_NAME: dict[str, str] = {c.icao: c.name for c in CITIES}
+
 # Ticker prefix → ICAO station code
 _KALSHI_TICKER_STATION: dict[str, str] = {
     "KXHIGHMIA": "KMIA", "KXLOWMIA":  "KMIA",
@@ -1397,21 +1400,21 @@ def _insert_bronze_kalshi_snapshot(*, market_ticker: str,
                                      market_status: Optional[str],
                                      source_payload_json: Optional[dict],
                                      retrieved_at: Optional[datetime]) -> None:
-    city = bucket_info.get("contract_side", "")
+    city = _STATION_CITY_NAME.get(station_code or "", "")
     with tc.get_pg_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
                 INSERT INTO weather_bronze_kalshi_market_snapshots
                     (market_ticker, event_ticker, series_ticker,
-                     station_code, contract_side, bucket_type,
+                     city, station_code, contract_side, bucket_type,
                      bucket_floor, bucket_cap, bucket_label, target_date,
                      yes_bid, yes_ask, no_bid, no_ask, yes_mid,
                      volume, open_interest, market_status,
                      source_payload_json, retrieved_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                         %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s)
             """, (market_ticker, event_ticker, series_ticker,
-                  station_code,
+                  city, station_code,
                   bucket_info.get("contract_side"),
                   bucket_info.get("bucket_type"),
                   bucket_info.get("bucket_floor"),
