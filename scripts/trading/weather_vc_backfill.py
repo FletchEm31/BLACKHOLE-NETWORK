@@ -27,10 +27,29 @@ import time
 import urllib.request
 import urllib.parse
 from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
 from typing import Optional
 
+
+def _prime_env() -> None:
+    for path in ("/etc/bhn-trading/env", "/etc/bhn-trading/strat9.env"):
+        p = Path(path)
+        if not p.is_file():
+            continue
+        for ln in p.read_text().splitlines():
+            ln = ln.strip()
+            if not ln or ln.startswith("#") or "=" not in ln:
+                continue
+            k, v = ln.split("=", 1)
+            k = k.strip()
+            if k not in os.environ:
+                os.environ[k] = v.strip().strip('"').strip("'")
+
+
+_prime_env()
+
 sys.path.insert(0, os.path.dirname(__file__))
-import trading_core as tc
+import trading_core as tc  # noqa: E402
 
 logger = tc.get_logger("strat_9_vc_backfill")
 
@@ -50,9 +69,11 @@ CITIES = [
 ]
 
 
-def _fetch_vc_range(location: str, start: date, end: date, api_key: str) -> list[dict]:
+def _fetch_vc_range(location: str, start: date, end: date, api_key: str,
+                    retries: int = 3) -> list[dict]:
     """Fetch daily tmax/tmin from Visual Crossing for a date range.
     Returns list of dicts with keys: datetime, tempmax, tempmin.
+    Retries up to `retries` times on 429 with exponential backoff.
     """
     url = (
         f"{VC_BASE_URL}/{urllib.parse.quote(location)}"
@@ -67,13 +88,23 @@ def _fetch_vc_range(location: str, start: date, end: date, api_key: str) -> list
     })
     full_url = f"{url}?{params}"
     req = urllib.request.Request(full_url, headers={"User-Agent": "BHN-Strat9-Backfill/1.0"})
-    try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            data = json.loads(resp.read().decode())
-            return data.get("days", [])
-    except Exception as e:
-        logger.error(f"{location}: VC fetch failed: {e}")
-        return []
+    for attempt in range(retries):
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                data = json.loads(resp.read().decode())
+                return data.get("days", [])
+        except urllib.error.HTTPError as e:
+            if e.code == 429 and attempt < retries - 1:
+                wait = 60 * (attempt + 1)
+                logger.warning(f"{location}: 429 rate limit — sleeping {wait}s then retrying")
+                time.sleep(wait)
+            else:
+                logger.error(f"{location}: VC fetch failed: {e}")
+                return []
+        except Exception as e:
+            logger.error(f"{location}: VC fetch failed: {e}")
+            return []
+    return []
 
 
 def _insert_bronze(conn, *, city: str, station_code: str, target_date: date,
@@ -197,7 +228,7 @@ def run_backfill(start: date, end: date, dry_run: bool = False) -> None:
         logger.info(f"{icao}: {bronze_count} new bronze rows, {silver_count} silver upserts")
         total_bronze += bronze_count
         total_silver += silver_count
-        time.sleep(0.5)  # polite pause between cities
+        time.sleep(3)  # stay within VC rate limits between cities
 
     if not dry_run:
         logger.info(
