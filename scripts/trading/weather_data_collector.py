@@ -1388,6 +1388,7 @@ def _insert_bronze_openmeteo_snapshot(*, city: str, station_code: str,
                                         tmin_f: Optional[float] = None,
                                         ensemble_spread_tmax: Optional[float] = None,
                                         ensemble_spread_tmin: Optional[float] = None,
+                                        member_highs_json: Optional[list] = None,
                                         source_payload_json: Optional[dict] = None) -> None:
     with tc.get_pg_conn() as conn:
         with conn.cursor() as cur:
@@ -1396,12 +1397,13 @@ def _insert_bronze_openmeteo_snapshot(*, city: str, station_code: str,
                     (city, station_code, lat, lon, model,
                      forecast_run_time, target_date, hour, temperature_2m,
                      tmax_f, tmin_f, ensemble_spread_tmax, ensemble_spread_tmin,
-                     source_payload_json)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+                     member_highs_json, source_payload_json)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb)
                 ON CONFLICT (station_code, model, forecast_run_time, target_date, hour) DO NOTHING
             """, (city, station_code, lat, lon, model,
                   forecast_run_time, target_date, hour, temperature_2m,
                   tmax_f, tmin_f, ensemble_spread_tmax, ensemble_spread_tmin,
+                  json.dumps(member_highs_json) if member_highs_json is not None else None,
                   json.dumps(source_payload_json) if source_payload_json else None))
 
 
@@ -1814,6 +1816,7 @@ def fetch_open_meteo_ensemble(dry_run: bool = False) -> int:
                         tmin_f=round(mean_tmin, 2),
                         ensemble_spread_tmax=round(spread_tmax, 3),
                         ensemble_spread_tmin=round(spread_tmin, 3),
+                        member_highs_json=[round(h, 2) for h in member_highs],
                     )
                     n += 1
                 except Exception as e:
@@ -1825,6 +1828,128 @@ def fetch_open_meteo_ensemble(dry_run: bool = False) -> int:
                 n += 1
 
     logger.info(f"open_meteo_ensemble: {n} rows {'(dry-run)' if dry_run else 'inserted'}")
+    return n
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Source: NWS NBM probabilistic temperature percentiles
+# ─────────────────────────────────────────────────────────────────────────
+
+def _insert_bronze_nbm_snapshot(*, station_code: str, city: str, nws_office: str,
+                                  forecast_run_time: datetime, target_date: date,
+                                  p10_tmax_f: Optional[float], p25_tmax_f: Optional[float],
+                                  p50_tmax_f: Optional[float], p75_tmax_f: Optional[float],
+                                  p90_tmax_f: Optional[float],
+                                  member_count: Optional[int] = None) -> None:
+    with tc.get_pg_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO weather_bronze_nbm_snapshots
+                    (station_code, city, nws_office, forecast_run_time, target_date,
+                     p10_tmax_f, p25_tmax_f, p50_tmax_f, p75_tmax_f, p90_tmax_f,
+                     member_count)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (station_code, forecast_run_time, target_date) DO NOTHING
+            """, (station_code, city, nws_office, forecast_run_time, target_date,
+                  p10_tmax_f, p25_tmax_f, p50_tmax_f, p75_tmax_f, p90_tmax_f,
+                  member_count))
+
+
+def fetch_nbm(dry_run: bool = False) -> int:
+    """Fetch NWS NBM (National Blend of Models) probabilistic temperature percentiles.
+
+    Queries the NWS raw gridpoints endpoint for probabilisticQuantileForecast.temperature.
+    Takes daily max of hourly P10/P25/P50/P75/P90 values for each target date.
+    Converts from degC to °F. Stores in weather_bronze_nbm_snapshots.
+
+    Falls back gracefully (logs debug, returns 0) if the NWS office does not
+    provide probabilistic quantile data in the gridpoints response — not all
+    WFOs include this field.
+    """
+    n = 0
+    run_time = datetime.now(timezone.utc)
+    today = run_time.date()
+    target_set = {today + timedelta(days=i) for i in range(3)}
+
+    # Percentile keys to look for in NWS response (various formats)
+    PCT_MAP = {"10": "10", "25": "25", "50": "50", "75": "75", "90": "90",
+               "0.1": "10", "0.25": "25", "0.5": "50", "0.75": "75", "0.9": "90"}
+
+    for city in CITIES:
+        gridpoint = _get_nws_gridpoint(city)
+        if not gridpoint:
+            continue
+        _, office, grid_x, grid_y = gridpoint
+
+        raw_url = f"{NWS_API_BASE}/gridpoints/{office}/{grid_x},{grid_y}"
+        raw_data = _http_get_json(raw_url, timeout=30)
+        if not raw_data:
+            logger.warning(f"nbm {city.icao}: raw gridpoints fetch failed")
+            continue
+
+        props = raw_data.get("properties") or {}
+        pqf = props.get("probabilisticQuantileForecast") or {}
+        temp_data = pqf.get("temperature") or {}
+        values = temp_data.get("values") or []
+
+        if not values:
+            logger.debug(f"nbm {city.icao}: no probabilisticQuantileForecast.temperature — skipping")
+            continue
+
+        # Group hourly P{N} values by date; take daily max of each percentile
+        by_date: dict = {}
+        for item in values:
+            vt = item.get("validTime", "")
+            val = item.get("value")
+            if not val or not vt:
+                continue
+            dt_str = vt.split("/")[0]
+            try:
+                d = datetime.fromisoformat(dt_str).date()
+            except ValueError:
+                continue
+            if d not in target_set:
+                continue
+            entry = by_date.setdefault(d, {})
+            for raw_key, temp_c in val.items():
+                if temp_c is None:
+                    continue
+                pct_key = PCT_MAP.get(str(raw_key).strip("%"))
+                if pct_key is None:
+                    continue
+                temp_f = float(temp_c) * 9.0 / 5.0 + 32.0
+                entry.setdefault(pct_key, []).append(temp_f)
+
+        for d, pct_data in by_date.items():
+            if not pct_data.get("50"):
+                continue  # need at least P50
+            p10 = round(max(pct_data["10"]), 2) if pct_data.get("10") else None
+            p25 = round(max(pct_data["25"]), 2) if pct_data.get("25") else None
+            p50 = round(max(pct_data["50"]), 2)
+            p75 = round(max(pct_data["75"]), 2) if pct_data.get("75") else None
+            p90 = round(max(pct_data["90"]), 2) if pct_data.get("90") else None
+            n_members = len(pct_data.get("50", []))
+
+            if dry_run:
+                logger.info(
+                    f"nbm dry-run {city.icao}/{d}: "
+                    f"P10={p10} P25={p25} P50={p50} P75={p75} P90={p90}"
+                )
+                n += 1
+                continue
+
+            try:
+                _insert_bronze_nbm_snapshot(
+                    station_code=city.icao, city=city.name, nws_office=office,
+                    forecast_run_time=run_time, target_date=d,
+                    p10_tmax_f=p10, p25_tmax_f=p25, p50_tmax_f=p50,
+                    p75_tmax_f=p75, p90_tmax_f=p90, member_count=n_members,
+                )
+                n += 1
+            except Exception as e:
+                logger.warning(f"nbm {city.icao}/{d}: insert failed: {e}")
+
+    logger.info(f"nbm: {n} rows {'(dry-run)' if dry_run else 'inserted'}")
     return n
 
 
@@ -1954,6 +2079,7 @@ SOURCES = {
     "nws":                  fetch_nws,
     "nws_hourly":           fetch_nws_hourly,
     "nws_actuals":          fetch_nws_actuals,
+    "nbm":                  fetch_nbm,
     "kalshi_markets":       fetch_kalshi_markets,
     "kalshi_portfolio":     fetch_kalshi_portfolio,
     "nomads":               fetch_nomads_gfs_ensemble,

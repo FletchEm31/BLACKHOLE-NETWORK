@@ -21,6 +21,8 @@ SELECT
     ROUND(calibrated_prob * 100, 1)             AS model_prob_pct,
     ROUND(market_implied_prob * 100, 1)         AS market_prob_pct,
     ROUND(edge_pct, 1)                          AS edge_pct,
+    ROUND(nws_high_prob_pct * 100, 1)           AS nws_prob_pct,
+    ROUND(gfs_high_prob_pct * 100, 1)           AS gfs_ens_prob_pct,
     market_volume,
     market_liquidity,
     recommended_action,

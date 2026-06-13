@@ -37,9 +37,29 @@ import math
 import os
 import sys
 from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
 from typing import Optional
 
-import trading_core as tc
+
+def _prime_env() -> None:
+    """Load /etc/bhn-trading/env and strat9.env before trading_core initialises."""
+    for path in ("/etc/bhn-trading/env", "/etc/bhn-trading/strat9.env"):
+        p = Path(path)
+        if not p.is_file():
+            continue
+        for ln in p.read_text().splitlines():
+            ln = ln.strip()
+            if not ln or ln.startswith("#") or "=" not in ln:
+                continue
+            k, v = ln.split("=", 1)
+            k = k.strip()
+            if k not in os.environ:
+                os.environ[k] = v.strip().strip('"').strip("'")
+
+
+_prime_env()
+
+import trading_core as tc  # noqa: E402
 
 logger = logging.getLogger("strat9_edge_calculator")
 if not logger.handlers:
@@ -203,6 +223,118 @@ def _get_ensemble_spread(conn, station_code: str,
         return float(row[0]) if row else None
 
 
+def _get_ensemble_member_highs(conn, station_code: str,
+                                target_date: date) -> Optional[list]:
+    """Get individual GFS ensemble member daily highs from bronze.
+    Returns list of per-member tmax °F values, or None if unavailable.
+    """
+    with conn.cursor() as cur:
+        cur.execute("""
+            SELECT member_highs_json
+            FROM weather_bronze_openmeteo_forecast_snapshots
+            WHERE station_code = %s AND model = 'open_meteo_ensemble'
+              AND target_date = %s AND hour = -1
+              AND member_highs_json IS NOT NULL
+            ORDER BY retrieved_at DESC
+            LIMIT 1
+        """, (station_code, target_date))
+        row = cur.fetchone()
+        if not row or not row[0]:
+            return None
+        data = row[0]
+        if isinstance(data, str):
+            data = json.loads(data)
+        return [float(v) for v in data if v is not None]
+
+
+def _ensemble_bucket_prob(member_highs: list,
+                           bucket_type: str,
+                           bucket_floor: Optional[float],
+                           bucket_cap: Optional[float]) -> float:
+    """Compute P(daily high in bucket) by counting ensemble members."""
+    if not member_highs:
+        return 0.0
+    total = len(member_highs)
+    if bucket_type == "between" and bucket_floor is not None and bucket_cap is not None:
+        count = sum(1 for h in member_highs if bucket_floor <= h < bucket_cap)
+    elif bucket_type == "above" and bucket_floor is not None:
+        count = sum(1 for h in member_highs if h >= bucket_floor)
+    elif bucket_type == "below" and bucket_cap is not None:
+        count = sum(1 for h in member_highs if h < bucket_cap)
+    else:
+        return 1.0 / max(total, 10)
+    return round(count / total, 6)
+
+
+def _get_nbm_percentiles(conn, station_code: str,
+                          target_date: date) -> Optional[dict]:
+    """Get latest NWS NBM temperature percentiles for station/date."""
+    with conn.cursor() as cur:
+        cur.execute("""
+            SELECT p10_tmax_f, p25_tmax_f, p50_tmax_f, p75_tmax_f, p90_tmax_f
+            FROM weather_bronze_nbm_snapshots
+            WHERE station_code = %s AND target_date = %s
+              AND p50_tmax_f IS NOT NULL
+            ORDER BY retrieved_at DESC
+            LIMIT 1
+        """, (station_code, target_date))
+        row = cur.fetchone()
+        if not row:
+            return None
+        p10, p25, p50, p75, p90 = [float(v) if v is not None else None for v in row]
+        if p50 is None:
+            return None
+        return {"p10": p10, "p25": p25, "p50": p50, "p75": p75, "p90": p90}
+
+
+def _bucket_prob_from_percentiles(bucket_type: str,
+                                   bucket_floor: Optional[float],
+                                   bucket_cap: Optional[float],
+                                   pcts: dict) -> float:
+    """Compute P(daily high in bucket) using piecewise linear CDF from percentiles.
+
+    Builds a 5-point CDF from the available percentiles and interpolates.
+    No distributional assumption — purely data-driven.
+    """
+    pts = []
+    for key, prob in (("p10", 0.10), ("p25", 0.25), ("p50", 0.50),
+                      ("p75", 0.75), ("p90", 0.90)):
+        if pcts.get(key) is not None:
+            pts.append((float(pcts[key]), prob))
+    if len(pts) < 2:
+        return 0.1  # not enough data
+
+    pts.sort()
+
+    def _cdf(x: float) -> float:
+        if x <= pts[0][0]:
+            # Extrapolate below P10
+            if len(pts) >= 2 and pts[1][0] > pts[0][0]:
+                slope = (pts[1][1] - pts[0][1]) / (pts[1][0] - pts[0][0])
+                return max(0.0, pts[0][1] + slope * (x - pts[0][0]))
+            return 0.0
+        if x >= pts[-1][0]:
+            # Extrapolate above P90
+            if len(pts) >= 2 and pts[-1][0] > pts[-2][0]:
+                slope = (pts[-1][1] - pts[-2][1]) / (pts[-1][0] - pts[-2][0])
+                return min(1.0, pts[-1][1] + slope * (x - pts[-1][0]))
+            return 1.0
+        for i in range(len(pts) - 1):
+            x0, p0 = pts[i]
+            x1, p1 = pts[i + 1]
+            if x0 <= x <= x1 and x1 > x0:
+                return p0 + (p1 - p0) * (x - x0) / (x1 - x0)
+        return 0.5
+
+    if bucket_type == "between" and bucket_floor is not None and bucket_cap is not None:
+        return max(0.0, _cdf(bucket_cap) - _cdf(bucket_floor))
+    elif bucket_type == "above" and bucket_floor is not None:
+        return max(0.0, 1.0 - _cdf(bucket_floor))
+    elif bucket_type == "below" and bucket_cap is not None:
+        return max(0.0, _cdf(bucket_cap))
+    return 0.1
+
+
 def _get_forecast_stats(conn, station_code: str) -> dict:
     """Get historical bias and MAE from silver_forecast_error, last 30 days."""
     with conn.cursor() as cur:
@@ -292,7 +424,9 @@ def _upsert_edge_sheet(conn, *, city: str, station_code: str,
                         recommended_action: str,
                         stake_fraction: float, stake_usd: float,
                         skip_reason: Optional[str],
-                        ensemble_spread: Optional[float] = None) -> None:
+                        ensemble_spread: Optional[float] = None,
+                        nws_high_prob_pct: Optional[float] = None,
+                        gfs_high_prob_pct: Optional[float] = None) -> None:
     sheet_date = datetime.now(timezone.utc).date()
     with conn.cursor() as cur:
         cur.execute("""
@@ -304,33 +438,36 @@ def _upsert_edge_sheet(conn, *, city: str, station_code: str,
                  market_implied_prob, market_yes_mid, market_volume, market_liquidity,
                  edge, edge_pct, edge_rank,
                  recommended_action, stake_fraction, stake_usd, skip_reason,
-                 ensemble_spread, last_updated, calibrator_version)
+                 ensemble_spread, nws_high_prob_pct, gfs_high_prob_pct,
+                 last_updated, calibrator_version)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s, %s, %s, NOW(), %s)
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), %s)
             ON CONFLICT (contract_ticker, sheet_date) DO UPDATE SET
-                bucket_floor      = EXCLUDED.bucket_floor,
-                bucket_cap        = EXCLUDED.bucket_cap,
-                bucket_label      = EXCLUDED.bucket_label,
-                raw_forecast_f    = EXCLUDED.raw_forecast_f,
-                gfs_forecast_f    = EXCLUDED.gfs_forecast_f,
-                model_delta_f     = EXCLUDED.model_delta_f,
-                model_confidence  = EXCLUDED.model_confidence,
-                calibrated_prob   = EXCLUDED.calibrated_prob,
-                raw_model_prob    = EXCLUDED.raw_model_prob,
+                bucket_floor        = EXCLUDED.bucket_floor,
+                bucket_cap          = EXCLUDED.bucket_cap,
+                bucket_label        = EXCLUDED.bucket_label,
+                raw_forecast_f      = EXCLUDED.raw_forecast_f,
+                gfs_forecast_f      = EXCLUDED.gfs_forecast_f,
+                model_delta_f       = EXCLUDED.model_delta_f,
+                model_confidence    = EXCLUDED.model_confidence,
+                calibrated_prob     = EXCLUDED.calibrated_prob,
+                raw_model_prob      = EXCLUDED.raw_model_prob,
                 market_implied_prob = EXCLUDED.market_implied_prob,
-                market_yes_mid    = EXCLUDED.market_yes_mid,
-                market_volume     = EXCLUDED.market_volume,
-                market_liquidity  = EXCLUDED.market_liquidity,
-                edge              = EXCLUDED.edge,
-                edge_pct          = EXCLUDED.edge_pct,
-                edge_rank         = EXCLUDED.edge_rank,
-                recommended_action = EXCLUDED.recommended_action,
-                stake_fraction    = EXCLUDED.stake_fraction,
-                stake_usd         = EXCLUDED.stake_usd,
-                skip_reason       = EXCLUDED.skip_reason,
-                ensemble_spread   = EXCLUDED.ensemble_spread,
-                last_updated      = NOW()
+                market_yes_mid      = EXCLUDED.market_yes_mid,
+                market_volume       = EXCLUDED.market_volume,
+                market_liquidity    = EXCLUDED.market_liquidity,
+                edge                = EXCLUDED.edge,
+                edge_pct            = EXCLUDED.edge_pct,
+                edge_rank           = EXCLUDED.edge_rank,
+                recommended_action  = EXCLUDED.recommended_action,
+                stake_fraction      = EXCLUDED.stake_fraction,
+                stake_usd           = EXCLUDED.stake_usd,
+                skip_reason         = EXCLUDED.skip_reason,
+                ensemble_spread     = EXCLUDED.ensemble_spread,
+                nws_high_prob_pct   = COALESCE(EXCLUDED.nws_high_prob_pct, weather_gold_daily_edge_sheet.nws_high_prob_pct),
+                gfs_high_prob_pct   = COALESCE(EXCLUDED.gfs_high_prob_pct, weather_gold_daily_edge_sheet.gfs_high_prob_pct),
+                last_updated        = NOW()
         """, (city, station_code, target_date, ACTIVE_SIDE, contract_ticker,
               bucket_floor, bucket_cap, bucket_label, sheet_date,
               raw_forecast_f, gfs_forecast_f, model_delta_f, model_confidence,
@@ -338,7 +475,8 @@ def _upsert_edge_sheet(conn, *, city: str, station_code: str,
               market_implied_prob, market_yes_mid, market_volume, market_liquidity,
               edge, edge_pct, edge_rank,
               recommended_action, stake_fraction, stake_usd, skip_reason,
-              ensemble_spread, CALIBRATOR_VERSION))
+              ensemble_spread, nws_high_prob_pct, gfs_high_prob_pct,
+              CALIBRATOR_VERSION))
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -394,6 +532,8 @@ def run_edge_calc(stations: Optional[list[str]] = None,
 
                 # Model confidence: ensemble spread is primary signal; NWS-GFS delta is fallback
                 ensemble_spread = _get_ensemble_spread(conn, station_code, target_date)
+                member_highs = _get_ensemble_member_highs(conn, station_code, target_date)
+                nbm_pcts = _get_nbm_percentiles(conn, station_code, target_date)
                 if gfs_tmax is not None:
                     model_delta = abs(nws_tmax - gfs_tmax)
                     model_delta_flag = "AGREE" if model_delta < 2.0 else "DIVERGE"
@@ -477,8 +617,21 @@ def run_edge_calc(stations: Optional[list[str]] = None,
 
                     bucket_floor = float(c["bucket_floor"]) if c["bucket_floor"] is not None else None
                     bucket_cap = float(c["bucket_cap"]) if c["bucket_cap"] is not None else None
+                    bucket_type_str = c.get("bucket_type") or "between"
                     vol = float(market.get("volume", 0) or 0)
                     liquidity = "liquid" if vol > 1000 else ("thin" if vol > 100 else "illiquid")
+
+                    gfs_high_prob_pct: Optional[float] = None
+                    if member_highs:
+                        gfs_high_prob_pct = _ensemble_bucket_prob(
+                            member_highs, bucket_type_str, bucket_floor, bucket_cap
+                        )
+
+                    nws_high_prob_pct: Optional[float] = None
+                    if nbm_pcts:
+                        nws_high_prob_pct = _bucket_prob_from_percentiles(
+                            bucket_type_str, bucket_floor, bucket_cap, nbm_pcts
+                        )
 
                     log_msg = (
                         f"{station_code} {target_date} {c['bucket_label'] or c['market_ticker']}: "
@@ -535,6 +688,8 @@ def run_edge_calc(stations: Optional[list[str]] = None,
                                 stake_usd=stake_usd,
                                 skip_reason=skip_reason,
                                 ensemble_spread=ensemble_spread,
+                                nws_high_prob_pct=nws_high_prob_pct,
+                                gfs_high_prob_pct=gfs_high_prob_pct,
                             )
                             rows_written += 1
                         except Exception as e:
