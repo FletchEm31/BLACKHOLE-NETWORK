@@ -1,0 +1,331 @@
+
+==================================================================
+WeatherBHN — BHN Performance Tracking Queries
+Version 1.0 — June 12, 2026
+Verified against live eventhorizon DB
+Timestamp standard: [vocab]_time_utc / [vocab]_time_pt / mins_ago
+==================================================================
+Add each as a separate Metabase question.
+Save to: WeatherBHN dashboard → FORMULA/MODELS tab
+==================================================================
+
+
+==================================================================
+QUERY 19
+Title:       WeatherBHN - BHN Overall Scorecard
+Description: High level BHN signal performance summary. Shows total
+             recommendations, win rate, P&L, and how BHN compares
+             to simply following the market. This is the headline
+             number — is BHN actually adding value over the market?
+             Populates after settlement reconciler runs nightly.
+Tab:         FORMULA/MODELS
+==================================================================
+
+SELECT
+    -- Volume
+    COUNT(*)                                           AS total_recommendations,
+    COUNT(*) FILTER (WHERE bhn_position_taken = true) AS trades_placed,
+    COUNT(*) FILTER (WHERE bhn_position_taken = false) AS signals_skipped,
+
+    -- BHN accuracy
+    COUNT(*) FILTER (WHERE bhn_was_correct = true)    AS bhn_correct,
+    COUNT(*) FILTER (WHERE bhn_was_correct = false)   AS bhn_wrong,
+    ROUND(
+        COUNT(*) FILTER (WHERE bhn_was_correct = true)::numeric
+        / NULLIF(COUNT(*), 0) * 100, 1
+    )                                                  AS bhn_win_rate_pct,
+
+    -- Market accuracy
+    COUNT(*) FILTER (WHERE market_was_correct = true)  AS market_correct,
+    ROUND(
+        COUNT(*) FILTER (WHERE market_was_correct = true)::numeric
+        / NULLIF(COUNT(*), 0) * 100, 1
+    )                                                  AS market_win_rate_pct,
+
+    -- BHN vs Market edge
+    ROUND(
+        (
+            COUNT(*) FILTER (WHERE bhn_was_correct = true)::numeric
+            / NULLIF(COUNT(*), 0)
+            -
+            COUNT(*) FILTER (WHERE market_was_correct = true)::numeric
+            / NULLIF(COUNT(*), 0)
+        ) * 100, 1
+    )                                                  AS bhn_vs_market_edge_pct,
+
+    -- P&L
+    ROUND(SUM(pnl_dollar), 2)                          AS total_pnl,
+    ROUND(AVG(pnl_dollar), 2)                          AS avg_pnl_per_trade,
+    ROUND(SUM(pnl_dollar) FILTER (WHERE pnl_dollar > 0), 2) AS total_wins,
+    ROUND(SUM(pnl_dollar) FILTER (WHERE pnl_dollar < 0), 2) AS total_losses,
+
+    -- Edge stats
+    ROUND(AVG(edge * 100), 1)                          AS avg_edge_pct,
+    ROUND(AVG(accuracy_score), 3)                      AS avg_accuracy_score,
+
+    -- Date range
+    MIN(resolved_at) AT TIME ZONE 'UTC' AT TIME ZONE 'America/Los_Angeles'
+                                                       AS first_reconciled_time_pt,
+    MAX(resolved_at) AT TIME ZONE 'UTC' AT TIME ZONE 'America/Los_Angeles'
+                                                       AS latest_reconciled_time_pt,
+    COUNT(DISTINCT DATE(resolved_at))                  AS trading_days
+
+FROM weather_model_accuracy
+WHERE actual_outcome IS NOT NULL;
+
+
+==================================================================
+QUERY 20
+Title:       WeatherBHN - Signal Performance by Edge Tier
+Description: Breaks down BHN win rate by edge tier. Proves whether
+             the edge model actually predicts outcomes — strong edge
+             signals should win more than marginal edge signals.
+             If strong edge (>20%) isn't winning at 70%+ something
+             is wrong with the calibration model.
+Tab:         FORMULA/MODELS
+==================================================================
+
+SELECT
+    -- Edge tier classification
+    CASE
+        WHEN edge >= 0.20  THEN '🔥 Strong Edge >20%'
+        WHEN edge >= 0.10  THEN '🟢 Good Edge 10-20%'
+        WHEN edge >= 0.05  THEN '🟡 Marginal Edge 5-10%'
+        WHEN edge >= 0.00  THEN '⚪ No Edge 0-5%'
+        WHEN edge >= -0.10 THEN '🔴 Negative Edge -10-0%'
+        ELSE                    '🔴 Strong Negative <-10%'
+    END                                                AS edge_tier,
+
+    COUNT(*)                                           AS total_signals,
+    COUNT(*) FILTER (WHERE bhn_was_correct = true)    AS bhn_correct,
+    COUNT(*) FILTER (WHERE market_was_correct = true)  AS market_correct,
+
+    -- Win rates
+    ROUND(
+        COUNT(*) FILTER (WHERE bhn_was_correct = true)::numeric
+        / NULLIF(COUNT(*), 0) * 100, 1
+    )                                                  AS bhn_win_rate_pct,
+    ROUND(
+        COUNT(*) FILTER (WHERE market_was_correct = true)::numeric
+        / NULLIF(COUNT(*), 0) * 100, 1
+    )                                                  AS market_win_rate_pct,
+
+    -- BHN advantage per tier
+    ROUND(
+        (
+            COUNT(*) FILTER (WHERE bhn_was_correct = true)::numeric
+            / NULLIF(COUNT(*), 0)
+            -
+            COUNT(*) FILTER (WHERE market_was_correct = true)::numeric
+            / NULLIF(COUNT(*), 0)
+        ) * 100, 1
+    )                                                  AS bhn_advantage_pct,
+
+    -- P&L per tier
+    ROUND(SUM(pnl_dollar), 2)                          AS total_pnl,
+    ROUND(AVG(pnl_dollar), 2)                          AS avg_pnl,
+    ROUND(AVG(edge * 100), 1)                          AS avg_edge_pct,
+
+    -- Verdict
+    CASE
+        WHEN COUNT(*) FILTER (WHERE bhn_was_correct = true)::numeric
+             / NULLIF(COUNT(*), 0) >= 0.70 THEN '✅ Model Working'
+        WHEN COUNT(*) FILTER (WHERE bhn_was_correct = true)::numeric
+             / NULLIF(COUNT(*), 0) >= 0.55 THEN '🟡 Model Marginal'
+        WHEN COUNT(*) < 10                 THEN '⏳ Insufficient Data'
+        ELSE                                    '🔴 Model Underperforming'
+    END                                                AS model_verdict
+
+FROM weather_model_accuracy
+WHERE actual_outcome IS NOT NULL
+GROUP BY edge_tier
+ORDER BY
+    CASE edge_tier
+        WHEN '🔥 Strong Edge >20%'       THEN 1
+        WHEN '🟢 Good Edge 10-20%'       THEN 2
+        WHEN '🟡 Marginal Edge 5-10%'    THEN 3
+        WHEN '⚪ No Edge 0-5%'           THEN 4
+        WHEN '🔴 Negative Edge -10-0%'   THEN 5
+        ELSE                                  6
+    END;
+
+
+==================================================================
+QUERY 21
+Title:       WeatherBHN - Recent Recommendations + Results
+Description: Every BHN signal with contract ticker, outcome, and
+             P&L. Shows whether BHN was right or wrong on each
+             trade. Sort by most recent settlement first.
+             This is the raw trade log — use it to spot patterns
+             and debug model errors.
+Tab:         FORMULA/MODELS
+==================================================================
+
+SELECT
+    -- Contract identification
+    contract_id                                        AS contract_ticker,
+    contract_title,
+    region                                             AS city,
+    variable,
+
+    -- Signal details
+    ROUND(bhn_predicted_probability * 100, 1)          AS bhn_prob_pct,
+    ROUND(market_implied_probability * 100, 1)         AS market_prob_pct,
+    ROUND(edge * 100, 1)                               AS edge_pct,
+
+    -- Edge classification
+    CASE
+        WHEN edge >= 0.20  THEN '🔥 Strong'
+        WHEN edge >= 0.10  THEN '🟢 Good'
+        WHEN edge >= 0.05  THEN '🟡 Marginal'
+        WHEN edge >= 0.00  THEN '⚪ None'
+        ELSE                    '🔴 Negative'
+    END                                                AS edge_tier,
+
+    -- Position taken
+    bhn_position_taken,
+    bhn_position_side,
+    ROUND(bhn_position_value, 2)                       AS position_value,
+
+    -- Outcome
+    actual_outcome,
+    CASE
+        WHEN bhn_was_correct = true  THEN '✅ CORRECT'
+        WHEN bhn_was_correct = false THEN '❌ WRONG'
+        ELSE '⏳ PENDING'
+    END                                                AS bhn_result,
+    CASE
+        WHEN market_was_correct = true  THEN '✅ CORRECT'
+        WHEN market_was_correct = false THEN '❌ WRONG'
+        ELSE '⏳ PENDING'
+    END                                                AS market_result,
+
+    -- P&L
+    ROUND(pnl_dollar, 2)                               AS pnl_dollar,
+    ROUND(accuracy_score, 3)                           AS accuracy_score,
+
+    -- Timestamps
+    resolved_at                                        AS reconciled_time_utc,
+    resolved_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Los_Angeles'
+                                                       AS reconciled_time_pt,
+    ROUND(EXTRACT(EPOCH FROM (NOW() - resolved_at)) / 60) AS mins_ago,
+
+    created_at                                         AS signal_time_utc,
+    created_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Los_Angeles'
+                                                       AS signal_time_pt
+
+FROM weather_model_accuracy
+WHERE actual_outcome IS NOT NULL
+ORDER BY resolved_at DESC
+LIMIT 100;
+
+
+==================================================================
+QUERY 22
+Title:       WeatherBHN - Performance by City
+Description: BHN win rate, average edge, and P&L broken down by
+             city. Shows which cities BHN has the most edge in.
+             Cities with high win rate + high avg edge = strong
+             calibration. Cities with low win rate = needs more
+             data or model adjustment.
+Tab:         FORMULA/MODELS
+==================================================================
+
+SELECT
+    region                                             AS city,
+    variable,
+
+    -- Volume
+    COUNT(*)                                           AS total_signals,
+    COUNT(*) FILTER (WHERE bhn_position_taken = true) AS trades_placed,
+
+    -- Accuracy
+    COUNT(*) FILTER (WHERE bhn_was_correct = true)    AS bhn_correct,
+    ROUND(
+        COUNT(*) FILTER (WHERE bhn_was_correct = true)::numeric
+        / NULLIF(COUNT(*), 0) * 100, 1
+    )                                                  AS bhn_win_rate_pct,
+    ROUND(
+        COUNT(*) FILTER (WHERE market_was_correct = true)::numeric
+        / NULLIF(COUNT(*), 0) * 100, 1
+    )                                                  AS market_win_rate_pct,
+
+    -- BHN advantage per city
+    ROUND(
+        (
+            COUNT(*) FILTER (WHERE bhn_was_correct = true)::numeric
+            / NULLIF(COUNT(*), 0)
+            -
+            COUNT(*) FILTER (WHERE market_was_correct = true)::numeric
+            / NULLIF(COUNT(*), 0)
+        ) * 100, 1
+    )                                                  AS bhn_advantage_pct,
+
+    -- Edge stats
+    ROUND(AVG(edge * 100), 1)                          AS avg_edge_pct,
+    ROUND(MAX(edge * 100), 1)                          AS max_edge_pct,
+
+    -- P&L
+    ROUND(SUM(pnl_dollar), 2)                          AS total_pnl,
+    ROUND(AVG(pnl_dollar), 2)                          AS avg_pnl_per_signal,
+
+    -- City verdict
+    CASE
+        WHEN COUNT(*) < 5 THEN '⏳ Insufficient Data'
+        WHEN COUNT(*) FILTER (WHERE bhn_was_correct = true)::numeric
+             / NULLIF(COUNT(*), 0) >= 0.65 THEN '✅ Strong Edge City'
+        WHEN COUNT(*) FILTER (WHERE bhn_was_correct = true)::numeric
+             / NULLIF(COUNT(*), 0) >= 0.50 THEN '🟡 Developing Edge'
+        ELSE '🔴 Weak Edge — Review Calibration'
+    END                                                AS city_verdict,
+
+    -- Date range
+    MIN(resolved_at) AT TIME ZONE 'UTC' AT TIME ZONE 'America/Los_Angeles'
+                                                       AS first_signal_pt,
+    MAX(resolved_at) AT TIME ZONE 'UTC' AT TIME ZONE 'America/Los_Angeles'
+                                                       AS latest_signal_pt
+
+FROM weather_model_accuracy
+WHERE actual_outcome IS NOT NULL
+GROUP BY region, variable
+ORDER BY bhn_win_rate_pct DESC NULLS LAST, total_signals DESC;
+
+
+==================================================================
+DASHBOARD PLACEMENT
+==================================================================
+
+Add to WeatherBHN dashboard under tab: FORMULA/MODELS
+
+Layout:
+  Row 1: Query 19 (Overall Scorecard) — full width
+  Row 2: Query 20 (Edge Tier Performance) | Query 22 (City Breakdown)
+  Row 3: Query 21 (Recent Recommendations) — full width
+
+PIN Query 19 at the top of FORMULA/MODELS tab.
+This is the headline card — BHN win rate vs market win rate.
+
+==================================================================
+NOTES
+==================================================================
+
+All 4 queries pull from weather_model_accuracy which is populated
+by the settlement reconciler (weather_settlement_reconciliation.py)
+running nightly at 15:00 UTC (10 AM ET).
+
+Queries will return 0 rows until the reconciler has processed at
+least one day of settlements. Run manually to populate:
+
+  cd /opt/bhn/trading
+  DRY_RUN=false python3 weather_settlement_reconciliation.py
+
+contract_ticker = contract_id column in weather_model_accuracy.
+This maps to the Kalshi ticker (e.g. KXHIGHMIA-26JUN13-B90.5).
+
+Timestamp standard applied per WEATHERBHN_TIMESTAMP_STANDARD.md:
+  reconciled_time_utc / reconciled_time_pt / mins_ago
+  signal_time_utc / signal_time_pt
+
+==================================================================
+END
+==================================================================

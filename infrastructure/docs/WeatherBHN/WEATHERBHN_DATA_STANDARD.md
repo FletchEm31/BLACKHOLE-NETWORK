@@ -50,7 +50,7 @@ Spec for `weather_position_monitor.py`:
 ### Master Query File
 `infrastructure/docs/metabase/CLEAN_QUERIES.sql`
 
-All production Metabase queries (10 total):
+All production Metabase queries (14 total):
 - Q1: Daily Edge Sheet (main trading view)
 - Q2: Latest NWS vs GFS Forecasts
 - Q3: Live Kalshi Market Prices
@@ -61,11 +61,21 @@ All production Metabase queries (10 total):
 - Q16: Kelly Sizing (Market Only + Liquidity)
 - Q17: Kelly Sizing (BHN Edge + Liquidity) — requires calibrated_prob
 - Q18: Pre-Trade Liquidity Scanner
+- Q19: BHN Overall Scorecard — headline win rate vs market (FORMULA/MODELS, pin top)
+- Q20: Signal Performance by Edge Tier (FORMULA/MODELS)
+- Q21: Recent Recommendations + Results — raw trade log (FORMULA/MODELS)
+- Q22: Performance by City (FORMULA/MODELS)
 
 ### Individual Kelly + Liquidity Queries
 `infrastructure/docs/WeatherBHN/queries/KELLY_MARKET_ONLY.sql`
 `infrastructure/docs/WeatherBHN/queries/KELLY_BHN_EDGE.sql`
 `infrastructure/docs/WeatherBHN/queries/LIQUIDITY_SCANNER.sql`
+
+### Performance Tracking Queries (FORMULA/MODELS tab)
+`infrastructure/docs/WeatherBHN/queries/BHN_OVERALL_SCORECARD.sql`
+`infrastructure/docs/WeatherBHN/queries/BHN_EDGE_TIER_PERFORMANCE.sql`
+`infrastructure/docs/WeatherBHN/queries/BHN_RECENT_RESULTS.sql`
+`infrastructure/docs/WeatherBHN/queries/BHN_CITY_PERFORMANCE.sql`
 
 ### Metabase Setup Guide
 `infrastructure/docs/metabase/METABASE_SETUP_GUIDE.md`
