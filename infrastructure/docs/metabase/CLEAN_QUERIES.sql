@@ -26,7 +26,9 @@ SELECT
     recommended_action,
     stake_usd,
     skip_reason,
-    last_updated
+    last_updated                                                           AS calculated_time_utc,
+    last_updated AT TIME ZONE 'UTC' AT TIME ZONE 'America/Los_Angeles'    AS calculated_time_pt,
+    ROUND(EXTRACT(EPOCH FROM (NOW() - last_updated)) / 60)                AS mins_ago
 FROM weather_gold_daily_edge_sheet
 WHERE target_date BETWEEN CURRENT_DATE AND CURRENT_DATE + 1
   AND is_active = TRUE
@@ -47,7 +49,9 @@ SELECT
     pop_pct,
     wind_speed_mph,
     is_latest_run,
-    forecast_run_time
+    forecast_run_time                                                           AS forecast_time_utc,
+    forecast_run_time AT TIME ZONE 'UTC' AT TIME ZONE 'America/Los_Angeles'    AS forecast_time_pt,
+    ROUND(EXTRACT(EPOCH FROM (NOW() - forecast_run_time)) / 60)                AS mins_ago
 FROM weather_silver_forecast_conformed
 WHERE target_date BETWEEN CURRENT_DATE AND CURRENT_DATE + 2
   AND is_latest_run = TRUE
@@ -70,7 +74,9 @@ SELECT
     yes_mid,
     volume,
     market_liquidity_flag,
-    snapshot_time
+    snapshot_time                                                           AS snapshot_time_utc,
+    snapshot_time AT TIME ZONE 'UTC' AT TIME ZONE 'America/Los_Angeles'    AS snapshot_time_pt,
+    ROUND(EXTRACT(EPOCH FROM (NOW() - snapshot_time)) / 60)                AS mins_ago
 FROM weather_silver_market_conformed
 WHERE is_latest_snapshot = TRUE
   AND target_date BETWEEN CURRENT_DATE AND CURRENT_DATE + 1
@@ -135,8 +141,9 @@ ORDER BY sfc.station_code;
 SELECT
     source_label,
     station_code,
-    MAX(last_update)                                                  AS last_update,
-    ROUND(EXTRACT(EPOCH FROM (NOW() - MAX(last_update))) / 60, 0)    AS minutes_ago
+    MAX(last_update)                                                              AS retrieved_time_utc,
+    MAX(last_update) AT TIME ZONE 'UTC' AT TIME ZONE 'America/Los_Angeles'       AS retrieved_time_pt,
+    ROUND(EXTRACT(EPOCH FROM (NOW() - MAX(last_update))) / 60)                   AS mins_ago
 FROM (
     SELECT 'NWS Forecast'  AS source_label,
            station_code,
@@ -184,7 +191,9 @@ SELECT
     unrealized_pnl_usd,
     payout_if_right_usd,
     ROUND((unrealized_pnl_usd / NULLIF(cost_usd, 0)) * 100, 1)    AS return_pct,
-    captured_at
+    captured_at                                                           AS snapshot_time_utc,
+    captured_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Los_Angeles'    AS snapshot_time_pt,
+    ROUND(EXTRACT(EPOCH FROM (NOW() - captured_at)) / 60)                AS mins_ago
 FROM kalshi_positions
 ORDER BY captured_at DESC;
 
@@ -271,7 +280,11 @@ SELECT
         WHEN m.open_interest < 50           THEN '🟡 REDUCED SIZE — Low OI'
         ELSE                                     '✅ TRADE — Full liquidity-adjusted size'
     END AS trade_signal,
-    m.retrieved_at AS price_as_of
+    m.retrieved_at                                                           AS snapshot_time_utc,
+    m.retrieved_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Los_Angeles'    AS snapshot_time_pt,
+    ROUND(EXTRACT(EPOCH FROM (NOW() - m.retrieved_at)) / 60)                AS mins_ago,
+    e.last_updated                                                           AS calculated_time_utc,
+    e.last_updated AT TIME ZONE 'UTC' AT TIME ZONE 'America/Los_Angeles'    AS calculated_time_pt
 FROM edge_data e
 LEFT JOIN market_latest m
     ON e.city = m.city AND e.contract_side = m.contract_side
@@ -368,7 +381,11 @@ SELECT
         ELSE '🟡 MARGINAL — Half liquidity-adjusted size'
     END AS kelly_signal,
     g.edge_rank, g.recommended_action,
-    m.retrieved_at AS price_as_of
+    m.retrieved_at                                                           AS snapshot_time_utc,
+    m.retrieved_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Los_Angeles'    AS snapshot_time_pt,
+    ROUND(EXTRACT(EPOCH FROM (NOW() - m.retrieved_at)) / 60)                AS mins_ago,
+    g.last_updated                                                           AS calculated_time_utc,
+    g.last_updated AT TIME ZONE 'UTC' AT TIME ZONE 'America/Los_Angeles'    AS calculated_time_pt
 FROM weather_gold_daily_edge_sheet g
 LEFT JOIN market_latest m
     ON g.city = m.city AND g.contract_side = m.contract_side
@@ -449,7 +466,9 @@ SELECT
             THEN '🟡 TRADE CAREFULLY — Reduce size 25%'
         ELSE '🟢 CLEAR TO TRADE — Full size OK'
     END AS liquidity_verdict,
-    ROUND(EXTRACT(EPOCH FROM (NOW() - retrieved_at)) / 60) AS price_age_mins
+    retrieved_at                                                           AS snapshot_time_utc,
+    retrieved_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Los_Angeles'    AS snapshot_time_pt,
+    ROUND(EXTRACT(EPOCH FROM (NOW() - retrieved_at)) / 60)                AS mins_ago
 FROM market_latest
 WHERE yes_mid > 0
 ORDER BY liquidity_score DESC, city, contract_side, bucket_floor;

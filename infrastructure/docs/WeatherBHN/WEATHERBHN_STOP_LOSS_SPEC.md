@@ -106,6 +106,22 @@ STOP_LOSS_TAIL_NO_THRESHOLD=0.05
 STOP_LOSS_DRY_RUN=true
 ```
 
+## DATA STANDARDS
+
+All WeatherBHN timestamps follow the naming convention in:
+`infrastructure/docs/WeatherBHN/WEATHERBHN_TIMESTAMP_STANDARD.md`
+
+Summary: every timestamp appears in THREE columns in all Metabase queries:
+- `[vocab]_time_utc` — raw UTC (server time)
+- `[vocab]_time_pt` — Pacific time (operator local, auto-handles DST)
+- `mins_ago` — integer minutes between now and that timestamp
+
+For `weather_position_exits`, the relevant vocab is:
+- `triggered_at` → `triggered_time_utc` / `triggered_time_pt` / `mins_ago`
+
+For the master index of all WeatherBHN standards and documentation, see:
+`infrastructure/docs/WeatherBHN/WEATHERBHN_DATA_STANDARD.md`
+
 ## IMPLEMENTATION ORDER
 
 1. Create weather_position_exits table

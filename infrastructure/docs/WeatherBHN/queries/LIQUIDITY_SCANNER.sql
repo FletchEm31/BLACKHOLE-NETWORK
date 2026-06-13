@@ -124,7 +124,9 @@ SELECT
             '🟢 CLEAR TO TRADE — Full size OK'
     END AS liquidity_verdict,
 
-    ROUND(EXTRACT(EPOCH FROM (NOW() - retrieved_at)) / 60) AS price_age_mins
+    retrieved_at                                                           AS snapshot_time_utc,
+    retrieved_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Los_Angeles'    AS snapshot_time_pt,
+    ROUND(EXTRACT(EPOCH FROM (NOW() - retrieved_at)) / 60)                AS mins_ago
 
 FROM market_latest
 WHERE yes_mid > 0

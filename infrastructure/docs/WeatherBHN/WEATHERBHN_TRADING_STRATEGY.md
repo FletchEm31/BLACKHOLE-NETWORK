@@ -151,3 +151,16 @@ See WEATHERBHN_STOP_LOSS_SPEC.md for stop-loss details.
 | Jun 12 | KDEN | 92+ | No | 4 | 85.25c | TBD |
 | Jun 12 | KDEN | 76-77 | No | 2 | 83c | TBD |
 | Jun 12 | KDEN | 82-83 | No | 2 | 90.5c | TBD |
+
+## DATA STANDARDS
+
+All WeatherBHN timestamps follow the naming convention in:
+`infrastructure/docs/WeatherBHN/WEATHERBHN_TIMESTAMP_STANDARD.md`
+
+Summary: every timestamp appears in THREE columns in all Metabase queries:
+- `[vocab]_time_utc` — raw UTC (server time)
+- `[vocab]_time_pt` — Pacific time (operator local, auto-handles DST)
+- `mins_ago` — integer minutes between now and that timestamp
+
+For the master index of all WeatherBHN standards and documentation, see:
+`infrastructure/docs/WeatherBHN/WEATHERBHN_DATA_STANDARD.md`

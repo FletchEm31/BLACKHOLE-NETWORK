@@ -243,7 +243,11 @@ SELECT
 
     g.edge_rank,
     g.recommended_action,
-    m.retrieved_at AS price_as_of
+    m.retrieved_at                                                           AS snapshot_time_utc,
+    m.retrieved_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Los_Angeles'    AS snapshot_time_pt,
+    ROUND(EXTRACT(EPOCH FROM (NOW() - m.retrieved_at)) / 60)                AS mins_ago,
+    g.last_updated                                                           AS calculated_time_utc,
+    g.last_updated AT TIME ZONE 'UTC' AT TIME ZONE 'America/Los_Angeles'    AS calculated_time_pt
 
 FROM weather_gold_daily_edge_sheet g
 LEFT JOIN market_latest m
