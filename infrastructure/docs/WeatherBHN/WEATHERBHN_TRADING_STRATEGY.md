@@ -143,6 +143,91 @@ Once calibration is trained:
 
 See WEATHERBHN_STOP_LOSS_SPEC.md for stop-loss details.
 
+## PHASE 2 — MIAMI MODEL SPEC (gradient boosting calibration)
+
+### Why NWS Overforecasts Miami Highs
+
+Miami (KMIA) consistently runs 13-15°F cooler than NWS predicts (observed Jun 12).
+The physical mechanisms are predictable from available data and will be learned
+automatically by a gradient boosting model once Visual Crossing backfill provides
+sufficient history. Do not hardcode corrections — let the model learn interaction
+effects between these features.
+
+### Feature Set
+
+**1. afternoon_storm_flag**
+```
+afternoon_storm_flag = 1 if MAX(pop_pct) > 20% over hours 12-17 else 0
+```
+Source: weather_bronze_nws_forecast_snapshots (hourly, hours 12-17)
+Physical mechanism: Miami sea breeze convergence drives afternoon convection that
+caps surface heating. NWS operational models systematically underweight this
+cooling effect in the daily high forecast. Days with >20% afternoon PoP are
+reliably cooler than the NWS gridded high.
+
+**2. sea_breeze_index**
+```
+sea_breeze_index = wind_speed_mph * direction_sign
+direction_sign = +1 if wind_direction_deg in onshore range else -1
+KMIA onshore range: 045–225° (east through south — Atlantic + Bay inflow)
+```
+Source: weather_bronze_nws_forecast_snapshots (wind_speed_mph, wind_direction_deg)
+Physical mechanism: onshore flow brings cooler, moisture-laden Atlantic air across
+the peninsula before peak heating. Strong onshore index → stronger marine layer
+suppression → lower observed tmax. Offshore flow removes the cooling buffer.
+Note: requires wind_direction_deg column — verify it exists in bronze before
+implementing. If missing, add to fetch_nws_hourly() in weather_data_collector.py.
+
+**3. nws_gfs_uncertainty**
+```
+nws_gfs_uncertainty = ABS(nws_forecast_tmax - gfs_forecast_tmax)
+```
+Source: weather_silver_forecast_conformed (both sources already present)
+Physical mechanism: large NWS/GFS disagreement signals a synoptic pattern neither
+model handles confidently. For Miami, model spread > 3°F historically correlates
+with NWS overforecasting the high — likely because GFS resolves the sea breeze
+boundary layer dynamics better at coarser resolution. High uncertainty = larger
+expected NWS bias.
+
+**4. humidity_suppression**
+```
+humidity_suppression = dewpoint_f / tmax_forecast_f
+```
+Source: weather_bronze_nws_forecast_snapshots (dewpoint_f, tmax_f)
+Physical mechanism: high dewpoint relative to forecast high indicates a moisture-
+rich boundary layer that suppresses sensible heating. In Miami, the ratio captures
+the degree to which latent heat flux dominates over dry convective heating. Ratio
+approaching 1.0 → near-saturated air → afternoon clouds and storms cap the high.
+
+**5. cloud_timing**
+```
+cloud_timing = peak_cloud_hour - peak_heating_hour
+peak_cloud_hour  = hour with MAX(cloud_cover_pct) between hours 10-18
+peak_heating_hour = 15  (3 PM local — typical solar maximum lag for Miami latitude)
+```
+Source: weather_bronze_nws_forecast_snapshots (cloud_cover_pct, hourly)
+Physical mechanism: cloud cover arriving BEFORE peak heating (negative cloud_timing)
+blocks the solar radiation window and hard-caps the high. Cloud cover arriving AFTER
+peak heating has minimal effect on tmax. NWS point forecasts do not account for
+this timing effect when issuing the daily high. Negative cloud_timing is the
+strongest individual predictor of NWS overforecast in humid subtropical climates.
+
+### Model Architecture
+
+Algorithm: gradient boosting (LightGBM or XGBoost)
+Target: nws_forecast_error_f = actual_tmax_f - nws_forecast_tmax_f
+Features: all 5 above + raw_nws_forecast_f + month + day_of_week
+Training data: weather_silver_forecast_error JOIN feature table (≥90 days minimum)
+Output: calibrated_correction_f → applied as bias adjustment in edge calculator
+
+Data requirement: Visual Crossing backfill provides ~140 days of history.
+Minimum viable training set: 90 days. Target: 140+ days.
+Implementation trigger: VC backfill complete + VISUAL_CROSSING_API_KEY set in strat9.env.
+
+Feature storage: weather_silver_features (station_code, target_date, feature_name, value)
+or wide table (station_code, target_date, afternoon_storm_flag, sea_breeze_index, …)
+Decide schema before implementation — wide table preferred for query simplicity.
+
 ## PERFORMANCE TRACKING
 
 | Date | City | Bucket | Side | Contracts | Entry | P&L |
