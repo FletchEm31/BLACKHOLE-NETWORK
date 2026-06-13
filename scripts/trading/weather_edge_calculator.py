@@ -90,6 +90,17 @@ CITY_NAME: dict[str, str] = {
     "KNYC": "New York City", "KORD": "Chicago", "KAUS": "Austin",
 }
 
+# Onshore wind direction ranges (degrees FROM, meteorological convention: 0=N, 90=E).
+# Sea breeze flag only meaningful for coastal cities — inland cities return None.
+# KMIA: Atlantic + Biscayne Bay inflow from E/SE/S
+# KLAX: Pacific inflow from SW/W/NW
+# KNYC: Atlantic inflow from E/SE
+COASTAL_ONSHORE: dict[str, tuple[int, int]] = {
+    "KMIA": (45,  225),
+    "KLAX": (180, 315),
+    "KNYC": (45,  180),
+}
+
 
 # ─────────────────────────────────────────────────────────────────────────
 # Normal distribution helpers (no scipy)
@@ -407,6 +418,75 @@ def _insert_calibrated_prob(conn, *, city: str, station_code: str,
               CALIBRATOR_VERSION))
 
 
+def _compute_hourly_features(conn, station_code: str, target_date) -> Optional[dict]:
+    """Derive 5 physical features from NWS hourly data for one station/date.
+
+    Returns None if no hourly rows exist yet for that date.
+    sea_breeze_flag is None for inland cities (not in COASTAL_ONSHORE).
+    """
+    with conn.cursor() as cur:
+        cur.execute("""
+            SELECT hour, tmax_f, pop_pct, cloud_cover_pct, wind_speed_mph, wind_direction_deg
+            FROM weather_bronze_nws_forecast_snapshots
+            WHERE station_code = %s
+              AND target_date  = %s
+              AND source_name  = 'nws_hourly'
+              AND hour IS NOT NULL
+            ORDER BY hour
+        """, (station_code, target_date))
+        rows = cur.fetchall()
+
+    if not rows:
+        return None
+
+    # peak_hour: hour with highest hourly temp during daytime (hours 6-20)
+    day_rows = [(h, t, p, c, w, d) for h, t, p, c, w, d in rows
+                if t is not None and 6 <= h <= 20]
+    if not day_rows:
+        return None
+    peak_hour = max(day_rows, key=lambda x: x[1])[0]
+
+    # afternoon_storm_flag: any hour 12-17 with pop_pct > 20%
+    afternoon_storm_flag = any(
+        p is not None and float(p) > 20.0
+        for h, t, p, c, w, d in rows if 12 <= h <= 17
+    )
+
+    # pre_peak_storm_flag: storm in hours [12, peak_hour) — suppresses heating before max
+    pre_peak_storm_flag = any(
+        p is not None and float(p) > 20.0
+        for h, t, p, c, w, d in rows if 12 <= h < peak_hour
+    )
+
+    # cloud_timing_delta: (hour of max cloud cover) - peak_hour
+    # Negative = clouds peaked before max heat = stronger suppression
+    cloud_rows = [(h, float(c)) for h, t, p, c, w, d in rows
+                  if c is not None and 10 <= h <= 20]
+    cloud_timing_delta: Optional[float] = None
+    if cloud_rows:
+        max_cloud_hour = max(cloud_rows, key=lambda x: x[1])[0]
+        cloud_timing_delta = float(max_cloud_hour - peak_hour)
+
+    # sea_breeze_flag: coastal cities only — wind_speed_mph > 5 AND onshore during 12-17
+    sea_breeze_flag: Optional[bool] = None
+    if station_code in COASTAL_ONSHORE:
+        lo, hi = COASTAL_ONSHORE[station_code]
+        sea_breeze_flag = any(
+            w is not None and d is not None
+            and float(w) > 5.0
+            and lo <= float(d) <= hi
+            for h, t, p, c, w, d in rows if 12 <= h <= 17
+        )
+
+    return {
+        "peak_hour":            peak_hour,
+        "afternoon_storm_flag": afternoon_storm_flag,
+        "pre_peak_storm_flag":  pre_peak_storm_flag,
+        "cloud_timing_delta":   cloud_timing_delta,
+        "sea_breeze_flag":      sea_breeze_flag,
+    }
+
+
 def _upsert_edge_sheet(conn, *, city: str, station_code: str,
                         target_date: date, contract_ticker: str,
                         bucket_floor: Optional[float], bucket_cap: Optional[float],
@@ -426,7 +506,12 @@ def _upsert_edge_sheet(conn, *, city: str, station_code: str,
                         skip_reason: Optional[str],
                         ensemble_spread: Optional[float] = None,
                         nws_high_prob_pct: Optional[float] = None,
-                        gfs_high_prob_pct: Optional[float] = None) -> None:
+                        gfs_high_prob_pct: Optional[float] = None,
+                        peak_hour: Optional[int] = None,
+                        afternoon_storm_flag: Optional[bool] = None,
+                        pre_peak_storm_flag: Optional[bool] = None,
+                        cloud_timing_delta: Optional[float] = None,
+                        sea_breeze_flag: Optional[bool] = None) -> None:
     sheet_date = datetime.now(timezone.utc).date()
     with conn.cursor() as cur:
         cur.execute("""
@@ -439,35 +524,43 @@ def _upsert_edge_sheet(conn, *, city: str, station_code: str,
                  edge, edge_pct, edge_rank,
                  recommended_action, stake_fraction, stake_usd, skip_reason,
                  ensemble_spread, nws_high_prob_pct, gfs_high_prob_pct,
+                 peak_hour, afternoon_storm_flag, pre_peak_storm_flag,
+                 cloud_timing_delta, sea_breeze_flag,
                  last_updated, calibrator_version)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), %s)
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, NOW(), %s)
             ON CONFLICT (contract_ticker, sheet_date) DO UPDATE SET
-                bucket_floor        = EXCLUDED.bucket_floor,
-                bucket_cap          = EXCLUDED.bucket_cap,
-                bucket_label        = EXCLUDED.bucket_label,
-                raw_forecast_f      = EXCLUDED.raw_forecast_f,
-                gfs_forecast_f      = EXCLUDED.gfs_forecast_f,
-                model_delta_f       = EXCLUDED.model_delta_f,
-                model_confidence    = EXCLUDED.model_confidence,
-                calibrated_prob     = EXCLUDED.calibrated_prob,
-                raw_model_prob      = EXCLUDED.raw_model_prob,
-                market_implied_prob = EXCLUDED.market_implied_prob,
-                market_yes_mid      = EXCLUDED.market_yes_mid,
-                market_volume       = EXCLUDED.market_volume,
-                market_liquidity    = EXCLUDED.market_liquidity,
-                edge                = EXCLUDED.edge,
-                edge_pct            = EXCLUDED.edge_pct,
-                edge_rank           = EXCLUDED.edge_rank,
-                recommended_action  = EXCLUDED.recommended_action,
-                stake_fraction      = EXCLUDED.stake_fraction,
-                stake_usd           = EXCLUDED.stake_usd,
-                skip_reason         = EXCLUDED.skip_reason,
-                ensemble_spread     = EXCLUDED.ensemble_spread,
-                nws_high_prob_pct   = COALESCE(EXCLUDED.nws_high_prob_pct, weather_gold_daily_edge_sheet.nws_high_prob_pct),
-                gfs_high_prob_pct   = COALESCE(EXCLUDED.gfs_high_prob_pct, weather_gold_daily_edge_sheet.gfs_high_prob_pct),
-                last_updated        = NOW()
+                bucket_floor          = EXCLUDED.bucket_floor,
+                bucket_cap            = EXCLUDED.bucket_cap,
+                bucket_label          = EXCLUDED.bucket_label,
+                raw_forecast_f        = EXCLUDED.raw_forecast_f,
+                gfs_forecast_f        = EXCLUDED.gfs_forecast_f,
+                model_delta_f         = EXCLUDED.model_delta_f,
+                model_confidence      = EXCLUDED.model_confidence,
+                calibrated_prob       = EXCLUDED.calibrated_prob,
+                raw_model_prob        = EXCLUDED.raw_model_prob,
+                market_implied_prob   = EXCLUDED.market_implied_prob,
+                market_yes_mid        = EXCLUDED.market_yes_mid,
+                market_volume         = EXCLUDED.market_volume,
+                market_liquidity      = EXCLUDED.market_liquidity,
+                edge                  = EXCLUDED.edge,
+                edge_pct              = EXCLUDED.edge_pct,
+                edge_rank             = EXCLUDED.edge_rank,
+                recommended_action    = EXCLUDED.recommended_action,
+                stake_fraction        = EXCLUDED.stake_fraction,
+                stake_usd             = EXCLUDED.stake_usd,
+                skip_reason           = EXCLUDED.skip_reason,
+                ensemble_spread       = EXCLUDED.ensemble_spread,
+                nws_high_prob_pct     = COALESCE(EXCLUDED.nws_high_prob_pct, weather_gold_daily_edge_sheet.nws_high_prob_pct),
+                gfs_high_prob_pct     = COALESCE(EXCLUDED.gfs_high_prob_pct, weather_gold_daily_edge_sheet.gfs_high_prob_pct),
+                peak_hour             = COALESCE(EXCLUDED.peak_hour, weather_gold_daily_edge_sheet.peak_hour),
+                afternoon_storm_flag  = COALESCE(EXCLUDED.afternoon_storm_flag, weather_gold_daily_edge_sheet.afternoon_storm_flag),
+                pre_peak_storm_flag   = COALESCE(EXCLUDED.pre_peak_storm_flag, weather_gold_daily_edge_sheet.pre_peak_storm_flag),
+                cloud_timing_delta    = COALESCE(EXCLUDED.cloud_timing_delta, weather_gold_daily_edge_sheet.cloud_timing_delta),
+                sea_breeze_flag       = COALESCE(EXCLUDED.sea_breeze_flag, weather_gold_daily_edge_sheet.sea_breeze_flag),
+                last_updated          = NOW()
         """, (city, station_code, target_date, ACTIVE_SIDE, contract_ticker,
               bucket_floor, bucket_cap, bucket_label, sheet_date,
               raw_forecast_f, gfs_forecast_f, model_delta_f, model_confidence,
@@ -476,6 +569,8 @@ def _upsert_edge_sheet(conn, *, city: str, station_code: str,
               edge, edge_pct, edge_rank,
               recommended_action, stake_fraction, stake_usd, skip_reason,
               ensemble_spread, nws_high_prob_pct, gfs_high_prob_pct,
+              peak_hour, afternoon_storm_flag, pre_peak_storm_flag,
+              cloud_timing_delta, sea_breeze_flag,
               CALIBRATOR_VERSION))
 
 
@@ -564,6 +659,9 @@ def run_edge_calc(stations: Optional[list[str]] = None,
                 if not contracts:
                     logger.debug(f"{station_code} {target_date}: no active contracts in catalog")
                     continue
+
+                # Hourly-derived features (once per station/date, shared across all contracts)
+                hourly_features = _compute_hourly_features(conn, station_code, target_date) or {}
 
                 # Compute raw probabilities for all contracts
                 contract_probs: list[tuple[dict, float]] = []
@@ -693,6 +791,11 @@ def run_edge_calc(stations: Optional[list[str]] = None,
                                 ensemble_spread=ensemble_spread,
                                 nws_high_prob_pct=nws_high_prob_pct,
                                 gfs_high_prob_pct=gfs_high_prob_pct,
+                                peak_hour=hourly_features.get("peak_hour"),
+                                afternoon_storm_flag=hourly_features.get("afternoon_storm_flag"),
+                                pre_peak_storm_flag=hourly_features.get("pre_peak_storm_flag"),
+                                cloud_timing_delta=hourly_features.get("cloud_timing_delta"),
+                                sea_breeze_flag=hourly_features.get("sea_breeze_flag"),
                             )
                             rows_written += 1
                         except Exception as e:

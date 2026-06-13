@@ -2043,6 +2043,9 @@ def fetch_nws_hourly(dry_run: bool = False) -> int:
                 except (ValueError, IndexError):
                     pass
 
+            wind_dir_raw = (period.get("windDirection") or {}).get("value")
+            wind_dir_deg: Optional[float] = float(wind_dir_raw) if wind_dir_raw is not None else None
+
             cloud_raw = (period.get("skyCover") or period.get("relativeHumidity") or {})
             cloud_f: Optional[float] = None
             if isinstance(cloud_raw, dict):
@@ -2063,10 +2066,10 @@ def fetch_nws_hourly(dry_run: bool = False) -> int:
                             INSERT INTO weather_bronze_nws_forecast_snapshots
                                 (city, station_code, nws_office, forecast_run_time,
                                  target_date, lead_hours, hour,
-                                 tmax_f, dewpoint_f, wind_speed_mph,
+                                 tmax_f, dewpoint_f, wind_speed_mph, wind_direction_deg,
                                  cloud_cover_pct, pop_pct,
                                  source_name, source_payload_json)
-                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'nws_hourly', NULL)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'nws_hourly', NULL)
                             ON CONFLICT (station_code, source_name, forecast_run_time, target_date, hour)
                             WHERE source_name = 'nws_hourly' DO NOTHING
                         """, (
@@ -2074,7 +2077,7 @@ def fetch_nws_hourly(dry_run: bool = False) -> int:
                             target_date,
                             (target_date - today).days * 24 + hour_local,
                             hour_local,
-                            temp_f, dewpoint_f, wind_f,
+                            temp_f, dewpoint_f, wind_f, wind_dir_deg,
                             cloud_f, pop_f,
                         ))
                 n += 1

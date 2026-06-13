@@ -212,6 +212,81 @@ peak heating has minimal effect on tmax. NWS point forecasts do not account for
 this timing effect when issuing the daily high. Negative cloud_timing is the
 strongest individual predictor of NWS overforecast in humid subtropical climates.
 
+## PHASE 2 — MIAMI FEATURE ENGINEERING (implementation spec)
+
+These 5 features are derived from NWS hourly data per city/date and written to
+`weather_gold_daily_edge_sheet`. They serve as training features for the Phase 2
+gradient boosting calibration model and are available for manual inspection today.
+
+Sea breeze flag matters most for **coastal cities** (KMIA, KLAX, KNYC) where
+marine layer suppression is the dominant physical mechanism. For inland cities
+(KDEN, KPHX, KDFW, KAUS, KORD) sea_breeze_flag will always be NULL.
+
+**1. peak_hour** — INTEGER
+```
+peak_hour = hour with highest hourly tmax_f during hours 6-20
+```
+Source: weather_bronze_nws_forecast_snapshots WHERE source_name = 'nws_hourly'
+Why it matters: establishes the reference point for all other timing-relative
+features. Peak heating hour typically falls 14-16 local time; earlier peak
+(12-13) often indicates cloud or moisture suppression already underway.
+
+**2. afternoon_storm_flag** — BOOLEAN
+```
+afternoon_storm_flag = TRUE if any hour in [12, 17] has pop_pct > 20%
+```
+Source: hourly pop_pct (probability of precipitation)
+Why it matters: afternoon convection in Miami is the primary mechanism that
+hard-caps the observed high below NWS forecast. NWS point forecasts embed the
+PoP but do not subtract the cooling effect from the high temperature forecast.
+The flag is city-agnostic — applies wherever afternoon convection occurs.
+
+**3. pre_peak_storm_flag** — BOOLEAN
+```
+pre_peak_storm_flag = TRUE if any hour in [12, peak_hour) has pop_pct > 20%
+```
+Source: hourly pop_pct
+Why it matters: more specific than afternoon_storm_flag. Storm activity BEFORE
+peak heating suppresses the maximum temperature directly. Storm activity AFTER
+peak_hour has little impact on tmax. pre_peak_storm_flag = TRUE is the strongest
+signal for NWS overforecast in humid subtropical climates.
+
+**4. cloud_timing_delta** — NUMERIC (hours)
+```
+cloud_timing_delta = (hour of max cloud_cover_pct in hours 10-20) - peak_hour
+```
+Source: hourly cloud_cover_pct
+Why it matters: negative delta = clouds peaked before max heating = solar
+radiation blocked during the critical window. NWS daily high forecasts do not
+account for cloud timing within the day. cloud_timing_delta < -2 is a reliable
+overforecast signal independent of precipitation probability.
+
+**5. sea_breeze_flag** — BOOLEAN (coastal cities only; NULL for inland)
+```
+sea_breeze_flag = TRUE if any hour in [12, 17] has:
+    wind_speed_mph > 5 AND wind_direction_deg in onshore range
+Onshore ranges (wind direction FROM):
+    KMIA: 045–225° (E/SE/S — Atlantic + Biscayne Bay inflow)
+    KLAX: 180–315° (S/W/NW — Pacific inflow)
+    KNYC: 045–180° (E/SE — Atlantic inflow)
+```
+Source: hourly wind_speed_mph + wind_direction_deg (added Jun 13)
+Why it matters for coastal cities: onshore flow during peak heating hours
+brings cooler marine air inland before temperatures can reach their forecast
+maximum. KMIA sea breeze arrives 1-3 PM regularly and can suppress the high
+by 5-10°F vs forecast. This feature has no physical meaning for inland cities
+(KDEN, KPHX, KDFW, KAUS, KORD) — those remain NULL.
+
+**Storage:** All 5 features written to weather_gold_daily_edge_sheet alongside
+every contract row for that station/date. One feature calculation per
+(station_code, target_date) — shared across all bucket rows.
+
+**Data requirement:** NWS hourly rows must exist in
+weather_bronze_nws_forecast_snapshots (source_name = 'nws_hourly') for the
+target date. If no hourly data exists yet, all 5 features are NULL for that row.
+wind_direction_deg requires collector version Jun 13+; older hourly rows will
+have sea_breeze_flag = NULL until the next collector run populates direction.
+
 ### Model Architecture
 
 Algorithm: gradient boosting (LightGBM or XGBoost)
