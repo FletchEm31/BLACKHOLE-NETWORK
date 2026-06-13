@@ -1,0 +1,24 @@
+[Unit]
+Description=BHN WeatherBHN stop-loss position monitor (60s cycle)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/bhn/trading
+
+EnvironmentFile=/etc/bhn-trading/env
+EnvironmentFile=-/etc/bhn-trading/strat9.env
+
+ExecStart=/usr/bin/python3 /opt/bhn/trading/weather_position_monitor.py
+
+StandardOutput=append:/var/log/bhn-trading/weather-position-monitor.log
+StandardError=append:/var/log/bhn-trading/weather-position-monitor.log
+
+# Must complete well within the 60s timer interval
+TimeoutStartSec=45
+TimeoutStopSec=10
+
+[Install]
+# Enabled via bhn-weather-position-monitor.timer

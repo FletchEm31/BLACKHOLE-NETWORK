@@ -1,0 +1,12 @@
+[Unit]
+Description=BHN WeatherBHN settlement reconciliation (daily 10:00 AM ET)
+
+[Timer]
+# NWS CLI actuals typically publish 6-8 AM ET; 10 AM gives comfortable margin.
+OnCalendar=*-*-* 15:00:00 UTC
+Unit=bhn-weather-settlement-recon.service
+Persistent=true
+RandomizedDelaySec=120
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,12 @@
+[Unit]
+Description=BHN WeatherBHN stop-loss position monitor (every 60 seconds)
+
+[Timer]
+OnCalendar=*-*-* *:*:00
+Unit=bhn-weather-position-monitor.service
+# Persistent=false intentional: don't replay missed fires on startup —
+# stop-loss checks are only meaningful against live market data.
+Persistent=false
+
+[Install]
+WantedBy=timers.target

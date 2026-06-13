@@ -1,0 +1,23 @@
+[Unit]
+Description=BHN WeatherBHN nightly settlement reconciliation (edge sheet vs actuals)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/bhn/trading
+
+EnvironmentFile=/etc/bhn-trading/env
+EnvironmentFile=-/etc/bhn-trading/strat9.env
+
+ExecStart=/usr/bin/python3 /opt/bhn/trading/weather_settlement_reconciliation.py
+
+StandardOutput=append:/var/log/bhn-trading/weather-settlement-recon.log
+StandardError=append:/var/log/bhn-trading/weather-settlement-recon.log
+
+TimeoutStartSec=120
+TimeoutStopSec=30
+
+[Install]
+# Enabled via bhn-weather-settlement-recon.timer
