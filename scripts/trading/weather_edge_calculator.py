@@ -583,27 +583,26 @@ def run_edge_calc(stations: Optional[list[str]] = None,
                     mip = float(market["yes_mid"]) if market.get("yes_mid") else None
                     if mip is None:
                         continue
-                    edge = raw_prob - mip
-                    edges.append((c, raw_prob, mip, edge))
+                    edge_yes = raw_prob - mip  # YES-perspective; used for trading decision
+                    edges.append((c, raw_prob, mip, edge_yes))
 
                 # Sort by abs(edge) descending for ranking
                 edges.sort(key=lambda x: abs(x[3]), reverse=True)
 
-                for rank, (c, raw_prob, mip, edge) in enumerate(edges, start=1):
+                for rank, (c, raw_prob, mip, edge_yes) in enumerate(edges, start=1):
                     market = _get_latest_market_snapshot(conn, c["market_ticker"])
                     if market is None:
                         continue
 
                     calibrated_prob = raw_prob  # passthrough until calibration exists
 
-                    # Trading decision
-                    if edge >= EDGE_THRESHOLD_BET:
+                    # Trading decision (edge_yes = calibrated_prob_YES - market_prob_YES)
+                    if edge_yes >= EDGE_THRESHOLD_BET:
                         action = "BET_YES"
-                        kelly = _half_kelly(edge, mip)
+                        kelly = _half_kelly(edge_yes, mip)
                         skip_reason = None
-                    elif edge <= -EDGE_THRESHOLD_BET:
+                    elif edge_yes <= -EDGE_THRESHOLD_BET:
                         action = "BET_NO"
-                        # For NO bet: edge = model_prob_no - market_prob_no
                         no_prob = 1.0 - calibrated_prob
                         no_market = 1.0 - mip
                         kelly = _half_kelly(no_prob - no_market, no_market)
@@ -611,7 +610,11 @@ def run_edge_calc(stations: Optional[list[str]] = None,
                     else:
                         action = "SKIP"
                         kelly = 0.0
-                        skip_reason = f"edge={edge:.3f} below threshold±{EDGE_THRESHOLD_BET}"
+                        skip_reason = f"edge={edge_yes:.3f} below threshold±{EDGE_THRESHOLD_BET}"
+
+                    # Side-aware edge for storage: always positive = BHN advantage in recommended direction
+                    # BET_NO edge = (1 - calibrated_prob) - (1 - mip) = mip - calibrated_prob
+                    stored_edge = (mip - raw_prob) if action == "BET_NO" else edge_yes
 
                     stake_usd = kelly * bankroll
 
@@ -636,8 +639,8 @@ def run_edge_calc(stations: Optional[list[str]] = None,
                     log_msg = (
                         f"{station_code} {target_date} {c['bucket_label'] or c['market_ticker']}: "
                         f"model={calibrated_prob:.3f} market={mip:.3f} "
-                        f"edge={edge:+.3f} → {action}"
-                        + (f" (kelly={kelly:.3f} stake=${stake_usd:.2f})" if action != "SKIP" else "")
+                        f"edge={stored_edge:+.3f} ({action}) "
+                        + (f"kelly={kelly:.3f} stake=${stake_usd:.2f}" if action != "SKIP" else "")
                     )
                     logger.info(log_msg)
 
@@ -655,7 +658,7 @@ def run_edge_calc(stations: Optional[list[str]] = None,
                                 raw_model_prob=raw_prob,
                                 calibrated_prob=calibrated_prob,
                                 market_implied_prob=mip,
-                                edge=edge,
+                                edge=stored_edge,
                                 edge_rank=rank,
                                 trade_flag=action,
                                 confidence=confidence,
@@ -680,8 +683,8 @@ def run_edge_calc(stations: Optional[list[str]] = None,
                                 market_yes_mid=float(market.get("yes_mid", mip)),
                                 market_volume=vol if vol > 0 else None,
                                 market_liquidity=liquidity,
-                                edge=edge,
-                                edge_pct=edge * 100.0,
+                                edge=stored_edge,
+                                edge_pct=stored_edge * 100.0,
                                 edge_rank=rank,
                                 recommended_action=action,
                                 stake_fraction=kelly,
