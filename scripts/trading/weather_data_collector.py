@@ -70,17 +70,37 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 import sys
 import time
 from dataclasses import dataclass
 from datetime import datetime, date, timedelta, timezone
+from pathlib import Path
 from typing import Any, Iterable, Optional
 
 import re
 
 import requests
 
-import trading_core as tc
+
+def _prime_env() -> None:
+    for path in ("/etc/bhn-trading/env", "/etc/bhn-trading/strat9.env"):
+        p = Path(path)
+        if not p.is_file():
+            continue
+        for ln in p.read_text().splitlines():
+            ln = ln.strip()
+            if not ln or ln.startswith("#") or "=" not in ln:
+                continue
+            k, v = ln.split("=", 1)
+            k = k.strip()
+            if k not in os.environ:
+                os.environ[k] = v.strip().strip('"').strip("'")
+
+
+_prime_env()
+
+import trading_core as tc  # noqa: E402
 
 
 logger = tc.get_logger("strat_9_weather_alpha_collector")
@@ -1876,7 +1896,7 @@ def fetch_nbm(dry_run: bool = False) -> int:
                "0.1": "10", "0.25": "25", "0.5": "50", "0.75": "75", "0.9": "90"}
 
     for city in CITIES:
-        gridpoint = _get_nws_gridpoint(city)
+        gridpoint = _discover_nws_gridpoint(city)
         if not gridpoint:
             continue
         _, office, grid_x, grid_y = gridpoint
