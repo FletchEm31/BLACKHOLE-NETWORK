@@ -706,10 +706,11 @@ def run_edge_calc(stations: Optional[list[str]] = None,
 
 
 def main() -> int:
+    dry_run_env = os.getenv("DRY_RUN", "false").lower() in ("true", "1", "yes")
     parser = argparse.ArgumentParser(
         description="BHN Strat 9 — gold layer edge calculator"
     )
-    parser.add_argument("--dry-run", action="store_true",
+    parser.add_argument("--dry-run", action="store_true", default=dry_run_env,
                         help="Compute and log but do not write to DB")
     parser.add_argument("--city", choices=list(ACTIVE_STATIONS),
                         help="Restrict to one station (default: all active)")
