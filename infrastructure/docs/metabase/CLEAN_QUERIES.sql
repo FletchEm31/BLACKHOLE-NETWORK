@@ -187,3 +187,269 @@ SELECT
     captured_at
 FROM kalshi_positions
 ORDER BY captured_at DESC;
+
+
+-- ============================================================
+-- QUERY 16: WeatherBHN - Kelly Sizing (Market Only + Liquidity)
+-- Pure Kelly sizing from market-implied prob. Works now.
+-- trade_signal = go/no-go. Use during manual trading phase.
+-- Full query: infrastructure/docs/WeatherBHN/queries/KELLY_MARKET_ONLY.sql
+-- ============================================================
+WITH market_latest AS (
+    SELECT DISTINCT ON (market_ticker)
+        market_ticker,
+        city,
+        contract_side,
+        bucket_floor,
+        bucket_cap,
+        yes_bid,
+        yes_ask,
+        (yes_bid + yes_ask) / 2.0                    AS yes_mid,
+        yes_ask - yes_bid                             AS spread,
+        volume,
+        open_interest,
+        market_status,
+        retrieved_at
+    FROM weather_bronze_kalshi_market_snapshots
+    WHERE market_status = 'active'
+    ORDER BY market_ticker, retrieved_at DESC
+),
+edge_data AS (
+    SELECT
+        g.city, g.station_code, g.target_date, g.contract_side,
+        g.bucket_floor, g.bucket_cap, g.market_implied_prob,
+        g.market_yes_mid, g.calibrated_prob, g.edge,
+        g.recommended_action, g.last_updated
+    FROM weather_gold_daily_edge_sheet g
+    WHERE g.target_date >= CURRENT_DATE AND g.is_active = true
+)
+SELECT
+    e.city, e.station_code, e.target_date, e.contract_side,
+    e.bucket_floor, e.bucket_cap,
+    ROUND(m.yes_bid * 100, 1)              AS bid_cents,
+    ROUND(m.yes_ask * 100, 1)              AS ask_cents,
+    ROUND(m.yes_mid * 100, 1)              AS mid_cents,
+    ROUND(e.market_implied_prob * 100, 1)  AS market_prob_pct,
+    ROUND(m.spread * 100, 1)               AS spread_cents,
+    ROUND(m.volume, 0)                     AS daily_volume_contracts,
+    ROUND(m.volume * m.yes_mid, 2)         AS daily_volume_dollars,
+    ROUND(m.open_interest, 0)              AS open_interest_contracts,
+    ROUND((1.0 - m.yes_mid) / NULLIF(m.yes_mid, 0), 4) AS net_odds_b,
+    ROUND(
+        (e.market_implied_prob * ((1.0 - m.yes_mid) / NULLIF(m.yes_mid, 0))
+        - (1 - e.market_implied_prob))
+        / NULLIF((1.0 - m.yes_mid) / NULLIF(m.yes_mid, 0), 0) * 0.5
+    , 4) AS half_kelly_fraction,
+    ROUND(LEAST(
+        m.open_interest * m.yes_mid * 0.10,
+        m.volume * m.yes_mid * 0.05
+    ), 2) AS liquidity_cap_dollars,
+    ROUND(LEAST(GREATEST(0,
+        (e.market_implied_prob * ((1.0 - m.yes_mid) / NULLIF(m.yes_mid, 0))
+        - (1 - e.market_implied_prob))
+        / NULLIF((1.0 - m.yes_mid) / NULLIF(m.yes_mid, 0), 0) * 0.5 * 14
+    ), LEAST(m.open_interest * m.yes_mid * 0.10, m.volume * m.yes_mid * 0.05))
+    * CASE WHEN m.spread > 0.20 THEN 0.00 WHEN m.spread > 0.10 THEN 0.50
+           WHEN m.spread > 0.05 THEN 0.75 ELSE 1.00 END, 2) AS final_stake_14,
+    ROUND(LEAST(GREATEST(0,
+        (e.market_implied_prob * ((1.0 - m.yes_mid) / NULLIF(m.yes_mid, 0))
+        - (1 - e.market_implied_prob))
+        / NULLIF((1.0 - m.yes_mid) / NULLIF(m.yes_mid, 0), 0) * 0.5 * 50
+    ), LEAST(m.open_interest * m.yes_mid * 0.10, m.volume * m.yes_mid * 0.05))
+    * CASE WHEN m.spread > 0.20 THEN 0.00 WHEN m.spread > 0.10 THEN 0.50
+           WHEN m.spread > 0.05 THEN 0.75 ELSE 1.00 END, 2) AS final_stake_50,
+    CASE
+        WHEN m.spread > 0.20                THEN '🔴 NO TRADE — Spread too wide'
+        WHEN m.open_interest < 10           THEN '🔴 NO TRADE — Illiquid'
+        WHEN m.volume * m.yes_mid < 50      THEN '🔴 NO TRADE — No volume'
+        WHEN (e.market_implied_prob * ((1.0 - m.yes_mid) / NULLIF(m.yes_mid, 0))
+            - (1 - e.market_implied_prob))
+            / NULLIF((1.0 - m.yes_mid) / NULLIF(m.yes_mid, 0), 0) <= 0
+                                            THEN '⛔ NO TRADE — Negative Kelly'
+        WHEN m.spread > 0.10                THEN '🟡 REDUCED SIZE — Wide spread'
+        WHEN m.volume * m.yes_mid < 200     THEN '🟡 REDUCED SIZE — Thin volume'
+        WHEN m.open_interest < 50           THEN '🟡 REDUCED SIZE — Low OI'
+        ELSE                                     '✅ TRADE — Full liquidity-adjusted size'
+    END AS trade_signal,
+    m.retrieved_at AS price_as_of
+FROM edge_data e
+LEFT JOIN market_latest m
+    ON e.city = m.city AND e.contract_side = m.contract_side
+    AND e.bucket_floor = m.bucket_floor AND e.bucket_cap = m.bucket_cap
+WHERE e.market_implied_prob IS NOT NULL AND m.yes_mid IS NOT NULL AND m.yes_mid > 0
+ORDER BY
+    CASE WHEN m.spread > 0.20 THEN 3 WHEN m.open_interest < 10 THEN 3
+         WHEN m.volume * m.yes_mid < 50 THEN 3 ELSE 1 END,
+    e.market_implied_prob DESC, e.target_date, e.city;
+
+
+-- ============================================================
+-- QUERY 17: WeatherBHN - Kelly Sizing (BHN Edge + Liquidity)
+-- PRIMARY automated trading signal. kelly_signal = BET = place order.
+-- Requires calibrated_prob — shows PENDING until VC backfill completes.
+-- Full query: infrastructure/docs/WeatherBHN/queries/KELLY_BHN_EDGE.sql
+-- ============================================================
+WITH market_latest AS (
+    SELECT DISTINCT ON (market_ticker)
+        market_ticker, city, contract_side, bucket_floor, bucket_cap,
+        yes_bid, yes_ask,
+        (yes_bid + yes_ask) / 2.0 AS yes_mid,
+        yes_ask - yes_bid         AS spread,
+        volume, open_interest, market_status, retrieved_at
+    FROM weather_bronze_kalshi_market_snapshots
+    WHERE market_status = 'active'
+    ORDER BY market_ticker, retrieved_at DESC
+)
+SELECT
+    g.city, g.station_code, g.target_date, g.contract_side,
+    g.bucket_floor, g.bucket_cap,
+    ROUND(m.yes_bid * 100, 1)             AS bid_cents,
+    ROUND(m.yes_ask * 100, 1)             AS ask_cents,
+    ROUND(m.yes_mid * 100, 1)             AS mid_cents,
+    ROUND(g.market_implied_prob * 100, 1) AS market_prob_pct,
+    ROUND(g.calibrated_prob * 100, 1)     AS bhn_prob_pct,
+    ROUND((g.calibrated_prob - g.market_implied_prob) * 100, 1) AS edge_pct,
+    CASE
+        WHEN (g.calibrated_prob - g.market_implied_prob) >= 0.20 THEN '🔥 STRONG EDGE >20%'
+        WHEN (g.calibrated_prob - g.market_implied_prob) >= 0.10 THEN '🟢 GOOD EDGE 10-20%'
+        WHEN (g.calibrated_prob - g.market_implied_prob) >= 0.05 THEN '🟡 MARGINAL EDGE 5-10%'
+        WHEN (g.calibrated_prob - g.market_implied_prob) >= 0.00 THEN '⚪ NO EDGE'
+        ELSE '🔴 NEGATIVE EDGE — Market smarter than BHN'
+    END AS edge_classification,
+    ROUND(m.spread * 100, 1)              AS spread_cents,
+    ROUND(m.volume, 0)                    AS daily_volume_contracts,
+    ROUND(m.open_interest, 0)             AS open_interest_contracts,
+    ROUND((1.0 - m.yes_mid) / NULLIF(m.yes_mid, 0), 4) AS net_odds_b,
+    ROUND(
+        (g.calibrated_prob * ((1.0 - m.yes_mid) / NULLIF(m.yes_mid, 0))
+        - (1 - g.calibrated_prob))
+        / NULLIF((1.0 - m.yes_mid) / NULLIF(m.yes_mid, 0), 0) * 0.5
+    , 4) AS bhn_half_kelly,
+    ROUND(
+        (
+            (g.calibrated_prob * ((1.0 - m.yes_mid) / NULLIF(m.yes_mid, 0))
+            - (1 - g.calibrated_prob))
+            / NULLIF((1.0 - m.yes_mid) / NULLIF(m.yes_mid, 0), 0) * 0.5
+        ) - (
+            (g.market_implied_prob * ((1.0 - m.yes_mid) / NULLIF(m.yes_mid, 0))
+            - (1 - g.market_implied_prob))
+            / NULLIF((1.0 - m.yes_mid) / NULLIF(m.yes_mid, 0), 0) * 0.5
+        )
+    , 4) AS kelly_edge_advantage,
+    ROUND(LEAST(
+        m.open_interest * m.yes_mid * 0.10,
+        m.volume * m.yes_mid * 0.05
+    ), 2) AS liquidity_cap_dollars,
+    ROUND(LEAST(GREATEST(0,
+        (g.calibrated_prob * ((1.0 - m.yes_mid) / NULLIF(m.yes_mid, 0))
+        - (1 - g.calibrated_prob))
+        / NULLIF((1.0 - m.yes_mid) / NULLIF(m.yes_mid, 0), 0) * 0.5 * 14
+    ), LEAST(m.open_interest * m.yes_mid * 0.10, m.volume * m.yes_mid * 0.05))
+    * CASE WHEN m.spread > 0.20 THEN 0.00 WHEN m.spread > 0.10 THEN 0.50
+           WHEN m.spread > 0.05 THEN 0.75 ELSE 1.00 END, 2) AS final_stake_14,
+    ROUND(LEAST(GREATEST(0,
+        (g.calibrated_prob * ((1.0 - m.yes_mid) / NULLIF(m.yes_mid, 0))
+        - (1 - g.calibrated_prob))
+        / NULLIF((1.0 - m.yes_mid) / NULLIF(m.yes_mid, 0), 0) * 0.5 * 50
+    ), LEAST(m.open_interest * m.yes_mid * 0.10, m.volume * m.yes_mid * 0.05))
+    * CASE WHEN m.spread > 0.20 THEN 0.00 WHEN m.spread > 0.10 THEN 0.50
+           WHEN m.spread > 0.05 THEN 0.75 ELSE 1.00 END, 2) AS final_stake_50,
+    CASE
+        WHEN m.spread > 0.20            THEN '🔴 NO TRADE — Spread too wide'
+        WHEN m.open_interest < 10       THEN '🔴 NO TRADE — Illiquid'
+        WHEN m.volume * m.yes_mid < 50  THEN '🔴 NO TRADE — No volume'
+        WHEN g.calibrated_prob IS NULL  THEN '⏳ PENDING — No calibration data yet'
+        WHEN (g.calibrated_prob - g.market_implied_prob) < 0  THEN '⛔ NO TRADE — Negative edge'
+        WHEN (g.calibrated_prob - g.market_implied_prob) < 0.05 THEN '⚪ SKIP — Edge too small (<5%)'
+        WHEN m.spread > 0.10            THEN '🟡 REDUCED — Wide spread, edge exists'
+        WHEN m.volume * m.yes_mid < 200 THEN '🟡 REDUCED — Thin volume, edge exists'
+        WHEN (g.calibrated_prob - g.market_implied_prob) >= 0.20 THEN '🔥 STRONG BET — Max liquidity-adjusted size'
+        WHEN (g.calibrated_prob - g.market_implied_prob) >= 0.10 THEN '✅ BET — Full liquidity-adjusted size'
+        ELSE '🟡 MARGINAL — Half liquidity-adjusted size'
+    END AS kelly_signal,
+    g.edge_rank, g.recommended_action,
+    m.retrieved_at AS price_as_of
+FROM weather_gold_daily_edge_sheet g
+LEFT JOIN market_latest m
+    ON g.city = m.city AND g.contract_side = m.contract_side
+    AND g.bucket_floor = m.bucket_floor AND g.bucket_cap = m.bucket_cap
+WHERE g.target_date >= CURRENT_DATE AND g.is_active = true
+  AND g.calibrated_prob IS NOT NULL AND m.yes_mid IS NOT NULL AND m.yes_mid > 0
+ORDER BY
+    CASE WHEN m.spread > 0.20 THEN 5 WHEN m.open_interest < 10 THEN 5
+         WHEN g.calibrated_prob IS NULL THEN 4
+         WHEN (g.calibrated_prob - g.market_implied_prob) < 0.05 THEN 3
+         WHEN (g.calibrated_prob - g.market_implied_prob) >= 0.20 THEN 1
+         ELSE 2 END,
+    (g.calibrated_prob - g.market_implied_prob) DESC,
+    g.target_date, g.city;
+
+
+-- ============================================================
+-- QUERY 18: WeatherBHN - Pre-Trade Liquidity Scanner
+-- Run this FIRST before any trade. liquidity_score 0-100.
+-- >70 = safe, 40-70 = careful, <40 = avoid.
+-- Pin ABOVE the Edge Sheet on Metabase WeatherBHN tab.
+-- Full query: infrastructure/docs/WeatherBHN/queries/LIQUIDITY_SCANNER.sql
+-- ============================================================
+WITH market_latest AS (
+    SELECT DISTINCT ON (market_ticker)
+        market_ticker, city, contract_side, bucket_floor, bucket_cap,
+        yes_bid, yes_ask,
+        (yes_bid + yes_ask) / 2.0 AS yes_mid,
+        yes_ask - yes_bid         AS spread,
+        volume, open_interest, market_status, retrieved_at
+    FROM weather_bronze_kalshi_market_snapshots
+    WHERE market_status = 'active'
+    ORDER BY market_ticker, retrieved_at DESC
+)
+SELECT
+    city, contract_side, bucket_floor, bucket_cap,
+    ROUND(yes_bid * 100, 1)  AS bid_cents,
+    ROUND(yes_ask * 100, 1)  AS ask_cents,
+    ROUND(yes_mid * 100, 1)  AS mid_cents,
+    ROUND(spread * 100, 1)   AS spread_cents,
+    ROUND(volume, 0)                  AS volume_contracts,
+    ROUND(volume * yes_mid, 2)        AS volume_dollars,
+    ROUND(open_interest, 0)           AS open_interest_contracts,
+    ROUND(open_interest * yes_mid, 2) AS open_interest_dollars,
+    ROUND(LEAST(
+        open_interest * yes_mid * 0.10,
+        volume * yes_mid * 0.05
+    ), 2) AS max_safe_position_dollars,
+    ROUND(LEAST(open_interest * 0.10, volume * 0.05), 0) AS max_safe_contracts,
+    CASE WHEN spread > 0.20 THEN '🔴 SKIP'
+         WHEN spread > 0.10 THEN '🟡 WIDE'
+         WHEN spread > 0.05 THEN '🟡 OK'
+         ELSE '🟢 TIGHT' END AS spread_flag,
+    CASE WHEN volume * yes_mid < 50   THEN '🔴 ILLIQUID'
+         WHEN volume * yes_mid < 200  THEN '🟡 THIN'
+         WHEN volume * yes_mid < 1000 THEN '🟡 MODERATE'
+         ELSE '🟢 LIQUID' END AS volume_flag,
+    CASE WHEN open_interest < 10  THEN '🔴 SKIP'
+         WHEN open_interest < 50  THEN '🟡 THIN'
+         WHEN open_interest < 500 THEN '🟢 OK'
+         ELSE '🟢 DEEP' END AS oi_flag,
+    ROUND((
+        CASE WHEN spread > 0.20 THEN 0 WHEN spread > 0.10 THEN 10
+             WHEN spread > 0.05 THEN 25 WHEN spread > 0.02 THEN 35 ELSE 40 END
+        + CASE WHEN volume * yes_mid < 50   THEN 0 WHEN volume * yes_mid < 200  THEN 10
+               WHEN volume * yes_mid < 1000 THEN 20 WHEN volume * yes_mid < 5000 THEN 25
+               ELSE 30 END
+        + CASE WHEN open_interest < 10   THEN 0 WHEN open_interest < 50   THEN 10
+               WHEN open_interest < 500  THEN 20 WHEN open_interest < 2000 THEN 25
+               ELSE 30 END
+    ), 0) AS liquidity_score,
+    CASE
+        WHEN spread > 0.20 OR open_interest < 10 OR volume * yes_mid < 50
+            THEN '🔴 DO NOT TRADE'
+        WHEN spread > 0.10 OR volume * yes_mid < 200 OR open_interest < 50
+            THEN '🟡 TRADE WITH CAUTION — Reduce size 50%'
+        WHEN spread > 0.05 OR volume * yes_mid < 1000
+            THEN '🟡 TRADE CAREFULLY — Reduce size 25%'
+        ELSE '🟢 CLEAR TO TRADE — Full size OK'
+    END AS liquidity_verdict,
+    ROUND(EXTRACT(EPOCH FROM (NOW() - retrieved_at)) / 60) AS price_age_mins
+FROM market_latest
+WHERE yes_mid > 0
+ORDER BY liquidity_score DESC, city, contract_side, bucket_floor;

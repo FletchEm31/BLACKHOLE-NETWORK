@@ -1,0 +1,842 @@
+==================================================================
+WEATHERBHN — CLAUDE CODE HANDOFF
+Date: June 12, 2026
+Session: Full day trading strategy + Metabase build session
+==================================================================
+
+CC — READ THIS FIRST
+====================
+This document contains everything built in the June 12 operator
+session that you don't yet know about. Save all files to the repo,
+update CLEAN_QUERIES.sql, and commit everything.
+
+==================================================================
+SECTION 1 — WHAT WAS BUILT TODAY
+==================================================================
+
+1. WeatherBHN Trading Strategy (new doc)
+2. Stop-Loss Automation Specification (new doc)
+3. Kelly Criterion + Liquidity queries (3 new Metabase queries)
+4. Verified all 21 weather table names against live DB
+5. Fixed Metabase queries for correct column names
+6. Confirmed Bronze/Silver/Gold pipeline is operational
+7. Established WeatherBHN as standalone org (like PokemonBHN)
+
+==================================================================
+SECTION 2 — FILES TO CREATE IN REPO
+==================================================================
+
+Save these to: infrastructure/docs/WeatherBHN/
+
+------------------------------------------------------------------
+FILE 1: WEATHERBHN_TRADING_STRATEGY.md
+------------------------------------------------------------------
+
+# WeatherBHN Trading Strategy
+## Version 1.0 — June 12, 2026
+## Status: Manual (Phase 1) → Automated (Phase 3)
+
+## OVERVIEW
+
+WeatherBHN trades daily temperature contracts on Kalshi using NWS
+forecast data as the primary signal. The core edge comes from:
+
+1. NWS forecast accuracy — NWS is the settlement source. We read
+   the same data Kalshi uses before the market has fully priced it.
+2. Market mispricing — Kalshi markets often misprice boundary
+   buckets and tail probabilities, especially early in the day.
+
+Settlement source: NWS Daily Climate Report (CLI)
+Target markets: Daily HIGH temperature contracts (KXHIGH series)
+Cities: KMIA, KDEN, KPHX, KLAX, KDFW, KNYC, KORD, KAUS
+
+## CORE STRATEGY — BOUNDARY SPLIT + TAIL NO
+
+This strategy maps directly to the options concept of a
+SHORT STRANGLE / IRON CONDOR applied to binary prediction markets.
+
+### Step 1 — Read the NWS Forecast
+- Pull the NWS hourly forecast for the target station
+- Identify the predicted high temperature
+- Note if it falls ON A BOUNDARY between two adjacent buckets
+  Example: "high near 89F" = boundary between 88-89 and 89-90
+
+### Step 2 — Split the Boundary Buckets (Yes Contracts)
+- When NWS forecast sits on the boundary between two buckets:
+  - Buy Yes contracts on BOTH adjacent buckets
+  - Split evenly if both pricing similarly cheap (under 15-20c)
+  - Load heavier on whichever bucket aligns more with forecast
+  - These are directional bets — one of them will win
+
+### Step 3 — Load the Improbable Tails (No Contracts)
+- Identify buckets statistically impossible given the forecast
+  - Typically 3+ degrees away from the NWS predicted high
+  - Market will price these at 95-99c for No
+- Buy No contracts heavily on these tail buckets
+- This is the PRIMARY profit engine — near-guaranteed winners
+
+### Step 4 — Hold to Settlement
+- No contracts on improbable tails collected at settlement
+- Yes contracts on boundary buckets — one wins, one loses
+- Do not over-trade intraday unless significant forecast revision
+
+## POSITION SIZING — KELLY CRITERION
+
+Formula: f = (p * b - q) / b
+  f = fraction of bankroll to bet
+  p = probability of winning (BHN calibrated_prob)
+  q = probability of losing (1 - p)
+  b = net odds = (1 - price) / price
+
+Always use HALF Kelly (multiply result by 0.5) for safety.
+Always apply liquidity cap: never more than 10% of open interest
+or 5% of daily volume — whichever is lower.
+
+## POSITION SIZING RULES
+
+Tail No Contracts (primary):
+- Size: 2-7 contracts per bucket
+- Entry: 80-99c only
+- Maximum loss: small — these rarely hit
+
+Boundary Yes Contracts (secondary):
+- Size: 2-5 contracts per bucket, split across 2 adjacent buckets
+- Entry: under 20c ideally
+- Maximum loss: full cost basis on losing bucket
+
+Overall Limits (manual phase):
+- Never risk more than $20 total per city per day
+- Keep at least $5 cash reserve
+- Never buy Yes on more than 2 adjacent buckets simultaneously
+
+## ENTRY CRITERIA CHECKLIST
+
+Before any trade:
+- NWS hourly forecast pulled for correct station
+- Settlement station confirmed (KMIA for Miami, KDEN for Denver)
+- Forecast clear — note if on boundary or in one bucket
+- Tail buckets identified — 3+ degrees from forecast peak
+- Market liquidity confirmed — spread under 10c, OI > 50 contracts
+- Position size within daily risk limit
+
+## EXIT CRITERIA
+
+Hold to settlement (default):
+- Tail No contracts: always hold unless catastrophic revision
+- Boundary Yes: hold unless forecast shifts more than 2F
+
+Early exit triggers:
+- NWS issues significant forecast revision (2F+ shift)
+- Unexpected weather event changes the outlook
+- Position deeply underwater, recovery unlikely before settlement
+
+## KNOWN CITY BIASES (preliminary — June 12, 2026)
+
+NOTE: Based on very limited sample (2-3 days). Do not trade on
+these alone until BHN calibration confirms with 30+ days.
+
+| City | Variable | Observed Bias | Notes |
+|------|----------|---------------|-------|
+| KAUS | tmax_f   | Runs HOT ~13-15F | NWS overforecasts Austin |
+| KDEN | tmax_f   | Runs COLD ~17-20F | NWS underforecasts Denver |
+| KDFW | tmax_f   | Runs HOT ~11F | NWS overforecasts Dallas |
+| KLAX | tmax_f   | Runs COLD ~10F | NWS underforecasts LA |
+
+## RELATIONSHIP TO OPTIONS STRATEGIES
+
+| Options Concept | WeatherBHN Equivalent |
+|----------------|----------------------|
+| Short Strangle | Buy No on both tail buckets |
+| Long Straddle | Buy Yes on both boundary buckets |
+| Iron Condor | Combine — No on tails, Yes on middle |
+| Premium collection | Buying No at 90-99c |
+| Strike price | Bucket floor/cap temperature |
+| Underlying | NWS CLI reported maximum temperature |
+
+## LIQUIDITY CONSTRAINTS BY BANKROLL
+
+| Bankroll | Safe per bucket | Constraint starts |
+|----------|----------------|-------------------|
+| $14      | $5-10          | Never             |
+| $50      | $15-25         | Never             |
+| $200     | $50            | Thin buckets      |
+| $500     | $100           | Some MIA/DEN      |
+| $2,000   | $200           | MIA/DEN regularly |
+| $5,000   | $500           | Most markets      |
+| $10,000+ | $1,000         | NYC/LA only       |
+
+## PHASE 2 — BHN AUTOMATION TARGET
+
+Once calibration is trained:
+1. Edge calculator identifies boundary situations automatically
+2. Tail No contracts flagged when calibrated_prob < 3%
+3. Position sizing via Kelly criterion
+4. Entry orders via Kalshi API
+5. Stop-loss monitor every 5 minutes
+6. Exit orders triggered automatically
+
+See WEATHERBHN_STOP_LOSS_SPEC.md for stop-loss details.
+
+## PERFORMANCE TRACKING
+
+| Date | City | Bucket | Side | Contracts | Entry | P&L |
+|------|------|--------|------|-----------|-------|-----|
+| Jun 12 | KMIA | 92-93 | No | 6 | 79.8c | TBD |
+| Jun 12 | KDEN | 92+ | No | 4 | 85.25c | TBD |
+| Jun 12 | KDEN | 76-77 | No | 2 | 83c | TBD |
+| Jun 12 | KDEN | 82-83 | No | 2 | 90.5c | TBD |
+
+
+------------------------------------------------------------------
+FILE 2: WEATHERBHN_STOP_LOSS_SPEC.md
+------------------------------------------------------------------
+
+# WeatherBHN Stop-Loss Automation Specification
+## Version 1.0 — June 12, 2026
+## Status: PLANNED — Phase 3
+## Priority: HIGH
+
+## OVERVIEW
+
+BHN needs automated risk management on open Kalshi positions.
+The price poller captures market data every 5 seconds into
+weather_bronze_kalshi_market_snapshots. Build a stop-loss monitor
+on top of that existing infrastructure.
+
+## NEW COMPONENT: weather_position_monitor.py
+
+Location: /opt/bhn/trading/weather_position_monitor.py
+Runs: every 60 seconds via systemd timer
+Role: reads open positions + current prices, triggers exits
+
+## STOP-LOSS TRIGGERS
+
+### Trigger 1 — Implied Probability Shift (primary)
+For YES contracts:
+  IF entry_implied_prob - current_implied_prob >= PROB_SHIFT_THRESHOLD
+  THEN trigger exit
+
+For NO contracts:
+  IF current_implied_prob - entry_implied_prob >= PROB_SHIFT_THRESHOLD
+  THEN trigger exit
+
+Default PROB_SHIFT_THRESHOLD = 0.20 (20 percentage points)
+Set in strat9.env as STOP_LOSS_PROB_SHIFT=0.20
+
+### Trigger 2 — Dollar Loss Threshold
+  IF (entry_price - current_price) * contracts >= DOLLAR_LOSS_THRESHOLD
+  THEN trigger exit
+
+Default DOLLAR_LOSS_THRESHOLD = $2.00 per position
+Set in strat9.env as STOP_LOSS_DOLLAR=2.00
+
+### Trigger 3 — Forecast Revision Alert
+  IF ABS(current_nws_forecast - entry_nws_forecast) >= FORECAST_SHIFT_F
+  THEN flag for review
+
+Default review threshold = 2.0F, hard exit = 4.0F
+
+### Trigger 4 — Time-Based Tightening
+> 6 hours to settlement: normal thresholds
+2-6 hours: tighten PROB_SHIFT to 0.15
+< 2 hours: tighten to 0.10
+< 1 hour: NO auto-exits (let ride to settlement)
+
+## TAIL NO EXCEPTION
+
+Tail No contracts (entry prob_yes < 5%) use RELAXED thresholds:
+  PROB_SHIFT_THRESHOLD = 0.40 (not 0.20)
+  DOLLAR_LOSS_THRESHOLD = $5.00 (not $2.00)
+  No time tightening until < 30 min to settlement
+
+## EXIT EXECUTION
+
+1. Log trigger to weather_position_exits table
+2. Send HORIZON SMS: "STOP LOSS TRIGGERED: {city} {bucket} {side}"
+3. Place limit sell at current_bid - 1c
+4. If not filled in 60s: place market order
+5. Log fill to kalshi_fills
+6. Update kalshi_positions status
+
+## NEW DB TABLE: weather_position_exits
+
+CREATE TABLE weather_position_exits (
+    id                  BIGSERIAL PRIMARY KEY,
+    triggered_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    market_ticker       TEXT NOT NULL,
+    city                TEXT NOT NULL,
+    contract_side       TEXT NOT NULL,
+    bucket_floor        NUMERIC,
+    bucket_cap          NUMERIC,
+    trigger_type        TEXT NOT NULL,
+    entry_price         NUMERIC NOT NULL,
+    exit_price          NUMERIC,
+    contracts           NUMERIC NOT NULL,
+    entry_implied_prob  NUMERIC NOT NULL,
+    exit_implied_prob   NUMERIC,
+    prob_shift          NUMERIC,
+    dollar_loss         NUMERIC,
+    forecast_at_entry   NUMERIC,
+    forecast_at_exit    NUMERIC,
+    forecast_shift_f    NUMERIC,
+    exit_order_id       TEXT,
+    fill_price          NUMERIC,
+    realized_pnl        NUMERIC,
+    notes               TEXT
+);
+
+## NEW ENV VARIABLES (add to strat9.env)
+
+STOP_LOSS_ENABLED=true
+STOP_LOSS_PROB_SHIFT=0.20
+STOP_LOSS_DOLLAR=2.00
+STOP_LOSS_FORECAST_SHIFT_F=2.0
+STOP_LOSS_FORECAST_HARD_LIMIT_F=4.0
+STOP_LOSS_TAIL_NO_THRESHOLD=0.05
+STOP_LOSS_DRY_RUN=true
+
+## IMPLEMENTATION ORDER
+
+1. Create weather_position_exits table
+2. Write weather_position_monitor.py with all 4 triggers
+3. Add tail_no exception logic
+4. Write systemd unit files
+5. Add env variables to strat9.env
+6. Test with STOP_LOSS_DRY_RUN=true for 7 days
+7. Review dry-run logs
+8. Set STOP_LOSS_DRY_RUN=false only with operator approval
+9. Add HORIZON SMS alerts
+
+
+==================================================================
+SECTION 3 — NEW METABASE QUERIES (add to CLEAN_QUERIES.sql)
+==================================================================
+
+Add these 3 queries to the end of CLEAN_QUERIES.sql.
+Also save each as individual files in:
+infrastructure/docs/WeatherBHN/queries/
+
+------------------------------------------------------------------
+QUERY 16: WeatherBHN - Kelly Sizing (Market Only + Liquidity)
+------------------------------------------------------------------
+Title: WeatherBHN - Kelly Sizing (Market Only + Liquidity)
+Tab: KELLY
+Description: Pure Kelly Criterion sizing based on Kalshi market
+implied probabilities with full liquidity pre-trade check.
+
+WITH market_latest AS (
+    SELECT DISTINCT ON (market_ticker)
+        market_ticker,
+        city,
+        contract_side,
+        bucket_floor,
+        bucket_cap,
+        yes_bid,
+        yes_ask,
+        (yes_bid + yes_ask) / 2.0                    AS yes_mid,
+        yes_ask - yes_bid                             AS spread,
+        volume,
+        open_interest,
+        market_status,
+        retrieved_at
+    FROM weather_bronze_kalshi_market_snapshots
+    WHERE market_status = 'active'
+    ORDER BY market_ticker, retrieved_at DESC
+),
+edge_data AS (
+    SELECT
+        g.city,
+        g.station_code,
+        g.target_date,
+        g.contract_side,
+        g.bucket_floor,
+        g.bucket_cap,
+        g.market_implied_prob,
+        g.market_yes_mid,
+        g.calibrated_prob,
+        g.edge,
+        g.recommended_action,
+        g.last_updated
+    FROM weather_gold_daily_edge_sheet g
+    WHERE g.target_date >= CURRENT_DATE
+      AND g.is_active = true
+)
+SELECT
+    e.city,
+    e.station_code,
+    e.target_date,
+    e.contract_side,
+    e.bucket_floor,
+    e.bucket_cap,
+    ROUND(m.yes_bid * 100, 1)              AS bid_cents,
+    ROUND(m.yes_ask * 100, 1)              AS ask_cents,
+    ROUND(m.yes_mid * 100, 1)              AS mid_cents,
+    ROUND(e.market_implied_prob * 100, 1)  AS market_prob_pct,
+    ROUND(m.spread * 100, 1)               AS spread_cents,
+    ROUND(m.spread / NULLIF(m.yes_mid, 0) * 100, 1) AS spread_pct_of_mid,
+    ROUND(m.volume, 0)                     AS daily_volume_contracts,
+    ROUND(m.volume * m.yes_mid, 2)         AS daily_volume_dollars,
+    ROUND(m.open_interest, 0)              AS open_interest_contracts,
+    ROUND(m.open_interest * m.yes_mid, 2)  AS open_interest_dollars,
+    CASE
+        WHEN m.spread > 0.20 THEN '🔴 SKIP — Spread > 20c'
+        WHEN m.spread > 0.10 THEN '🟡 CAUTION — Reduce 50%'
+        WHEN m.spread > 0.05 THEN '🟡 WATCH — Reduce 25%'
+        ELSE '🟢 TIGHT'
+    END AS spread_flag,
+    CASE
+        WHEN m.volume * m.yes_mid < 50   THEN '🔴 ILLIQUID'
+        WHEN m.volume * m.yes_mid < 200  THEN '🟡 THIN'
+        WHEN m.volume * m.yes_mid < 1000 THEN '🟡 MODERATE'
+        ELSE '🟢 LIQUID'
+    END AS volume_flag,
+    CASE
+        WHEN m.open_interest < 10  THEN '🔴 SKIP'
+        WHEN m.open_interest < 50  THEN '🟡 THIN'
+        WHEN m.open_interest < 500 THEN '🟡 MODERATE'
+        ELSE '🟢 LIQUID'
+    END AS open_interest_flag,
+    CASE
+        WHEN m.open_interest < 10   THEN '🔴 >10% impact'
+        WHEN m.open_interest < 50   THEN '🔴 5-10% impact'
+        WHEN m.open_interest < 200  THEN '🟡 2-5% impact'
+        WHEN m.open_interest < 1000 THEN '🟡 1-2% impact'
+        ELSE '🟢 <1% impact'
+    END AS price_impact_flag,
+    ROUND((1.0 - m.yes_mid) / NULLIF(m.yes_mid, 0), 4) AS net_odds_b,
+    ROUND(
+        (e.market_implied_prob * ((1.0 - m.yes_mid) / NULLIF(m.yes_mid, 0))
+        - (1 - e.market_implied_prob))
+        / NULLIF((1.0 - m.yes_mid) / NULLIF(m.yes_mid, 0), 0)
+        * 0.5
+    , 4) AS half_kelly_fraction,
+    ROUND(
+        LEAST(
+            m.open_interest * m.yes_mid * 0.10,
+            m.volume * m.yes_mid * 0.05
+        ), 2
+    ) AS liquidity_cap_dollars,
+    ROUND(
+        LEAST(
+            GREATEST(0,
+                (e.market_implied_prob * ((1.0 - m.yes_mid) / NULLIF(m.yes_mid, 0))
+                - (1 - e.market_implied_prob))
+                / NULLIF((1.0 - m.yes_mid) / NULLIF(m.yes_mid, 0), 0)
+                * 0.5 * 14
+            ),
+            LEAST(m.open_interest * m.yes_mid * 0.10, m.volume * m.yes_mid * 0.05)
+        ) * CASE
+            WHEN m.spread > 0.20 THEN 0.00
+            WHEN m.spread > 0.10 THEN 0.50
+            WHEN m.spread > 0.05 THEN 0.75
+            ELSE 1.00
+        END
+    , 2) AS final_stake_14,
+    ROUND(
+        LEAST(
+            GREATEST(0,
+                (e.market_implied_prob * ((1.0 - m.yes_mid) / NULLIF(m.yes_mid, 0))
+                - (1 - e.market_implied_prob))
+                / NULLIF((1.0 - m.yes_mid) / NULLIF(m.yes_mid, 0), 0)
+                * 0.5 * 50
+            ),
+            LEAST(m.open_interest * m.yes_mid * 0.10, m.volume * m.yes_mid * 0.05)
+        ) * CASE
+            WHEN m.spread > 0.20 THEN 0.00
+            WHEN m.spread > 0.10 THEN 0.50
+            WHEN m.spread > 0.05 THEN 0.75
+            ELSE 1.00
+        END
+    , 2) AS final_stake_50,
+    ROUND(
+        LEAST(
+            GREATEST(0,
+                (e.market_implied_prob * ((1.0 - m.yes_mid) / NULLIF(m.yes_mid, 0))
+                - (1 - e.market_implied_prob))
+                / NULLIF((1.0 - m.yes_mid) / NULLIF(m.yes_mid, 0), 0)
+                * 0.5 * 500
+            ),
+            LEAST(m.open_interest * m.yes_mid * 0.10, m.volume * m.yes_mid * 0.05)
+        ) * CASE
+            WHEN m.spread > 0.20 THEN 0.00
+            WHEN m.spread > 0.10 THEN 0.50
+            WHEN m.spread > 0.05 THEN 0.75
+            ELSE 1.00
+        END
+    , 2) AS final_stake_500,
+    CASE
+        WHEN m.spread > 0.20                    THEN '🔴 NO TRADE — Spread too wide'
+        WHEN m.open_interest < 10               THEN '🔴 NO TRADE — Illiquid'
+        WHEN m.volume * m.yes_mid < 50          THEN '🔴 NO TRADE — No volume'
+        WHEN (e.market_implied_prob * ((1.0 - m.yes_mid) / NULLIF(m.yes_mid, 0))
+            - (1 - e.market_implied_prob))
+            / NULLIF((1.0 - m.yes_mid) / NULLIF(m.yes_mid, 0), 0) <= 0
+                                                THEN '⛔ NO TRADE — Negative Kelly'
+        WHEN m.spread > 0.10                    THEN '🟡 REDUCED SIZE — Wide spread'
+        WHEN m.volume * m.yes_mid < 200         THEN '🟡 REDUCED SIZE — Thin volume'
+        WHEN m.open_interest < 50               THEN '🟡 REDUCED SIZE — Low OI'
+        ELSE                                         '✅ TRADE — Full size'
+    END AS trade_signal,
+    m.retrieved_at AS price_as_of
+FROM edge_data e
+LEFT JOIN market_latest m
+    ON e.city = m.city
+    AND e.contract_side = m.contract_side
+    AND e.bucket_floor = m.bucket_floor
+    AND e.bucket_cap = m.bucket_cap
+WHERE e.market_implied_prob IS NOT NULL
+  AND m.yes_mid IS NOT NULL
+  AND m.yes_mid > 0
+ORDER BY
+    CASE WHEN m.spread > 0.20 OR m.open_interest < 10
+         OR m.volume * m.yes_mid < 50 THEN 3 ELSE 1 END,
+    e.market_implied_prob DESC,
+    e.target_date,
+    e.city;
+
+
+------------------------------------------------------------------
+QUERY 17: WeatherBHN - Kelly Sizing (BHN Edge + Liquidity)
+------------------------------------------------------------------
+Title: WeatherBHN - Kelly Sizing (BHN Edge + Liquidity)
+Tab: KELLY
+Description: Kelly Criterion using BHN calibrated probability vs
+market implied probability. Primary automated trading signal.
+Requires calibrated_prob — empty until Visual Crossing backfill.
+
+WITH market_latest AS (
+    SELECT DISTINCT ON (market_ticker)
+        market_ticker,
+        city,
+        contract_side,
+        bucket_floor,
+        bucket_cap,
+        yes_bid,
+        yes_ask,
+        (yes_bid + yes_ask) / 2.0  AS yes_mid,
+        yes_ask - yes_bid          AS spread,
+        volume,
+        open_interest,
+        market_status,
+        retrieved_at
+    FROM weather_bronze_kalshi_market_snapshots
+    WHERE market_status = 'active'
+    ORDER BY market_ticker, retrieved_at DESC
+)
+SELECT
+    g.city,
+    g.station_code,
+    g.target_date,
+    g.contract_side,
+    g.bucket_floor,
+    g.bucket_cap,
+    ROUND(m.yes_bid * 100, 1)             AS bid_cents,
+    ROUND(m.yes_ask * 100, 1)             AS ask_cents,
+    ROUND(m.yes_mid * 100, 1)             AS mid_cents,
+    ROUND(g.market_implied_prob * 100, 1) AS market_prob_pct,
+    ROUND(g.calibrated_prob * 100, 1)     AS bhn_prob_pct,
+    ROUND((g.calibrated_prob - g.market_implied_prob) * 100, 1) AS edge_pct,
+    CASE
+        WHEN (g.calibrated_prob - g.market_implied_prob) >= 0.20 THEN '🔥 STRONG EDGE >20%'
+        WHEN (g.calibrated_prob - g.market_implied_prob) >= 0.10 THEN '🟢 GOOD EDGE 10-20%'
+        WHEN (g.calibrated_prob - g.market_implied_prob) >= 0.05 THEN '🟡 MARGINAL 5-10%'
+        WHEN (g.calibrated_prob - g.market_implied_prob) >= 0.00 THEN '⚪ NO EDGE'
+        ELSE '🔴 NEGATIVE EDGE'
+    END AS edge_classification,
+    ROUND(m.spread * 100, 1)              AS spread_cents,
+    ROUND(m.volume * m.yes_mid, 2)        AS daily_volume_dollars,
+    ROUND(m.open_interest, 0)             AS open_interest_contracts,
+    CASE
+        WHEN m.spread > 0.20 THEN '🔴 SKIP'
+        WHEN m.spread > 0.10 THEN '🟡 REDUCE 50%'
+        WHEN m.spread > 0.05 THEN '🟡 REDUCE 25%'
+        ELSE '🟢 OK'
+    END AS spread_flag,
+    CASE
+        WHEN m.volume * m.yes_mid < 50   THEN '🔴 ILLIQUID'
+        WHEN m.volume * m.yes_mid < 200  THEN '🟡 THIN'
+        ELSE '🟢 LIQUID'
+    END AS volume_flag,
+    CASE
+        WHEN m.open_interest < 10  THEN '🔴 SKIP'
+        WHEN m.open_interest < 50  THEN '🟡 THIN'
+        ELSE '🟢 OK'
+    END AS oi_flag,
+    ROUND((1.0 - m.yes_mid) / NULLIF(m.yes_mid, 0), 4) AS net_odds_b,
+    ROUND(
+        (g.calibrated_prob * ((1.0 - m.yes_mid) / NULLIF(m.yes_mid, 0))
+        - (1 - g.calibrated_prob))
+        / NULLIF((1.0 - m.yes_mid) / NULLIF(m.yes_mid, 0), 0)
+        * 0.5
+    , 4) AS bhn_half_kelly,
+    ROUND(
+        LEAST(
+            m.open_interest * m.yes_mid * 0.10,
+            m.volume * m.yes_mid * 0.05
+        ), 2
+    ) AS liquidity_cap_dollars,
+    ROUND(
+        LEAST(
+            GREATEST(0,
+                (g.calibrated_prob * ((1.0 - m.yes_mid) / NULLIF(m.yes_mid, 0))
+                - (1 - g.calibrated_prob))
+                / NULLIF((1.0 - m.yes_mid) / NULLIF(m.yes_mid, 0), 0)
+                * 0.5 * 14
+            ),
+            LEAST(m.open_interest * m.yes_mid * 0.10, m.volume * m.yes_mid * 0.05)
+        ) * CASE
+            WHEN m.spread > 0.20 THEN 0.00
+            WHEN m.spread > 0.10 THEN 0.50
+            WHEN m.spread > 0.05 THEN 0.75
+            ELSE 1.00
+        END
+    , 2) AS final_stake_14,
+    ROUND(
+        LEAST(
+            GREATEST(0,
+                (g.calibrated_prob * ((1.0 - m.yes_mid) / NULLIF(m.yes_mid, 0))
+                - (1 - g.calibrated_prob))
+                / NULLIF((1.0 - m.yes_mid) / NULLIF(m.yes_mid, 0), 0)
+                * 0.5 * 50
+            ),
+            LEAST(m.open_interest * m.yes_mid * 0.10, m.volume * m.yes_mid * 0.05)
+        ) * CASE
+            WHEN m.spread > 0.20 THEN 0.00
+            WHEN m.spread > 0.10 THEN 0.50
+            WHEN m.spread > 0.05 THEN 0.75
+            ELSE 1.00
+        END
+    , 2) AS final_stake_50,
+    ROUND(
+        LEAST(
+            GREATEST(0,
+                (g.calibrated_prob * ((1.0 - m.yes_mid) / NULLIF(m.yes_mid, 0))
+                - (1 - g.calibrated_prob))
+                / NULLIF((1.0 - m.yes_mid) / NULLIF(m.yes_mid, 0), 0)
+                * 0.5 * 500
+            ),
+            LEAST(m.open_interest * m.yes_mid * 0.10, m.volume * m.yes_mid * 0.05)
+        ) * CASE
+            WHEN m.spread > 0.20 THEN 0.00
+            WHEN m.spread > 0.10 THEN 0.50
+            WHEN m.spread > 0.05 THEN 0.75
+            ELSE 1.00
+        END
+    , 2) AS final_stake_500,
+    CASE
+        WHEN m.spread > 0.20            THEN '🔴 NO TRADE — Spread too wide'
+        WHEN m.open_interest < 10       THEN '🔴 NO TRADE — Illiquid'
+        WHEN m.volume * m.yes_mid < 50  THEN '🔴 NO TRADE — No volume'
+        WHEN g.calibrated_prob IS NULL  THEN '⏳ PENDING — No calibration yet'
+        WHEN (g.calibrated_prob - g.market_implied_prob) < 0
+                                        THEN '⛔ NO TRADE — Negative edge'
+        WHEN (g.calibrated_prob - g.market_implied_prob) < 0.05
+                                        THEN '⚪ SKIP — Edge < 5%'
+        WHEN m.spread > 0.10            THEN '🟡 REDUCED — Wide spread'
+        WHEN m.volume * m.yes_mid < 200 THEN '🟡 REDUCED — Thin volume'
+        WHEN (g.calibrated_prob - g.market_implied_prob) >= 0.20
+                                        THEN '🔥 STRONG BET — Max size'
+        WHEN (g.calibrated_prob - g.market_implied_prob) >= 0.10
+                                        THEN '✅ BET — Full size'
+        ELSE                                 '🟡 MARGINAL — Half size'
+    END AS kelly_signal,
+    g.edge_rank,
+    g.recommended_action,
+    m.retrieved_at AS price_as_of
+FROM weather_gold_daily_edge_sheet g
+LEFT JOIN market_latest m
+    ON g.city = m.city
+    AND g.contract_side = m.contract_side
+    AND g.bucket_floor = m.bucket_floor
+    AND g.bucket_cap = m.bucket_cap
+WHERE g.target_date >= CURRENT_DATE
+  AND g.is_active = true
+  AND g.calibrated_prob IS NOT NULL
+  AND m.yes_mid IS NOT NULL
+  AND m.yes_mid > 0
+ORDER BY
+    CASE
+        WHEN m.spread > 0.20 OR m.open_interest < 10 THEN 5
+        WHEN g.calibrated_prob IS NULL THEN 4
+        WHEN (g.calibrated_prob - g.market_implied_prob) < 0.05 THEN 3
+        WHEN (g.calibrated_prob - g.market_implied_prob) >= 0.20 THEN 1
+        ELSE 2
+    END,
+    (g.calibrated_prob - g.market_implied_prob) DESC,
+    g.target_date,
+    g.city;
+
+
+------------------------------------------------------------------
+QUERY 18: WeatherBHN - Pre-Trade Liquidity Scanner
+------------------------------------------------------------------
+Title: WeatherBHN - Pre-Trade Liquidity Scanner
+Tab: KELLY
+Description: Run this BEFORE placing any trade. liquidity_score
+0-100: above 70 safe, 40-70 careful, below 40 avoid.
+Pin this ABOVE the edge sheet on the KELLY tab.
+
+WITH market_latest AS (
+    SELECT DISTINCT ON (market_ticker)
+        market_ticker,
+        city,
+        contract_side,
+        bucket_floor,
+        bucket_cap,
+        yes_bid,
+        yes_ask,
+        (yes_bid + yes_ask) / 2.0  AS yes_mid,
+        yes_ask - yes_bid          AS spread,
+        volume,
+        open_interest,
+        market_status,
+        retrieved_at
+    FROM weather_bronze_kalshi_market_snapshots
+    WHERE market_status = 'active'
+    ORDER BY market_ticker, retrieved_at DESC
+)
+SELECT
+    city,
+    contract_side,
+    bucket_floor,
+    bucket_cap,
+    ROUND(yes_bid * 100, 1)   AS bid_cents,
+    ROUND(yes_ask * 100, 1)   AS ask_cents,
+    ROUND(yes_mid * 100, 1)   AS mid_cents,
+    ROUND(spread * 100, 1)    AS spread_cents,
+    ROUND(volume, 0)                    AS volume_contracts,
+    ROUND(volume * yes_mid, 2)          AS volume_dollars,
+    ROUND(open_interest, 0)             AS open_interest_contracts,
+    ROUND(open_interest * yes_mid, 2)   AS open_interest_dollars,
+    ROUND(LEAST(open_interest * yes_mid * 0.10, volume * yes_mid * 0.05), 2)
+        AS max_safe_position_dollars,
+    ROUND(LEAST(open_interest * 0.10, volume * 0.05), 0)
+        AS max_safe_contracts,
+    CASE
+        WHEN spread > 0.20 THEN '🔴 SKIP'
+        WHEN spread > 0.10 THEN '🟡 WIDE'
+        WHEN spread > 0.05 THEN '🟡 OK'
+        ELSE '🟢 TIGHT'
+    END AS spread_flag,
+    CASE
+        WHEN volume * yes_mid < 50   THEN '🔴 ILLIQUID'
+        WHEN volume * yes_mid < 200  THEN '🟡 THIN'
+        WHEN volume * yes_mid < 1000 THEN '🟡 MODERATE'
+        ELSE '🟢 LIQUID'
+    END AS volume_flag,
+    CASE
+        WHEN open_interest < 10  THEN '🔴 SKIP'
+        WHEN open_interest < 50  THEN '🟡 THIN'
+        WHEN open_interest < 500 THEN '🟢 OK'
+        ELSE '🟢 DEEP'
+    END AS oi_flag,
+    ROUND((
+        CASE WHEN spread > 0.20 THEN 0
+             WHEN spread > 0.10 THEN 10
+             WHEN spread > 0.05 THEN 25
+             WHEN spread > 0.02 THEN 35
+             ELSE 40 END
+        +
+        CASE WHEN volume * yes_mid < 50   THEN 0
+             WHEN volume * yes_mid < 200  THEN 10
+             WHEN volume * yes_mid < 1000 THEN 20
+             WHEN volume * yes_mid < 5000 THEN 25
+             ELSE 30 END
+        +
+        CASE WHEN open_interest < 10   THEN 0
+             WHEN open_interest < 50   THEN 10
+             WHEN open_interest < 500  THEN 20
+             WHEN open_interest < 2000 THEN 25
+             ELSE 30 END
+    ), 0) AS liquidity_score,
+    CASE
+        WHEN spread > 0.20 OR open_interest < 10 OR volume * yes_mid < 50
+            THEN '🔴 DO NOT TRADE'
+        WHEN spread > 0.10 OR volume * yes_mid < 200 OR open_interest < 50
+            THEN '🟡 CAUTION — Reduce 50%'
+        WHEN spread > 0.05 OR volume * yes_mid < 1000
+            THEN '🟡 CAREFUL — Reduce 25%'
+        ELSE '🟢 CLEAR TO TRADE'
+    END AS liquidity_verdict,
+    ROUND(EXTRACT(EPOCH FROM (NOW() - retrieved_at)) / 60) AS price_age_mins
+FROM market_latest
+WHERE yes_mid > 0
+ORDER BY liquidity_score DESC, city, contract_side, bucket_floor;
+
+
+==================================================================
+SECTION 4 — VERIFIED TABLE NAMES (June 12, 2026)
+==================================================================
+
+BRONZE (4 tables):
+  weather_bronze_nws_forecast_snapshots
+  weather_bronze_openmeteo_forecast_snapshots
+  weather_bronze_kalshi_market_snapshots
+  weather_bronze_nws_actuals
+
+SILVER (6 tables):
+  weather_silver_forecast_conformed
+  weather_silver_market_conformed
+  weather_silver_actuals_conformed
+  weather_silver_forecast_error
+  weather_silver_calibration_training_set
+  weather_silver_model_base
+
+GOLD (3 tables):
+  weather_gold_city_day_features
+  weather_gold_calibrated_probabilities
+  weather_gold_daily_edge_sheet
+
+SUPPORTING:
+  weather_kalshi_contract_catalog
+  weather_observations
+  weather_forecasts
+  weather_contract_prices
+  weather_model_accuracy
+  weather_bets
+  weather_commodity_signals
+  weather_snapshots
+
+==================================================================
+SECTION 5 — COMMIT INSTRUCTIONS
+==================================================================
+
+1. Save FILE 1 to: infrastructure/docs/WeatherBHN/WEATHERBHN_TRADING_STRATEGY.md
+2. Save FILE 2 to: infrastructure/docs/WeatherBHN/WEATHERBHN_STOP_LOSS_SPEC.md
+3. Append Queries 16, 17, 18 to: infrastructure/docs/metabase/CLEAN_QUERIES.sql
+4. Save Query 16 to: infrastructure/docs/WeatherBHN/queries/KELLY_MARKET_ONLY.sql
+5. Save Query 17 to: infrastructure/docs/WeatherBHN/queries/KELLY_BHN_EDGE.sql
+6. Save Query 18 to: infrastructure/docs/WeatherBHN/queries/LIQUIDITY_SCANNER.sql
+
+Commit with:
+  Summary: "WeatherBHN: Add trading strategy, stop-loss spec, Kelly queries"
+  Description: "Add WEATHERBHN_TRADING_STRATEGY.md, WEATHERBHN_STOP_LOSS_SPEC.md,
+  and 3 new Metabase queries (Kelly Market Only, Kelly BHN Edge, Liquidity Scanner).
+  All built June 12 2026 operator session. Queries verified against live DB.
+  Stop-loss spec ready for Phase 3 implementation."
+
+==================================================================
+SECTION 6 — NEXT PRIORITIES FOR CC
+==================================================================
+
+IMMEDIATE:
+1. Visual Crossing backfill — operator will provide API key
+   Script: weather_vc_backfill.py --dry-run first
+   Key goes in: /etc/bhn-trading/strat9.env as VISUAL_CROSSING_API_KEY=
+
+2. Build weather_position_monitor.py per stop-loss spec above
+   Start with STOP_LOSS_DRY_RUN=true
+
+3. Fix yes_bid/yes_ask/volume/open_interest NULL columns in
+   weather_bronze_kalshi_market_snapshots (poller fix committed
+   today — verify new rows are populating correctly)
+
+HIGH PRIORITY:
+4. Add HORIZON SMS alerts for dead collectors
+5. Add kalshi_positions + kalshi_fills Metabase queries
+6. Fix -1086 minute timestamps on weather_observations and
+   weather_gold_calibrated_probabilities
+
+==================================================================
+END OF HANDOFF
+==================================================================
