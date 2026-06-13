@@ -24,7 +24,10 @@ WorkingDirectory=/opt/bhn/trading
 EnvironmentFile=/etc/bhn-trading/env
 EnvironmentFile=-/etc/bhn-trading/strat9.env
 
-ExecStart=/usr/bin/python3 /opt/bhn/trading/weather_edge_calculator.py
+# DRY_RUN=false here because the edge calculator is data infrastructure, not a
+# trading script. strat9.env sets DRY_RUN=true globally to prevent live orders;
+# the edge calculator only writes to the gold layer (no Kalshi API calls).
+ExecStart=/usr/bin/env DRY_RUN=false /usr/bin/python3 /opt/bhn/trading/weather_edge_calculator.py
 
 StandardOutput=append:/var/log/bhn-trading/weather-edge-calculator.log
 StandardError=append:/var/log/bhn-trading/weather-edge-calculator.log
