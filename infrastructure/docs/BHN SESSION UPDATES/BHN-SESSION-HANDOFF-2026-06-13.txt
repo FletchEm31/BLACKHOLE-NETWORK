@@ -1,280 +1,360 @@
-================================================================
-BHN SESSION HANDOFF — 2026-06-13
-Workstream: strat9 (WeatherBHN — Kalshi Temperature Trading)
-Sessions: June 12 (evening) + June 13 (morning)
-================================================================
+==================================================================
+BLACKHOLE NETWORK (BHN) — SESSION HANDOFF
+Last Updated: June 13, 2026
+Workstream: strat9 — Kalshi Weather Trading (WeatherBHN)
+==================================================================
 
-── SYSTEM STATE (verified 05:37 UTC June 13) ────────────────────
+PURPOSE
+-------
+Read this FIRST at the start of every Claude Code session.
+Tells Claude what state the project is in, what was done
+last session, and what to work on next.
 
-Table                                       Rows      Latest / Notes
-------------------------------------------  --------  ----------------------------------------
-weather_bronze_nws_forecast_snapshots        29,014   05:34 UTC (collector healthy)
-weather_bronze_openmeteo_forecast_snapshots  18,184   05:34 UTC (collector healthy)
-weather_bronze_kalshi_market_snapshots      318,656   05:34 UTC (collector healthy)
-weather_bronze_nws_actuals                      18   18 cities × dates (16 was June 11 baseline)
-weather_silver_forecast_conformed             4,989   05:34 UTC
-weather_silver_market_conformed             264,128   05:34 UTC
-weather_silver_actuals_conformed                18   Mirrors bronze_nws_actuals
-weather_silver_forecast_error                  628   Calibration data accumulating (Day 3+)
-weather_gold_daily_edge_sheet                   48   48 rows (28 BET_NO / 12 BET_YES / 8 SKIP)
-weather_model_accuracy                          12   12 settled rows (June 12 data)
-weather_position_exits                           0   STOP_LOSS_DRY_RUN=true, no triggers fired
-kalshi_positions                             75,425   Continuous poller running
-kalshi_fills                                    195   195 fills recorded
+==================================================================
+SECTION 1 — NETWORK SNAPSHOT
+==================================================================
 
-Calibration status: ~Day 3 of 30. 628 error pairs in silver_forecast_error.
-Go-live target for isotonic regression calibration: ~2026-07-13.
+NODE          IP (PUBLIC)       TUNNEL IP   STATUS
+LA Hub        149.28.91.100     10.8.0.1    OPERATIONAL (hub, PG, n8n, collectors)
+NJ            140.82.4.35       10.8.0.5    OPERATIONAL (trading stack — offline)
+Hillsboro     5.78.94.237       10.8.0.6    OPERATIONAL (tinyproxy, Tor egress)
+Frankfurt     192.248.187.208   10.9.0.2    DECOMMISSIONED
 
-── TIMER STATUS (05:37 UTC June 13) ─────────────────────────────
+CONSOLE TERMINOLOGY (STRICT — never deviate):
+  PC LA CONSOLE  = ssh root@10.8.0.1        (WG tunnel)
+  PC NJ CONSOLE  = ssh -p 2222 root@10.8.0.5 (always port 2222)
+  PC Hillsboro   = ssh root@5.78.94.237
 
-Timer                                Next Fire           Status
------------------------------------  ------------------  -------
-bhn-weather-collector.timer          06:01 UTC           ✅ healthy (every 30 min)
-bhn-weather-edge-calculator.timer    on demand / 5 min   ✅ healthy
-bhn-weather-position-monitor.timer   every 60s           ✅ healthy (DRY_RUN=true)
-bhn-weather-settlement-recon.timer   15:01 UTC today     ✅ healthy (daily 15:00 UTC)
-bhn-kalshi-portfolio.timer           n/a (svc running)   ✅ enabled this session
-bhn-strategy-prediction-alpha.timer  09:25 UTC           ✅ healthy
-bhn-market-data.timer                20:31 UTC           ✅ healthy
-bhn-macro-data.timer                 21:00 UTC           ✅ healthy
+SSH KEY: C:\Users\fletc\.ssh\id_ed25519
+LA ROOT PASSWORD: in Proton Pass
 
-NOTE: bhn-kalshi-portfolio.timer shows 'next: n/a' — this is expected. It's a
-continuous service (not oneshot). Timer exists only to restart if the service dies.
-Service PID 2714719 has been running since June 11 05:34 UTC uninterrupted.
+==================================================================
+SECTION 2 — WEATHERBHN STATUS
+==================================================================
 
-── WHAT WAS DONE — JUNE 12 SESSION ─────────────────────────────
+STRATEGY: strat_9_prediction_alpha
+STATUS:    DRY_RUN=true, enabled=false in rules.json
+           DO NOT flip to live without operator explicit approval
 
-Task 1: NWS CLI actuals diagnosed ✅
-  "Stuck at 16 rows" was expected behavior — NWS CLI publishes T-1 day.
-  June 12 actuals won't appear until June 13 morning (~6-10 AM ET).
-  Real bug: misleading rows_inserted counter in weather_data_collector.py.
-  Fixed: _insert_bronze_actual() now returns bool; rows_already_exist counter
-  added; INFO log only on genuine new rows, DEBUG on already-seen rows.
+TARGET MARKETS (Phase 1):
+  Miami HIGH daily temperature    (KXHIGHMIA series)
+  Denver HIGH daily temperature   (KXHIGHDEN series)
 
-Task 2: Settlement reconciliation job built ✅
-  New file: scripts/trading/weather_settlement_reconciliation.py
-  Logic: joins weather_gold_daily_edge_sheet × weather_silver_actuals_conformed
-         → computes bhn_was_correct, market_was_correct, Brier score, P&L
-         → writes to weather_model_accuracy
-  Idempotency: INSERT WHERE NOT EXISTS (no unique constraint on contract_id)
-  Settlement: YES if (bucket_floor IS NULL OR tmax >= bucket_floor)
-                    AND (bucket_cap IS NULL OR tmax < bucket_cap)
-  Brier score: 1 - (predicted_prob - actual_outcome)^2; higher is better
-  CLI: python3 weather_settlement_reconciliation.py [--dry-run] [--date YYYY-MM-DD]
-  Respects DRY_RUN env var.
+DATA COLLECTION (all 8 cities):
+  KMIA Miami, KDEN Denver, KPHX Phoenix, KLAX Los Angeles,
+  KDFW Dallas, KNYC New York, KORD Chicago, KAUS Austin
 
-Task 3: Stop-loss monitor built ✅
-  New file: scripts/trading/weather_position_monitor.py
-  4 triggers: PROB_SHIFT (0.20), DOLLAR_LOSS ($2), FORECAST_HARD (4°F), FORECAST_SOFT (2°F)
-  Tail No exception: entry P(YES) < 5% → relaxed thresholds (0.40 shift, $5 loss)
-  Time tightening: 2-6hr → 0.15; 1-2hr → 0.10; <1hr → no exits
-  DRY_RUN: writes weather_position_exits with notes='DRY_RUN', skips SMS + Kalshi order
-  STOP_LOSS_DRY_RUN=true — DO NOT change without operator approval after 7-day review
+SETTLEMENT SOURCE CONFIRMED:
+  NWS Daily Climate Report (CLI) — same source Kalshi uses
 
-Task 4: Systemd units deployed to LA ✅
-  bhn-weather-settlement-recon.service / .timer (daily 15:00 UTC)
-  bhn-weather-position-monitor.service / .timer (every 60s)
-  Both deployed to /etc/systemd/system/ and enabled
+KALSHI API:
+  Key:  /etc/bhn-trading/kalshi_private.pem
+  Env:  /etc/bhn-trading/strat9.env
+  Auth: RSA-PSS, prod key, KALSHI_PAPER_ONLY=true
+  Balance: ~$18.62 (real account, manual trades only so far)
 
-Task 5: weather_position_exits table created on LA ✅
-  Migration: infrastructure/docs/WeatherBHN/migrations/001_create_weather_position_exits.sql
-  Applied June 13 UTC. 21-column table with 3 indexes.
+VISUAL CROSSING API:
+  Key: B7YX7XXLKHU5NCP57KURKYESK
+  Already saved to /etc/bhn-trading/strat9.env
+  Free tier: 1,000 records/day, resets midnight PT (8am UTC)
 
-Task 6: Timestamp standard applied to all Metabase queries ✅
-  Applied to CLEAN_QUERIES.sql Q1-Q7, Q16-Q18
-  Applied to: KELLY_MARKET_ONLY.sql, KELLY_BHN_EDGE.sql, LIQUIDITY_SCANNER.sql
-  Standard: [vocab]_time_utc / [vocab]_time_pt / mins_ago (3 columns per timestamp)
-  Reference: infrastructure/docs/WeatherBHN/WEATHERBHN_TIMESTAMP_STANDARD.md
+==================================================================
+SECTION 3 — BRONZE/SILVER/GOLD PIPELINE STATUS
+==================================================================
 
-Task 7: WEATHERBHN_DATA_STANDARD.md created ✅
-  Master index of all WeatherBHN docs, pipeline layers, systemd services, pending items
-  Location: infrastructure/docs/WeatherBHN/WEATHERBHN_DATA_STANDARD.md
-  Added DATA STANDARDS sections to WEATHERBHN_TRADING_STRATEGY.md and WEATHERBHN_STOP_LOSS_SPEC.md
+BRONZE TABLES:
+  Table                                    Rows      Status
+  ─────────────────────────────────────────────────────────
+  weather_bronze_nws_forecast_snapshots    ~22,864   ✅ live
+  weather_bronze_openmeteo_forecast_snaps  ~16,504   ✅ live
+  weather_bronze_kalshi_market_snapshots   ~246,116  ✅ live
+  weather_bronze_nws_actuals               18        ⚠️ only 3 days
+  weather_bronze_kalshi_trade_history      0         not yet populated
 
-Task 8: Settlement reconciler ran live ✅
-  DRY_RUN=false python3 /opt/bhn/trading/weather_settlement_reconciliation.py
-  12 rows written to weather_model_accuracy (June 12 data, all 8 cities)
+  NOTE: weather_bronze_nws_forecast_snapshots has TWO source_names:
+    nws_gridpoints: 6,592 rows (daily point forecasts)
+    nws_hourly:    24,155 rows (hourly forecasts, all 8 cities)
 
-── WHAT WAS DONE — JUNE 13 SESSION ─────────────────────────────
+SILVER TABLES:
+  Table                                    Rows      Status
+  ─────────────────────────────────────────────────────────
+  weather_silver_forecast_conformed        ~4,149    ✅ live
+  weather_silver_market_conformed          ~191,588  ✅ live
+  weather_silver_actuals_conformed         18        ⚠️ limited
+  weather_silver_forecast_error            336       ⚠️ limited
+  weather_silver_calibration_training_set  0         needs more actuals
+  weather_silver_model_base                0         needs actuals
 
-Task 9: Performance tracking queries added (Q19-Q22) ✅
-  Added to CLEAN_QUERIES.sql as Q19-Q22
-  Individual files created in infrastructure/docs/WeatherBHN/queries/:
-    BHN_OVERALL_SCORECARD.sql     — headline win rate vs market, total P&L
-    BHN_EDGE_TIER_PERFORMANCE.sql — win rate by edge tier (strong/good/marginal/none)
-    BHN_RECENT_RESULTS.sql        — raw trade log, last 100 settlements
-    BHN_CITY_PERFORMANCE.sql      — accuracy + P&L by city
-  All pull from weather_model_accuracy; live data immediate (12 rows seeded)
-  Add to Metabase: FORMULA/MODELS tab; pin Q19 at top; Q20+Q22 side by side; Q21 full width
-  WEATHERBHN_DATA_STANDARD.md updated: query count 10 → 14
+GOLD TABLES:
+  Table                                    Rows      Status
+  ─────────────────────────────────────────────────────────
+  weather_gold_city_day_features           0         not yet populated
+  weather_gold_calibrated_probabilities    ~117,900  ✅ live (future TS bug)
+  weather_gold_daily_edge_sheet            24        ✅ live, refreshing 5min
 
-Task 10: Edge calculation bug fixed ✅ CRITICAL
-  Bug: edge was stored as YES-perspective (calibrated_prob - market_implied_prob) for ALL
-  contracts. BET_NO rows had negative stored edge, the opposite of reality.
-  Confirmed by Q20: "Strong Negative Edge" contracts were winning at 75%.
+PERFORMANCE TRACKING:
+  weather_model_accuracy                   12        ✅ live (Jun 10-11 data)
 
-  Fix in scripts/trading/weather_edge_calculator.py:
-    edge_yes = raw_prob - mip                           # trading decision only
-    stored_edge = (mip - raw_prob) if action == "BET_NO" else edge_yes
-  BET_NO stored_edge is now: (1 - calibrated_prob) - (1 - mip) = mip - calibrated_prob
-  Always positive when BHN has genuine NO edge.
+PORTFOLIO TABLES:
+  kalshi_positions                         14        ✅ live (real positions)
+  kalshi_fills                             100       ✅ live (trade history)
 
-  Deployed: scp to /opt/bhn/trading/weather_edge_calculator.py
+==================================================================
+SECTION 4 — VISUAL CROSSING BACKFILL STATUS
+==================================================================
 
-  DB remediation (run manually on LA):
-    UPDATE weather_gold_daily_edge_sheet
-    SET edge = -edge, edge_pct = -edge_pct
-    WHERE recommended_action = 'BET_NO' AND edge < 0;
-    → 28 rows flipped
+RUNNING AS OF Jun 13 07:53 UTC:
+  PID: 3292623
+  Command: nohup python3 weather_vc_backfill.py --start 2026-01-01
+           --end 2026-06-11 > /tmp/vc-backfill.log 2>&1 &
+  Log: tail -f /tmp/vc-backfill.log
 
-    DELETE FROM weather_model_accuracy;
-    DRY_RUN=false python3 weather_settlement_reconciliation.py
-    → 12 rows repopulated with corrected edge values
+  STATUS: Hitting 429 rate limits — API resets at 8am UTC (midnight PT)
+  Will auto-retry and break through once quota resets
+  Expected completion: ~30 min after 8am UTC
 
-  Q20 result after fix:
-    🔥 Strong Edge >20%: 8 signals, 75% BHN win rate, 12.5% market win rate (+62.5% advantage)
-    This is the tail No bucket behavior — working correctly.
+AFTER BACKFILL COMPLETES:
+  1. Check row counts:
+     sudo -u postgres psql eventhorizon -c "SELECT COUNT(*) FROM weather_bronze_nws_actuals;"
+     sudo -u postgres psql eventhorizon -c "SELECT COUNT(*) FROM weather_silver_actuals_conformed;"
 
-Task 11: bhn-kalshi-portfolio.timer re-enabled ✅
-  Timer was disabled since June 11; service itself never stopped (PID running 2 days).
-  sudo systemctl enable --now bhn-kalshi-portfolio.timer
-  Symlink created. Timer now auto-restarts service if it dies.
+  2. Rerun settlement reconciler:
+     cd /opt/bhn/trading
+     source /etc/bhn-trading/env && source /etc/bhn-trading/strat9.env
+     DRY_RUN=false python3 weather_settlement_reconciliation.py
 
-Task 12: All changes committed + pushed ✅
-  Commits this session:
-    4812983 WeatherBHN: Add performance tracking queries (Q19-Q22)
-    b3ceddf fix(edge-calc): make edge side-aware for NO recommendations
+  3. Rerun edge calculator:
+     DRY_RUN=false python3 weather_edge_calculator.py
 
-── PENDING — OPERATOR ACTION REQUIRED ───────────────────────────
+  4. Run calibration training:
+     Replace hardcoded sigma fallbacks (Miami=2.5, Denver=3.5) with
+     learned MAE values from weather_silver_forecast_error
 
-VISUAL CROSSING BACKFILL (run at midnight when API rate limits reset):
+==================================================================
+SECTION 5 — SYSTEMD TIMERS ON LA
+==================================================================
 
-  Step 1 — Add key to strat9.env on LA:
-    echo "VISUAL_CROSSING_API_KEY=<your_key>" >> /etc/bhn-trading/strat9.env
+RUNNING ✅:
+  bhn-weather-collector.timer       every 30 min
+  bhn-kalshi-prices.service         continuous (5 sec)
+  bhn-weather-edge-calculator.timer every 5 min ← FIXED Jun 12
+  bhn-strategy-prediction-alpha.timer
+  bhn-market-data.timer             4:30pm ET
+  bhn-macro-data.timer              5:00pm ET
+  bhn-weather-position-monitor.timer every 60 sec (DRY_RUN=true)
+  bhn-settlement-reconciler.timer   daily 15:00 UTC
 
-  Step 2 — Dry run first:
-    cd /opt/bhn/trading
-    DRY_RUN=true python3 weather_vc_backfill.py --dry-run 2>&1 | tail -30
+BROKEN/DEAD ❌:
+  bhn-kalshi-portfolio.timer → inactive (dead) since Jun 11
+    Fix: sudo systemctl enable --now bhn-kalshi-portfolio.timer
 
-  Step 3 — If dry run clean, run live:
-    python3 weather_vc_backfill.py 2>&1 | tee /var/log/bhn-trading/vc-backfill-$(date +%Y%m%d).log
+==================================================================
+SECTION 6 — KNOWN BUGS / ISSUES
+==================================================================
 
-  Step 4 — Verify rows:
-    sudo -u postgres psql eventhorizon -c "
-      SELECT source_name, COUNT(*), MIN(target_date), MAX(target_date)
-      FROM weather_silver_forecast_conformed
-      WHERE source_name ILIKE '%visual%'
-      GROUP BY source_name;"
+CRITICAL:
+  1. bhn-kalshi-portfolio.timer DEAD
+     Fix: sudo systemctl enable --now bhn-kalshi-portfolio.timer
 
-  Expected: ~1,120 rows (8 cities × 140 days of history)
-  After backfill: isotonic regression calibration training becomes viable.
+  2. NBM returning 0 rows
+     nws_high_prob_pct column stays NULL because NBM fetch fails
+     Fix: debug fetch_nbm() in weather_data_collector.py
 
-STOP_LOSS_DRY_RUN REVIEW (7 days from now = 2026-06-20):
-  Review: tail -n 500 /var/log/bhn-trading/weather-position-monitor.log
-  Check: rows in weather_position_exits (should have DRY_RUN entries if any trigger fired)
-  Approval required before setting STOP_LOSS_DRY_RUN=false in /etc/bhn-trading/strat9.env
+  3. yes_bid/yes_ask/volume/open_interest NULL in bronze Kalshi table
+     Poller fix committed but columns still null on new rows
+     Fix: verify deployed code on LA matches committed code (scp not git)
+     Check: SELECT yes_bid, yes_ask FROM weather_bronze_kalshi_market_snapshots
+            WHERE retrieved_at > NOW() - INTERVAL '10 min' LIMIT 5;
 
-METABASE — Add Q19-Q22 under FORMULA/MODELS tab:
-  Layout: Row 1 = Q19 full width (pin at top); Row 2 = Q20 | Q22; Row 3 = Q21 full width
+  4. Negative mins_ago on weather_observations and
+     weather_gold_calibrated_probabilities
+     Future timestamps being written — timezone bug on insert
+     Fix: find insert logic and correct timezone handling
 
-── NEXT SESSION PRIORITIES ──────────────────────────────────────
+NON-CRITICAL:
+  5. gfs_high_prob_pct still NULL
+     member_highs_json not populating from ensemble collector
+     Fix: verify open_meteo_ensemble collector writes member_highs_json
 
-EASY (≤30 min each):
+  6. Edge sign was inverted for BET_NO contracts — FIXED Jun 13
+     edge = mip - raw_prob for NO bets (not raw_prob - mip)
+     28 historical rows corrected in weather_gold_daily_edge_sheet
+     12 rows re-reconciled in weather_model_accuracy
 
-  1. Fix NBM returning 0 rows
-     Debug endpoint URL in weather_data_collector.py fetch_nws_nbm() or equivalent.
-     Run manually: python3 /opt/bhn/trading/weather_data_collector.py --source nbm --log-level DEBUG
-     Check what URL is being hit and verify response format.
+==================================================================
+SECTION 7 — TRADING STRATEGY SUMMARY
+==================================================================
 
-  2. Fix market_volume and market_liquidity showing NULL/illiquid
-     Tied to yes_bid/yes_ask population issue in weather_bronze_kalshi_market_snapshots.
-     Check: SELECT yes_bid, yes_ask, volume FROM weather_bronze_kalshi_market_snapshots LIMIT 5;
-     Likely the mid calculation or volume field name changed in Kalshi API response.
+CORE STRATEGY: Boundary Split + Tail No (Iron Condor equivalent)
 
-MEDIUM (1-2 hours each):
+Step 1: Read NWS hourly forecast for target station
+Step 2: If forecast on boundary between two buckets — buy Yes on both
+Step 3: Load No contracts on statistically impossible tail buckets
+Step 4: Hold to settlement
 
-  3. Fix Kelly BHN Edge card (Q17) — BET_NO signals should appear prominently
-     Currently sorted by edge DESC but BET_NO rows had negative edge (now fixed in new rows).
-     Historical rows on edge sheet were patched, but Q17 sort order may still surface YES bets first.
-     Fix: update ORDER BY in KELLY_BHN_EDGE.sql to sort by ABS(edge) DESC or put BET_NO first.
+POSITION SIZING: Half Kelly with liquidity cap
+  - Never more than 10% of open interest
+  - Never more than 5% of daily volume
+  - Spread > 20¢ = skip
 
-  4. Fix gfs_high_prob_pct not populating
-     ensemble member_highs_json needs verification in weather_edge_calculator.py.
-     Check: SELECT gfs_high_prob_pct FROM weather_gold_daily_edge_sheet WHERE gfs_high_prob_pct IS NOT NULL LIMIT 5;
-     If 0 rows: member_highs_json not being passed from bronze correctly.
+KNOWN CITY BIASES (preliminary — limited sample):
+  KAUS: runs HOT ~13-15°F (NWS overforecasts)
+  KDEN: runs COLD ~17-20°F (NWS underforecasts)
+  KDFW: runs HOT ~11°F
+  KLAX: runs COLD ~10°F
 
-  5. Fix negative mins_ago on weather_observations + weather_gold_calibrated_probabilities
-     Known bug: -1,086 min timestamps. These tables have stale or wrong retrieved_at.
-     Fix: UPDATE retrieved_at / calculated_at to NOW() where value is clearly wrong.
-     Verify timestamps are in UTC before applying fix.
+MIAMI-SPECIFIC NUANCES (identified Jun 13):
+  - Afternoon thunderstorms (2-5pm) suppress daily high by 2-4°F
+  - Onshore sea breeze (SE/S wind > 5mph) suppresses high
+  - NWS 7-day vs hourly disagreement = uncertainty signal
+  - High humidity + dewpoint spread limits afternoon heating
+  These become Phase 2 model features once VC backfill lands
 
-HEAVY (after Visual Crossing backfill):
+==================================================================
+SECTION 8 — PHASE 2 FEATURE ENGINEERING (PLANNED)
+==================================================================
 
-  6. Train isotonic regression calibration on 160+ days of error data
-     Once VC backfill adds ~1,120 rows to silver_forecast_conformed, train calibration model.
-     Update weather_edge_calculator.py: replace calibrated_prob = raw_prob passthrough
-     with actual calibrated output.
+Add to weather_edge_calculator.py using nws_hourly data:
 
-  7. Replace hardcoded sigma fallbacks with learned probabilities
-     DEFAULT_SIGMA dict is currently static (KORD=3.5, KAUS=3.0, etc.).
-     Replace with sigma learned from silver_forecast_error once 30+ days of data exists.
+1. peak_hour — hour with highest tmax_f for that city/date
+2. afternoon_storm_flag — any hour 12-17 has pop_pct > 20%
+3. pre_peak_storm_flag — storm arrives BEFORE peak_hour
+4. cloud_timing_delta — hours between max cloud_cover_pct and peak_hour
+5. sea_breeze_flag — wind_speed_mph > 5 AND onshore direction hours 12-17
 
-  8. Build weather_position_monitor.py live execution (stop-loss Phase 3 completion)
-     Current: DRY_RUN=true, writes exits table with notes='DRY_RUN', no real orders.
-     After 7-day review (2026-06-20): operator approval → set STOP_LOSS_DRY_RUN=false.
-     Then: Twilio SMS + Kalshi limit sell (current_bid_cents - 1) will fire.
+REQUIRES: wind_direction added to NWS hourly collector first
+          (currently missing from nws_hourly rows)
 
-── CONSTRAINTS (carry forward every session) ────────────────────
+Add all 5 as new columns to weather_gold_daily_edge_sheet schema.
+Document in WEATHERBHN_TRADING_STRATEGY.md Phase 2 section.
 
-- SSH: NJ public port 2222 / LA tunnel 10.8.0.1 port 22
-- psql: sudo -u postgres psql eventhorizon (no -h flag, no -U bhn)
-- Snapshot before schema changes (pg_dump -t <table>)
-- n8n: Save + Publish after every flow change
-- Commits require Summary AND Description
-- DRY_RUN=true, enabled=false in rules.json — DO NOT CHANGE
-- STOP_LOSS_DRY_RUN=true — DO NOT CHANGE without operator approval
-- Do NOT drop legacy tables: weather_forecasts, weather_observations,
-  prediction_contracts, weather_contract_prices, weather_bets
-- Stop and report on any failure before continuing
+==================================================================
+SECTION 9 — METABASE DASHBOARD STATUS
+==================================================================
 
-── FILES CREATED / MODIFIED THIS SESSION ───────────────────────
+URL: http://10.8.0.1:3000 (VPN required)
+Dashboard: BHN - FULL SYSTEM HEALTH → WeatherBHN tab
 
-New files (in repo):
-  scripts/trading/weather_settlement_reconciliation.py
-  scripts/trading/weather_position_monitor.py
-  scripts/trading/systemd-units/bhn-weather-settlement-recon.service
-  scripts/trading/systemd-units/bhn-weather-settlement-recon.timer
-  scripts/trading/systemd-units/bhn-weather-position-monitor.service
-  scripts/trading/systemd-units/bhn-weather-position-monitor.timer
-  infrastructure/docs/WeatherBHN/migrations/001_create_weather_position_exits.sql
-  infrastructure/docs/WeatherBHN/WEATHERBHN_DATA_STANDARD.md
-  infrastructure/docs/WeatherBHN/WEATHERBHN_TIMESTAMP_STANDARD.md
-  infrastructure/docs/WeatherBHN/queries/KELLY_MARKET_ONLY.sql
-  infrastructure/docs/WeatherBHN/queries/KELLY_BHN_EDGE.sql
-  infrastructure/docs/WeatherBHN/queries/LIQUIDITY_SCANNER.sql
-  infrastructure/docs/WeatherBHN/queries/BHN_OVERALL_SCORECARD.sql
-  infrastructure/docs/WeatherBHN/queries/BHN_EDGE_TIER_PERFORMANCE.sql
-  infrastructure/docs/WeatherBHN/queries/BHN_RECENT_RESULTS.sql
-  infrastructure/docs/WeatherBHN/queries/BHN_CITY_PERFORMANCE.sql
-  infrastructure/docs/metabase/WeatherBHN_Performance_Queries.txt
+TABS:
+  PERFORMANCE         → Q19-Q22 (weather_model_accuracy)
+  FORMULA/MODELS      → Daily Edge Sheet, Kelly queries
+  DATA MANAGEMENT     → Pipeline health, calibration progress
+  DATA-TRADING        → Kalshi live prices, BHN vs market edge
+  DATA-FORECAST       → NWS vs GFS, forecasts vs actual
 
-Modified files:
-  scripts/trading/weather_data_collector.py  (NWS actuals counter fix)
-  scripts/trading/weather_edge_calculator.py (edge sign bug fix — CRITICAL)
-  infrastructure/docs/metabase/CLEAN_QUERIES.sql  (timestamp standard + Q19-Q22)
-  infrastructure/docs/WeatherBHN/WEATHERBHN_TRADING_STRATEGY.md  (DATA STANDARDS section)
-  infrastructure/docs/WeatherBHN/WEATHERBHN_STOP_LOSS_SPEC.md    (DATA STANDARDS section)
-  infrastructure/docs/WeatherBHN/WEATHERBHN_DATA_STANDARD.md     (query count 10→14)
+ALL QUERIES IN: infrastructure/docs/metabase/CLEAN_QUERIES.sql
+INDIVIDUAL SQL: infrastructure/docs/WeatherBHN/queries/
 
-Deployed to LA (/opt/bhn/trading/):
-  weather_data_collector.py         (counter fix)
-  weather_settlement_reconciliation.py (new)
-  weather_position_monitor.py       (new)
-  weather_edge_calculator.py        (edge sign fix)
-  /etc/systemd/system/bhn-weather-settlement-recon.service + .timer
-  /etc/systemd/system/bhn-weather-position-monitor.service + .timer
-  DB: weather_position_exits table created
-  DB: BET_NO edge signs flipped (28 rows patched)
-  DB: weather_model_accuracy repopulated (12 rows, corrected edge)
+PENDING METABASE ADDS:
+  → kalshi_positions + kalshi_fills queries (tables ready, no queries yet)
+  → Fix Kelly BHN Edge sort — BET_NO signals should appear at top
+  → nws_high_prob_pct + gfs_high_prob_pct columns once populated
 
-================================================================
+==================================================================
+SECTION 10 — PERFORMANCE TRACKING STATUS
+==================================================================
+
+weather_model_accuracy: 12 rows (Jun 10-11 data)
+
+RESULTS SO FAR:
+  Miami Jun 11 (tmax=91°F): 5/6 correct (83% win rate)
+  Denver Jun 11 (tmax=90°F): 2/6 correct (33% win rate)
+  Overall: 7/12 correct (58% win rate vs 38% market)
+  BHN advantage: +20% over market
+
+EDGE TIER PERFORMANCE (corrected):
+  Strong Edge >20%: 75% win rate vs 12.5% market ✅
+  Good Edge 10-20%: 0% win rate (only 2 samples — noise)
+  Marginal Edge: 0% win rate (only 2 samples — noise)
+
+NOTE: Edge sign fix applied Jun 13 — BET_NO rows now store
+positive edge correctly (mip - raw_prob instead of raw_prob - mip)
+
+==================================================================
+SECTION 11 — NEXT SESSION PRIORITY ORDER
+==================================================================
+
+IMMEDIATE (run first):
+  1. Check Visual Crossing backfill completed:
+     tail -f /tmp/vc-backfill.log
+     sudo -u postgres psql eventhorizon -c "SELECT COUNT(*) FROM weather_bronze_nws_actuals;"
+
+  2. Enable portfolio timer:
+     sudo systemctl enable --now bhn-kalshi-portfolio.timer
+
+  3. Fix NBM returning 0 rows (debug fetch_nbm endpoint)
+
+  4. Fix yes_bid/yes_ask NULL on new Kalshi bronze rows
+
+  5. Fix negative timestamps on weather_observations and
+     weather_gold_calibrated_probabilities
+
+HIGH PRIORITY:
+  6. Add wind_direction to NWS hourly collector
+
+  7. Add 5 Phase 2 features to edge calculator:
+     peak_hour, afternoon_storm_flag, pre_peak_storm_flag,
+     cloud_timing_delta, sea_breeze_flag
+
+  8. Add kalshi_positions + kalshi_fills Metabase queries
+
+  9. Train calibration after VC backfill — replace sigma fallbacks
+
+MEDIUM:
+  10. Fix Kelly BHN Edge sort order (BET_NO on top)
+  11. Fix gfs_high_prob_pct NULL (ensemble member_highs_json)
+  12. Add HORIZON SMS alerts for dead collectors
+  13. Add Phase 2 feature section to WEATHERBHN_TRADING_STRATEGY.md
+
+==================================================================
+SECTION 12 — FILE LOCATIONS
+==================================================================
+
+SCRIPTS ON LA (/opt/bhn/trading/):
+  weather_data_collector.py         → all data sources
+  kalshi_client.py                  → Kalshi API client
+  kalshi_price_poller.py            → 5-sec price poller
+  weather_edge_calculator.py        → gold edge sheet
+  weather_settlement_reconciliation.py → nightly reconciler
+  weather_position_monitor.py       → stop-loss monitor (DRY_RUN=true)
+  weather_vc_backfill.py            → Visual Crossing backfill
+
+ENV FILES ON LA:
+  /etc/bhn-trading/env              → PG, Alpaca, FRED, common
+  /etc/bhn-trading/strat9.env       → Kalshi key, VC key, bankroll, flags
+
+REPO DOCS:
+  infrastructure/docs/WeatherBHN/
+    WEATHERBHN_TRADING_STRATEGY.md
+    WEATHERBHN_STOP_LOSS_SPEC.md
+    WEATHERBHN_TIMESTAMP_STANDARD.md
+    WEATHERBHN_DATA_STANDARD.md
+    WEATHERBHN_CC_HANDOFF_JUN12.txt
+    queries/  (18 SQL files)
+
+  infrastructure/docs/metabase/
+    CLEAN_QUERIES.sql  (Q1-Q22)
+    METABASE_SETUP_GUIDE.md
+
+==================================================================
+SECTION 13 — RULES (NEVER DEVIATE)
+==================================================================
+
+  - Project name: BLACKHOLE NETWORK (BHN) — never EventHorizon
+  - NJ SSH: always port 2222
+  - Bootstrap: scp not git clone
+  - GitHub commits: ALWAYS Summary AND Description
+  - Schema changes: pg_dump first, explicit operator approval
+  - DRY_RUN: stays true until operator explicitly flips
+  - enabled: stays false until operator explicitly flips
+  - After any new WireGuard peer: immediately add UFW egress rules
+  - n8n: always Save AND Publish, never refresh editor tab
+  - CC writes to repo: operator pushes to GitHub
+  - Deploy scripts to LA via scp (not git pull — LA pulls are unreliable)
+
+==================================================================
+DOCUMENT CONTROL
+==================================================================
+
+Save to: infrastructure/docs/BHN SESSION UPDATES/
+Filename: BHN-SESSION-HANDOFF-2026-06-13.txt
