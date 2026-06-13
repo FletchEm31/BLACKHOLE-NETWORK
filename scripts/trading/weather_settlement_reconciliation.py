@@ -24,9 +24,34 @@ import argparse
 import os
 import sys
 from datetime import date, datetime, timezone
+from pathlib import Path
 from typing import Optional
 
-import trading_core as tc
+
+def _prime_env() -> None:
+    """Load /etc/bhn-trading/env and strat9.env into os.environ.
+
+    Only sets vars that are not already present — systemd EnvironmentFile
+    values take precedence when running under the timer. This allows the
+    script to be run manually without pre-sourcing the env files.
+    """
+    for path in ("/etc/bhn-trading/env", "/etc/bhn-trading/strat9.env"):
+        p = Path(path)
+        if not p.is_file():
+            continue
+        for ln in p.read_text().splitlines():
+            ln = ln.strip()
+            if not ln or ln.startswith("#") or "=" not in ln:
+                continue
+            k, v = ln.split("=", 1)
+            k = k.strip()
+            if k not in os.environ:
+                os.environ[k] = v.strip().strip('"').strip("'")
+
+
+_prime_env()
+
+import trading_core as tc  # noqa: E402 — must come after _prime_env()
 
 
 logger = tc.get_logger("strat_9_weather_settlement_recon")
