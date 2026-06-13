@@ -45,9 +45,25 @@ def _yes_settled(
     return True
 
 
-def _brier_score(predicted_prob: float, actual_outcome: bool) -> float:
-    """1 - (p - outcome)^2, scaled to [0, 1]. Higher is better."""
-    return round(1.0 - (predicted_prob - (1.0 if actual_outcome else 0.0)) ** 2, 6)
+def _accuracy_score(
+    prob_yes: float,
+    position_side: Optional[str],
+    actual_yes: bool,
+) -> float:
+    """Position-aware Brier score. Near 1.0 = correct prediction, near 0.0 = wrong.
+
+    For BET_NO positions the score is computed from NO's perspective so that a
+    correct NO bet (YES did NOT settle) scores near 1.0 and a wrong NO bet scores
+    near 0.0 — matching the semantics of bhn_was_correct.
+    """
+    if position_side == "no":
+        # NO bet: p = probability NO wins = 1 - prob_yes; outcome = did NO win?
+        p = 1.0 - prob_yes
+        o = 0.0 if actual_yes else 1.0
+    else:
+        p = prob_yes
+        o = 1.0 if actual_yes else 0.0
+    return round(1.0 - (p - o) ** 2, 6)
 
 
 def reconcile(target_date: Optional[date] = None, dry_run: bool = False) -> int:
@@ -145,7 +161,30 @@ def reconcile(target_date: Optional[date] = None, dry_run: bool = False) -> int:
                         market_predicts_yes = float(market_implied_prob) > 0.5
                         market_was_correct = (market_predicts_yes == actual_outcome)
 
-                    accuracy_score = _brier_score(prob_for_scoring, actual_outcome)
+                    accuracy_score = _accuracy_score(
+                        prob_for_scoring, bhn_position_side, actual_outcome
+                    )
+
+                    # P&L: entry_price * contracts = stake_usd; solve for contracts
+                    pnl_dollar: Optional[float] = None
+                    if bhn_position_taken and bhn_was_correct is not None and stake_usd is not None:
+                        stake = float(stake_usd)
+                        if bhn_position_side == "yes" and market_implied_prob is not None:
+                            entry_price = float(market_implied_prob)
+                            if entry_price > 0:
+                                contracts = stake / entry_price
+                                if bhn_was_correct:
+                                    pnl_dollar = round((1.0 - entry_price) * contracts, 4)
+                                else:
+                                    pnl_dollar = round(-entry_price * contracts, 4)
+                        elif bhn_position_side == "no" and market_implied_prob is not None:
+                            entry_price = 1.0 - float(market_implied_prob)  # NO price
+                            if entry_price > 0:
+                                contracts = stake / entry_price
+                                if bhn_was_correct:
+                                    pnl_dollar = round((1.0 - entry_price) * contracts, 4)
+                                else:
+                                    pnl_dollar = round(-entry_price * contracts, 4)
 
                     if dry_run:
                         logger.info(
@@ -154,7 +193,8 @@ def reconcile(target_date: Optional[date] = None, dry_run: bool = False) -> int:
                             f"outcome={'YES' if actual_outcome else 'NO'} "
                             f"rec={recommended_action} "
                             f"correct={bhn_was_correct} "
-                            f"brier={accuracy_score:.4f}"
+                            f"accuracy={accuracy_score:.4f} "
+                            f"pnl={pnl_dollar}"
                         )
                         rows_written += 1
                         continue
@@ -167,9 +207,9 @@ def reconcile(target_date: Optional[date] = None, dry_run: bool = False) -> int:
                             bhn_predicted_probability, market_implied_probability, edge,
                             bhn_position_taken, bhn_position_value, bhn_position_side,
                             actual_outcome, bhn_was_correct, market_was_correct,
-                            accuracy_score, resolved_at
+                            pnl_dollar, accuracy_score, resolved_at
                         )
-                        SELECT %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                        SELECT %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
                         WHERE NOT EXISTS (
                             SELECT 1 FROM weather_model_accuracy
                             WHERE contract_id = %s
@@ -185,7 +225,7 @@ def reconcile(target_date: Optional[date] = None, dry_run: bool = False) -> int:
                         float(stake_usd) if stake_usd is not None else None,
                         bhn_position_side,
                         actual_outcome, bhn_was_correct, market_was_correct,
-                        accuracy_score,
+                        pnl_dollar, accuracy_score,
                         report_issued_at or datetime.now(timezone.utc),
                         # WHERE NOT EXISTS param:
                         contract_ticker,
@@ -197,7 +237,7 @@ def reconcile(target_date: Optional[date] = None, dry_run: bool = False) -> int:
                             f"{contract_ticker} {act_date}: "
                             f"tmax={final_tmax_f}°F → {'YES' if actual_outcome else 'NO'} | "
                             f"rec={recommended_action} correct={bhn_was_correct} "
-                            f"brier={accuracy_score:.4f}"
+                            f"accuracy={accuracy_score:.4f} pnl={pnl_dollar}"
                         )
                     else:
                         rows_skipped_exists += 1
