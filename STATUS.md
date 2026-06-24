@@ -1,6 +1,6 @@
 # Blackhole Network (BHN) — Network Status
 
-Last updated: **2026-05-13**
+Last updated: **2026-06-24**
 
 > **Note:** Project renamed 2026-05-11 from EventHorizon → Blackhole Network. Vultr-side server display names updated to `BHN|VPS-LOSANGELES-US1`, `BHN|VPS-FRANKFURT-EU1`, `BHN|VPS-NEWJERSEY-US2`. Intentionally preserved as live-system identifiers (NOT renamed): n8n credential names (`Postgres EventHorizon`, `EventHorizonVPN-Claude`), Proton Pass entries (`EH-*`), LA-deployed script paths (`/usr/local/sbin/eh-purge`, `/opt/eh-diagnostics/eh-*`), the PostgreSQL database name `eventhorizon`, and the email domain `eventhorizonvpn.com`. LA-side script renames are deferred to a coordinated migration session. The "EventHorizon VPN" name is reserved for the future separate commercial product.
 
@@ -31,7 +31,8 @@ Trading framework (NJ workstream, separate from 5-phase plan)  █████�
 | OS | Ubuntu 22.04.5 LTS |
 | WireGuard server (port 51820) | ✅ Active |
 | Shadowsocks (port 8388) | ✅ Active (password rotated 2026-05-08) |
-| dnscrypt-proxy | ✅ Active |
+| dnscrypt-proxy | ✅ Active — pool trimmed to cloudflare + mullvad-base-doh (2026-06-24); lb_strategy p2; forwards all queries to Unbound first; nx_log disabled |
+| Unbound 1.13.1 (recursive resolver) | ✅ Active (2026-06-24) — 127.0.0.1:5354; fully recursive, queries root servers directly; DNSSEC auto; hide-identity/version; harden-glue + harden-dnssec-stripped; use-caps-for-id; IPv6 disabled |
 | Fail2ban (lean: sshd + grafana + postgresql + n8n jails, VPN-whitelisted) | ✅ Active |
 | CrowdSec (linux + sshd + nginx + http-cve collections, cs-firewall-bouncer) | ✅ Active |
 | Suricata IDS | ✅ Active (49,955 rules) |
@@ -99,7 +100,7 @@ Trading framework (NJ workstream, separate from 5-phase plan)  █████�
 | SSH from LA | ✅ `ssh hillsboro` alias → `root@10.8.0.6:22` (key `/root/.ssh/id_ed25519`, added 2026-05-13) |
 | WireGuard tunnel | ✅ Operational 2026-05-13 — ~27 ms LA↔Hillsboro RTT |
 | WG resolution | Same NJ-style gap (line 83): LA's `deny (outgoing)` default + no rule for Hillsboro = packets dropped at OUTPUT before reaching wg0. Two LA-side UFW egress rules added: `allow out to 5.78.94.237 port 51821 proto udp` + `allow out to 10.8.0.6`. Bootstrap script now emits these as paste-ready in its final summary (commit `27ac0db`) so future nodes don't need this manual fix. |
-| Hardening | ✅ SSH key-only on 22 (Hetzner default kept), UFW + iptables, fail2ban, CrowdSec, Suricata, dnscrypt-proxy (same 6 resolvers as LA: cloudflare, quad9-dnscrypt-ip4-filter-pri, mullvad, adguard, nextdns, digitale-gesellschaft) |
+| Hardening | ✅ SSH key-only on 22 (Hetzner default kept), UFW + iptables, fail2ban, CrowdSec, Suricata, dnscrypt-proxy (⚠️ still running old 6-resolver pool — cloudflare, quad9, mullvad, adguard, nextdns, digitale-gesellschaft; NOT yet hardened to match LA's 2026-06-24 posture; Unbound not installed here yet) |
 | Bootstrap quirks | (a) `chattr +i /etc/resolv.conf` fails on Hetzner Cloud — fs doesn't support immutable flag. Made non-fatal in `dnscrypt.sh` (commit `f3cce93`); systemd-resolved + resolvconf disabled so drift shouldn't occur. (b) `TUNNEL_IP_OVERRIDE` env var added (commit `8ac85f4`) to join LA's flat /24 instead of getting a derived /24 — same pattern operator established with NJ. |
 | Nightly diagnostic enrollment | ✅ Added to `/opt/eh-diagnostics/eh-nightly-diagnostic.sh` REMOTE_NODES 2026-05-13 (correction: prior STATUS.md cited `/root/bhn-nightly-diagnostic.sh` but actual path is `eh-` prefix in `/opt/eh-diagnostics/`) |
 | LA pubkey authorized | ✅ LA's `/root/.ssh/id_ed25519.pub` (`root@vultr`) added to Hillsboro's `/root/.ssh/authorized_keys` 2026-05-13 — required for both the `ssh hillsboro` alias AND the nightly diagnostic to authenticate |

@@ -155,7 +155,8 @@ Each node runs:
 
 - **WireGuard** — encrypted mesh tunnel, hub-and-spoke topology, PSK on all peers
 - **Shadowsocks** — DPI-resistant traffic obfuscation (exit nodes)
-- **dnscrypt-proxy** — encrypted DNS rotating across 6 resolvers (Mullvad, Quad9, Cloudflare, AdGuard, NextDNS, Digitale Gesellschaft)
+- **Unbound** — fully recursive resolver on LA (127.0.0.1:5354); queries root servers directly, DNSSEC auto-managed, no third-party DNS provider in the chain (LA only as of 2026-06-24)
+- **dnscrypt-proxy** — encrypted DoH transport; forwards all queries to Unbound first; Cloudflare + Mullvad-base-doh as fallback only; lb_strategy p2
 - **Fail2ban** — automated intrusion blocking with VPN-tunnel whitelist
 - **CrowdSec** — collaborative threat intelligence, shared ban list
 - **Suricata** — IDS/IPS deep packet inspection, logs to PostgreSQL
