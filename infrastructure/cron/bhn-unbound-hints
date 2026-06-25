@@ -1,0 +1,5 @@
+# BHN — Monthly root hints refresh for Unbound
+# Deploy to: /etc/cron.d/bhn-unbound-hints on LA
+# Keeps Unbound's root server list current (IANA publishes updates ~quarterly)
+# Restarts Unbound after fetch; restart takes <1s, no downtime impact
+0 0 1 * * root curl -so /usr/share/dns/root.hints https://www.internic.net/domain/named.cache && systemctl restart unbound

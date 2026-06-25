@@ -33,6 +33,7 @@ Trading framework (NJ workstream, separate from 5-phase plan)  █████�
 | Shadowsocks (port 8388) | ✅ Active (password rotated 2026-05-08) |
 | dnscrypt-proxy | ✅ Active — pool trimmed to cloudflare + mullvad-base-doh (2026-06-24); lb_strategy p2; forwards all queries to Unbound first; nx_log disabled |
 | Unbound 1.13.1 (recursive resolver) | ✅ Active (2026-06-24) — 127.0.0.1:5354; fully recursive, queries root servers directly; DNSSEC auto; hide-identity/version; harden-glue + harden-dnssec-stripped; use-caps-for-id; IPv6 disabled |
+| Monthly root hints cron (`bhn-unbound-hints`) | 🔨 In repo (`infrastructure/cron/bhn-unbound-hints`) — not yet deployed to `/etc/cron.d/` on LA. Deploy with: `scp infrastructure/cron/bhn-unbound-hints la:/etc/cron.d/bhn-unbound-hints` |
 | Fail2ban (lean: sshd + grafana + postgresql + n8n jails, VPN-whitelisted) | ✅ Active |
 | CrowdSec (linux + sshd + nginx + http-cve collections, cs-firewall-bouncer) | ✅ Active |
 | Suricata IDS | ✅ Active (49,955 rules) |
