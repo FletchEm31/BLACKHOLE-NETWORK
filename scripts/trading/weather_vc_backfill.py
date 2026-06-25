@@ -1,21 +1,32 @@
 """BHN Strat 9 — Visual Crossing historical actuals backfill.
 
-Fills weather_bronze_nws_actuals + weather_silver_actuals_conformed with
-daily tmax/tmin from 2026-01-01 → yesterday for all 8 cities.
+Fills weather_bronze_visual_crossing_actuals (bronze) and
+weather_silver_actuals_conformed (silver, actual_source='visual_crossing')
+with daily tmax/tmin/precip/humidity from Visual Crossing for all 8 cities.
 
-One API call per city (date-range endpoint) = 8 requests total.
-Existing NWS CLI rows are preserved (ON CONFLICT DO NOTHING on bronze;
-separate actual_source='visual_crossing' on silver so they coexist).
+Bronze separation rationale: weather_bronze_nws_actuals has UNIQUE
+(station_code, target_date). Writing VC data there would block NWS CLI
+inserts for overlapping dates (or vice versa). The dedicated VC table lets
+both sources coexist; silver ties them via the actual_source discriminator.
+
+One API call per city (date-range endpoint) = 8 requests total per run.
+For 3-year backfill: 8 cities × ~1095 days ≈ 8,760 VC records. Requires
+VC Basic plan (10,000 records/day). Free tier (1,000 records/day) is not
+sufficient for a full 3-year run but works for incremental daily updates.
 
 After the backfill, silver_forecast_error will auto-populate via the
-_populate_silver_actuals JOIN against weather_silver_forecast_conformed.
+_insert_silver JOIN against weather_silver_forecast_conformed.
 Run weather_edge_calculator.py afterwards to refresh the gold edge sheet.
 
 Usage:
-    python3 weather_vc_backfill.py [--start 2026-01-01] [--end 2026-06-10] [--dry-run]
+    python3 weather_vc_backfill.py                              # 3-year backfill
+    python3 weather_vc_backfill.py --start 2023-01-01 --end 2026-06-24
+    python3 weather_vc_backfill.py --start 2026-06-01           # incremental fill
+    python3 weather_vc_backfill.py --dry-run                    # fetch only, no DB writes
 
 Requires:
     VISUAL_CROSSING_API_KEY in /etc/bhn-trading/strat9.env (or env)
+    weather_bronze_visual_crossing_actuals table (migration 2026-06-25)
 """
 
 import argparse
@@ -71,26 +82,26 @@ CITIES = [
 
 def _fetch_vc_range(location: str, start: date, end: date, api_key: str,
                     retries: int = 3) -> list[dict]:
-    """Fetch daily tmax/tmin from Visual Crossing for a date range.
-    Returns list of dicts with keys: datetime, tempmax, tempmin.
-    Retries up to `retries` times on 429 with exponential backoff.
+    """Fetch daily tmax/tmin/precip/humidity from Visual Crossing for a date range.
+    Returns list of day dicts. Retries up to `retries` times on 429 with
+    exponential backoff (60s, 120s, 180s).
     """
     url = (
         f"{VC_BASE_URL}/{urllib.parse.quote(location)}"
         f"/{start.isoformat()}/{end.isoformat()}"
     )
     params = urllib.parse.urlencode({
-        "unitGroup": "us",
-        "elements": "datetime,tempmax,tempmin",
-        "include": "days",
-        "key": api_key,
-        "contentType": "json",
+        "unitGroup":    "us",
+        "elements":     "datetime,tempmax,tempmin,precip,humidity",
+        "include":      "days",
+        "key":          api_key,
+        "contentType":  "json",
     })
     full_url = f"{url}?{params}"
-    req = urllib.request.Request(full_url, headers={"User-Agent": "BHN-Strat9-Backfill/1.0"})
+    req = urllib.request.Request(full_url, headers={"User-Agent": "BHN-Strat9-Backfill/2.0"})
     for attempt in range(retries):
         try:
-            with urllib.request.urlopen(req, timeout=30) as resp:
+            with urllib.request.urlopen(req, timeout=60) as resp:
                 data = json.loads(resp.read().decode())
                 return data.get("days", [])
         except urllib.error.HTTPError as e:
@@ -99,7 +110,7 @@ def _fetch_vc_range(location: str, start: date, end: date, api_key: str,
                 logger.warning(f"{location}: 429 rate limit — sleeping {wait}s then retrying")
                 time.sleep(wait)
             else:
-                logger.error(f"{location}: VC fetch failed: {e}")
+                logger.error(f"{location}: VC fetch failed (HTTP {e.code}): {e}")
                 return []
         except Exception as e:
             logger.error(f"{location}: VC fetch failed: {e}")
@@ -107,24 +118,33 @@ def _fetch_vc_range(location: str, start: date, end: date, api_key: str,
     return []
 
 
-def _insert_bronze(conn, *, city: str, station_code: str, target_date: date,
-                   tmax_f: float, tmin_f: float) -> bool:
-    """Insert into bronze actuals. Returns True if row was newly inserted."""
+def _insert_bronze(conn, *, city: str, station_code: str, vc_querylocation: str,
+                   target_date: date, tmax_f: float, tmin_f: float,
+                   precip_in: Optional[float], humidity_pct: Optional[float],
+                   raw_day: dict) -> bool:
+    """Insert into weather_bronze_visual_crossing_actuals.
+    Returns True if a new row was inserted (False = already exists).
+    """
     with conn.cursor() as cur:
         cur.execute("""
-            INSERT INTO weather_bronze_nws_actuals
-                (city, station_code, cli_location, target_date,
-                 final_tmax_f, final_tmin_f, report_issued_at, source_payload_json)
-            VALUES (%s, %s, NULL, %s, %s, %s, NULL, %s::jsonb)
+            INSERT INTO weather_bronze_visual_crossing_actuals
+                (city, station_code, vc_querylocation, target_date,
+                 final_tmax_f, final_tmin_f, precip_in, humidity_pct,
+                 source_payload_json)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
             ON CONFLICT (station_code, target_date) DO NOTHING
-        """, (city, station_code, target_date, tmax_f, tmin_f,
-              json.dumps({"source": "visual_crossing_backfill"})))
+        """, (city, station_code, vc_querylocation, target_date,
+              tmax_f, tmin_f, precip_in, humidity_pct,
+              json.dumps(raw_day)))
         return cur.rowcount == 1
 
 
 def _insert_silver(conn, *, city: str, station_code: str, target_date: date,
                    tmax_f: float, tmin_f: float) -> None:
-    """Upsert into silver actuals and populate forecast_error pairs."""
+    """Upsert into silver actuals and populate forecast_error pairs.
+    actual_source='visual_crossing' coexists with 'nws_cli' on the same date
+    via the UNIQUE (station_code, target_date, actual_source) constraint.
+    """
     with conn.cursor() as cur:
         cur.execute("""
             INSERT INTO weather_silver_actuals_conformed
@@ -137,7 +157,7 @@ def _insert_silver(conn, *, city: str, station_code: str, target_date: date,
                 is_final     = TRUE
         """, (city, station_code, target_date, tmax_f, tmin_f))
 
-        # forecast_error pairs for tmax
+        # tmax forecast error pairs
         cur.execute("""
             INSERT INTO weather_silver_forecast_error
                 (city, station_code, target_date, feature_name, source_name,
@@ -156,7 +176,7 @@ def _insert_silver(conn, *, city: str, station_code: str, target_date: date,
             DO NOTHING
         """, (tmax_f, tmax_f, tmax_f, tmax_f, station_code, target_date))
 
-        # forecast_error pairs for tmin
+        # tmin forecast error pairs
         cur.execute("""
             INSERT INTO weather_silver_forecast_error
                 (city, station_code, target_date, feature_name, source_name,
@@ -182,18 +202,30 @@ def run_backfill(start: date, end: date, dry_run: bool = False) -> None:
         logger.error("VISUAL_CROSSING_API_KEY not set — add to /etc/bhn-trading/strat9.env")
         sys.exit(1)
 
+    days_in_range = (end - start).days + 1
+    total_records = days_in_range * len(CITIES)
+    logger.info(
+        f"Backfill: {start} → {end} ({days_in_range} days × {len(CITIES)} cities "
+        f"= ~{total_records} VC records)"
+    )
+    if total_records > 1000 and not dry_run:
+        logger.warning(
+            "Range exceeds VC free-tier limit (1,000 records/day). "
+            "Requires VC Basic plan (10,000 records/day)."
+        )
+
     total_bronze = 0
     total_silver = 0
-    total_error_pairs = 0
 
     for icao, city_name, vc_loc in CITIES:
         logger.info(f"{icao}: fetching {start} → {end} from Visual Crossing")
         days = _fetch_vc_range(vc_loc, start, end, api_key)
         if not days:
-            logger.warning(f"{icao}: no data returned")
+            logger.warning(f"{icao}: no data returned — skipping")
             continue
 
         bronze_count = 0
+        bronze_skip = 0
         silver_count = 0
 
         with tc.get_pg_conn() as conn:
@@ -205,27 +237,52 @@ def run_backfill(start: date, end: date, dry_run: bool = False) -> None:
                     if tmax_f is None or tmin_f is None:
                         continue
 
+                    precip_in: Optional[float] = day.get("precip")
+                    humidity_pct: Optional[float] = day.get("humidity")
+
                     if dry_run:
-                        logger.info(f"  [dry-run] {icao} {target_date}: tmax={tmax_f} tmin={tmin_f}")
+                        logger.info(
+                            f"  [dry-run] {icao} {target_date}: "
+                            f"tmax={tmax_f} tmin={tmin_f} "
+                            f"precip={precip_in} humidity={humidity_pct}"
+                        )
                         continue
 
                     inserted = _insert_bronze(
-                        conn, city=city_name, station_code=icao,
-                        target_date=target_date, tmax_f=tmax_f, tmin_f=tmin_f,
+                        conn,
+                        city=city_name,
+                        station_code=icao,
+                        vc_querylocation=vc_loc,
+                        target_date=target_date,
+                        tmax_f=tmax_f,
+                        tmin_f=tmin_f,
+                        precip_in=precip_in,
+                        humidity_pct=humidity_pct,
+                        raw_day=day,
                     )
                     if inserted:
                         bronze_count += 1
+                    else:
+                        bronze_skip += 1
 
                     _insert_silver(
-                        conn, city=city_name, station_code=icao,
-                        target_date=target_date, tmax_f=tmax_f, tmin_f=tmin_f,
+                        conn,
+                        city=city_name,
+                        station_code=icao,
+                        target_date=target_date,
+                        tmax_f=tmax_f,
+                        tmin_f=tmin_f,
                     )
                     silver_count += 1
 
                 except Exception as e:
-                    logger.warning(f"{icao} {day.get('datetime','?')}: write failed: {e}")
+                    logger.warning(f"{icao} {day.get('datetime', '?')}: write failed: {e}")
+                    conn.rollback()
 
-        logger.info(f"{icao}: {bronze_count} new bronze rows, {silver_count} silver upserts")
+        logger.info(
+            f"{icao}: {bronze_count} new bronze rows "
+            f"({bronze_skip} already existed), {silver_count} silver upserts"
+        )
         total_bronze += bronze_count
         total_silver += silver_count
         time.sleep(3)  # stay within VC rate limits between cities
@@ -244,13 +301,24 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description="BHN Strat 9 — Visual Crossing historical actuals backfill"
     )
+    three_years_ago = (datetime.now(timezone.utc).date() - timedelta(days=3 * 365))
     yesterday = (datetime.now(timezone.utc).date() - timedelta(days=1))
-    parser.add_argument("--start", default="2026-01-01",
-                        help="Start date (YYYY-MM-DD). Default: 2026-01-01")
-    parser.add_argument("--end", default=yesterday.isoformat(),
-                        help=f"End date (YYYY-MM-DD). Default: yesterday ({yesterday})")
-    parser.add_argument("--dry-run", action="store_true",
-                        help="Fetch and log but do not write to DB")
+
+    parser.add_argument(
+        "--start",
+        default=three_years_ago.isoformat(),
+        help=f"Start date (YYYY-MM-DD). Default: 3 years ago ({three_years_ago})",
+    )
+    parser.add_argument(
+        "--end",
+        default=yesterday.isoformat(),
+        help=f"End date (YYYY-MM-DD). Default: yesterday ({yesterday})",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Fetch from VC and log but do not write to DB",
+    )
     args = parser.parse_args()
 
     try:
