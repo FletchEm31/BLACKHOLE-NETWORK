@@ -1,0 +1,14 @@
+# BHN — Visual Crossing backfill timer.
+# Fires daily at 01:00 UTC. RandomizedDelaySec spreads load off the hour.
+
+[Unit]
+Description=BHN Visual Crossing actuals backfill (daily at 01:00 UTC)
+
+[Timer]
+OnCalendar=*-*-* 01:00:00
+Unit=bhn-vc-backfill.service
+Persistent=true
+RandomizedDelaySec=120
+
+[Install]
+WantedBy=timers.target

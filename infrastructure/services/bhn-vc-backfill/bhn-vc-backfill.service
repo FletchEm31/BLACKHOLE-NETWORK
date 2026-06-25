@@ -1,0 +1,34 @@
+# BHN — Visual Crossing historical actuals backfill (daily cron).
+# Fetches up to 500 days per city per run for KDEN and KMIA only.
+# 2 cities × 500 days = 1,000 VC records/day — within free-tier limit.
+#
+# Auto mode: queries DB to find the next unfilled chunk working backwards
+# from the 3-year target. Once backfill is complete, fetches yesterday only.
+#
+# Deploy:
+#   sudo cp bhn-vc-backfill.service /etc/systemd/system/
+#   sudo cp bhn-vc-backfill.timer   /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now bhn-vc-backfill.timer
+
+[Unit]
+Description=BHN Visual Crossing actuals backfill (KDEN + KMIA, 500 days/run)
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/bhn/trading
+
+EnvironmentFile=/etc/bhn-trading/env
+EnvironmentFile=-/etc/bhn-trading/strat9.env
+
+ExecStart=/usr/bin/python3 /opt/bhn/trading/weather_vc_backfill.py \
+    --cities KDEN,KMIA \
+    --auto \
+    --days-per-run 500
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=bhn-vc-backfill
