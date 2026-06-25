@@ -1,0 +1,266 @@
+{
+  "uid": "bhn-weatherbhn",
+  "title": "WeatherBHN — Trading",
+  "description": "Kalshi weather contract trading dashboard. Queries from CLEAN_QUERIES.sql (22 queries). Strat 9 / BHN-WEATHER-KALSHI.",
+  "tags": ["weatherbhn", "kalshi", "trading", "strat9"],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "5m",
+  "time": { "from": "now-24h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "TRADING",
+      "collapsed": false,
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 1 }
+    },
+    {
+      "id": 2,
+      "type": "table",
+      "title": "Daily Edge Sheet (Q1) — Open contracts for today + tomorrow",
+      "description": "Main trading view. Shows calibrated vs market probability, edge %, recommended action and stake.",
+      "datasource": { "uid": "eventhorizon", "type": "grafana-postgresql-datasource" },
+      "gridPos": { "x": 0, "y": 1, "w": 24, "h": 10 },
+      "options": { "sortBy": [{ "displayName": "edge_pct", "desc": true }] },
+      "fieldConfig": {
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "recommended_action" }, "properties": [{ "id": "custom.width", "value": 130 }] },
+          { "matcher": { "id": "byName", "options": "edge_pct" }, "properties": [{ "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "yellow", "value": 5 }, { "color": "green", "value": 10 }] } }, { "id": "custom.displayMode", "value": "color-background" }] }
+        ]
+      },
+      "targets": [{
+        "refId": "A",
+        "rawSql": "SELECT city, target_date, contract_side, bucket_label, contract_ticker, raw_forecast_f AS nws_forecast, gfs_forecast_f AS gfs_forecast, ROUND(calibrated_prob * 100, 1) AS model_prob_pct, ROUND(market_implied_prob * 100, 1) AS market_prob_pct, ROUND(edge_pct, 1) AS edge_pct, market_volume, market_liquidity, recommended_action, stake_usd, skip_reason, ROUND(EXTRACT(EPOCH FROM (NOW() - last_updated)) / 60) AS mins_ago FROM weather_gold_daily_edge_sheet WHERE target_date BETWEEN CURRENT_DATE AND CURRENT_DATE + 1 AND is_active = TRUE ORDER BY target_date, edge DESC",
+        "format": "table"
+      }]
+    },
+    {
+      "id": 3,
+      "type": "table",
+      "title": "NWS vs GFS Forecasts (Q2) — Latest model runs",
+      "datasource": { "uid": "eventhorizon", "type": "grafana-postgresql-datasource" },
+      "gridPos": { "x": 0, "y": 11, "w": 12, "h": 8 },
+      "targets": [{
+        "refId": "A",
+        "rawSql": "SELECT city, station_code, target_date, source_name, tmax_f, tmin_f, cloud_cover_pct, pop_pct, wind_speed_mph, forecast_run_time AS forecast_time_utc, ROUND(EXTRACT(EPOCH FROM (NOW() - forecast_run_time)) / 60) AS mins_ago FROM weather_silver_forecast_conformed WHERE target_date BETWEEN CURRENT_DATE AND CURRENT_DATE + 2 AND is_latest_run = TRUE ORDER BY target_date, station_code, source_name",
+        "format": "table"
+      }]
+    },
+    {
+      "id": 4,
+      "type": "table",
+      "title": "Live Kalshi Market Prices (Q3)",
+      "datasource": { "uid": "eventhorizon", "type": "grafana-postgresql-datasource" },
+      "gridPos": { "x": 12, "y": 11, "w": 12, "h": 8 },
+      "targets": [{
+        "refId": "A",
+        "rawSql": "SELECT city, station_code, contract_side, bucket_label, market_ticker, target_date, ROUND(implied_prob * 100, 1) AS implied_prob_pct, yes_bid, yes_ask, yes_mid, volume, market_liquidity_flag, ROUND(EXTRACT(EPOCH FROM (NOW() - snapshot_time)) / 60) AS mins_ago FROM weather_silver_market_conformed WHERE is_latest_snapshot = TRUE AND target_date BETWEEN CURRENT_DATE AND CURRENT_DATE + 1 ORDER BY target_date, station_code, contract_side, bucket_floor",
+        "format": "table"
+      }]
+    },
+    {
+      "id": 5,
+      "type": "barchart",
+      "title": "Forecast Accuracy — NWS Bias by City (Q4, last 30 days)",
+      "datasource": { "uid": "eventhorizon", "type": "grafana-postgresql-datasource" },
+      "gridPos": { "x": 0, "y": 19, "w": 12, "h": 8 },
+      "options": { "xField": "station_code", "stacking": "none", "legend": { "displayMode": "list" } },
+      "targets": [{
+        "refId": "A",
+        "rawSql": "SELECT city, station_code, feature_name, source_name, COUNT(*) AS sample_size, ROUND(AVG(forecast_error_f), 2) AS avg_bias_f, ROUND(AVG(ABS(forecast_error_f)), 2) AS mae_f FROM weather_silver_forecast_error WHERE target_date > CURRENT_DATE - 30 GROUP BY city, station_code, feature_name, source_name ORDER BY station_code, feature_name",
+        "format": "table"
+      }]
+    },
+    {
+      "id": 6,
+      "type": "table",
+      "title": "Calibration Progress (Q5) — Days to go-live",
+      "datasource": { "uid": "eventhorizon", "type": "grafana-postgresql-datasource" },
+      "gridPos": { "x": 12, "y": 19, "w": 12, "h": 8 },
+      "fieldConfig": {
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "calibration_status" }, "properties": [{ "id": "custom.width", "value": 200 }, { "id": "custom.displayMode", "value": "color-background" }] }
+        ]
+      },
+      "targets": [{
+        "refId": "A",
+        "rawSql": "SELECT sfc.station_code, sfc.city, COUNT(DISTINCT sfc.target_date) AS forecast_days, COUNT(DISTINCT sa.target_date) AS settled_days, COUNT(DISTINCT sfe.target_date) AS error_pairs, CASE WHEN COUNT(DISTINCT sfe.target_date) >= 30 THEN 'READY TO CALIBRATE' ELSE CONCAT(CAST(30 - COUNT(DISTINCT sfe.target_date) AS TEXT), ' days remaining') END AS calibration_status FROM weather_silver_forecast_conformed sfc LEFT JOIN weather_silver_actuals_conformed sa ON sa.station_code = sfc.station_code AND sa.target_date = sfc.target_date LEFT JOIN weather_silver_forecast_error sfe ON sfe.station_code = sfc.station_code AND sfe.target_date = sfc.target_date WHERE sfc.is_latest_run = TRUE AND sfc.source_name = 'nws' GROUP BY sfc.station_code, sfc.city ORDER BY sfc.station_code",
+        "format": "table"
+      }]
+    },
+    {
+      "id": 7,
+      "type": "table",
+      "title": "Data Freshness (Q6) — Source ingest timestamps",
+      "datasource": { "uid": "eventhorizon", "type": "grafana-postgresql-datasource" },
+      "gridPos": { "x": 0, "y": 27, "w": 12, "h": 8 },
+      "fieldConfig": {
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "mins_ago" }, "properties": [{ "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 60 }, { "color": "red", "value": 120 }] } }, { "id": "custom.displayMode", "value": "color-background" }] }
+        ]
+      },
+      "targets": [{
+        "refId": "A",
+        "rawSql": "SELECT source_label, station_code, MAX(last_update) AS retrieved_time_utc, ROUND(EXTRACT(EPOCH FROM (NOW() - MAX(last_update))) / 60) AS mins_ago FROM (SELECT 'NWS Forecast' AS source_label, station_code, MAX(retrieved_at) AS last_update FROM weather_bronze_nws_forecast_snapshots GROUP BY station_code UNION ALL SELECT 'Open-Meteo GFS', station_code, MAX(retrieved_at) FROM weather_bronze_openmeteo_forecast_snapshots WHERE model = 'gfs_seamless' GROUP BY station_code UNION ALL SELECT 'Kalshi Prices', station_code, MAX(retrieved_at) FROM weather_bronze_kalshi_market_snapshots GROUP BY station_code UNION ALL SELECT 'NWS Actuals', station_code, MAX(retrieved_at) FROM weather_bronze_nws_actuals GROUP BY station_code) t GROUP BY source_label, station_code ORDER BY source_label, station_code",
+        "format": "table"
+      }]
+    },
+    {
+      "id": 8,
+      "type": "table",
+      "title": "Kalshi Positions & P&L (Q7)",
+      "datasource": { "uid": "eventhorizon", "type": "grafana-postgresql-datasource" },
+      "gridPos": { "x": 12, "y": 27, "w": 12, "h": 8 },
+      "fieldConfig": {
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "unrealized_pnl_usd" }, "properties": [{ "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 0 }] } }, { "id": "custom.displayMode", "value": "color-background" }] }
+        ]
+      },
+      "targets": [{
+        "refId": "A",
+        "rawSql": "SELECT contract_ticker, contract_title, side, contracts AS num_contracts, ROUND(avg_price::numeric, 4) AS avg_price, cost_usd, market_value_usd, unrealized_pnl_usd, payout_if_right_usd, ROUND((unrealized_pnl_usd / NULLIF(cost_usd, 0)) * 100, 1) AS return_pct, ROUND(EXTRACT(EPOCH FROM (NOW() - captured_at)) / 60) AS mins_ago FROM kalshi_positions ORDER BY captured_at DESC",
+        "format": "table"
+      }]
+    },
+    {
+      "id": 9,
+      "type": "row",
+      "title": "PRE-TRADE CHECKLIST",
+      "collapsed": false,
+      "gridPos": { "x": 0, "y": 35, "w": 24, "h": 1 }
+    },
+    {
+      "id": 10,
+      "type": "table",
+      "title": "Pre-Trade Liquidity Scanner (Q18) — Run FIRST before trading",
+      "description": "Liquidity score 0-100. >70 = safe, 40-70 = careful, <40 = avoid.",
+      "datasource": { "uid": "eventhorizon", "type": "grafana-postgresql-datasource" },
+      "gridPos": { "x": 0, "y": 36, "w": 24, "h": 10 },
+      "options": { "sortBy": [{ "displayName": "liquidity_score", "desc": true }] },
+      "fieldConfig": {
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "liquidity_score" }, "properties": [{ "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "yellow", "value": 40 }, { "color": "green", "value": 70 }] } }, { "id": "custom.displayMode", "value": "color-background" }] },
+          { "matcher": { "id": "byName", "options": "liquidity_verdict" }, "properties": [{ "id": "custom.width", "value": 300 }] }
+        ]
+      },
+      "targets": [{
+        "refId": "A",
+        "rawSql": "WITH market_latest AS (SELECT DISTINCT ON (market_ticker) market_ticker, city, contract_side, bucket_floor, bucket_cap, yes_bid, yes_ask, (yes_bid + yes_ask) / 2.0 AS yes_mid, yes_ask - yes_bid AS spread, volume, open_interest, market_status, retrieved_at FROM weather_bronze_kalshi_market_snapshots WHERE market_status = 'active' ORDER BY market_ticker, retrieved_at DESC) SELECT city, contract_side, bucket_floor, bucket_cap, ROUND(yes_bid * 100, 1) AS bid_cents, ROUND(yes_ask * 100, 1) AS ask_cents, ROUND(yes_mid * 100, 1) AS mid_cents, ROUND(spread * 100, 1) AS spread_cents, ROUND(volume, 0) AS volume_contracts, ROUND(open_interest, 0) AS open_interest_contracts, ROUND(LEAST(open_interest * yes_mid * 0.10, volume * yes_mid * 0.05), 2) AS max_safe_position_dollars, ROUND((CASE WHEN spread > 0.20 THEN 0 WHEN spread > 0.10 THEN 10 WHEN spread > 0.05 THEN 25 WHEN spread > 0.02 THEN 35 ELSE 40 END + CASE WHEN volume * yes_mid < 50 THEN 0 WHEN volume * yes_mid < 200 THEN 10 WHEN volume * yes_mid < 1000 THEN 20 WHEN volume * yes_mid < 5000 THEN 25 ELSE 30 END + CASE WHEN open_interest < 10 THEN 0 WHEN open_interest < 50 THEN 10 WHEN open_interest < 500 THEN 20 WHEN open_interest < 2000 THEN 25 ELSE 30 END), 0) AS liquidity_score, CASE WHEN spread > 0.20 OR open_interest < 10 OR volume * yes_mid < 50 THEN 'DO NOT TRADE' WHEN spread > 0.10 OR volume * yes_mid < 200 OR open_interest < 50 THEN 'TRADE WITH CAUTION - Reduce size 50%' WHEN spread > 0.05 OR volume * yes_mid < 1000 THEN 'TRADE CAREFULLY - Reduce size 25%' ELSE 'CLEAR TO TRADE - Full size OK' END AS liquidity_verdict FROM market_latest WHERE yes_mid > 0 ORDER BY liquidity_score DESC, city, contract_side, bucket_floor",
+        "format": "table"
+      }]
+    },
+    {
+      "id": 11,
+      "type": "table",
+      "title": "Kelly Sizing — Market Only (Q16)",
+      "datasource": { "uid": "eventhorizon", "type": "grafana-postgresql-datasource" },
+      "gridPos": { "x": 0, "y": 46, "w": 12, "h": 10 },
+      "targets": [{
+        "refId": "A",
+        "rawSql": "WITH market_latest AS (SELECT DISTINCT ON (market_ticker) market_ticker, city, contract_side, bucket_floor, bucket_cap, yes_bid, yes_ask, (yes_bid + yes_ask) / 2.0 AS yes_mid, yes_ask - yes_bid AS spread, volume, open_interest, market_status, retrieved_at FROM weather_bronze_kalshi_market_snapshots WHERE market_status = 'active' ORDER BY market_ticker, retrieved_at DESC), edge_data AS (SELECT g.city, g.station_code, g.target_date, g.contract_side, g.bucket_floor, g.bucket_cap, g.market_implied_prob, g.market_yes_mid, g.calibrated_prob, g.edge, g.recommended_action FROM weather_gold_daily_edge_sheet g WHERE g.target_date >= CURRENT_DATE AND g.is_active = true) SELECT e.city, e.station_code, e.target_date, e.contract_side, e.bucket_floor, e.bucket_cap, ROUND(m.yes_bid * 100, 1) AS bid_cents, ROUND(m.yes_ask * 100, 1) AS ask_cents, ROUND(m.yes_mid * 100, 1) AS mid_cents, ROUND(e.market_implied_prob * 100, 1) AS market_prob_pct, ROUND(m.spread * 100, 1) AS spread_cents, ROUND(m.volume, 0) AS daily_volume_contracts, ROUND(m.open_interest, 0) AS open_interest_contracts, ROUND(LEAST(GREATEST(0, (e.market_implied_prob * ((1.0 - m.yes_mid) / NULLIF(m.yes_mid, 0)) - (1 - e.market_implied_prob)) / NULLIF((1.0 - m.yes_mid) / NULLIF(m.yes_mid, 0), 0) * 0.5 * 14), LEAST(m.open_interest * m.yes_mid * 0.10, m.volume * m.yes_mid * 0.05)) * CASE WHEN m.spread > 0.20 THEN 0.00 WHEN m.spread > 0.10 THEN 0.50 WHEN m.spread > 0.05 THEN 0.75 ELSE 1.00 END, 2) AS final_stake_14, CASE WHEN m.spread > 0.20 THEN 'NO TRADE - Spread wide' WHEN m.open_interest < 10 THEN 'NO TRADE - Illiquid' WHEN m.volume * m.yes_mid < 50 THEN 'NO TRADE - No volume' ELSE 'TRADE OK' END AS trade_signal FROM edge_data e LEFT JOIN market_latest m ON e.city = m.city AND e.contract_side = m.contract_side AND e.bucket_floor = m.bucket_floor AND e.bucket_cap = m.bucket_cap WHERE e.market_implied_prob IS NOT NULL AND m.yes_mid IS NOT NULL AND m.yes_mid > 0 ORDER BY e.market_implied_prob DESC, e.target_date, e.city",
+        "format": "table"
+      }]
+    },
+    {
+      "id": 12,
+      "type": "table",
+      "title": "Kelly Sizing — BHN Edge (Q17) — PRIMARY BOT SIGNAL",
+      "description": "kelly_signal = BET = place order. Requires calibrated_prob. Shows PENDING until calibration backfill completes.",
+      "datasource": { "uid": "eventhorizon", "type": "grafana-postgresql-datasource" },
+      "gridPos": { "x": 12, "y": 46, "w": 12, "h": 10 },
+      "fieldConfig": {
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "kelly_signal" }, "properties": [{ "id": "custom.width", "value": 320 }] }
+        ]
+      },
+      "targets": [{
+        "refId": "A",
+        "rawSql": "WITH market_latest AS (SELECT DISTINCT ON (market_ticker) market_ticker, city, contract_side, bucket_floor, bucket_cap, yes_bid, yes_ask, (yes_bid + yes_ask) / 2.0 AS yes_mid, yes_ask - yes_bid AS spread, volume, open_interest, market_status, retrieved_at FROM weather_bronze_kalshi_market_snapshots WHERE market_status = 'active' ORDER BY market_ticker, retrieved_at DESC) SELECT g.city, g.station_code, g.target_date, g.contract_side, g.bucket_floor, g.bucket_cap, ROUND(m.yes_mid * 100, 1) AS mid_cents, ROUND(g.market_implied_prob * 100, 1) AS market_prob_pct, ROUND(g.calibrated_prob * 100, 1) AS bhn_prob_pct, ROUND((g.calibrated_prob - g.market_implied_prob) * 100, 1) AS edge_pct, CASE WHEN (g.calibrated_prob - g.market_implied_prob) >= 0.20 THEN 'STRONG EDGE >20%' WHEN (g.calibrated_prob - g.market_implied_prob) >= 0.10 THEN 'GOOD EDGE 10-20%' WHEN (g.calibrated_prob - g.market_implied_prob) >= 0.05 THEN 'MARGINAL EDGE 5-10%' WHEN (g.calibrated_prob - g.market_implied_prob) >= 0.00 THEN 'NO EDGE' ELSE 'NEGATIVE EDGE' END AS edge_classification, ROUND(LEAST(GREATEST(0, (g.calibrated_prob * ((1.0 - m.yes_mid) / NULLIF(m.yes_mid, 0)) - (1 - g.calibrated_prob)) / NULLIF((1.0 - m.yes_mid) / NULLIF(m.yes_mid, 0), 0) * 0.5 * 14), LEAST(m.open_interest * m.yes_mid * 0.10, m.volume * m.yes_mid * 0.05)) * CASE WHEN m.spread > 0.20 THEN 0.00 WHEN m.spread > 0.10 THEN 0.50 WHEN m.spread > 0.05 THEN 0.75 ELSE 1.00 END, 2) AS final_stake_14, CASE WHEN m.spread > 0.20 THEN 'NO TRADE - Spread wide' WHEN m.open_interest < 10 THEN 'NO TRADE - Illiquid' WHEN m.volume * m.yes_mid < 50 THEN 'NO TRADE - No volume' WHEN g.calibrated_prob IS NULL THEN 'PENDING - No calibration data yet' WHEN (g.calibrated_prob - g.market_implied_prob) < 0 THEN 'NO TRADE - Negative edge' WHEN (g.calibrated_prob - g.market_implied_prob) < 0.05 THEN 'SKIP - Edge too small (<5%)' WHEN (g.calibrated_prob - g.market_implied_prob) >= 0.20 THEN 'STRONG BET - Max size' WHEN (g.calibrated_prob - g.market_implied_prob) >= 0.10 THEN 'BET - Full size' ELSE 'MARGINAL - Half size' END AS kelly_signal FROM weather_gold_daily_edge_sheet g LEFT JOIN market_latest m ON g.city = m.city AND g.contract_side = m.contract_side AND g.bucket_floor = m.bucket_floor AND g.bucket_cap = m.bucket_cap WHERE g.target_date >= CURRENT_DATE AND g.is_active = true AND g.calibrated_prob IS NOT NULL AND m.yes_mid IS NOT NULL AND m.yes_mid > 0 ORDER BY (g.calibrated_prob - g.market_implied_prob) DESC, g.target_date, g.city",
+        "format": "table"
+      }]
+    },
+    {
+      "id": 13,
+      "type": "row",
+      "title": "FORMULA / MODELS",
+      "collapsed": false,
+      "gridPos": { "x": 0, "y": 56, "w": 24, "h": 1 }
+    },
+    {
+      "id": 14,
+      "type": "stat",
+      "title": "BHN Overall Scorecard (Q19)",
+      "description": "Win rate, P&L, and BHN vs market comparison. Populates after settlement reconciler runs nightly at 15:00 UTC.",
+      "datasource": { "uid": "eventhorizon", "type": "grafana-postgresql-datasource" },
+      "gridPos": { "x": 0, "y": 57, "w": 24, "h": 6 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "orientation": "horizontal",
+        "textMode": "value_and_name",
+        "colorMode": "background"
+      },
+      "fieldConfig": {
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "bhn_win_rate_pct" }, "properties": [{ "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "yellow", "value": 50 }, { "color": "green", "value": 60 }] } }] },
+          { "matcher": { "id": "byName", "options": "total_pnl" }, "properties": [{ "id": "unit", "value": "currencyUSD" }, { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 0 }] } }] }
+        ]
+      },
+      "targets": [{
+        "refId": "A",
+        "rawSql": "SELECT COUNT(*) AS total_recommendations, COUNT(*) FILTER (WHERE bhn_position_taken = true) AS trades_placed, ROUND(COUNT(*) FILTER (WHERE bhn_was_correct = true)::numeric / NULLIF(COUNT(*), 0) * 100, 1) AS bhn_win_rate_pct, ROUND(COUNT(*) FILTER (WHERE market_was_correct = true)::numeric / NULLIF(COUNT(*), 0) * 100, 1) AS market_win_rate_pct, ROUND((COUNT(*) FILTER (WHERE bhn_was_correct = true)::numeric / NULLIF(COUNT(*), 0) - COUNT(*) FILTER (WHERE market_was_correct = true)::numeric / NULLIF(COUNT(*), 0)) * 100, 1) AS bhn_vs_market_edge_pct, ROUND(SUM(pnl_dollar), 2) AS total_pnl, COUNT(DISTINCT DATE(resolved_at)) AS trading_days FROM weather_model_accuracy WHERE actual_outcome IS NOT NULL",
+        "format": "table"
+      }]
+    },
+    {
+      "id": 15,
+      "type": "barchart",
+      "title": "Signal Performance by Edge Tier (Q20)",
+      "description": "BHN win rate breakdown by edge tier. Strong edge (>20%) should win 70%+.",
+      "datasource": { "uid": "eventhorizon", "type": "grafana-postgresql-datasource" },
+      "gridPos": { "x": 0, "y": 63, "w": 12, "h": 10 },
+      "options": {
+        "xField": "edge_tier",
+        "legend": { "displayMode": "list", "placement": "bottom" }
+      },
+      "targets": [{
+        "refId": "A",
+        "rawSql": "SELECT CASE WHEN edge >= 0.20 THEN 'Strong >20%' WHEN edge >= 0.10 THEN 'Good 10-20%' WHEN edge >= 0.05 THEN 'Marginal 5-10%' WHEN edge >= 0.00 THEN 'No Edge 0-5%' WHEN edge >= -0.10 THEN 'Negative -10-0%' ELSE 'Strong Neg <-10%' END AS edge_tier, COUNT(*) AS total_signals, ROUND(COUNT(*) FILTER (WHERE bhn_was_correct = true)::numeric / NULLIF(COUNT(*), 0) * 100, 1) AS bhn_win_rate_pct, ROUND(COUNT(*) FILTER (WHERE market_was_correct = true)::numeric / NULLIF(COUNT(*), 0) * 100, 1) AS market_win_rate_pct, ROUND(SUM(pnl_dollar), 2) AS total_pnl, CASE WHEN COUNT(*) FILTER (WHERE bhn_was_correct = true)::numeric / NULLIF(COUNT(*), 0) >= 0.70 THEN 'Model Working' WHEN COUNT(*) FILTER (WHERE bhn_was_correct = true)::numeric / NULLIF(COUNT(*), 0) >= 0.55 THEN 'Model Marginal' WHEN COUNT(*) < 10 THEN 'Insufficient Data' ELSE 'Underperforming' END AS model_verdict FROM weather_model_accuracy WHERE actual_outcome IS NOT NULL GROUP BY edge_tier ORDER BY CASE edge_tier WHEN 'Strong >20%' THEN 1 WHEN 'Good 10-20%' THEN 2 WHEN 'Marginal 5-10%' THEN 3 WHEN 'No Edge 0-5%' THEN 4 WHEN 'Negative -10-0%' THEN 5 ELSE 6 END",
+        "format": "table"
+      }]
+    },
+    {
+      "id": 16,
+      "type": "table",
+      "title": "Recent Recommendations + Results (Q21) — Last 100 trades",
+      "datasource": { "uid": "eventhorizon", "type": "grafana-postgresql-datasource" },
+      "gridPos": { "x": 12, "y": 63, "w": 12, "h": 10 },
+      "options": { "sortBy": [{ "displayName": "resolved_at", "desc": true }] },
+      "targets": [{
+        "refId": "A",
+        "rawSql": "SELECT contract_id AS contract_ticker, contract_title, region AS city, variable, ROUND(bhn_predicted_probability * 100, 1) AS bhn_prob_pct, ROUND(market_implied_probability * 100, 1) AS market_prob_pct, ROUND(edge * 100, 1) AS edge_pct, CASE WHEN edge >= 0.20 THEN 'Strong' WHEN edge >= 0.10 THEN 'Good' WHEN edge >= 0.05 THEN 'Marginal' WHEN edge >= 0.00 THEN 'None' ELSE 'Negative' END AS edge_tier, bhn_position_taken, actual_outcome, CASE WHEN bhn_was_correct = true THEN 'CORRECT' WHEN bhn_was_correct = false THEN 'WRONG' ELSE 'PENDING' END AS result, ROUND(pnl_dollar, 2) AS pnl_dollar, resolved_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Los_Angeles' AS resolved_pt FROM weather_model_accuracy WHERE actual_outcome IS NOT NULL ORDER BY resolved_at DESC LIMIT 100",
+        "format": "table"
+      }]
+    },
+    {
+      "id": 17,
+      "type": "table",
+      "title": "Performance by City (Q22)",
+      "datasource": { "uid": "eventhorizon", "type": "grafana-postgresql-datasource" },
+      "gridPos": { "x": 0, "y": 73, "w": 24, "h": 8 },
+      "options": { "sortBy": [{ "displayName": "total_pnl", "desc": true }] },
+      "fieldConfig": {
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "bhn_win_rate_pct" }, "properties": [{ "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "yellow", "value": 50 }, { "color": "green", "value": 60 }] } }, { "id": "custom.displayMode", "value": "color-background" }] },
+          { "matcher": { "id": "byName", "options": "total_pnl" }, "properties": [{ "id": "unit", "value": "currencyUSD" }, { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 0 }] } }, { "id": "custom.displayMode", "value": "color-background" }] }
+        ]
+      },
+      "targets": [{
+        "refId": "A",
+        "rawSql": "SELECT region AS city, COUNT(*) AS total_signals, COUNT(*) FILTER (WHERE bhn_position_taken = true) AS trades_placed, ROUND(COUNT(*) FILTER (WHERE bhn_was_correct = true)::numeric / NULLIF(COUNT(*), 0) * 100, 1) AS bhn_win_rate_pct, ROUND(COUNT(*) FILTER (WHERE market_was_correct = true)::numeric / NULLIF(COUNT(*), 0) * 100, 1) AS market_win_rate_pct, ROUND((COUNT(*) FILTER (WHERE bhn_was_correct = true)::numeric / NULLIF(COUNT(*), 0) - COUNT(*) FILTER (WHERE market_was_correct = true)::numeric / NULLIF(COUNT(*), 0)) * 100, 1) AS bhn_advantage_pct, ROUND(AVG(edge * 100), 1) AS avg_edge_pct, ROUND(SUM(pnl_dollar), 2) AS total_pnl, ROUND(AVG(pnl_dollar), 2) AS avg_pnl FROM weather_model_accuracy WHERE actual_outcome IS NOT NULL GROUP BY region ORDER BY total_pnl DESC",
+        "format": "table"
+      }]
+    }
+  ]
+}

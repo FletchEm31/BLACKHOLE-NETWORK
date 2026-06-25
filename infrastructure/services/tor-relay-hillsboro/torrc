@@ -37,6 +37,7 @@ Log notice stdout
 
 ## ─── Hardening ─────────────────────────────────────────────────────────
 AssumeReachable 0
+MaxMemInQueues 256 MB
 
 # ControlSocket for the BHN monitoring collector (bhn-tor-control-stats.py).
 ControlSocket /var/lib/tor/control

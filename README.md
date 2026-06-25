@@ -149,6 +149,30 @@ Both volumes use LUKS2 with auto-unlock keyfiles, XFS filesystem, and persistent
 
 **Authority:** the live DB is ground truth; canonical DDL lives in [`sql/`](sql/). The exhaustive table-by-table reference is in the data flow blueprint at [`infrastructure/docs/bhn-network-data-flow.md`](infrastructure/docs/bhn-network-data-flow.md#schema-reference).
 
+## Software stack
+
+Services running across BHN nodes (all access restricted to WireGuard tunnel unless noted):
+
+| Service | Node | Address | Purpose |
+|---|---|---|---|
+| WireGuard | LA (hub) | `51820/udp` (public) | Encrypted mesh VPN |
+| AdGuard Home | LA | `10.8.0.1:3001` | Network-wide ad/tracker blocking + DNS filtering |
+| dnscrypt-proxy | LA | `127.0.0.1:5353` | Encrypted DoH transport (Cloudflare + Mullvad fallback) |
+| Unbound | LA | `127.0.0.1:5354` | Fully recursive DNS resolver (queries root servers directly) |
+| PostgreSQL 14 | LA | `10.8.0.1:5432` | Primary database (`eventhorizon`, 146 tables) |
+| n8n | LA | `10.8.0.1:5678` | Workflow automation + HORIZON AI orchestration |
+| Redis | LA | `10.8.0.1:6379` | HORIZON short-term session cache |
+| Grafana | LA | `10.8.0.1:3000` | Data dashboards (Docker, host network) |
+| Netdata | All nodes | `10.8.0.x:19999` | Real-time system monitoring |
+| Wallos | LA | `10.8.0.1:8090` | Subscription / cost tracking |
+| tinyproxy | Hillsboro | `10.8.0.6:8888` | LA outbound API egress proxy (hides LA IP) |
+| Tor relay (BHNHeliosUS3) | Hillsboro | `5.78.94.237:9001` (public) | Non-exit middle relay |
+| Shadowsocks | Hillsboro | public | DPI-resistant traffic obfuscation |
+| fail2ban | All nodes | — | Brute force / intrusion blocking |
+| CrowdSec | LA, Hillsboro | — | Collaborative threat intelligence |
+| Suricata | LA | — | IDS/IPS deep packet inspection |
+| LUKS2 | LA | — | Storage encryption (NVMe hot + HDD cold) |
+
 ## Security stack
 
 Each node runs:

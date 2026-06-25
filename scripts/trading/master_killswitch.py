@@ -10,14 +10,14 @@ Single-button "stop everything now" for the trading framework. Can be invoked:
 4. From HORIZON via SSH command (operator-confirmed only)
 
 What "halt" does:
-- Flips trading_strategies.halted=TRUE for every strategy + the 'system' row
+- Sets trading_strategies.status='halted' for every strategy + the 'system' row
 - Cancels every open Alpaca order (across all strategies)
 - Flattens every open position (market sell, unless --no-close-positions)
 - Writes circuit_breaker_log row (SYSTEM_HALT type) with trigger context
 - Sends SMS to operator via Twilio (whitelisted operator number only)
 - Updates reconciliation_heartbeat with last_halt_at timestamp
 
-Halt is sticky — strategies refuse to run while system row halted=true. Reset
+Halt is sticky — strategies refuse to run while system row status='halted'. Reset
 requires explicit operator action: `python3 master_killswitch.py reset --confirm`
 or direct PG update. The reset path also logs to circuit_breaker_log so the
 audit trail is complete.
@@ -247,9 +247,9 @@ def get_halt_state() -> dict:
         open_orders = -1  # unknown
 
     return {
-        "halted": bool(system_row["halted"]) if system_row else False,
-        "halt_reason": (system_row.get("halt_reason") if system_row else None),
-        "halt_at": (system_row.get("halted_at") if system_row else None),
+        "halted": (system_row["status"] == "halted") if system_row else False,
+        "halt_reason": (system_row.get("last_status_change_reason") if system_row else None),
+        "halt_at": (system_row.get("last_status_change_at") if system_row else None),
         "system_row": dict(system_row) if system_row else None,
         "open_positions": open_pos,
         "open_orders": open_orders,
@@ -264,19 +264,21 @@ def record_killswitch_event(reason: str, source: str, action: str,
             cur.execute(
                 """
                 INSERT INTO circuit_breaker_log
-                    (breaker_type, strategy_id, action, reason, triggered_by,
-                     metadata)
-                VALUES (%s, %s, %s, %s, %s, %s::jsonb)
+                    (event_class, event_type, severity, strategy_id,
+                     affects_scope, reason, details, halt_triggered)
+                VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s)
                 RETURNING id
                 """,
-                (tc.BreakerType.SYSTEM_HALT.value, "system", action, reason,
-                 source,
+                ('manual_halt', action, 'halted', 'system',
+                 'system', reason,
                  tc.json_safe({
+                     "source": source,
                      "cancelled_orders": cancelled_orders,
                      "flattened_positions": flattened_positions,
                      "failed_count": failed_count,
                      "triggered_at": datetime.now(timezone.utc).isoformat(),
-                 })),
+                 }),
+                 True),
             )
             return cur.fetchone()[0]
 
@@ -312,27 +314,10 @@ def halt(reason: str, source: str = "manual",
             cur.execute(
                 """
                 UPDATE trading_strategies
-                SET halted = TRUE,
-                    halt_reason = %s,
-                    halted_at = COALESCE(halted_at, NOW())
-                WHERE halted = FALSE OR halted IS NULL
-                """,
-                (reason,),
-            )
-            cur.execute(
-                """
-                UPDATE trading_strategies
-                SET halt_reason = %s,
-                    halted_at = COALESCE(halted_at, NOW())
-                WHERE id = 'system'
-                """,
-                (reason,),
-            )
-            cur.execute(
-                """
-                UPDATE trading_strategies
-                SET halted = TRUE, halt_reason = %s, halted_at = NOW()
-                WHERE id = 'system'
+                SET status = 'halted',
+                    last_status_change_reason = %s,
+                    last_status_change_at = NOW()
+                WHERE status != 'halted'
                 """,
                 (reason,),
             )
@@ -436,10 +421,12 @@ def reset(confirmation_token: bool = False, operator_note: str = "") -> dict:
             cur.execute(
                 """
                 UPDATE trading_strategies
-                SET halted = FALSE,
-                    halt_reason = NULL,
-                    halted_at = NULL
-                """
+                SET status = 'active',
+                    last_status_change_reason = %s,
+                    last_status_change_at = NOW()
+                WHERE status = 'halted'
+                """,
+                (f"operator reset: {operator_note}" if operator_note else "operator reset",),
             )
 
     record_killswitch_event(
@@ -478,13 +465,13 @@ def status() -> dict:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(
                 """
-                SELECT id, name, halted, capital_allocation, last_run_at
+                SELECT id, name, status, capital_allocation, last_run_at
                 FROM trading_strategies WHERE id <> 'system'
                 ORDER BY id
                 """
             )
             for r in cur.fetchall():
-                marker = "HALTED" if r["halted"] else "ACTIVE"
+                marker = r["status"].upper()
                 last = r["last_run_at"].isoformat() if r["last_run_at"] else "(never)"
                 print(f"  {r['id']:25s} {marker:7s} "
                       f"${r['capital_allocation']:>8} last_run={last}")

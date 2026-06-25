@@ -335,9 +335,9 @@ def fetch_halt_incidents(start_utc: datetime, end_utc: datetime) -> list[dict]:
 def fetch_current_halt_state() -> bool:
     with tc.get_pg_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT halted FROM trading_strategies WHERE id='system'")
+            cur.execute("SELECT status FROM trading_strategies WHERE id='system'")
             row = cur.fetchone()
-            return bool(row[0]) if row else False
+            return row[0] == 'halted' if row else False
 
 
 # ─────────────────────────────────────────────────────────────────────────
