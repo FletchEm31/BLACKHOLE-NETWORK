@@ -1,4 +1,4 @@
-{
+﻿{
   "annotations": {
     "list": [
       {
@@ -37,7 +37,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -90,7 +90,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT value FROM energy_prices WHERE series_id = 'PET.RWTC.D' AND value IS NOT NULL ORDER BY period_start DESC LIMIT 1;",
@@ -103,7 +103,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -156,7 +156,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT value FROM energy_prices WHERE series_id = 'PET.RBRTE.D' AND value IS NOT NULL ORDER BY period_start DESC LIMIT 1;",
@@ -169,7 +169,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -222,7 +222,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT value FROM energy_prices WHERE series_id = 'NG.RNGWHHD.D' AND value IS NOT NULL ORDER BY period_start DESC LIMIT 1;",
@@ -235,7 +235,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -288,7 +288,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT ROUND((b.value - w.value)::numeric, 2) AS brent_wti_spread FROM (SELECT value FROM energy_prices WHERE series_id = 'PET.RBRTE.D' AND value IS NOT NULL ORDER BY period_start DESC LIMIT 1) b, (SELECT value FROM energy_prices WHERE series_id = 'PET.RWTC.D' AND value IS NOT NULL ORDER BY period_start DESC LIMIT 1) w;",
@@ -301,7 +301,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -341,7 +341,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT period_start::timestamptz AS time, series_title, value FROM energy_prices WHERE series_id IN ('PET.RWTC.D','PET.RBRTE.D') AND period_start >= NOW() - INTERVAL '1 year' ORDER BY period_start ASC;",
@@ -355,7 +355,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -395,7 +395,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT period_start::timestamptz AS time, series_title, value FROM energy_prices WHERE series_id = 'NG.RNGWHHD.D' AND period_start >= NOW() - INTERVAL '1 year' ORDER BY period_start ASC;",
@@ -421,7 +421,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -461,7 +461,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT date::timestamptz AS time, ticker, close FROM market_daily WHERE ticker IN ('GLD','SLV') AND date >= NOW() - INTERVAL '90 days' ORDER BY date ASC;",
@@ -475,7 +475,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -515,7 +515,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT date::timestamptz AS time, ticker, close FROM market_daily WHERE ticker IN ('USO','UNG','ERX') AND date >= NOW() - INTERVAL '90 days' ORDER BY date ASC;",
@@ -541,7 +541,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -586,7 +586,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT value FROM agriculture_prices WHERE commodity = 'CORN' AND units = '$ / BU' AND value IS NOT NULL ORDER BY period_start DESC LIMIT 1;",
@@ -599,7 +599,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -644,7 +644,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT value FROM agriculture_prices WHERE commodity = 'SOYBEANS' AND units = '$ / BU' AND value IS NOT NULL ORDER BY period_start DESC LIMIT 1;",
@@ -657,7 +657,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -702,7 +702,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT value FROM agriculture_prices WHERE commodity = 'WHEAT' AND units = '$ / BU' AND value IS NOT NULL ORDER BY period_start DESC LIMIT 1;",
@@ -715,7 +715,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -760,7 +760,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT value FROM agriculture_prices WHERE commodity = 'COTTON' AND units = '$ / LB' AND value IS NOT NULL ORDER BY period_start DESC LIMIT 1;",
@@ -773,7 +773,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -818,7 +818,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT value FROM agriculture_prices WHERE commodity = 'CATTLE' AND units = '$ / CWT' AND value IS NOT NULL ORDER BY period_start DESC LIMIT 1;",
@@ -831,7 +831,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -876,7 +876,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT value FROM agriculture_prices WHERE commodity = 'HOGS' AND units = '$ / CWT' AND value IS NOT NULL ORDER BY period_start DESC LIMIT 1;",
@@ -889,7 +889,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -929,7 +929,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT period_start::timestamptz AS time, commodity, value FROM agriculture_prices WHERE commodity IN ('CORN','SOYBEANS','WHEAT') AND units = '$ / BU' AND period_start >= NOW() - INTERVAL '1 year' ORDER BY period_start ASC;",
@@ -943,7 +943,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -983,7 +983,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT period_start::timestamptz AS time, commodity, value FROM agriculture_prices WHERE commodity IN ('CATTLE','HOGS') AND units = '$ / CWT' AND period_start >= NOW() - INTERVAL '1 year' ORDER BY period_start ASC;",
@@ -997,7 +997,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -1037,7 +1037,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT date::timestamptz AS time, ticker, close FROM market_daily WHERE ticker IN ('CORN','WEAT','SOYB') AND date >= NOW() - INTERVAL '90 days' ORDER BY date ASC;",
@@ -1051,7 +1051,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -1078,7 +1078,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT DISTINCT ON (commodity, units) commodity, units, value, period_start, period_label FROM agriculture_prices WHERE value IS NOT NULL ORDER BY commodity, units, period_start DESC;",
@@ -1103,7 +1103,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -1160,7 +1160,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT current_temp_f FROM weather_snapshots WHERE location_label = 'operator-home' ORDER BY fetched_at DESC LIMIT 1;",
@@ -1173,7 +1173,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -1230,7 +1230,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT today_high_f FROM weather_snapshots WHERE location_label = 'operator-home' ORDER BY fetched_at DESC LIMIT 1;",
@@ -1243,7 +1243,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -1296,7 +1296,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT today_low_f FROM weather_snapshots WHERE location_label = 'operator-home' ORDER BY fetched_at DESC LIMIT 1;",
@@ -1309,7 +1309,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -1362,7 +1362,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT precipitation_chance FROM weather_snapshots WHERE location_label = 'operator-home' ORDER BY fetched_at DESC LIMIT 1;",
@@ -1375,7 +1375,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -1428,7 +1428,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT wind_mph FROM weather_snapshots WHERE location_label = 'operator-home' ORDER BY fetched_at DESC LIMIT 1;",
@@ -1441,7 +1441,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -1494,7 +1494,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT uv_index FROM weather_snapshots WHERE location_label = 'operator-home' ORDER BY fetched_at DESC LIMIT 1;",
@@ -1507,7 +1507,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -1547,7 +1547,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT fetched_at AS time, current_temp_f, today_high_f, today_low_f FROM weather_snapshots WHERE location_label = 'operator-home' AND fetched_at >= NOW() - INTERVAL '30 days' ORDER BY fetched_at ASC;",
@@ -1561,7 +1561,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -1588,7 +1588,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT fetched_at, current_temp_f, today_high_f, today_low_f, conditions, wind_mph, humidity_pct, precipitation_chance, uv_index FROM weather_snapshots WHERE location_label = 'operator-home' ORDER BY fetched_at DESC LIMIT 10;",

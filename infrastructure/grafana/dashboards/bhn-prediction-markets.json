@@ -1,4 +1,4 @@
-{
+﻿{
   "uid": "bhn-prediction-markets",
   "title": "BHN Prediction Markets",
   "description": "Kalshi + Polymarket top markets. 10-min cadence.",
@@ -12,7 +12,7 @@
     {
       "id": 1, "type": "table", "title": "Top markets by volume (latest snapshot, both venues)",
       "gridPos": { "h": 14, "w": 24, "x": 0, "y": 0 },
-      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "eventhorizon" },
       "targets": [{ "refId": "A", "format": "table",
         "rawSql": "WITH latest AS (SELECT venue, MAX(measured_at) AS m FROM prediction_market_data GROUP BY venue) SELECT p.venue, p.market_title, p.outcome, p.price, p.volume_24h, p.liquidity FROM prediction_market_data p JOIN latest l USING (venue) WHERE p.measured_at = l.m ORDER BY p.volume_24h DESC NULLS LAST LIMIT 50" }],
       "fieldConfig": {

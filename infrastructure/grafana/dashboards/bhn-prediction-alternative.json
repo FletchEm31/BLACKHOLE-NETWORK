@@ -1,4 +1,4 @@
-{
+﻿{
   "annotations": {
     "list": [
       {
@@ -37,7 +37,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -79,7 +79,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT COUNT(DISTINCT market_id) AS active_markets FROM prediction_market_data WHERE measured_at > NOW() - INTERVAL '24 hours';",
@@ -92,7 +92,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -135,7 +135,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT ROUND(SUM(volume_24h)::numeric, 2) AS total_volume FROM prediction_market_data WHERE measured_at > NOW() - INTERVAL '24 hours';",
@@ -148,7 +148,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -191,7 +191,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT ROUND(SUM(open_interest)::numeric, 2) AS total_oi FROM prediction_market_data WHERE measured_at > NOW() - INTERVAL '24 hours';",
@@ -204,7 +204,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -246,7 +246,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT COUNT(DISTINCT venue) AS venues FROM prediction_market_data;",
@@ -259,7 +259,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -352,7 +352,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT DISTINCT ON (market_id) venue, LEFT(market_title, 80) AS market_title, outcome, price, yes_bid, yes_ask, volume_24h, open_interest, measured_at FROM prediction_market_data ORDER BY market_id, measured_at DESC, volume_24h DESC NULLS LAST LIMIT 30;",
@@ -365,7 +365,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -403,7 +403,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT measured_at AS time, market_title, price FROM prediction_market_data WHERE market_id IN (SELECT market_id FROM prediction_market_data GROUP BY market_id ORDER BY SUM(volume_24h) DESC NULLS LAST LIMIT 5) ORDER BY measured_at ASC;",
@@ -429,7 +429,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -485,7 +485,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT current_temp_f FROM weather_snapshots ORDER BY fetched_at DESC LIMIT 1;",
@@ -498,7 +498,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -554,7 +554,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT today_high_f FROM weather_snapshots ORDER BY fetched_at DESC LIMIT 1;",
@@ -567,7 +567,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -619,7 +619,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT today_low_f FROM weather_snapshots ORDER BY fetched_at DESC LIMIT 1;",
@@ -632,7 +632,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -684,7 +684,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT precipitation_chance FROM weather_snapshots ORDER BY fetched_at DESC LIMIT 1;",
@@ -697,7 +697,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -749,7 +749,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT wind_mph FROM weather_snapshots ORDER BY fetched_at DESC LIMIT 1;",
@@ -762,7 +762,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -814,7 +814,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT uv_index FROM weather_snapshots ORDER BY fetched_at DESC LIMIT 1;",
@@ -827,7 +827,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -867,7 +867,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT fetched_at AS time, current_temp_f, today_high_f, today_low_f FROM weather_snapshots WHERE fetched_at >= NOW() - INTERVAL '30 days' ORDER BY fetched_at ASC;",
@@ -881,7 +881,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -920,7 +920,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT fetched_at AS time, wind_mph, humidity_pct, precipitation_chance FROM weather_snapshots WHERE fetched_at >= NOW() - INTERVAL '30 days' ORDER BY fetched_at ASC;",
@@ -934,7 +934,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -961,7 +961,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT fetched_at, location_label, current_temp_f, today_high_f, today_low_f, conditions, wind_mph, humidity_pct, precipitation_chance, uv_index FROM weather_snapshots ORDER BY fetched_at DESC LIMIT 15;",
@@ -986,7 +986,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -1028,7 +1028,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT COUNT(*) AS total_actions FROM corporate_actions;",
@@ -1041,7 +1041,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -1083,7 +1083,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT COUNT(*) AS upcoming FROM corporate_actions WHERE ex_date BETWEEN NOW() AND NOW() + INTERVAL '30 days';",
@@ -1096,7 +1096,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -1142,7 +1142,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT symbol, action_type, ex_date, payable_date, record_date, cash_amount, split_ratio FROM corporate_actions WHERE ex_date >= NOW() - INTERVAL '30 days' ORDER BY ex_date ASC LIMIT 30;",

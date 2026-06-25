@@ -1,4 +1,4 @@
-{
+﻿{
   "uid": "bhn-node-bandwidth",
   "title": "BHN Node Bandwidth (vnstat)",
   "description": "Per-node bandwidth totals from vnstat — hourly, daily, monthly per interface. Populated by bhn-vnstat-collector.sh on each node.",
@@ -14,7 +14,7 @@
       "type": "timeseries",
       "title": "Hourly egress (tx) per node — sum over all interfaces",
       "gridPos": { "h": 9, "w": 24, "x": 0, "y": 0 },
-      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "eventhorizon" },
       "targets": [{
         "refId": "A", "format": "time_series",
         "rawSql": "SELECT period_start AS time, node_name AS metric, SUM(tx_bytes) AS tx FROM node_bandwidth_stats WHERE period_type='hour' AND $__timeFilter(period_start) GROUP BY 1, node_name ORDER BY 1"
@@ -30,7 +30,7 @@
       "type": "table",
       "title": "Current month totals per node × interface",
       "gridPos": { "h": 10, "w": 24, "x": 0, "y": 9 },
-      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "eventhorizon" },
       "targets": [{
         "refId": "A", "format": "table",
         "rawSql": "SELECT node_name, interface, rx_bytes, tx_bytes, (rx_bytes + tx_bytes) AS total_bytes FROM node_bandwidth_stats WHERE period_type='month' AND period_start = date_trunc('month', NOW()) ORDER BY total_bytes DESC"

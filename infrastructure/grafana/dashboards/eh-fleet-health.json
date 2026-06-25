@@ -1,4 +1,4 @@
-{
+﻿{
   "annotations": {
     "list": [
       {
@@ -25,7 +25,7 @@
     {
       "datasource": {
         "type": "grafana-postgresql-datasource",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -94,7 +94,7 @@
         {
           "datasource": {
             "type": "grafana-postgresql-datasource",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT  SUM(CASE WHEN last_seen >= NOW() - INTERVAL '15 minutes' THEN 1 ELSE 0 END) AS online,  SUM(CASE WHEN last_seen <  NOW() - INTERVAL '15 minutes' OR last_seen IS NULL THEN 1 ELSE 0 END) AS stale FROM nodes WHERE status NOT IN ('decommissioned')",
@@ -107,7 +107,7 @@
     {
       "datasource": {
         "type": "grafana-postgresql-datasource",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -190,7 +190,7 @@
         {
           "datasource": {
             "type": "grafana-postgresql-datasource",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT name, type, region, status, last_seen, EXTRACT(EPOCH FROM (NOW() - last_seen))/60 AS minutes_stale, public_ip, tunnel_ip FROM nodes WHERE (last_seen < NOW() - INTERVAL '15 minutes' OR last_seen IS NULL) AND status NOT IN ('decommissioned') ORDER BY last_seen NULLS FIRST",
@@ -203,7 +203,7 @@
     {
       "datasource": {
         "type": "grafana-postgresql-datasource",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -312,7 +312,7 @@
         {
           "datasource": {
             "type": "grafana-postgresql-datasource",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT id, name, type, region, status, last_seen, EXTRACT(EPOCH FROM (NOW() - last_seen))/60 AS minutes_since_heartbeat, bootstrap_version, public_ip, tunnel_ip FROM nodes ORDER BY type, region, name",

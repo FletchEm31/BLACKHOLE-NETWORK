@@ -1,4 +1,4 @@
-{
+﻿{
   "uid": "bhn-tor-relay-stats",
   "title": "BHN Tor Relay Stats",
   "description": "Per-relay accounting + uptime from tor_relay_stats. v1 covers monthly bandwidth vs AccountingMax (1500GB Frankfurt / 750GB NJ + Hillsboro), uptime, and consensus presence (fingerprint). circuits_built deferred to a follow-up that enables Tor ControlSocket.",
@@ -14,7 +14,7 @@
       "type": "table",
       "title": "Current relay state (latest sample per relay)",
       "gridPos": { "h": 8, "w": 24, "x": 0, "y": 0 },
-      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "eventhorizon" },
       "targets": [
         {
           "refId": "A",
@@ -51,7 +51,7 @@
       "type": "timeseries",
       "title": "Monthly bandwidth used per relay (GB)",
       "gridPos": { "h": 10, "w": 24, "x": 0, "y": 8 },
-      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "eventhorizon" },
       "targets": [
         {
           "refId": "A",
@@ -82,7 +82,7 @@
       "type": "timeseries",
       "title": "Relay uptime (days)",
       "gridPos": { "h": 8, "w": 24, "x": 0, "y": 18 },
-      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "eventhorizon" },
       "targets": [
         {
           "refId": "A",

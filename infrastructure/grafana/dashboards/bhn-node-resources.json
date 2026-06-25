@@ -1,4 +1,4 @@
-{
+﻿{
   "uid": "bhn-node-resources",
   "title": "BHN Node Resources",
   "description": "Per-node CPU/RAM/load/disk from bhn-resource-collector.sh (5-min cadence).",
@@ -12,7 +12,7 @@
     {
       "id": 1, "type": "timeseries", "title": "CPU% per node",
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
-      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "eventhorizon" },
       "targets": [{ "refId": "A", "format": "time_series",
         "rawSql": "SELECT measured_at AS time, node_name AS metric, cpu_pct FROM node_resource_stats WHERE $__timeFilter(measured_at) ORDER BY 1" }],
       "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "custom": { "lineWidth": 2, "fillOpacity": 5 } }, "overrides": [] }
@@ -20,7 +20,7 @@
     {
       "id": 2, "type": "timeseries", "title": "Memory used % per node",
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
-      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "eventhorizon" },
       "targets": [{ "refId": "A", "format": "time_series",
         "rawSql": "SELECT measured_at AS time, node_name AS metric, (mem_used_mb::float / NULLIF(mem_total_mb,0)) * 100 AS mem_pct FROM node_resource_stats WHERE $__timeFilter(measured_at) ORDER BY 1" }],
       "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "custom": { "lineWidth": 2, "fillOpacity": 5 } }, "overrides": [] }
@@ -28,14 +28,14 @@
     {
       "id": 3, "type": "timeseries", "title": "Load average (1m) per node",
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
-      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "eventhorizon" },
       "targets": [{ "refId": "A", "format": "time_series",
         "rawSql": "SELECT measured_at AS time, node_name AS metric, load_1m FROM node_resource_stats WHERE $__timeFilter(measured_at) ORDER BY 1" }]
     },
     {
       "id": 4, "type": "table", "title": "Disk usage (latest, per node × mount)",
       "gridPos": { "h": 10, "w": 12, "x": 12, "y": 8 },
-      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "eventhorizon" },
       "targets": [{ "refId": "A", "format": "table",
         "rawSql": "SELECT DISTINCT ON (node_name, mount_point) node_name, mount_point, filesystem, used_pct, used_kb/1024/1024 AS used_gb, total_kb/1024/1024 AS total_gb FROM node_disk_stats ORDER BY node_name, mount_point, measured_at DESC" }],
       "fieldConfig": {

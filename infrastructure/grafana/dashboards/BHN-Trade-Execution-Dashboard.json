@@ -1,4 +1,4 @@
-{
+﻿{
   "__inputs": [],
   "__requires": [
     { "type": "grafana", "id": "grafana", "name": "Grafana", "version": "10.0.0" },
@@ -26,58 +26,58 @@
     },
 
     {
-      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "postgres", "uid": "eventhorizon" },
       "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 0 }] }, "unit": "currencyUSD", "decimals": 2 } },
       "gridPos": { "h": 4, "w": 6, "x": 0, "y": 1 },
       "id": 1,
       "options": { "colorMode": "background", "graphMode": "area", "justifyMode": "center", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "value_and_name" },
       "title": "Total PnL (All Time)",
       "type": "stat",
-      "targets": [{ "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" }, "rawSql": "SELECT ROUND(COALESCE(SUM(pnl), 0)::numeric, 2) AS total_pnl FROM paper_trades;", "format": "table", "refId": "A" }]
+      "targets": [{ "datasource": { "type": "postgres", "uid": "eventhorizon" }, "rawSql": "SELECT ROUND(COALESCE(SUM(pnl), 0)::numeric, 2) AS total_pnl FROM paper_trades;", "format": "table", "refId": "A" }]
     },
 
     {
-      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "postgres", "uid": "eventhorizon" },
       "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 0 }] }, "unit": "currencyUSD", "decimals": 2 } },
       "gridPos": { "h": 4, "w": 6, "x": 6, "y": 1 },
       "id": 2,
       "options": { "colorMode": "background", "graphMode": "area", "justifyMode": "center", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "value_and_name" },
       "title": "PnL Today",
       "type": "stat",
-      "targets": [{ "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" }, "rawSql": "SELECT ROUND(COALESCE(SUM(pnl), 0)::numeric, 2) AS pnl_today FROM paper_trades WHERE filled_at >= CURRENT_DATE;", "format": "table", "refId": "A" }]
+      "targets": [{ "datasource": { "type": "postgres", "uid": "eventhorizon" }, "rawSql": "SELECT ROUND(COALESCE(SUM(pnl), 0)::numeric, 2) AS pnl_today FROM paper_trades WHERE filled_at >= CURRENT_DATE;", "format": "table", "refId": "A" }]
     },
 
     {
-      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "postgres", "uid": "eventhorizon" },
       "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }, "unit": "short" } },
       "gridPos": { "h": 4, "w": 4, "x": 12, "y": 1 },
       "id": 3,
       "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "value_and_name" },
       "title": "Total Trades",
       "type": "stat",
-      "targets": [{ "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" }, "rawSql": "SELECT COUNT(*) AS total_trades FROM paper_trades;", "format": "table", "refId": "A" }]
+      "targets": [{ "datasource": { "type": "postgres", "uid": "eventhorizon" }, "rawSql": "SELECT COUNT(*) AS total_trades FROM paper_trades;", "format": "table", "refId": "A" }]
     },
 
     {
-      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "postgres", "uid": "eventhorizon" },
       "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "yellow", "value": 40 }, { "color": "green", "value": 55 }] }, "unit": "percent", "decimals": 1, "min": 0, "max": 100 } },
       "gridPos": { "h": 4, "w": 4, "x": 16, "y": 1 },
       "id": 4,
       "options": { "minVizHeight": 50, "minVizWidth": 50, "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "showThresholdLabels": false, "showThresholdMarkers": true },
       "title": "Win Rate",
       "type": "gauge",
-      "targets": [{ "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" }, "rawSql": "SELECT ROUND((SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END)::numeric / NULLIF(COUNT(*), 0) * 100), 1) AS win_rate FROM paper_trades;", "format": "table", "refId": "A" }]
+      "targets": [{ "datasource": { "type": "postgres", "uid": "eventhorizon" }, "rawSql": "SELECT ROUND((SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END)::numeric / NULLIF(COUNT(*), 0) * 100), 1) AS win_rate FROM paper_trades;", "format": "table", "refId": "A" }]
     },
 
     {
-      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "postgres", "uid": "eventhorizon" },
       "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 0 }] }, "unit": "currencyUSD", "decimals": 2 } },
       "gridPos": { "h": 4, "w": 4, "x": 20, "y": 1 },
       "id": 5,
       "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "value_and_name" },
       "title": "Avg PnL per Trade",
       "type": "stat",
-      "targets": [{ "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" }, "rawSql": "SELECT ROUND(AVG(pnl)::numeric, 2) AS avg_pnl FROM paper_trades;", "format": "table", "refId": "A" }]
+      "targets": [{ "datasource": { "type": "postgres", "uid": "eventhorizon" }, "rawSql": "SELECT ROUND(AVG(pnl)::numeric, 2) AS avg_pnl FROM paper_trades;", "format": "table", "refId": "A" }]
     },
 
     {
@@ -89,25 +89,25 @@
     },
 
     {
-      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "postgres", "uid": "eventhorizon" },
       "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "lineWidth": 2, "fillOpacity": 10 }, "unit": "currencyUSD" } },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
       "id": 6,
       "options": { "legend": { "calcs": ["last"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
       "title": "Cumulative PnL by Strategy",
       "type": "timeseries",
-      "targets": [{ "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" }, "rawSql": "SELECT filled_at AS time, strategy_name, SUM(pnl) OVER (PARTITION BY strategy_name ORDER BY filled_at) AS cumulative_pnl FROM paper_trades ORDER BY filled_at ASC;", "format": "table", "refId": "A", "timeColumn": "time" }]
+      "targets": [{ "datasource": { "type": "postgres", "uid": "eventhorizon" }, "rawSql": "SELECT filled_at AS time, strategy_name, SUM(pnl) OVER (PARTITION BY strategy_name ORDER BY filled_at) AS cumulative_pnl FROM paper_trades ORDER BY filled_at ASC;", "format": "table", "refId": "A", "timeColumn": "time" }]
     },
 
     {
-      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "postgres", "uid": "eventhorizon" },
       "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "lineWidth": 2, "fillOpacity": 10 }, "unit": "currencyUSD" } },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
       "id": 7,
       "options": { "legend": { "calcs": ["last"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
       "title": "Daily PnL (all strategies combined)",
       "type": "timeseries",
-      "targets": [{ "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" }, "rawSql": "SELECT filled_at::date::timestamptz AS time, ROUND(SUM(pnl)::numeric, 2) AS daily_pnl FROM paper_trades GROUP BY filled_at::date ORDER BY filled_at::date ASC;", "format": "table", "refId": "A", "timeColumn": "time" }]
+      "targets": [{ "datasource": { "type": "postgres", "uid": "eventhorizon" }, "rawSql": "SELECT filled_at::date::timestamptz AS time, ROUND(SUM(pnl)::numeric, 2) AS daily_pnl FROM paper_trades GROUP BY filled_at::date ORDER BY filled_at::date ASC;", "format": "table", "refId": "A", "timeColumn": "time" }]
     },
 
     {
@@ -119,7 +119,7 @@
     },
 
     {
-      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "postgres", "uid": "eventhorizon" },
       "fieldConfig": {
         "defaults": { "custom": { "align": "auto" } },
         "overrides": [
@@ -133,18 +133,18 @@
       "options": { "footer": { "show": false }, "showHeader": true, "sortBy": [{ "desc": true, "displayName": "total_pnl" }] },
       "title": "Strategy Performance Summary",
       "type": "table",
-      "targets": [{ "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" }, "rawSql": "SELECT strategy_name, COUNT(*) AS trades, SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) AS wins, ROUND((SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END)::float / NULLIF(COUNT(*), 0) * 100)::numeric, 1) AS win_rate, ROUND(SUM(pnl)::numeric, 2) AS total_pnl, ROUND(AVG(pnl)::numeric, 2) AS avg_pnl, ROUND(MAX(pnl)::numeric, 2) AS best_trade, ROUND(MIN(pnl)::numeric, 2) AS worst_trade FROM paper_trades GROUP BY strategy_name ORDER BY total_pnl DESC;", "format": "table", "refId": "A" }]
+      "targets": [{ "datasource": { "type": "postgres", "uid": "eventhorizon" }, "rawSql": "SELECT strategy_name, COUNT(*) AS trades, SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) AS wins, ROUND((SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END)::float / NULLIF(COUNT(*), 0) * 100)::numeric, 1) AS win_rate, ROUND(SUM(pnl)::numeric, 2) AS total_pnl, ROUND(AVG(pnl)::numeric, 2) AS avg_pnl, ROUND(MAX(pnl)::numeric, 2) AS best_trade, ROUND(MIN(pnl)::numeric, 2) AS worst_trade FROM paper_trades GROUP BY strategy_name ORDER BY total_pnl DESC;", "format": "table", "refId": "A" }]
     },
 
     {
-      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "postgres", "uid": "eventhorizon" },
       "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 0 }] }, "unit": "currencyUSD", "decimals": 2 } },
       "gridPos": { "h": 8, "w": 10, "x": 14, "y": 15 },
       "id": 9,
       "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": true }, "textMode": "auto" },
       "title": "PnL by Strategy (all time)",
       "type": "stat",
-      "targets": [{ "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" }, "rawSql": "SELECT strategy_name, ROUND(SUM(pnl)::numeric, 2) AS total_pnl FROM paper_trades GROUP BY strategy_name ORDER BY total_pnl DESC;", "format": "table", "refId": "A" }]
+      "targets": [{ "datasource": { "type": "postgres", "uid": "eventhorizon" }, "rawSql": "SELECT strategy_name, ROUND(SUM(pnl)::numeric, 2) AS total_pnl FROM paper_trades GROUP BY strategy_name ORDER BY total_pnl DESC;", "format": "table", "refId": "A" }]
     },
 
     {
@@ -156,62 +156,62 @@
     },
 
     {
-      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "postgres", "uid": "eventhorizon" },
       "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] } } },
       "gridPos": { "h": 3, "w": 6, "x": 0, "y": 24 },
       "id": 10,
       "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "value_and_name" },
       "title": "Total Signals (24h)",
       "type": "stat",
-      "targets": [{ "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" }, "rawSql": "SELECT COUNT(*) AS signals_24h FROM signals_log WHERE evaluated_at > NOW() - INTERVAL '24 hours';", "format": "table", "refId": "A" }]
+      "targets": [{ "datasource": { "type": "postgres", "uid": "eventhorizon" }, "rawSql": "SELECT COUNT(*) AS signals_24h FROM signals_log WHERE evaluated_at > NOW() - INTERVAL '24 hours';", "format": "table", "refId": "A" }]
     },
 
     {
-      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "postgres", "uid": "eventhorizon" },
       "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] } } },
       "gridPos": { "h": 3, "w": 6, "x": 6, "y": 24 },
       "id": 11,
       "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "value_and_name" },
       "title": "Signals Acted On (24h)",
       "type": "stat",
-      "targets": [{ "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" }, "rawSql": "SELECT COUNT(*) AS acted_on FROM signals_log WHERE evaluated_at > NOW() - INTERVAL '24 hours' AND acted_on = true;", "format": "table", "refId": "A" }]
+      "targets": [{ "datasource": { "type": "postgres", "uid": "eventhorizon" }, "rawSql": "SELECT COUNT(*) AS acted_on FROM signals_log WHERE evaluated_at > NOW() - INTERVAL '24 hours' AND acted_on = true;", "format": "table", "refId": "A" }]
     },
 
     {
-      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "postgres", "uid": "eventhorizon" },
       "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] } } },
       "gridPos": { "h": 3, "w": 6, "x": 12, "y": 24 },
       "id": 12,
       "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "value_and_name" },
       "title": "Buy Signals (24h)",
       "type": "stat",
-      "targets": [{ "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" }, "rawSql": "SELECT COUNT(*) AS buy_signals FROM signals_log WHERE evaluated_at > NOW() - INTERVAL '24 hours' AND action = 'buy';", "format": "table", "refId": "A" }]
+      "targets": [{ "datasource": { "type": "postgres", "uid": "eventhorizon" }, "rawSql": "SELECT COUNT(*) AS buy_signals FROM signals_log WHERE evaluated_at > NOW() - INTERVAL '24 hours' AND action = 'buy';", "format": "table", "refId": "A" }]
     },
 
     {
-      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "postgres", "uid": "eventhorizon" },
       "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] } } },
       "gridPos": { "h": 3, "w": 6, "x": 18, "y": 24 },
       "id": 13,
       "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "value_and_name" },
       "title": "Sell Signals (24h)",
       "type": "stat",
-      "targets": [{ "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" }, "rawSql": "SELECT COUNT(*) AS sell_signals FROM signals_log WHERE evaluated_at > NOW() - INTERVAL '24 hours' AND action = 'sell';", "format": "table", "refId": "A" }]
+      "targets": [{ "datasource": { "type": "postgres", "uid": "eventhorizon" }, "rawSql": "SELECT COUNT(*) AS sell_signals FROM signals_log WHERE evaluated_at > NOW() - INTERVAL '24 hours' AND action = 'sell';", "format": "table", "refId": "A" }]
     },
 
     {
-      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "postgres", "uid": "eventhorizon" },
       "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "lineWidth": 2, "fillOpacity": 10 } } },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 27 },
       "id": 14,
       "options": { "legend": { "calcs": ["last", "sum"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
       "title": "Signal Actions Over Time (7 days)",
       "type": "timeseries",
-      "targets": [{ "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" }, "rawSql": "SELECT date_trunc('hour', evaluated_at) AS time, action, COUNT(*) AS count FROM signals_log WHERE evaluated_at >= NOW() - INTERVAL '7 days' GROUP BY 1, 2 ORDER BY 1 ASC;", "format": "table", "refId": "A", "timeColumn": "time" }]
+      "targets": [{ "datasource": { "type": "postgres", "uid": "eventhorizon" }, "rawSql": "SELECT date_trunc('hour', evaluated_at) AS time, action, COUNT(*) AS count FROM signals_log WHERE evaluated_at >= NOW() - INTERVAL '7 days' GROUP BY 1, 2 ORDER BY 1 ASC;", "format": "table", "refId": "A", "timeColumn": "time" }]
     },
 
     {
-      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "postgres", "uid": "eventhorizon" },
       "fieldConfig": { "defaults": { "custom": { "align": "auto" } },
         "overrides": [
           { "matcher": { "id": "byName", "options": "action" }, "properties": [{ "id": "custom.displayMode", "value": "color-background" }, { "id": "mappings", "value": [{ "type": "value", "options": { "buy": { "color": "green", "index": 0 }, "sell": { "color": "red", "index": 1 }, "hold": { "color": "yellow", "index": 2 } } }] }] },
@@ -223,7 +223,7 @@
       "options": { "footer": { "show": false }, "showHeader": true },
       "title": "Recent Signals",
       "type": "table",
-      "targets": [{ "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" }, "rawSql": "SELECT evaluated_at, strategy_id, ticker, action, acted_on::text, reason, value FROM signals_log ORDER BY evaluated_at DESC LIMIT 25;", "format": "table", "refId": "A" }]
+      "targets": [{ "datasource": { "type": "postgres", "uid": "eventhorizon" }, "rawSql": "SELECT evaluated_at, strategy_id, ticker, action, acted_on::text, reason, value FROM signals_log ORDER BY evaluated_at DESC LIMIT 25;", "format": "table", "refId": "A" }]
     },
 
     {
@@ -235,7 +235,7 @@
     },
 
     {
-      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "postgres", "uid": "eventhorizon" },
       "fieldConfig": { "defaults": { "custom": { "align": "auto" } },
         "overrides": [
           { "matcher": { "id": "byName", "options": "pnl" }, "properties": [{ "id": "custom.displayMode", "value": "color-background" }, { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 0 }] } }, { "id": "unit", "value": "currencyUSD" }] },
@@ -247,7 +247,7 @@
       "options": { "footer": { "show": false }, "showHeader": true, "sortBy": [{ "desc": true, "displayName": "filled_at" }] },
       "title": "Recent Paper Trades",
       "type": "table",
-      "targets": [{ "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" }, "rawSql": "SELECT filled_at, strategy_name, symbol, side, qty, fill_price, pnl, account_id FROM paper_trades ORDER BY filled_at DESC LIMIT 30;", "format": "table", "refId": "A" }]
+      "targets": [{ "datasource": { "type": "postgres", "uid": "eventhorizon" }, "rawSql": "SELECT filled_at, strategy_name, symbol, side, qty, fill_price, pnl, account_id FROM paper_trades ORDER BY filled_at DESC LIMIT 30;", "format": "table", "refId": "A" }]
     },
 
     {
@@ -259,14 +259,14 @@
     },
 
     {
-      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "postgres", "uid": "eventhorizon" },
       "fieldConfig": { "defaults": { "custom": { "align": "auto" } } },
       "gridPos": { "h": 6, "w": 24, "x": 0, "y": 47 },
       "id": 17,
       "options": { "footer": { "show": false }, "showHeader": true },
       "title": "Reconciliation Heartbeat (latest)",
       "type": "table",
-      "targets": [{ "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" }, "rawSql": "SELECT * FROM reconciliation_heartbeat ORDER BY id DESC LIMIT 10;", "format": "table", "refId": "A" }]
+      "targets": [{ "datasource": { "type": "postgres", "uid": "eventhorizon" }, "rawSql": "SELECT * FROM reconciliation_heartbeat ORDER BY id DESC LIMIT 10;", "format": "table", "refId": "A" }]
     },
 
     {
@@ -278,14 +278,14 @@
     },
 
     {
-      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "postgres", "uid": "eventhorizon" },
       "fieldConfig": { "defaults": { "custom": { "align": "auto" } } },
       "gridPos": { "h": 6, "w": 24, "x": 0, "y": 54 },
       "id": 18,
       "options": { "footer": { "show": false }, "showHeader": true },
       "title": "Circuit Breaker Log",
       "type": "table",
-      "targets": [{ "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" }, "rawSql": "SELECT * FROM circuit_breaker_log ORDER BY id DESC LIMIT 20;", "format": "table", "refId": "A" }]
+      "targets": [{ "datasource": { "type": "postgres", "uid": "eventhorizon" }, "rawSql": "SELECT * FROM circuit_breaker_log ORDER BY id DESC LIMIT 20;", "format": "table", "refId": "A" }]
     }
 
   ],

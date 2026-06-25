@@ -1,4 +1,4 @@
-{
+﻿{
   "annotations": {
     "list": [
       {
@@ -37,7 +37,7 @@
     {
       "datasource": {
         "type": "grafana-postgresql-datasource",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -90,7 +90,7 @@
         {
           "datasource": {
             "type": "grafana-postgresql-datasource",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT pg_database_size('eventhorizon') AS value",
@@ -103,7 +103,7 @@
     {
       "datasource": {
         "type": "grafana-postgresql-datasource",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -156,7 +156,7 @@
         {
           "datasource": {
             "type": "grafana-postgresql-datasource",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT COUNT(*) AS value FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'",
@@ -169,7 +169,7 @@
     {
       "datasource": {
         "type": "grafana-postgresql-datasource",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -222,7 +222,7 @@
         {
           "datasource": {
             "type": "grafana-postgresql-datasource",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT SUM(n_live_tup) AS value FROM pg_stat_user_tables",
@@ -235,7 +235,7 @@
     {
       "datasource": {
         "type": "grafana-postgresql-datasource",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -304,7 +304,7 @@
         {
           "datasource": {
             "type": "grafana-postgresql-datasource",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT used_pct AS value FROM node_disk_stats WHERE mount_point = '/mnt/eh-nvme-hot' ORDER BY measured_at DESC LIMIT 1",
@@ -317,7 +317,7 @@
     {
       "datasource": {
         "type": "grafana-postgresql-datasource",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -386,7 +386,7 @@
         {
           "datasource": {
             "type": "grafana-postgresql-datasource",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT used_pct AS value FROM node_disk_stats WHERE mount_point = '/mnt/eh-hdd-cold' ORDER BY measured_at DESC LIMIT 1",
@@ -399,7 +399,7 @@
     {
       "datasource": {
         "type": "grafana-postgresql-datasource",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -476,7 +476,7 @@
         {
           "datasource": {
             "type": "grafana-postgresql-datasource",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT s.relname AS \"Table\", pg_size_pretty(pg_total_relation_size(s.relid)) AS \"Total Size\", pg_size_pretty(pg_relation_size(s.relid)) AS \"Table Size\", pg_size_pretty(pg_total_relation_size(s.relid) - pg_relation_size(s.relid)) AS \"Index Size\", s.n_live_tup AS \"Live Rows\", pg_total_relation_size(s.relid) AS size_bytes FROM pg_stat_user_tables s ORDER BY pg_total_relation_size(s.relid) DESC LIMIT 15",
@@ -501,7 +501,7 @@
     {
       "datasource": {
         "type": "grafana-postgresql-datasource",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "description": "Sources with last record older than their expected cadence threshold. Any value > 0 = immediate attention required.",
       "fieldConfig": {
@@ -554,7 +554,7 @@
         {
           "datasource": {
             "type": "grafana-postgresql-datasource",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT COUNT(*) AS value FROM (\n  SELECT MAX(fetched_at) AS t FROM macro_daily HAVING MAX(fetched_at) < NOW() - INTERVAL '3 days'\n  UNION ALL\n  SELECT MAX(date::timestamptz) FROM market_daily HAVING MAX(date::timestamptz) < NOW() - INTERVAL '4 days'\n  UNION ALL\n  SELECT MAX(measured_at) FROM energy_prices HAVING MAX(measured_at) < NOW() - INTERVAL '14 days'\n  UNION ALL\n  SELECT MAX(measured_at) FROM agriculture_prices HAVING MAX(measured_at) < NOW() - INTERVAL '30 days'\n  UNION ALL\n  SELECT MAX(fetched_at) FROM weather_snapshots HAVING MAX(fetched_at) < NOW() - INTERVAL '2 days'\n  UNION ALL\n  SELECT MAX(detected_at) FROM security_events HAVING MAX(detected_at) < NOW() - INTERVAL '2 hours'\n  UNION ALL\n  SELECT MAX(scraped_at) FROM pop_reports HAVING MAX(scraped_at) < NOW() - INTERVAL '14 days'\n) dead",
@@ -567,7 +567,7 @@
     {
       "datasource": {
         "type": "grafana-postgresql-datasource",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -620,7 +620,7 @@
         {
           "datasource": {
             "type": "grafana-postgresql-datasource",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT EXTRACT(EPOCH FROM MAX(detected_at)) * 1000 AS value FROM security_events",
@@ -633,7 +633,7 @@
     {
       "datasource": {
         "type": "grafana-postgresql-datasource",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -686,7 +686,7 @@
         {
           "datasource": {
             "type": "grafana-postgresql-datasource",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT EXTRACT(EPOCH FROM MIN(date::timestamptz)) * 1000 AS value FROM macro_daily",
@@ -699,7 +699,7 @@
     {
       "datasource": {
         "type": "grafana-postgresql-datasource",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -752,7 +752,7 @@
         {
           "datasource": {
             "type": "grafana-postgresql-datasource",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT ROUND(COUNT(*) / 24.0, 1) AS value FROM security_events WHERE detected_at > NOW() - INTERVAL '24 hours'",
@@ -765,7 +765,7 @@
     {
       "datasource": {
         "type": "grafana-postgresql-datasource",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -818,7 +818,7 @@
         {
           "datasource": {
             "type": "grafana-postgresql-datasource",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT COUNT(*) AS value FROM market_daily WHERE date > NOW() - INTERVAL '7 days'",
@@ -831,7 +831,7 @@
     {
       "datasource": {
         "type": "grafana-postgresql-datasource",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -884,7 +884,7 @@
         {
           "datasource": {
             "type": "grafana-postgresql-datasource",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT COUNT(*) AS value FROM pop_reports",
@@ -897,7 +897,7 @@
     {
       "datasource": {
         "type": "grafana-postgresql-datasource",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "description": "Status auto-computed per source cadence. ACTIVE = within expected window. OUTAGE = past cadence + grace. MAINTENANCE = manually set. To flag: UPDATE collector_config SET status_override = 'maintenance', override_note = 'reason' WHERE source_name = '...'",
       "fieldConfig": {
@@ -1085,7 +1085,7 @@
         {
           "datasource": {
             "type": "grafana-postgresql-datasource",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT\n  f.domain AS \"Domain\",\n  f.source AS \"Source\",\n  f.table_name AS \"Table\",\n  f.last_record AS \"Last Record\",\n  ROUND(EXTRACT(EPOCH FROM (NOW() - f.last_record)) / 3600, 1) AS \"Hours Ago\",\n  f.cadence AS \"Cadence\",\n  COALESCE(c.override_note, '') AS \"Note\",\n  CASE\n    WHEN c.status_override = 'maintenance' THEN 'MAINTENANCE'\n    WHEN f.last_record IS NULL THEN 'OUTAGE'\n    WHEN EXTRACT(EPOCH FROM (NOW() - f.last_record)) / 3600 <= (COALESCE(c.cadence_hours, 48) + COALESCE(c.grace_hours, 6)) THEN 'ACTIVE'\n    ELSE 'OUTAGE'\n  END AS \"Status\"\nFROM (\n  SELECT 'Macro' AS domain, 'FRED (macro_daily)' AS source, 'macro_daily' AS table_name, MAX(fetched_at) AS last_record, 'Daily 17:00 ET' AS cadence FROM macro_daily\n  UNION ALL SELECT 'Market', 'Alpaca ETF (market_daily)', 'market_daily', MAX(date::timestamptz), 'Daily 16:30 ET (weekdays)' FROM market_daily\n  UNION ALL SELECT 'Market', 'Regime Classifier', 'market_regimes', MAX(date::timestamptz), 'Daily 17:15 ET' FROM market_regimes\n  UNION ALL SELECT 'Market', 'Sentiment Collector', 'market_sentiment', MAX(date::timestamptz), 'Daily 17:30 ET' FROM market_sentiment\n  UNION ALL SELECT 'Market', 'Finnhub Earnings', 'earnings_data', MAX(measured_at), 'Monthly' FROM earnings_data\n  UNION ALL SELECT 'Market', 'Finnhub Analysts', 'analyst_data', MAX(measured_at), 'Monthly' FROM analyst_data\n  UNION ALL SELECT 'Energy', 'EIA Energy Prices', 'energy_prices', MAX(measured_at), 'Weekly' FROM energy_prices\n  UNION ALL SELECT 'Agriculture', 'USDA Agriculture', 'agriculture_prices', MAX(measured_at), 'Monthly' FROM agriculture_prices\n  UNION ALL SELECT 'Weather', 'OpenWeather', 'weather_snapshots', MAX(fetched_at), 'Hourly' FROM weather_snapshots\n  UNION ALL SELECT 'News', 'NewsAPI', 'news_articles', MAX(fetched_at), 'Every 30min' FROM news_articles\n  UNION ALL SELECT 'Security', 'Suricata/CrowdSec', 'security_events', MAX(detected_at), 'Continuous' FROM security_events\n  UNION ALL SELECT 'Security', 'fail2ban', 'fail2ban_events', MAX(measured_at), 'Continuous' FROM fail2ban_events\n  UNION ALL SELECT 'Security', 'CrowdSec', 'crowdsec_decisions', MAX(measured_at), 'Continuous' FROM crowdsec_decisions\n  UNION ALL SELECT 'Trading', 'Alpaca Paper Trades', 'paper_trades', MAX(created_at), 'Market hours' FROM paper_trades\n  UNION ALL SELECT 'Trading', 'Strategy Signals', 'signals_log', MAX(evaluated_at), 'Market hours' FROM signals_log\n  UNION ALL SELECT 'Trading', 'Reconciliation Daemon', 'reconciliation_heartbeat', MAX(beat_at), 'Every 5min (NJ)' FROM reconciliation_heartbeat\n  UNION ALL SELECT 'Collectibles', 'CGC Pop Scraper', 'pop_reports', MAX(scraped_at), 'Weekly Sun 03:00 UTC' FROM pop_reports\n  UNION ALL SELECT 'Collectibles', 'eBay Sold Comps', 'sold_listings', MAX(inserted_at), 'Manual / n8n' FROM sold_listings\n  UNION ALL SELECT 'Collectibles', 'eBay Active Listings', 'ebay_listings', MAX(last_seen_at), 'Manual / n8n' FROM ebay_listings\n  UNION ALL SELECT 'AI', 'HORIZON Memory', 'memories', MAX(created_at), 'On conversation' FROM memories\n  UNION ALL SELECT 'AI', 'HORIZON Tokens', 'agent_token_log', MAX(occurred_at), 'On conversation' FROM agent_token_log\n  UNION ALL SELECT 'Infrastructure', 'WireGuard Stats', 'wg_peer_stats', MAX(measured_at), 'Every 5min' FROM wg_peer_stats\n  UNION ALL SELECT 'Infrastructure', 'Node Resources', 'node_resource_stats', MAX(measured_at), 'Every 5min' FROM node_resource_stats\n  UNION ALL SELECT 'Infrastructure', 'Docker Stats', 'container_stats', MAX(measured_at), 'Every 5min' FROM container_stats\n  UNION ALL SELECT 'Infrastructure', 'n8n Executions', 'n8n_execution_stats', MAX(started_at), 'Every 5min' FROM n8n_execution_stats\n) f\nLEFT JOIN collector_config c ON c.source_name = f.source\nORDER BY\n  CASE\n    WHEN c.status_override = 'maintenance' THEN 2\n    WHEN f.last_record IS NULL THEN 1\n    WHEN EXTRACT(EPOCH FROM (NOW() - f.last_record)) / 3600 > (COALESCE(c.cadence_hours,48) + COALESCE(c.grace_hours,6)) THEN 1\n    ELSE 3\n  END ASC,\n  EXTRACT(EPOCH FROM (NOW() - f.last_record)) DESC NULLS FIRST",
@@ -1110,7 +1110,7 @@
     {
       "datasource": {
         "type": "grafana-postgresql-datasource",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -1189,7 +1189,7 @@
         {
           "datasource": {
             "type": "grafana-postgresql-datasource",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT table_name AS \"Table\", row_count AS \"Rows\" FROM (\n  SELECT 'market_daily' AS table_name, COUNT(*) AS row_count FROM market_daily\n  UNION ALL SELECT 'macro_daily', COUNT(*) FROM macro_daily\n  UNION ALL SELECT 'market_regimes', COUNT(*) FROM market_regimes\n  UNION ALL SELECT 'market_sentiment', COUNT(*) FROM market_sentiment\n  UNION ALL SELECT 'earnings_data', COUNT(*) FROM earnings_data\n  UNION ALL SELECT 'analyst_data', COUNT(*) FROM analyst_data\n  UNION ALL SELECT 'energy_prices', COUNT(*) FROM energy_prices\n  UNION ALL SELECT 'agriculture_prices', COUNT(*) FROM agriculture_prices\n  UNION ALL SELECT 'news_articles', COUNT(*) FROM news_articles\n  UNION ALL SELECT 'weather_snapshots', COUNT(*) FROM weather_snapshots\n  UNION ALL SELECT 'security_events', COUNT(*) FROM security_events\n  UNION ALL SELECT 'anomalies', COUNT(*) FROM anomalies\n  UNION ALL SELECT 'fail2ban_events', COUNT(*) FROM fail2ban_events\n  UNION ALL SELECT 'paper_trades', COUNT(*) FROM paper_trades\n  UNION ALL SELECT 'signals_log', COUNT(*) FROM signals_log\n  UNION ALL SELECT 'pop_reports', COUNT(*) FROM pop_reports\n  UNION ALL SELECT 'sold_listings', COUNT(*) FROM sold_listings\n  UNION ALL SELECT 'ebay_listings', COUNT(*) FROM ebay_listings\n  UNION ALL SELECT 'memories', COUNT(*) FROM memories\n  UNION ALL SELECT 'wg_peer_stats', COUNT(*) FROM wg_peer_stats\n  UNION ALL SELECT 'node_resource_stats', COUNT(*) FROM node_resource_stats\n) t ORDER BY row_count DESC",
@@ -1202,7 +1202,7 @@
     {
       "datasource": {
         "type": "grafana-postgresql-datasource",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -1328,7 +1328,7 @@
         {
           "datasource": {
             "type": "grafana-postgresql-datasource",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT s.relname AS \"Table\", s.n_live_tup AS \"Live Rows\", pg_size_pretty(pg_total_relation_size(s.relid)) AS \"Disk Size\", s.n_tup_ins AS \"Total Inserts\", s.n_tup_upd AS \"Updates\", s.n_tup_del AS \"Deletes\", (s.n_tup_ins - s.n_tup_del) AS \"Net Growth\", pg_total_relation_size(s.relid) AS size_bytes FROM pg_stat_user_tables s ORDER BY s.n_live_tup DESC",
@@ -1353,7 +1353,7 @@
     {
       "datasource": {
         "type": "grafana-postgresql-datasource",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "description": "Sudden spike = anomaly or scan campaign. Flatline = collector died.",
       "fieldConfig": {
@@ -1441,7 +1441,7 @@
         {
           "datasource": {
             "type": "grafana-postgresql-datasource",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "time_series",
           "rawSql": "SELECT DATE_TRUNC('day', detected_at) AS time, COUNT(*) AS \"Events / Day\" FROM security_events WHERE detected_at > NOW() - INTERVAL '90 days' GROUP BY 1 ORDER BY 1",
@@ -1454,7 +1454,7 @@
     {
       "datasource": {
         "type": "grafana-postgresql-datasource",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "description": "Heartbeat of your data operation. Gaps = dead collector. Market gaps on weekends = expected.",
       "fieldConfig": {
@@ -1544,7 +1544,7 @@
         {
           "datasource": {
             "type": "grafana-postgresql-datasource",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "time_series",
           "rawSql": "SELECT DATE_TRUNC('day', date::timestamptz) AS time, 'market' AS metric, COUNT(*) AS rows FROM market_daily WHERE date > NOW() - INTERVAL '30 days' GROUP BY 1, 2 ORDER BY 1",
@@ -1553,7 +1553,7 @@
         {
           "datasource": {
             "type": "grafana-postgresql-datasource",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "time_series",
           "rawSql": "SELECT DATE_TRUNC('day', fetched_at) AS time, 'macro' AS metric, COUNT(*) AS rows FROM macro_daily WHERE fetched_at > NOW() - INTERVAL '30 days' GROUP BY 1, 2 ORDER BY 1",
@@ -1562,7 +1562,7 @@
         {
           "datasource": {
             "type": "grafana-postgresql-datasource",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "time_series",
           "rawSql": "SELECT DATE_TRUNC('day', detected_at) AS time, 'security' AS metric, COUNT(*) AS rows FROM security_events WHERE detected_at > NOW() - INTERVAL '30 days' GROUP BY 1, 2 ORDER BY 1",
@@ -1571,7 +1571,7 @@
         {
           "datasource": {
             "type": "grafana-postgresql-datasource",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "time_series",
           "rawSql": "SELECT DATE_TRUNC('day', scraped_at) AS time, 'pop_reports' AS metric, COUNT(*) AS rows FROM pop_reports WHERE scraped_at > NOW() - INTERVAL '30 days' GROUP BY 1, 2 ORDER BY 1",
@@ -1580,7 +1580,7 @@
         {
           "datasource": {
             "type": "grafana-postgresql-datasource",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "time_series",
           "rawSql": "SELECT DATE_TRUNC('day', inserted_at) AS time, 'sold_comps' AS metric, COUNT(*) AS rows FROM sold_listings WHERE inserted_at > NOW() - INTERVAL '30 days' GROUP BY 1, 2 ORDER BY 1",
@@ -1589,7 +1589,7 @@
         {
           "datasource": {
             "type": "grafana-postgresql-datasource",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "time_series",
           "rawSql": "SELECT DATE_TRUNC('day', created_at) AS time, 'paper_trades' AS metric, COUNT(*) AS rows FROM paper_trades WHERE created_at > NOW() - INTERVAL '30 days' GROUP BY 1, 2 ORDER BY 1",
@@ -1602,7 +1602,7 @@
     {
       "datasource": {
         "type": "grafana-postgresql-datasource",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -1639,7 +1639,7 @@
         {
           "datasource": {
             "type": "grafana-postgresql-datasource",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "time_series",
           "rawSql": "SELECT DATE_TRUNC('day', measured_at) AS time, COUNT(*) AS \"Bans / Day\" FROM fail2ban_events WHERE action = 'ban' AND measured_at > NOW() - INTERVAL '30 days' GROUP BY 1 ORDER BY 1",

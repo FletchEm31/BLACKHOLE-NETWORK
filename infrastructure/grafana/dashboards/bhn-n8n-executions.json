@@ -1,4 +1,4 @@
-{
+﻿{
   "uid": "bhn-n8n-executions",
   "title": "BHN n8n Executions",
   "description": "n8n workflow execution history shipped from SQLite. 5-min cadence; rows by n8n_exec_id ascending.",
@@ -12,14 +12,14 @@
     {
       "id": 1, "type": "stat", "title": "Executions last 24h",
       "gridPos": { "h": 4, "w": 8, "x": 0, "y": 0 },
-      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "eventhorizon" },
       "targets": [{ "refId": "A", "format": "table",
         "rawSql": "SELECT COUNT(*) AS executions FROM n8n_execution_stats WHERE started_at > NOW() - INTERVAL '24 hours'" }]
     },
     {
       "id": 2, "type": "stat", "title": "Errors last 24h",
       "gridPos": { "h": 4, "w": 8, "x": 8, "y": 0 },
-      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "eventhorizon" },
       "targets": [{ "refId": "A", "format": "table",
         "rawSql": "SELECT COUNT(*) AS errors FROM n8n_execution_stats WHERE status IN ('error','crashed') AND started_at > NOW() - INTERVAL '24 hours'" }],
       "fieldConfig": { "defaults": { "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 5 } ] } }, "overrides": [] }
@@ -27,7 +27,7 @@
     {
       "id": 3, "type": "stat", "title": "Mean duration (last 24h)",
       "gridPos": { "h": 4, "w": 8, "x": 16, "y": 0 },
-      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "eventhorizon" },
       "targets": [{ "refId": "A", "format": "table",
         "rawSql": "SELECT AVG(duration_ms) AS mean_ms FROM n8n_execution_stats WHERE started_at > NOW() - INTERVAL '24 hours' AND duration_ms IS NOT NULL" }],
       "fieldConfig": { "defaults": { "unit": "ms" }, "overrides": [] }
@@ -35,14 +35,14 @@
     {
       "id": 4, "type": "timeseries", "title": "Executions per workflow over time",
       "gridPos": { "h": 9, "w": 24, "x": 0, "y": 4 },
-      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "eventhorizon" },
       "targets": [{ "refId": "A", "format": "time_series",
         "rawSql": "SELECT $__timeGroupAlias(started_at, '15m') AS time, workflow_name AS metric, COUNT(*) AS execs FROM n8n_execution_stats WHERE $__timeFilter(started_at) GROUP BY 1, workflow_name ORDER BY 1" }]
     },
     {
       "id": 5, "type": "table", "title": "Recent errors (last 100)",
       "gridPos": { "h": 10, "w": 24, "x": 0, "y": 13 },
-      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "eventhorizon" },
       "targets": [{ "refId": "A", "format": "table",
         "rawSql": "SELECT started_at, workflow_name, status, duration_ms, LEFT(error_message, 200) AS error FROM n8n_execution_stats WHERE status IN ('error','crashed') ORDER BY started_at DESC LIMIT 100" }]
     }

@@ -1,4 +1,4 @@
-{
+﻿{
   "__inputs": [],
   "__requires": [
     { "type": "grafana", "id": "grafana", "name": "Grafana", "version": "10.0.0" },
@@ -27,51 +27,51 @@
     },
 
     {
-      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "postgres", "uid": "eventhorizon" },
       "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] } } },
       "gridPos": { "h": 4, "w": 6, "x": 0, "y": 1 },
       "id": 1,
       "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "value_and_name" },
       "title": "Active Markets",
       "type": "stat",
-      "targets": [{ "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" }, "rawSql": "SELECT COUNT(DISTINCT market_id) AS active_markets FROM prediction_market_data WHERE measured_at > NOW() - INTERVAL '24 hours';", "format": "table", "refId": "A" }]
+      "targets": [{ "datasource": { "type": "postgres", "uid": "eventhorizon" }, "rawSql": "SELECT COUNT(DISTINCT market_id) AS active_markets FROM prediction_market_data WHERE measured_at > NOW() - INTERVAL '24 hours';", "format": "table", "refId": "A" }]
     },
 
     {
-      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "postgres", "uid": "eventhorizon" },
       "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }, "unit": "currencyUSD" } },
       "gridPos": { "h": 4, "w": 6, "x": 6, "y": 1 },
       "id": 2,
       "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "value_and_name" },
       "title": "Total 24h Volume",
       "type": "stat",
-      "targets": [{ "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" }, "rawSql": "SELECT ROUND(SUM(volume_24h)::numeric, 2) AS total_volume FROM prediction_market_data WHERE measured_at > NOW() - INTERVAL '24 hours';", "format": "table", "refId": "A" }]
+      "targets": [{ "datasource": { "type": "postgres", "uid": "eventhorizon" }, "rawSql": "SELECT ROUND(SUM(volume_24h)::numeric, 2) AS total_volume FROM prediction_market_data WHERE measured_at > NOW() - INTERVAL '24 hours';", "format": "table", "refId": "A" }]
     },
 
     {
-      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "postgres", "uid": "eventhorizon" },
       "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }, "unit": "currencyUSD" } },
       "gridPos": { "h": 4, "w": 6, "x": 12, "y": 1 },
       "id": 3,
       "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "value_and_name" },
       "title": "Total Open Interest",
       "type": "stat",
-      "targets": [{ "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" }, "rawSql": "SELECT ROUND(SUM(open_interest)::numeric, 2) AS total_oi FROM prediction_market_data WHERE measured_at > NOW() - INTERVAL '24 hours';", "format": "table", "refId": "A" }]
+      "targets": [{ "datasource": { "type": "postgres", "uid": "eventhorizon" }, "rawSql": "SELECT ROUND(SUM(open_interest)::numeric, 2) AS total_oi FROM prediction_market_data WHERE measured_at > NOW() - INTERVAL '24 hours';", "format": "table", "refId": "A" }]
     },
 
     {
-      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "postgres", "uid": "eventhorizon" },
       "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] } } },
       "gridPos": { "h": 4, "w": 6, "x": 18, "y": 1 },
       "id": 4,
       "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "value_and_name" },
       "title": "Venues Tracked",
       "type": "stat",
-      "targets": [{ "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" }, "rawSql": "SELECT COUNT(DISTINCT venue) AS venues FROM prediction_market_data;", "format": "table", "refId": "A" }]
+      "targets": [{ "datasource": { "type": "postgres", "uid": "eventhorizon" }, "rawSql": "SELECT COUNT(DISTINCT venue) AS venues FROM prediction_market_data;", "format": "table", "refId": "A" }]
     },
 
     {
-      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "postgres", "uid": "eventhorizon" },
       "fieldConfig": {
         "defaults": { "custom": { "align": "auto" } },
         "overrides": [
@@ -85,18 +85,18 @@
       "options": { "footer": { "show": false }, "showHeader": true, "sortBy": [{ "desc": true, "displayName": "volume_24h" }] },
       "title": "Active Prediction Markets — Top by Volume",
       "type": "table",
-      "targets": [{ "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" }, "rawSql": "SELECT DISTINCT ON (market_id) venue, LEFT(market_title, 80) AS market_title, outcome, price, yes_bid, yes_ask, volume_24h, open_interest, measured_at FROM prediction_market_data ORDER BY market_id, measured_at DESC, volume_24h DESC NULLS LAST LIMIT 30;", "format": "table", "refId": "A" }]
+      "targets": [{ "datasource": { "type": "postgres", "uid": "eventhorizon" }, "rawSql": "SELECT DISTINCT ON (market_id) venue, LEFT(market_title, 80) AS market_title, outcome, price, yes_bid, yes_ask, volume_24h, open_interest, measured_at FROM prediction_market_data ORDER BY market_id, measured_at DESC, volume_24h DESC NULLS LAST LIMIT 30;", "format": "table", "refId": "A" }]
     },
 
     {
-      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "postgres", "uid": "eventhorizon" },
       "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "lineWidth": 2, "fillOpacity": 10 }, "unit": "percentunit" } },
       "gridPos": { "h": 8, "w": 24, "x": 0, "y": 15 },
       "id": 6,
       "options": { "legend": { "calcs": ["last"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
       "title": "Prediction Market Prices Over Time (top markets)",
       "type": "timeseries",
-      "targets": [{ "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" }, "rawSql": "SELECT measured_at AS time, market_title, price FROM prediction_market_data WHERE market_id IN (SELECT market_id FROM prediction_market_data GROUP BY market_id ORDER BY SUM(volume_24h) DESC NULLS LAST LIMIT 5) ORDER BY measured_at ASC;", "format": "table", "refId": "A", "timeColumn": "time" }]
+      "targets": [{ "datasource": { "type": "postgres", "uid": "eventhorizon" }, "rawSql": "SELECT measured_at AS time, market_title, price FROM prediction_market_data WHERE market_id IN (SELECT market_id FROM prediction_market_data GROUP BY market_id ORDER BY SUM(volume_24h) DESC NULLS LAST LIMIT 5) ORDER BY measured_at ASC;", "format": "table", "refId": "A", "timeColumn": "time" }]
     },
 
     {
@@ -108,102 +108,102 @@
     },
 
     {
-      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "postgres", "uid": "eventhorizon" },
       "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }, { "color": "green", "value": 60 }, { "color": "yellow", "value": 80 }, { "color": "red", "value": 95 }] }, "unit": "fahrenheit", "decimals": 1 } },
       "gridPos": { "h": 4, "w": 4, "x": 0, "y": 24 },
       "id": 7,
       "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "/^current_temp_f$/", "values": false }, "textMode": "value_and_name" },
       "title": "Current Temp",
       "type": "stat",
-      "targets": [{ "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" }, "rawSql": "SELECT current_temp_f FROM weather_snapshots ORDER BY fetched_at DESC LIMIT 1;", "format": "table", "refId": "A" }]
+      "targets": [{ "datasource": { "type": "postgres", "uid": "eventhorizon" }, "rawSql": "SELECT current_temp_f FROM weather_snapshots ORDER BY fetched_at DESC LIMIT 1;", "format": "table", "refId": "A" }]
     },
 
     {
-      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "postgres", "uid": "eventhorizon" },
       "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }, { "color": "green", "value": 60 }, { "color": "yellow", "value": 80 }, { "color": "red", "value": 95 }] }, "unit": "fahrenheit", "decimals": 1 } },
       "gridPos": { "h": 4, "w": 4, "x": 4, "y": 24 },
       "id": 8,
       "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "/^today_high_f$/", "values": false }, "textMode": "value_and_name" },
       "title": "Today High",
       "type": "stat",
-      "targets": [{ "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" }, "rawSql": "SELECT today_high_f FROM weather_snapshots ORDER BY fetched_at DESC LIMIT 1;", "format": "table", "refId": "A" }]
+      "targets": [{ "datasource": { "type": "postgres", "uid": "eventhorizon" }, "rawSql": "SELECT today_high_f FROM weather_snapshots ORDER BY fetched_at DESC LIMIT 1;", "format": "table", "refId": "A" }]
     },
 
     {
-      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "postgres", "uid": "eventhorizon" },
       "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }, { "color": "green", "value": 50 }, { "color": "yellow", "value": 70 }] }, "unit": "fahrenheit", "decimals": 1 } },
       "gridPos": { "h": 4, "w": 4, "x": 8, "y": 24 },
       "id": 9,
       "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "/^today_low_f$/", "values": false }, "textMode": "value_and_name" },
       "title": "Today Low",
       "type": "stat",
-      "targets": [{ "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" }, "rawSql": "SELECT today_low_f FROM weather_snapshots ORDER BY fetched_at DESC LIMIT 1;", "format": "table", "refId": "A" }]
+      "targets": [{ "datasource": { "type": "postgres", "uid": "eventhorizon" }, "rawSql": "SELECT today_low_f FROM weather_snapshots ORDER BY fetched_at DESC LIMIT 1;", "format": "table", "refId": "A" }]
     },
 
     {
-      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "postgres", "uid": "eventhorizon" },
       "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 30 }, { "color": "red", "value": 60 }] }, "unit": "percent", "decimals": 0 } },
       "gridPos": { "h": 4, "w": 4, "x": 12, "y": 24 },
       "id": 10,
       "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "/^precipitation_chance$/", "values": false }, "textMode": "value_and_name" },
       "title": "Precip Chance",
       "type": "stat",
-      "targets": [{ "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" }, "rawSql": "SELECT precipitation_chance FROM weather_snapshots ORDER BY fetched_at DESC LIMIT 1;", "format": "table", "refId": "A" }]
+      "targets": [{ "datasource": { "type": "postgres", "uid": "eventhorizon" }, "rawSql": "SELECT precipitation_chance FROM weather_snapshots ORDER BY fetched_at DESC LIMIT 1;", "format": "table", "refId": "A" }]
     },
 
     {
-      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "postgres", "uid": "eventhorizon" },
       "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 15 }, { "color": "red", "value": 25 }] }, "unit": "velocitymph", "decimals": 1 } },
       "gridPos": { "h": 4, "w": 4, "x": 16, "y": 24 },
       "id": 11,
       "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "/^wind_mph$/", "values": false }, "textMode": "value_and_name" },
       "title": "Wind Speed",
       "type": "stat",
-      "targets": [{ "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" }, "rawSql": "SELECT wind_mph FROM weather_snapshots ORDER BY fetched_at DESC LIMIT 1;", "format": "table", "refId": "A" }]
+      "targets": [{ "datasource": { "type": "postgres", "uid": "eventhorizon" }, "rawSql": "SELECT wind_mph FROM weather_snapshots ORDER BY fetched_at DESC LIMIT 1;", "format": "table", "refId": "A" }]
     },
 
     {
-      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "postgres", "uid": "eventhorizon" },
       "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 6 }, { "color": "red", "value": 8 }] }, "unit": "short", "decimals": 1 } },
       "gridPos": { "h": 4, "w": 4, "x": 20, "y": 24 },
       "id": 12,
       "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "/^uv_index$/", "values": false }, "textMode": "value_and_name" },
       "title": "UV Index",
       "type": "stat",
-      "targets": [{ "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" }, "rawSql": "SELECT uv_index FROM weather_snapshots ORDER BY fetched_at DESC LIMIT 1;", "format": "table", "refId": "A" }]
+      "targets": [{ "datasource": { "type": "postgres", "uid": "eventhorizon" }, "rawSql": "SELECT uv_index FROM weather_snapshots ORDER BY fetched_at DESC LIMIT 1;", "format": "table", "refId": "A" }]
     },
 
     {
-      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "postgres", "uid": "eventhorizon" },
       "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "lineWidth": 2, "fillOpacity": 10 }, "unit": "fahrenheit" } },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 28 },
       "id": 13,
       "options": { "legend": { "calcs": ["last", "min", "max"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
       "title": "Temperature History — High / Low / Current (30 days)",
       "type": "timeseries",
-      "targets": [{ "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" }, "rawSql": "SELECT fetched_at AS time, current_temp_f, today_high_f, today_low_f FROM weather_snapshots WHERE fetched_at >= NOW() - INTERVAL '30 days' ORDER BY fetched_at ASC;", "format": "table", "refId": "A", "timeColumn": "time" }]
+      "targets": [{ "datasource": { "type": "postgres", "uid": "eventhorizon" }, "rawSql": "SELECT fetched_at AS time, current_temp_f, today_high_f, today_low_f FROM weather_snapshots WHERE fetched_at >= NOW() - INTERVAL '30 days' ORDER BY fetched_at ASC;", "format": "table", "refId": "A", "timeColumn": "time" }]
     },
 
     {
-      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "postgres", "uid": "eventhorizon" },
       "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "lineWidth": 2, "fillOpacity": 10 } } },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 28 },
       "id": 14,
       "options": { "legend": { "calcs": ["last", "min", "max"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
       "title": "Wind / Humidity / Precip (30 days)",
       "type": "timeseries",
-      "targets": [{ "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" }, "rawSql": "SELECT fetched_at AS time, wind_mph, humidity_pct, precipitation_chance FROM weather_snapshots WHERE fetched_at >= NOW() - INTERVAL '30 days' ORDER BY fetched_at ASC;", "format": "table", "refId": "A", "timeColumn": "time" }]
+      "targets": [{ "datasource": { "type": "postgres", "uid": "eventhorizon" }, "rawSql": "SELECT fetched_at AS time, wind_mph, humidity_pct, precipitation_chance FROM weather_snapshots WHERE fetched_at >= NOW() - INTERVAL '30 days' ORDER BY fetched_at ASC;", "format": "table", "refId": "A", "timeColumn": "time" }]
     },
 
     {
-      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "postgres", "uid": "eventhorizon" },
       "fieldConfig": { "defaults": { "custom": { "align": "auto" } } },
       "gridPos": { "h": 6, "w": 24, "x": 0, "y": 36 },
       "id": 15,
       "options": { "footer": { "show": false }, "showHeader": true },
       "title": "Weather Log (Recent)",
       "type": "table",
-      "targets": [{ "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" }, "rawSql": "SELECT fetched_at, location_label, current_temp_f, today_high_f, today_low_f, conditions, wind_mph, humidity_pct, precipitation_chance, uv_index FROM weather_snapshots ORDER BY fetched_at DESC LIMIT 15;", "format": "table", "refId": "A" }]
+      "targets": [{ "datasource": { "type": "postgres", "uid": "eventhorizon" }, "rawSql": "SELECT fetched_at, location_label, current_temp_f, today_high_f, today_low_f, conditions, wind_mph, humidity_pct, precipitation_chance, uv_index FROM weather_snapshots ORDER BY fetched_at DESC LIMIT 15;", "format": "table", "refId": "A" }]
     },
 
     {
@@ -215,29 +215,29 @@
     },
 
     {
-      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "postgres", "uid": "eventhorizon" },
       "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] } } },
       "gridPos": { "h": 3, "w": 6, "x": 0, "y": 43 },
       "id": 16,
       "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "value_and_name" },
       "title": "Total Corporate Actions",
       "type": "stat",
-      "targets": [{ "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" }, "rawSql": "SELECT COUNT(*) AS total_actions FROM corporate_actions;", "format": "table", "refId": "A" }]
+      "targets": [{ "datasource": { "type": "postgres", "uid": "eventhorizon" }, "rawSql": "SELECT COUNT(*) AS total_actions FROM corporate_actions;", "format": "table", "refId": "A" }]
     },
 
     {
-      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "postgres", "uid": "eventhorizon" },
       "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] } } },
       "gridPos": { "h": 3, "w": 6, "x": 6, "y": 43 },
       "id": 17,
       "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "value_and_name" },
       "title": "Upcoming (30 days)",
       "type": "stat",
-      "targets": [{ "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" }, "rawSql": "SELECT COUNT(*) AS upcoming FROM corporate_actions WHERE ex_date BETWEEN NOW() AND NOW() + INTERVAL '30 days';", "format": "table", "refId": "A" }]
+      "targets": [{ "datasource": { "type": "postgres", "uid": "eventhorizon" }, "rawSql": "SELECT COUNT(*) AS upcoming FROM corporate_actions WHERE ex_date BETWEEN NOW() AND NOW() + INTERVAL '30 days';", "format": "table", "refId": "A" }]
     },
 
     {
-      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "postgres", "uid": "eventhorizon" },
       "fieldConfig": { "defaults": { "custom": { "align": "auto" } },
         "overrides": [
           { "matcher": { "id": "byName", "options": "cash_amount" }, "properties": [{ "id": "unit", "value": "currencyUSD" }] }
@@ -248,7 +248,7 @@
       "options": { "footer": { "show": false }, "showHeader": true, "sortBy": [{ "desc": false, "displayName": "ex_date" }] },
       "title": "Corporate Actions — Upcoming & Recent",
       "type": "table",
-      "targets": [{ "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" }, "rawSql": "SELECT symbol, action_type, ex_date, payable_date, record_date, cash_amount, split_ratio FROM corporate_actions WHERE ex_date >= NOW() - INTERVAL '30 days' ORDER BY ex_date ASC LIMIT 30;", "format": "table", "refId": "A" }]
+      "targets": [{ "datasource": { "type": "postgres", "uid": "eventhorizon" }, "rawSql": "SELECT symbol, action_type, ex_date, payable_date, record_date, cash_amount, split_ratio FROM corporate_actions WHERE ex_date >= NOW() - INTERVAL '30 days' ORDER BY ex_date ASC LIMIT 30;", "format": "table", "refId": "A" }]
     }
 
   ],

@@ -1,4 +1,4 @@
-{
+﻿{
   "uid": "bhn-data-ingest",
   "title": "BHN Data Ingest Monitor",
   "description": "Live freshness + row counts for BHN's data pipelines: news, weather, pulse, security events, sessions. A panel going red = the upstream poll/workflow has stalled. Pre-req: grafana_reader role must have SELECT on news_articles + weather_snapshots (GRANT applied on LA before this dashboard works).",
@@ -14,7 +14,7 @@
       "type": "stat",
       "title": "News articles (total rows)",
       "gridPos": { "h": 4, "w": 5, "x": 0, "y": 0 },
-      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "eventhorizon" },
       "targets": [
         {
           "refId": "A",
@@ -49,7 +49,7 @@
       "type": "stat",
       "title": "Weather snapshots (total rows)",
       "gridPos": { "h": 4, "w": 5, "x": 5, "y": 0 },
-      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "eventhorizon" },
       "targets": [
         {
           "refId": "A",
@@ -84,7 +84,7 @@
       "type": "stat",
       "title": "Pulse reports (total rows)",
       "gridPos": { "h": 4, "w": 5, "x": 10, "y": 0 },
-      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "eventhorizon" },
       "targets": [
         {
           "refId": "A",
@@ -119,7 +119,7 @@
       "type": "stat",
       "title": "Security events — last 24h",
       "gridPos": { "h": 4, "w": 5, "x": 15, "y": 0 },
-      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "eventhorizon" },
       "targets": [
         {
           "refId": "A",
@@ -156,7 +156,7 @@
       "type": "stat",
       "title": "Active sessions (distinct users)",
       "gridPos": { "h": 4, "w": 4, "x": 20, "y": 0 },
-      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "eventhorizon" },
       "targets": [
         {
           "refId": "A",
@@ -193,7 +193,7 @@
       "title": "News — last fetch (min ago)",
       "description": "Green < 35 min (within one poll cycle). Yellow 35-90. Red > 90 = news poll is stalled. Cadence: every 30 min.",
       "gridPos": { "h": 4, "w": 8, "x": 0, "y": 4 },
-      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "eventhorizon" },
       "targets": [
         {
           "refId": "A",
@@ -232,7 +232,7 @@
       "title": "Weather — last fetch (min ago)",
       "description": "Green < 35 min. Yellow 35-90. Red > 90 = weather poll is stalled. Cadence: every 30 min.",
       "gridPos": { "h": 4, "w": 8, "x": 8, "y": 4 },
-      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "eventhorizon" },
       "targets": [
         {
           "refId": "A",
@@ -271,7 +271,7 @@
       "title": "Pulse — last generated (min ago)",
       "description": "Green < 130 min (within one 2h cycle + tolerance). Yellow 130-180. Red > 180 = pulse workflow has stalled. Cadence: every 2 hours.",
       "gridPos": { "h": 4, "w": 8, "x": 16, "y": 4 },
-      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "eventhorizon" },
       "targets": [
         {
           "refId": "A",

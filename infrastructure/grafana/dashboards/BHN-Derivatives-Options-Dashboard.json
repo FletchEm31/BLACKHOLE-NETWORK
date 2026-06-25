@@ -1,4 +1,4 @@
-{
+﻿{
   "__inputs": [],
   "__requires": [
     { "type": "grafana", "id": "grafana", "name": "Grafana", "version": "10.0.0" },
@@ -26,69 +26,69 @@
     },
 
     {
-      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "postgres", "uid": "eventhorizon" },
       "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] } } },
       "gridPos": { "h": 4, "w": 4, "x": 0, "y": 1 },
       "id": 1,
       "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "value_and_name" },
       "title": "Underlyings Tracked",
       "type": "stat",
-      "targets": [{ "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" }, "rawSql": "SELECT COUNT(DISTINCT underlying) AS underlyings FROM options_chain_snapshots;", "format": "table", "refId": "A" }]
+      "targets": [{ "datasource": { "type": "postgres", "uid": "eventhorizon" }, "rawSql": "SELECT COUNT(DISTINCT underlying) AS underlyings FROM options_chain_snapshots;", "format": "table", "refId": "A" }]
     },
 
     {
-      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "postgres", "uid": "eventhorizon" },
       "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] } } },
       "gridPos": { "h": 4, "w": 4, "x": 4, "y": 1 },
       "id": 2,
       "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "value_and_name" },
       "title": "Total Contracts Tracked",
       "type": "stat",
-      "targets": [{ "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" }, "rawSql": "SELECT COUNT(*) AS contracts FROM options_chain_snapshots WHERE measured_at > NOW() - INTERVAL '24 hours';", "format": "table", "refId": "A" }]
+      "targets": [{ "datasource": { "type": "postgres", "uid": "eventhorizon" }, "rawSql": "SELECT COUNT(*) AS contracts FROM options_chain_snapshots WHERE measured_at > NOW() - INTERVAL '24 hours';", "format": "table", "refId": "A" }]
     },
 
     {
-      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "postgres", "uid": "eventhorizon" },
       "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 0.3 }, { "color": "red", "value": 0.5 }] }, "unit": "short", "decimals": 4 } },
       "gridPos": { "h": 4, "w": 4, "x": 8, "y": 1 },
       "id": 3,
       "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "value_and_name" },
       "title": "Avg IV (latest)",
       "type": "stat",
-      "targets": [{ "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" }, "rawSql": "SELECT ROUND(AVG(iv)::numeric, 4) AS avg_iv FROM options_chain_snapshots WHERE measured_at > NOW() - INTERVAL '24 hours' AND iv IS NOT NULL;", "format": "table", "refId": "A" }]
+      "targets": [{ "datasource": { "type": "postgres", "uid": "eventhorizon" }, "rawSql": "SELECT ROUND(AVG(iv)::numeric, 4) AS avg_iv FROM options_chain_snapshots WHERE measured_at > NOW() - INTERVAL '24 hours' AND iv IS NOT NULL;", "format": "table", "refId": "A" }]
     },
 
     {
-      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "postgres", "uid": "eventhorizon" },
       "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 1.3 }] }, "unit": "short", "decimals": 3 } },
       "gridPos": { "h": 4, "w": 4, "x": 12, "y": 1 },
       "id": 4,
       "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "value_and_name" },
       "title": "Put/Call OI Ratio",
       "type": "stat",
-      "targets": [{ "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" }, "rawSql": "SELECT ROUND((SUM(CASE WHEN right_type = 'put' THEN open_interest ELSE 0 END)::numeric / NULLIF(SUM(CASE WHEN right_type = 'call' THEN open_interest ELSE 0 END), 0)), 3) AS pc_ratio FROM options_chain_snapshots WHERE measured_at > NOW() - INTERVAL '24 hours';", "format": "table", "refId": "A" }]
+      "targets": [{ "datasource": { "type": "postgres", "uid": "eventhorizon" }, "rawSql": "SELECT ROUND((SUM(CASE WHEN right_type = 'put' THEN open_interest ELSE 0 END)::numeric / NULLIF(SUM(CASE WHEN right_type = 'call' THEN open_interest ELSE 0 END), 0)), 3) AS pc_ratio FROM options_chain_snapshots WHERE measured_at > NOW() - INTERVAL '24 hours';", "format": "table", "refId": "A" }]
     },
 
     {
-      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "postgres", "uid": "eventhorizon" },
       "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }, "unit": "short" } },
       "gridPos": { "h": 4, "w": 4, "x": 16, "y": 1 },
       "id": 5,
       "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "value_and_name" },
       "title": "Total Open Interest",
       "type": "stat",
-      "targets": [{ "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" }, "rawSql": "SELECT SUM(open_interest) AS total_oi FROM options_chain_snapshots WHERE measured_at > NOW() - INTERVAL '24 hours';", "format": "table", "refId": "A" }]
+      "targets": [{ "datasource": { "type": "postgres", "uid": "eventhorizon" }, "rawSql": "SELECT SUM(open_interest) AS total_oi FROM options_chain_snapshots WHERE measured_at > NOW() - INTERVAL '24 hours';", "format": "table", "refId": "A" }]
     },
 
     {
-      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "postgres", "uid": "eventhorizon" },
       "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }, "unit": "short" } },
       "gridPos": { "h": 4, "w": 4, "x": 20, "y": 1 },
       "id": 6,
       "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "value_and_name" },
       "title": "Total Volume (24h)",
       "type": "stat",
-      "targets": [{ "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" }, "rawSql": "SELECT SUM(volume) AS total_volume FROM options_chain_snapshots WHERE measured_at > NOW() - INTERVAL '24 hours';", "format": "table", "refId": "A" }]
+      "targets": [{ "datasource": { "type": "postgres", "uid": "eventhorizon" }, "rawSql": "SELECT SUM(volume) AS total_volume FROM options_chain_snapshots WHERE measured_at > NOW() - INTERVAL '24 hours';", "format": "table", "refId": "A" }]
     },
 
     {
@@ -100,18 +100,18 @@
     },
 
     {
-      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "postgres", "uid": "eventhorizon" },
       "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "lineWidth": 2, "fillOpacity": 10 }, "unit": "short" } },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
       "id": 7,
       "options": { "legend": { "calcs": ["last", "min", "max"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
       "title": "Average IV by Underlying (30 days)",
       "type": "timeseries",
-      "targets": [{ "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" }, "rawSql": "SELECT date_trunc('day', measured_at) AS time, underlying, ROUND(AVG(iv)::numeric, 4) AS avg_iv FROM options_chain_snapshots WHERE measured_at >= NOW() - INTERVAL '30 days' AND iv IS NOT NULL GROUP BY 1, 2 ORDER BY 1 ASC;", "format": "table", "refId": "A", "timeColumn": "time" }]
+      "targets": [{ "datasource": { "type": "postgres", "uid": "eventhorizon" }, "rawSql": "SELECT date_trunc('day', measured_at) AS time, underlying, ROUND(AVG(iv)::numeric, 4) AS avg_iv FROM options_chain_snapshots WHERE measured_at >= NOW() - INTERVAL '30 days' AND iv IS NOT NULL GROUP BY 1, 2 ORDER BY 1 ASC;", "format": "table", "refId": "A", "timeColumn": "time" }]
     },
 
     {
-      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "postgres", "uid": "eventhorizon" },
       "fieldConfig": { "defaults": { "custom": { "align": "auto" } },
         "overrides": [
           { "matcher": { "id": "byName", "options": "avg_iv" }, "properties": [{ "id": "custom.displayMode", "value": "color-background" }, { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 0.3 }, { "color": "red", "value": 0.5 }] } }] }
@@ -122,7 +122,7 @@
       "options": { "footer": { "show": false }, "showHeader": true },
       "title": "IV by Underlying & Expiry (Latest)",
       "type": "table",
-      "targets": [{ "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" }, "rawSql": "SELECT underlying, expiry, right_type, ROUND(AVG(iv)::numeric, 4) AS avg_iv, ROUND(AVG(delta)::numeric, 4) AS avg_delta, SUM(open_interest) AS total_oi, SUM(volume) AS total_vol FROM options_chain_snapshots WHERE measured_at > NOW() - INTERVAL '24 hours' GROUP BY underlying, expiry, right_type ORDER BY underlying, expiry ASC LIMIT 30;", "format": "table", "refId": "A" }]
+      "targets": [{ "datasource": { "type": "postgres", "uid": "eventhorizon" }, "rawSql": "SELECT underlying, expiry, right_type, ROUND(AVG(iv)::numeric, 4) AS avg_iv, ROUND(AVG(delta)::numeric, 4) AS avg_delta, SUM(open_interest) AS total_oi, SUM(volume) AS total_vol FROM options_chain_snapshots WHERE measured_at > NOW() - INTERVAL '24 hours' GROUP BY underlying, expiry, right_type ORDER BY underlying, expiry ASC LIMIT 30;", "format": "table", "refId": "A" }]
     },
 
     {
@@ -134,25 +134,25 @@
     },
 
     {
-      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "postgres", "uid": "eventhorizon" },
       "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "lineWidth": 2, "fillOpacity": 8 }, "unit": "short" } },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 15 },
       "id": 9,
       "options": { "legend": { "calcs": ["last"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
       "title": "Avg Delta by Underlying (30 days)",
       "type": "timeseries",
-      "targets": [{ "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" }, "rawSql": "SELECT date_trunc('day', measured_at) AS time, underlying, ROUND(AVG(delta)::numeric, 4) AS avg_delta FROM options_chain_snapshots WHERE measured_at >= NOW() - INTERVAL '30 days' AND delta IS NOT NULL GROUP BY 1, 2 ORDER BY 1 ASC;", "format": "table", "refId": "A", "timeColumn": "time" }]
+      "targets": [{ "datasource": { "type": "postgres", "uid": "eventhorizon" }, "rawSql": "SELECT date_trunc('day', measured_at) AS time, underlying, ROUND(AVG(delta)::numeric, 4) AS avg_delta FROM options_chain_snapshots WHERE measured_at >= NOW() - INTERVAL '30 days' AND delta IS NOT NULL GROUP BY 1, 2 ORDER BY 1 ASC;", "format": "table", "refId": "A", "timeColumn": "time" }]
     },
 
     {
-      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "postgres", "uid": "eventhorizon" },
       "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "lineWidth": 2, "fillOpacity": 8 }, "unit": "short" } },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 15 },
       "id": 10,
       "options": { "legend": { "calcs": ["last"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
       "title": "Avg Theta by Underlying (30 days)",
       "type": "timeseries",
-      "targets": [{ "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" }, "rawSql": "SELECT date_trunc('day', measured_at) AS time, underlying, ROUND(AVG(theta)::numeric, 4) AS avg_theta FROM options_chain_snapshots WHERE measured_at >= NOW() - INTERVAL '30 days' AND theta IS NOT NULL GROUP BY 1, 2 ORDER BY 1 ASC;", "format": "table", "refId": "A", "timeColumn": "time" }]
+      "targets": [{ "datasource": { "type": "postgres", "uid": "eventhorizon" }, "rawSql": "SELECT date_trunc('day', measured_at) AS time, underlying, ROUND(AVG(theta)::numeric, 4) AS avg_theta FROM options_chain_snapshots WHERE measured_at >= NOW() - INTERVAL '30 days' AND theta IS NOT NULL GROUP BY 1, 2 ORDER BY 1 ASC;", "format": "table", "refId": "A", "timeColumn": "time" }]
     },
 
     {
@@ -164,29 +164,29 @@
     },
 
     {
-      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "postgres", "uid": "eventhorizon" },
       "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "lineWidth": 2, "fillOpacity": 10 }, "unit": "short" } },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
       "id": 11,
       "options": { "legend": { "calcs": ["last", "max"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
       "title": "Open Interest — Calls vs Puts (30 days)",
       "type": "timeseries",
-      "targets": [{ "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" }, "rawSql": "SELECT date_trunc('day', measured_at) AS time, right_type, SUM(open_interest) AS total_oi FROM options_chain_snapshots WHERE measured_at >= NOW() - INTERVAL '30 days' GROUP BY 1, 2 ORDER BY 1 ASC;", "format": "table", "refId": "A", "timeColumn": "time" }]
+      "targets": [{ "datasource": { "type": "postgres", "uid": "eventhorizon" }, "rawSql": "SELECT date_trunc('day', measured_at) AS time, right_type, SUM(open_interest) AS total_oi FROM options_chain_snapshots WHERE measured_at >= NOW() - INTERVAL '30 days' GROUP BY 1, 2 ORDER BY 1 ASC;", "format": "table", "refId": "A", "timeColumn": "time" }]
     },
 
     {
-      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "postgres", "uid": "eventhorizon" },
       "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "lineWidth": 2, "fillOpacity": 10 }, "unit": "short" } },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
       "id": 12,
       "options": { "legend": { "calcs": ["last", "max"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
       "title": "Volume — Calls vs Puts (30 days)",
       "type": "timeseries",
-      "targets": [{ "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" }, "rawSql": "SELECT date_trunc('day', measured_at) AS time, right_type, SUM(volume) AS total_vol FROM options_chain_snapshots WHERE measured_at >= NOW() - INTERVAL '30 days' GROUP BY 1, 2 ORDER BY 1 ASC;", "format": "table", "refId": "A", "timeColumn": "time" }]
+      "targets": [{ "datasource": { "type": "postgres", "uid": "eventhorizon" }, "rawSql": "SELECT date_trunc('day', measured_at) AS time, right_type, SUM(volume) AS total_vol FROM options_chain_snapshots WHERE measured_at >= NOW() - INTERVAL '30 days' GROUP BY 1, 2 ORDER BY 1 ASC;", "format": "table", "refId": "A", "timeColumn": "time" }]
     },
 
     {
-      "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "postgres", "uid": "eventhorizon" },
       "fieldConfig": { "defaults": { "custom": { "align": "auto" } },
         "overrides": [
           { "matcher": { "id": "byName", "options": "iv" }, "properties": [{ "id": "unit", "value": "short" }, { "id": "decimals", "value": 4 }] },
@@ -199,7 +199,7 @@
       "options": { "footer": { "show": false }, "showHeader": true, "sortBy": [{ "desc": true, "displayName": "open_interest" }] },
       "title": "Options Chain — Highest Open Interest",
       "type": "table",
-      "targets": [{ "datasource": { "type": "postgres", "uid": "cflc7izgwm7lsc" }, "rawSql": "SELECT underlying, expiry, strike, right_type, bid, ask, iv, delta, gamma, theta, vega, volume, open_interest FROM options_chain_snapshots WHERE measured_at > NOW() - INTERVAL '24 hours' ORDER BY open_interest DESC NULLS LAST LIMIT 30;", "format": "table", "refId": "A" }]
+      "targets": [{ "datasource": { "type": "postgres", "uid": "eventhorizon" }, "rawSql": "SELECT underlying, expiry, strike, right_type, bid, ask, iv, delta, gamma, theta, vega, volume, open_interest FROM options_chain_snapshots WHERE measured_at > NOW() - INTERVAL '24 hours' ORDER BY open_interest DESC NULLS LAST LIMIT 30;", "format": "table", "refId": "A" }]
     }
 
   ],

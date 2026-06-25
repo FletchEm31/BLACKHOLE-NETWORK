@@ -1,4 +1,4 @@
-{
+﻿{
   "annotations": {
     "list": [
       {
@@ -37,7 +37,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -112,7 +112,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT name, status FROM nodes ORDER BY name ASC;",
@@ -125,7 +125,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -203,7 +203,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT name, type, region, public_ip::text, tunnel_ip::text, status, last_seen, bootstrap_version FROM nodes ORDER BY name ASC;",
@@ -216,7 +216,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -267,7 +267,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT COUNT(*) AS offline FROM nodes WHERE status = 'offline';",
@@ -280,7 +280,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -323,7 +323,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT COUNT(*) AS online FROM nodes WHERE status = 'online';",
@@ -336,7 +336,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -376,7 +376,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT name, last_seen, EXTRACT(EPOCH FROM (NOW() - last_seen))/60 AS minutes_ago FROM nodes ORDER BY last_seen DESC;",
@@ -401,7 +401,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -452,7 +452,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT COUNT(*) AS total_24h FROM security_events WHERE detected_at > NOW() - INTERVAL '24 hours';",
@@ -465,7 +465,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -512,7 +512,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT COUNT(*) AS critical FROM security_events WHERE detected_at > NOW() - INTERVAL '24 hours' AND severity = 'critical';",
@@ -525,7 +525,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -572,7 +572,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT COUNT(*) AS high FROM security_events WHERE detected_at > NOW() - INTERVAL '24 hours' AND severity = 'high';",
@@ -585,7 +585,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -632,7 +632,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT COUNT(*) AS medium FROM security_events WHERE detected_at > NOW() - INTERVAL '24 hours' AND severity = 'medium';",
@@ -645,7 +645,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -692,7 +692,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT COUNT(*) AS open_anomalies FROM anomalies WHERE resolved = false;",
@@ -705,7 +705,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -743,7 +743,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT date_trunc('hour', detected_at) AS time, severity, COUNT(*) AS count FROM security_events WHERE detected_at > NOW() - INTERVAL '7 days' GROUP BY 1, 2 ORDER BY 1 ASC;",
@@ -757,7 +757,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -823,7 +823,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT detected_at, severity, event_type, source_ip, LEFT(description, 60) AS description, action_taken FROM security_events ORDER BY detected_at DESC LIMIT 20;",
@@ -836,7 +836,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -863,7 +863,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT source_ip, COUNT(*) AS attempts, MAX(severity) AS max_severity, MAX(detected_at) AS last_seen FROM security_events WHERE detected_at > NOW() - INTERVAL '24 hours' AND source_ip IS NOT NULL GROUP BY source_ip ORDER BY attempts DESC LIMIT 15;",
@@ -876,7 +876,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -903,7 +903,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT event_type, COUNT(*) AS count, MAX(severity) AS max_severity FROM security_events WHERE detected_at > NOW() - INTERVAL '24 hours' GROUP BY event_type ORDER BY count DESC LIMIT 15;",
@@ -928,7 +928,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -988,7 +988,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT detected_at, type, user_key, LEFT(description, 80) AS description, resolved::text FROM anomalies ORDER BY detected_at DESC LIMIT 20;",
@@ -1001,7 +1001,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -1038,7 +1038,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT date_trunc('day', detected_at) AS time, type, COUNT(*) AS count FROM anomalies WHERE detected_at > NOW() - INTERVAL '30 days' GROUP BY 1, 2 ORDER BY 1 ASC;",
@@ -1064,7 +1064,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -1102,7 +1102,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT generated_at AS time, events_total, events_high, events_critical, events_medium FROM pulse_reports WHERE generated_at > NOW() - INTERVAL '7 days' ORDER BY generated_at ASC;",
@@ -1116,7 +1116,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -1155,7 +1155,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT generated_at AS time, bytes_in, bytes_out FROM pulse_reports WHERE generated_at > NOW() - INTERVAL '7 days' ORDER BY generated_at ASC;",
@@ -1169,7 +1169,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -1206,7 +1206,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT generated_at AS time, sessions_active, sessions_new FROM pulse_reports WHERE generated_at > NOW() - INTERVAL '7 days' ORDER BY generated_at ASC;",
@@ -1220,7 +1220,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -1280,7 +1280,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT generated_at, sessions_active, events_total, events_critical, events_high, anomalies_open, important::text, LEFT(summary, 80) AS summary FROM pulse_reports ORDER BY generated_at DESC LIMIT 15;",
@@ -1305,7 +1305,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -1343,7 +1343,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT date_trunc('hour', event_time) AS time, severity, COUNT(*) AS count FROM node_logs WHERE event_time > NOW() - INTERVAL '24 hours' GROUP BY 1, 2 ORDER BY 1 ASC;",
@@ -1357,7 +1357,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -1395,7 +1395,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT date_trunc('hour', event_time) AS time, node_name, COUNT(*) AS count FROM node_logs WHERE event_time > NOW() - INTERVAL '24 hours' GROUP BY 1, 2 ORDER BY 1 ASC;",
@@ -1409,7 +1409,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -1475,7 +1475,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT event_time, node_name, source, severity, signature, src_ip::text, dst_ip::text, proto FROM node_logs ORDER BY event_time DESC LIMIT 25;",
@@ -1488,7 +1488,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -1515,7 +1515,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT src_ip::text, COUNT(*) AS hits, MAX(severity) AS max_severity, COUNT(DISTINCT node_name) AS nodes_hit FROM node_logs WHERE event_time > NOW() - INTERVAL '24 hours' AND src_ip IS NOT NULL GROUP BY src_ip ORDER BY hits DESC LIMIT 15;",
@@ -1528,7 +1528,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -1555,7 +1555,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT signature, COUNT(*) AS count, MAX(severity) AS max_severity FROM node_logs WHERE event_time > NOW() - INTERVAL '24 hours' AND signature IS NOT NULL GROUP BY signature ORDER BY count DESC LIMIT 15;",

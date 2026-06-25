@@ -1,4 +1,4 @@
-{
+﻿{
   "uid": "eh-fleet-health",
   "title": "EH Fleet Health",
   "description": "Per-node liveness derived from the nodes registry + 5-min heartbeat cron. A node is stale when its last_seen is older than three missed heartbeats (15 min).",
@@ -14,7 +14,7 @@
       "type": "stat",
       "title": "Online vs stale",
       "gridPos": { "h": 4, "w": 8, "x": 0, "y": 0 },
-      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "eventhorizon" },
       "targets": [
         {
           "refId": "A",
@@ -58,7 +58,7 @@
       "type": "table",
       "title": "Stale nodes (no heartbeat > 15 min)",
       "gridPos": { "h": 8, "w": 24, "x": 0, "y": 4 },
-      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "eventhorizon" },
       "targets": [
         {
           "refId": "A",
@@ -105,7 +105,7 @@
       "type": "table",
       "title": "All nodes (registry)",
       "gridPos": { "h": 8, "w": 24, "x": 0, "y": 12 },
-      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "eventhorizon" },
       "targets": [
         {
           "refId": "A",

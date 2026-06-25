@@ -1,4 +1,4 @@
-{
+﻿{
   "uid": "bhn-wg-peer-bandwidth",
   "title": "BHN WireGuard Peer Bandwidth",
   "description": "Per-peer bandwidth derived from cumulative wg_peer_stats samples. The hub's view: 'sent to peer' = bytes_sent, 'received from peer' = bytes_received. Spike alert fires on server peers (Frankfurt/NJ/Hillsboro) for >1GB sent in 1h; personal peers (Phone/PC) excluded.",
@@ -14,7 +14,7 @@
       "type": "timeseries",
       "title": "Per-peer egress rate (hub → peer, bytes/sec)",
       "gridPos": { "h": 9, "w": 24, "x": 0, "y": 0 },
-      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "eventhorizon" },
       "targets": [
         {
           "refId": "A",
@@ -39,7 +39,7 @@
       "type": "timeseries",
       "title": "Per-peer ingress rate (peer → hub, bytes/sec)",
       "gridPos": { "h": 9, "w": 24, "x": 0, "y": 9 },
-      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "eventhorizon" },
       "targets": [
         {
           "refId": "A",
@@ -64,7 +64,7 @@
       "type": "table",
       "title": "Current session totals (latest sample per peer)",
       "gridPos": { "h": 8, "w": 24, "x": 0, "y": 18 },
-      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "eventhorizon" },
       "targets": [
         {
           "refId": "A",

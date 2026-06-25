@@ -1,4 +1,4 @@
-{
+﻿{
   "uid": "bhn-node-patches",
   "title": "BHN Node Patch Status",
   "description": "Pending apt updates per node + reboot-required flags. Daily snapshot via bhn-patch-collector.sh.",
@@ -12,7 +12,7 @@
     {
       "id": 1, "type": "table", "title": "Current patch state per node",
       "gridPos": { "h": 8, "w": 24, "x": 0, "y": 0 },
-      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "eventhorizon" },
       "targets": [{ "refId": "A", "format": "table",
         "rawSql": "SELECT DISTINCT ON (node_name) node_name, pending_total, pending_security, reboot_required, measured_at AS last_check FROM node_patch_status ORDER BY node_name, measured_at DESC" }],
       "fieldConfig": {
@@ -34,7 +34,7 @@
     {
       "id": 2, "type": "timeseries", "title": "Pending security updates over time",
       "gridPos": { "h": 9, "w": 24, "x": 0, "y": 8 },
-      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "eventhorizon" },
       "targets": [{ "refId": "A", "format": "time_series",
         "rawSql": "SELECT measured_at AS time, node_name AS metric, pending_security FROM node_patch_status WHERE $__timeFilter(measured_at) ORDER BY 1" }],
       "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "bars", "lineWidth": 1 } }, "overrides": [] }

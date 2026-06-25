@@ -1,4 +1,4 @@
-{
+﻿{
   "annotations": {
     "list": [
       {
@@ -37,7 +37,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -116,7 +116,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT regime FROM market_regimes ORDER BY date DESC LIMIT 1;",
@@ -129,7 +129,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -186,7 +186,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT vix FROM market_regimes ORDER BY date DESC LIMIT 1;",
@@ -199,7 +199,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -258,7 +258,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT spy_vs_200ma FROM market_regimes ORDER BY date DESC LIMIT 1;",
@@ -271,7 +271,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -328,7 +328,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT yield_curve FROM market_regimes ORDER BY date DESC LIMIT 1;",
@@ -341,7 +341,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -411,7 +411,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT ROUND((confidence_score * 100)::numeric, 1) AS confidence FROM market_regimes ORDER BY date DESC LIMIT 1;",
@@ -424,7 +424,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -511,7 +511,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT date::timestamptz AS time, vix, spy_vs_200ma, yield_curve FROM market_regimes WHERE date >= NOW() - INTERVAL '90 days' ORDER BY date ASC;",
@@ -537,7 +537,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -594,7 +594,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT ROUND(((curr.cpi - prev.cpi) / prev.cpi * 100)::numeric, 2) AS cpi FROM (SELECT cpi FROM macro_daily WHERE cpi IS NOT NULL ORDER BY date DESC LIMIT 1) curr, (SELECT cpi FROM macro_daily WHERE cpi IS NOT NULL AND date <= NOW() - INTERVAL '11 months' ORDER BY date DESC LIMIT 1) prev;",
@@ -607,7 +607,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -666,7 +666,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT fed_funds_rate FROM macro_daily WHERE fed_funds_rate IS NOT NULL ORDER BY date DESC LIMIT 1;",
@@ -679,7 +679,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -738,7 +738,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT unemployment FROM macro_daily WHERE unemployment IS NOT NULL ORDER BY date DESC LIMIT 1;",
@@ -751,7 +751,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -825,7 +825,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT fear_greed_label FROM market_sentiment ORDER BY date DESC LIMIT 1;",
@@ -838,7 +838,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -915,7 +915,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT fear_greed_index FROM market_sentiment ORDER BY date DESC LIMIT 1;",
@@ -928,7 +928,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -1018,7 +1018,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT date::timestamptz AS time, fed_funds_rate, yield_curve_10y2y, yield_curve_10y3m FROM macro_daily WHERE date >= NOW() - INTERVAL '1 year' ORDER BY date ASC;",
@@ -1032,7 +1032,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -1121,7 +1121,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT date::timestamptz AS time, fear_greed_index, put_call_ratio, insider_buy_sell_ratio FROM market_sentiment ORDER BY date ASC;",
@@ -1135,7 +1135,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -1223,7 +1223,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT date::timestamptz AS time, dollar_index, high_yield_spread FROM macro_daily WHERE date >= NOW() - INTERVAL '1 year' ORDER BY date ASC;",
@@ -1237,7 +1237,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -1326,7 +1326,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT date::timestamptz AS time, aaii_bull_pct, aaii_bear_pct, aaii_neutral_pct FROM market_sentiment ORDER BY date ASC;",
@@ -1340,7 +1340,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -1428,7 +1428,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT date::timestamptz AS time, cpi, unemployment, consumer_sentiment FROM macro_daily WHERE date >= NOW() - INTERVAL '1 year' ORDER BY date ASC;",
@@ -1442,7 +1442,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -1530,7 +1530,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT date::timestamptz AS time, ticker, volume FROM market_daily WHERE ticker IN ('VXX','UVIX','SVXY') AND date >= NOW() - INTERVAL '90 days' ORDER BY date ASC;",
@@ -1544,7 +1544,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -1634,7 +1634,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT date::timestamptz AS time, ticker, close FROM market_daily WHERE ticker IN ('VXX','UVIX','SVXY') AND date >= NOW() - INTERVAL '90 days' ORDER BY date ASC;",
@@ -1670,7 +1670,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "fieldConfig": {
             "defaults": {
@@ -1760,7 +1760,7 @@
             {
               "datasource": {
                 "type": "postgres",
-                "uid": "cflc7izgwm7lsc"
+                "uid": "eventhorizon"
               },
               "format": "table",
               "rawSql": "SELECT date::timestamptz AS time, ticker, close FROM market_daily WHERE ticker IN ('SPY','QQQ','IWM','DIA') AND date >= NOW() - INTERVAL '90 days' ORDER BY date ASC;",
@@ -1774,7 +1774,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "fieldConfig": {
             "defaults": {
@@ -1864,7 +1864,7 @@
             {
               "datasource": {
                 "type": "postgres",
-                "uid": "cflc7izgwm7lsc"
+                "uid": "eventhorizon"
               },
               "format": "table",
               "rawSql": "SELECT date::timestamptz AS time, ticker, close FROM market_daily WHERE ticker IN ('TQQQ','QLD','SOXL','TECL','FAS') AND date >= NOW() - INTERVAL '90 days' ORDER BY date ASC;",
@@ -1878,7 +1878,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "fieldConfig": {
             "defaults": {
@@ -1968,7 +1968,7 @@
             {
               "datasource": {
                 "type": "postgres",
-                "uid": "cflc7izgwm7lsc"
+                "uid": "eventhorizon"
               },
               "format": "table",
               "rawSql": "SELECT date::timestamptz AS time, ticker, close FROM market_daily WHERE ticker IN ('SQQQ','QID','PSQ') AND date >= NOW() - INTERVAL '90 days' ORDER BY date ASC;",
@@ -1982,7 +1982,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "fieldConfig": {
             "defaults": {
@@ -2072,7 +2072,7 @@
             {
               "datasource": {
                 "type": "postgres",
-                "uid": "cflc7izgwm7lsc"
+                "uid": "eventhorizon"
               },
               "format": "table",
               "rawSql": "SELECT date::timestamptz AS time, ticker, rsi_14 FROM market_daily WHERE ticker IN ('SPY','QQQ','IWM','TQQQ','SQQQ') AND date >= NOW() - INTERVAL '90 days' ORDER BY date ASC;",
@@ -2100,7 +2100,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "fieldConfig": {
             "defaults": {
@@ -2190,7 +2190,7 @@
             {
               "datasource": {
                 "type": "postgres",
-                "uid": "cflc7izgwm7lsc"
+                "uid": "eventhorizon"
               },
               "format": "table",
               "rawSql": "SELECT date::timestamptz AS time, ticker, close FROM market_daily WHERE ticker IN ('XLK','XLF','XLE','XLV','XLU') AND date >= NOW() - INTERVAL '90 days' ORDER BY date ASC;",
@@ -2204,7 +2204,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "fieldConfig": {
             "defaults": {
@@ -2294,7 +2294,7 @@
             {
               "datasource": {
                 "type": "postgres",
-                "uid": "cflc7izgwm7lsc"
+                "uid": "eventhorizon"
               },
               "format": "table",
               "rawSql": "SELECT date::timestamptz AS time, ticker, rsi_14 FROM market_daily WHERE ticker IN ('XLK','XLF','XLE','XLV','XLU') AND date >= NOW() - INTERVAL '90 days' ORDER BY date ASC;",
@@ -2322,7 +2322,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "fieldConfig": {
             "defaults": {
@@ -2412,7 +2412,7 @@
             {
               "datasource": {
                 "type": "postgres",
-                "uid": "cflc7izgwm7lsc"
+                "uid": "eventhorizon"
               },
               "format": "table",
               "rawSql": "SELECT date::timestamptz AS time, ticker, close FROM market_daily WHERE ticker IN ('TMF','BIL','JPST') AND date >= NOW() - INTERVAL '90 days' ORDER BY date ASC;",
@@ -2426,7 +2426,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "fieldConfig": {
             "defaults": {
@@ -2516,7 +2516,7 @@
             {
               "datasource": {
                 "type": "postgres",
-                "uid": "cflc7izgwm7lsc"
+                "uid": "eventhorizon"
               },
               "format": "table",
               "rawSql": "SELECT date::timestamptz AS time, ticker, close FROM market_daily WHERE ticker IN ('UUP') AND date >= NOW() - INTERVAL '90 days' ORDER BY date ASC;",
@@ -2544,7 +2544,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "fieldConfig": {
             "defaults": {
@@ -2634,7 +2634,7 @@
             {
               "datasource": {
                 "type": "postgres",
-                "uid": "cflc7izgwm7lsc"
+                "uid": "eventhorizon"
               },
               "format": "table",
               "rawSql": "SELECT date::timestamptz AS time, ticker, close FROM market_daily WHERE ticker IN ('GLD','SLV','USO','UNG') AND date >= NOW() - INTERVAL '90 days' ORDER BY date ASC;",
@@ -2648,7 +2648,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "fieldConfig": {
             "defaults": {
@@ -2738,7 +2738,7 @@
             {
               "datasource": {
                 "type": "postgres",
-                "uid": "cflc7izgwm7lsc"
+                "uid": "eventhorizon"
               },
               "format": "table",
               "rawSql": "SELECT date::timestamptz AS time, ticker, close FROM market_daily WHERE ticker IN ('CORN','WEAT','SOYB') AND date >= NOW() - INTERVAL '90 days' ORDER BY date ASC;",
@@ -2766,7 +2766,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "fieldConfig": {
             "defaults": {
@@ -2875,7 +2875,7 @@
             {
               "datasource": {
                 "type": "postgres",
-                "uid": "cflc7izgwm7lsc"
+                "uid": "eventhorizon"
               },
               "format": "table",
               "rawSql": "SELECT symbol, period, eps_actual, eps_estimate, ROUND(surprise_pct::numeric, 2) AS surprise_pct FROM earnings_data ORDER BY period DESC, symbol ASC LIMIT 30;",
@@ -2888,7 +2888,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "fieldConfig": {
             "defaults": {
@@ -2976,7 +2976,7 @@
             {
               "datasource": {
                 "type": "postgres",
-                "uid": "cflc7izgwm7lsc"
+                "uid": "eventhorizon"
               },
               "format": "table",
               "rawSql": "SELECT period::timestamptz AS time, symbol, ROUND(surprise_pct::numeric, 2) AS surprise_pct FROM earnings_data WHERE surprise_pct IS NOT NULL ORDER BY period ASC;",
@@ -3004,7 +3004,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "fieldConfig": {
             "defaults": {
@@ -3133,7 +3133,7 @@
             {
               "datasource": {
                 "type": "postgres",
-                "uid": "cflc7izgwm7lsc"
+                "uid": "eventhorizon"
               },
               "format": "table",
               "rawSql": "SELECT DISTINCT ON (symbol) symbol, period, strong_buy, buy, hold, sell, strong_sell, ROUND((strong_buy + buy)::numeric / NULLIF(strong_buy + buy + hold + sell + strong_sell, 0) * 100, 1) AS bull_pct FROM analyst_data ORDER BY symbol, period DESC;",
@@ -3146,7 +3146,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "fieldConfig": {
             "defaults": {
@@ -3234,7 +3234,7 @@
             {
               "datasource": {
                 "type": "postgres",
-                "uid": "cflc7izgwm7lsc"
+                "uid": "eventhorizon"
               },
               "format": "table",
               "rawSql": "SELECT period::timestamptz AS time, symbol, ROUND((strong_buy + buy)::numeric / NULLIF(strong_buy + buy + hold + sell + strong_sell, 0) * 100, 1) AS bull_pct FROM analyst_data ORDER BY period ASC;",
@@ -3262,7 +3262,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "fieldConfig": {
             "defaults": {
@@ -3339,7 +3339,7 @@
             {
               "datasource": {
                 "type": "postgres",
-                "uid": "cflc7izgwm7lsc"
+                "uid": "eventhorizon"
               },
               "format": "table",
               "rawSql": "SELECT event_date, event_name, event_type, importance, expected_value, previous_value FROM market_events WHERE event_date BETWEEN NOW() AND NOW() + INTERVAL '30 days' ORDER BY event_date ASC LIMIT 20;",
@@ -3352,7 +3352,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "fieldConfig": {
             "defaults": {
@@ -3397,7 +3397,7 @@
             {
               "datasource": {
                 "type": "postgres",
-                "uid": "cflc7izgwm7lsc"
+                "uid": "eventhorizon"
               },
               "format": "table",
               "rawSql": "SELECT published_at::date AS date, source, LEFT(title, 70) AS headline FROM news_articles ORDER BY published_at DESC LIMIT 20;",

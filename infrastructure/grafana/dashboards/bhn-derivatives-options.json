@@ -1,4 +1,4 @@
-{
+﻿{
   "annotations": {
     "list": [
       {
@@ -37,7 +37,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -79,7 +79,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT COUNT(DISTINCT underlying) AS underlyings FROM options_chain_snapshots;",
@@ -92,7 +92,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -134,7 +134,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT COUNT(*) AS contracts FROM options_chain_snapshots WHERE measured_at > NOW() - INTERVAL '24 hours';",
@@ -147,7 +147,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -199,7 +199,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT ROUND(AVG(iv)::numeric, 4) AS avg_iv FROM options_chain_snapshots WHERE measured_at > NOW() - INTERVAL '24 hours' AND iv IS NOT NULL;",
@@ -212,7 +212,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -264,7 +264,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT ROUND((SUM(CASE WHEN right_type = 'put' THEN open_interest ELSE 0 END)::numeric / NULLIF(SUM(CASE WHEN right_type = 'call' THEN open_interest ELSE 0 END), 0)), 3) AS pc_ratio FROM options_chain_snapshots WHERE measured_at > NOW() - INTERVAL '24 hours';",
@@ -277,7 +277,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -320,7 +320,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT SUM(open_interest) AS total_oi FROM options_chain_snapshots WHERE measured_at > NOW() - INTERVAL '24 hours';",
@@ -333,7 +333,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -376,7 +376,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT SUM(volume) AS total_volume FROM options_chain_snapshots WHERE measured_at > NOW() - INTERVAL '24 hours';",
@@ -401,7 +401,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -441,7 +441,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT date_trunc('day', measured_at) AS time, underlying, ROUND(AVG(iv)::numeric, 4) AS avg_iv FROM options_chain_snapshots WHERE measured_at >= NOW() - INTERVAL '30 days' AND iv IS NOT NULL GROUP BY 1, 2 ORDER BY 1 ASC;",
@@ -455,7 +455,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -514,7 +514,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT underlying, expiry, right_type, ROUND(AVG(iv)::numeric, 4) AS avg_iv, ROUND(AVG(delta)::numeric, 4) AS avg_delta, SUM(open_interest) AS total_oi, SUM(volume) AS total_vol FROM options_chain_snapshots WHERE measured_at > NOW() - INTERVAL '24 hours' GROUP BY underlying, expiry, right_type ORDER BY underlying, expiry ASC LIMIT 30;",
@@ -539,7 +539,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -577,7 +577,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT date_trunc('day', measured_at) AS time, underlying, ROUND(AVG(delta)::numeric, 4) AS avg_delta FROM options_chain_snapshots WHERE measured_at >= NOW() - INTERVAL '30 days' AND delta IS NOT NULL GROUP BY 1, 2 ORDER BY 1 ASC;",
@@ -591,7 +591,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -629,7 +629,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT date_trunc('day', measured_at) AS time, underlying, ROUND(AVG(theta)::numeric, 4) AS avg_theta FROM options_chain_snapshots WHERE measured_at >= NOW() - INTERVAL '30 days' AND theta IS NOT NULL GROUP BY 1, 2 ORDER BY 1 ASC;",
@@ -655,7 +655,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -694,7 +694,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT date_trunc('day', measured_at) AS time, right_type, SUM(open_interest) AS total_oi FROM options_chain_snapshots WHERE measured_at >= NOW() - INTERVAL '30 days' GROUP BY 1, 2 ORDER BY 1 ASC;",
@@ -708,7 +708,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -747,7 +747,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT date_trunc('day', measured_at) AS time, right_type, SUM(volume) AS total_vol FROM options_chain_snapshots WHERE measured_at >= NOW() - INTERVAL '30 days' GROUP BY 1, 2 ORDER BY 1 ASC;",
@@ -761,7 +761,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "fieldConfig": {
         "defaults": {
@@ -835,7 +835,7 @@
         {
           "datasource": {
             "type": "postgres",
-            "uid": "cflc7izgwm7lsc"
+            "uid": "eventhorizon"
           },
           "format": "table",
           "rawSql": "SELECT underlying, expiry, strike, right_type, bid, ask, iv, delta, gamma, theta, vega, volume, open_interest FROM options_chain_snapshots WHERE measured_at > NOW() - INTERVAL '24 hours' ORDER BY open_interest DESC NULLS LAST LIMIT 30;",

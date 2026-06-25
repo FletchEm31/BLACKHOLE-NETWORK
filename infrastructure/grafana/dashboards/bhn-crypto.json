@@ -1,4 +1,4 @@
-{
+﻿{
   "uid": "bhn-crypto",
   "title": "BHN Crypto Prices",
   "description": "Top-N crypto by market cap from CoinGecko. 15-min cadence.",
@@ -12,7 +12,7 @@
     {
       "id": 1, "type": "timeseries", "title": "Price (USD) per symbol",
       "gridPos": { "h": 10, "w": 24, "x": 0, "y": 0 },
-      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "eventhorizon" },
       "targets": [{ "refId": "A", "format": "time_series",
         "rawSql": "SELECT measured_at AS time, symbol AS metric, price_usd FROM crypto_market_data WHERE $__timeFilter(measured_at) ORDER BY 1" }],
       "fieldConfig": { "defaults": { "unit": "currencyUSD" }, "overrides": [] }
@@ -20,7 +20,7 @@
     {
       "id": 2, "type": "table", "title": "Latest snapshot (top by market cap)",
       "gridPos": { "h": 10, "w": 24, "x": 0, "y": 10 },
-      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "eventhorizon" },
       "targets": [{ "refId": "A", "format": "table",
         "rawSql": "SELECT DISTINCT ON (symbol) rank, symbol, name, price_usd, change_24h_pct, market_cap_usd, volume_24h_usd FROM crypto_market_data ORDER BY symbol, measured_at DESC" }],
       "fieldConfig": {

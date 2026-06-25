@@ -1,4 +1,4 @@
-{
+﻿{
   "uid": "bhn-crowdsec-decisions",
   "title": "BHN CrowdSec Decisions",
   "description": "Active CrowdSec decisions per node — bans, captchas, throttles. Populated by bhn-crowdsec-collector.sh every 5 min.",
@@ -14,7 +14,7 @@
       "type": "timeseries",
       "title": "Active decisions per node over time",
       "gridPos": { "h": 9, "w": 24, "x": 0, "y": 0 },
-      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "eventhorizon" },
       "targets": [{
         "refId": "A", "format": "time_series",
         "rawSql": "SELECT $__timeGroupAlias(measured_at, '5m') AS time, node_name AS metric, COUNT(DISTINCT decision_id) AS active_count FROM crowdsec_decisions WHERE $__timeFilter(measured_at) GROUP BY 1, node_name ORDER BY 1"
@@ -27,7 +27,7 @@
       "type": "table",
       "title": "Currently active decisions (latest snapshot)",
       "gridPos": { "h": 10, "w": 24, "x": 0, "y": 9 },
-      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "eventhorizon" },
       "targets": [{
         "refId": "A", "format": "table",
         "rawSql": "WITH latest AS (SELECT node_name, MAX(measured_at) AS m FROM crowdsec_decisions GROUP BY node_name) SELECT cd.node_name, cd.type, cd.value, cd.scope, cd.scenario, cd.expires_at, cd.duration_s FROM crowdsec_decisions cd JOIN latest l ON cd.node_name=l.node_name AND cd.measured_at=l.m ORDER BY cd.node_name, cd.expires_at NULLS LAST"
@@ -39,7 +39,7 @@
       "type": "table",
       "title": "Top scenarios by decision count (24h)",
       "gridPos": { "h": 8, "w": 24, "x": 0, "y": 19 },
-      "datasource": { "type": "grafana-postgresql-datasource", "uid": "cflc7izgwm7lsc" },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "eventhorizon" },
       "targets": [{
         "refId": "A", "format": "table",
         "rawSql": "SELECT scenario, COUNT(DISTINCT (node_name, decision_id)) AS unique_decisions, COUNT(DISTINCT value) AS unique_targets FROM crowdsec_decisions WHERE measured_at > NOW() - INTERVAL '24 hours' GROUP BY scenario ORDER BY unique_decisions DESC LIMIT 25"

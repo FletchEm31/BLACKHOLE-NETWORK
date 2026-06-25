@@ -1,4 +1,4 @@
-{
+﻿{
   "uid": "bhn-data-health",
   "title": "BHN \u2014 Data Health",
   "description": "Data layer: storage, collector freshness, row counts, and volume trends across all eventhorizon domains. The freshness table catches dead collectors the moment they stop writing.",
@@ -95,7 +95,7 @@
       },
       "datasource": {
         "type": "grafana-postgresql-datasource",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "targets": [
         {
@@ -135,7 +135,7 @@
       },
       "datasource": {
         "type": "grafana-postgresql-datasource",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "targets": [
         {
@@ -175,7 +175,7 @@
       },
       "datasource": {
         "type": "grafana-postgresql-datasource",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "targets": [
         {
@@ -215,7 +215,7 @@
       },
       "datasource": {
         "type": "grafana-postgresql-datasource",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "targets": [
         {
@@ -273,7 +273,7 @@
       },
       "datasource": {
         "type": "grafana-postgresql-datasource",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "targets": [
         {
@@ -331,7 +331,7 @@
       },
       "datasource": {
         "type": "grafana-postgresql-datasource",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "targets": [
         {
@@ -411,7 +411,7 @@
       },
       "datasource": {
         "type": "grafana-postgresql-datasource",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "targets": [
         {
@@ -463,7 +463,7 @@
       },
       "datasource": {
         "type": "grafana-postgresql-datasource",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "targets": [
         {
@@ -503,7 +503,7 @@
       },
       "datasource": {
         "type": "grafana-postgresql-datasource",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "targets": [
         {
@@ -543,7 +543,7 @@
       },
       "datasource": {
         "type": "grafana-postgresql-datasource",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "targets": [
         {
@@ -583,7 +583,7 @@
       },
       "datasource": {
         "type": "grafana-postgresql-datasource",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "targets": [
         {
@@ -623,7 +623,7 @@
       },
       "datasource": {
         "type": "grafana-postgresql-datasource",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "targets": [
         {
@@ -664,7 +664,7 @@
       },
       "datasource": {
         "type": "grafana-postgresql-datasource",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "targets": [
         {
@@ -797,7 +797,7 @@
       },
       "datasource": {
         "type": "grafana-postgresql-datasource",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "targets": [
         {
@@ -840,7 +840,7 @@
       },
       "datasource": {
         "type": "grafana-postgresql-datasource",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "targets": [
         {
@@ -969,7 +969,7 @@
       },
       "datasource": {
         "type": "grafana-postgresql-datasource",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "targets": [
         {
@@ -1017,7 +1017,7 @@
       },
       "datasource": {
         "type": "grafana-postgresql-datasource",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "targets": [
         {
@@ -1087,7 +1087,7 @@
       },
       "datasource": {
         "type": "grafana-postgresql-datasource",
-        "uid": "cflc7izgwm7lsc"
+        "uid": "eventhorizon"
       },
       "targets": [
         {
