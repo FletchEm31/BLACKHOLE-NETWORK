@@ -11,6 +11,46 @@ Refresh periodically as live state evolves.
 
 ---
 
+## Updates — 2026-06-25: Node Inventory & Management System
+
+See full detail: `infrastructure/docs/bhn-node-inventory-system.md`
+
+### New PostgreSQL tables (eventhorizon DB)
+
+| Table | Purpose | Writer | Reader |
+|-------|---------|--------|--------|
+| `node_services` | Systemd + Docker service status per node | ehuser (collector) | grafana_reader |
+| `node_packages` | Key dpkg package versions per node | ehuser (collector) | grafana_reader |
+| `node_ports` | Listening TCP/UDP ports per node | ehuser (collector) | grafana_reader |
+
+### New services / ports
+
+| Service | Node | Address:Port | Notes |
+|---------|------|-------------|-------|
+| bhn-dozzle | LA | `10.8.0.1:9999` | Unified Docker log viewer (mesh-only) |
+| bhn-dozzle-agent | NJ | `10.8.0.5:7007` | Dozzle agent (WG-internal) |
+| bhn-dozzle-agent | Hillsboro | `10.8.0.6:7007` | Dozzle agent (WG-internal) |
+| bhn-inventory cron | All nodes | — | `/etc/cron.d/bhn-inventory`, every 30 min |
+
+### New scripts
+
+| Script | Location | Purpose |
+|--------|----------|---------|
+| `bhn-inventory-collector.sh` | `/usr/local/bin/` on each node | Auto-discovers services, ports, packages |
+| `deploy-inventory-system.sh` | `scripts/` in repo | Deploys collector to all 3 nodes |
+
+### New Grafana dashboard
+
+**BHN Node Inventory** (UID: `bhn-node-inventory`) — services by node, Docker status, port table, package matrix, staleness alerts.
+
+### New Ansible configuration
+
+`infrastructure/ansible/` — inventory + 3 playbooks (health-check, restart-dns-stack, ufw-audit). Run from LA or operator PC on WG tunnel.
+
+---
+
+---
+
 ```
 ================================================================================
 BLACKHOLE NETWORK (BHN) — INFRASTRUCTURE REFERENCE

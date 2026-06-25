@@ -1,0 +1,54 @@
+---
+# BHN Restart DNS Stack
+# Restarts dnscrypt-proxy and systemd-resolved on targeted nodes.
+# Safe to run at any time — services come back immediately.
+#
+# Usage:
+#   ansible-playbook playbooks/restart-dns-stack.yml           # all nodes
+#   ansible-playbook playbooks/restart-dns-stack.yml --limit la
+
+- name: Restart BHN DNS stack
+  hosts: bhn_all
+  gather_facts: false
+
+  tasks:
+
+    - name: Check dnscrypt-proxy status before restart
+      command: systemctl is-active dnscrypt-proxy
+      register: dns_before
+      changed_when: false
+      failed_when: false
+
+    - name: Restart dnscrypt-proxy
+      systemd:
+        name: dnscrypt-proxy
+        state: restarted
+      when: dns_before.rc == 0
+
+    - name: Restart systemd-resolved (if active)
+      systemd:
+        name: systemd-resolved
+        state: restarted
+      failed_when: false
+
+    - name: Verify dnscrypt-proxy is running
+      command: systemctl is-active dnscrypt-proxy
+      register: dns_after
+      changed_when: false
+      failed_when: false
+
+    - name: Quick DNS resolution test
+      shell: dig +short +timeout=3 one.one.one.one @127.0.0.1 || \
+             dig +short +timeout=3 one.one.one.one @127.0.2.1 || \
+             echo "DNS resolution check inconclusive"
+      register: dns_test
+      changed_when: false
+      failed_when: false
+
+    - name: DNS stack status
+      debug:
+        msg: |
+          {{ inventory_hostname }} ({{ bhn_node_name }}):
+            dnscrypt-proxy before: {{ dns_before.stdout | default('not found') }}
+            dnscrypt-proxy after:  {{ dns_after.stdout | default('not found') }}
+            DNS test:              {{ dns_test.stdout | default('n/a') }}

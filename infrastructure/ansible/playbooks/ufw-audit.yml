@@ -1,0 +1,68 @@
+---
+# BHN UFW Audit — collect firewall rules from all nodes
+# Non-destructive read-only. Aggregates ufw status + any unexpected
+# public-facing ports for operator review.
+#
+# Usage:
+#   ansible-playbook playbooks/ufw-audit.yml
+#   ansible-playbook playbooks/ufw-audit.yml --limit hillsboro
+
+- name: BHN UFW audit across all nodes
+  hosts: bhn_all
+  gather_facts: false
+
+  vars:
+    # Ports expected to be publicly reachable (node-specific or fleet-wide)
+    expected_public_ports:
+      la:        [22, 51820, 8388]
+      nj:        [22, 2222, 51820]
+      hillsboro: [22, 9001, 51821]
+
+  tasks:
+
+    - name: UFW status (numbered)
+      command: ufw status numbered
+      register: ufw_status
+      changed_when: false
+      become: true
+
+    - name: Listening ports (public-facing, non-WG addresses)
+      shell: |
+        ss -tlnp | awk 'NR>1 && $5 !~ /^(127\.|10\.|::1)/ {print $5, $7}' | sort -u || true
+        ss -ulnp | awk 'NR>1 && $5 !~ /^(127\.|10\.|::1)/ {print "UDP", $5, $7}' | sort -u || true
+      register: public_ports
+      changed_when: false
+
+    - name: Check for any DENY/DROP overrides disabled
+      shell: ufw status verbose 2>/dev/null | grep -E "(Default:|Status:)" || true
+      register: ufw_defaults
+      changed_when: false
+
+    - name: Print UFW audit report
+      debug:
+        msg: |
+          ========== {{ inventory_hostname }} ({{ bhn_node_name }}) ==========
+          UFW DEFAULTS:
+          {{ ufw_defaults.stdout }}
+
+          UFW RULES:
+          {{ ufw_status.stdout }}
+
+          PUBLIC-FACING LISTENERS (non-loopback, non-mesh):
+          {{ public_ports.stdout | default('none detected') }}
+
+    - name: Write audit results to local file
+      local_action:
+        module: copy
+        content: |
+          # UFW Audit — {{ inventory_hostname }} — {{ ansible_date_time.iso8601 | default(lookup('pipe','date -u +%Y-%m-%dT%H:%M:%SZ')) }}
+          {{ ufw_status.stdout }}
+
+          Public listeners:
+          {{ public_ports.stdout }}
+        dest: "/tmp/bhn-ufw-audit-{{ inventory_hostname }}-{{ lookup('pipe','date +%Y%m%d-%H%M') }}.txt"
+      changed_when: false
+
+    - name: Confirm audit files written
+      debug:
+        msg: "Audit saved to /tmp/bhn-ufw-audit-{{ inventory_hostname }}-*.txt on control node"

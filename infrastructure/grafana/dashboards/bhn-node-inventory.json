@@ -1,0 +1,365 @@
+{
+  "uid": "bhn-node-inventory",
+  "title": "BHN Node Inventory",
+  "description": "Services, Docker containers, listening ports, and package versions per node. Populated every 30 min by bhn-inventory-collector.sh.",
+  "tags": ["bhn", "inventory", "services", "ports"],
+  "timezone": "utc",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5m",
+  "time": { "from": "now-2h", "to": "now" },
+
+  "templating": {
+    "list": [
+      {
+        "name": "node",
+        "type": "query",
+        "label": "Node",
+        "datasource": { "type": "grafana-postgresql-datasource", "uid": "eventhorizon" },
+        "query": "SELECT DISTINCT node_name FROM node_services ORDER BY 1",
+        "multi": true,
+        "includeAll": true,
+        "current": { "text": "All", "value": "$__all" },
+        "refresh": 2
+      }
+    ]
+  },
+
+  "panels": [
+
+    {
+      "id": 1,
+      "type": "row",
+      "title": "Service Status",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "collapsed": false
+    },
+
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Running services",
+      "description": "Systemd services in running state, last 2 collection cycles.",
+      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 1 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "eventhorizon" },
+      "targets": [{
+        "refId": "A",
+        "format": "table",
+        "rawSql": "SELECT node_name, COUNT(*) AS running FROM node_services WHERE service_type='systemd' AND status='running' AND collected_at > NOW() - INTERVAL '2 hours' GROUP BY node_name ORDER BY node_name"
+      }],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "running", "values": true },
+        "orientation": "horizontal",
+        "textMode": "value_and_name",
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }
+        },
+        "overrides": []
+      }
+    },
+
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Failed / stopped services",
+      "description": "Any systemd service not in running state. Red = action needed.",
+      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 1 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "eventhorizon" },
+      "targets": [{
+        "refId": "A",
+        "format": "table",
+        "rawSql": "SELECT node_name, COUNT(*) AS failed FROM node_services WHERE service_type='systemd' AND status NOT IN ('running','active') AND collected_at > NOW() - INTERVAL '2 hours' GROUP BY node_name ORDER BY node_name"
+      }],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "failed", "values": true },
+        "orientation": "horizontal",
+        "textMode": "value_and_name",
+        "colorMode": "background",
+        "graphMode": "none"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Docker containers",
+      "description": "Running vs stopped Docker containers across docker-enabled nodes.",
+      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 1 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "eventhorizon" },
+      "targets": [{
+        "refId": "A",
+        "format": "table",
+        "rawSql": "SELECT SUM(CASE WHEN status LIKE 'Up%' THEN 1 ELSE 0 END) AS running, SUM(CASE WHEN status NOT LIKE 'Up%' THEN 1 ELSE 0 END) AS stopped FROM node_services WHERE service_type='docker' AND collected_at > NOW() - INTERVAL '2 hours'"
+      }],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "orientation": "horizontal",
+        "textMode": "value_and_name",
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "stopped" },
+            "properties": [
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [
+                { "color": "green", "value": null },
+                { "color": "orange", "value": 1 }
+              ]}}
+            ]
+          }
+        ]
+      }
+    },
+
+    {
+      "id": 5,
+      "type": "table",
+      "title": "Failed / Non-running services",
+      "description": "Systemd services not in 'running' state. These need investigation.",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 5 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "eventhorizon" },
+      "targets": [{
+        "refId": "A",
+        "format": "table",
+        "rawSql": "SELECT node_name, service_name, status, collected_at FROM node_services WHERE service_type='systemd' AND status NOT IN ('running','active') AND collected_at > NOW() - INTERVAL '2 hours' AND ($node = 'All' OR node_name = ANY(string_to_array('$node',','))) ORDER BY node_name, service_name"
+      }],
+      "options": { "showHeader": true, "footer": { "show": false } },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "left" } },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "status" },
+            "properties": [
+              { "id": "custom.cellOptions", "value": { "type": "color-background" } },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [
+                { "color": "yellow", "value": null },
+                { "color": "red", "value": null }
+              ]}},
+              { "id": "mappings", "value": [
+                { "type": "value", "options": { "failed": { "color": "red", "index": 0 } } },
+                { "type": "value", "options": { "exited": { "color": "orange", "index": 1 } } }
+              ]}
+            ]
+          }
+        ]
+      }
+    },
+
+    {
+      "id": 6,
+      "type": "row",
+      "title": "Systemd Services by Node",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 13 },
+      "collapsed": false
+    },
+
+    {
+      "id": 7,
+      "type": "table",
+      "title": "Systemd services",
+      "description": "All BHN-relevant systemd services. Stale if collected_at > 2h ago.",
+      "gridPos": { "h": 14, "w": 12, "x": 0, "y": 14 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "eventhorizon" },
+      "targets": [{
+        "refId": "A",
+        "format": "table",
+        "rawSql": "SELECT node_name, service_name, status, collected_at FROM node_services WHERE service_type='systemd' AND collected_at > NOW() - INTERVAL '2 hours' AND ($node = 'All' OR node_name = ANY(string_to_array('$node',','))) ORDER BY node_name, service_name"
+      }],
+      "options": { "showHeader": true, "footer": { "show": false } },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "left" } },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "status" },
+            "properties": [
+              { "id": "custom.cellOptions", "value": { "type": "color-background" } },
+              { "id": "mappings", "value": [
+                { "type": "value", "options": { "running": { "color": "green", "index": 0 } } },
+                { "type": "value", "options": { "failed": { "color": "red", "index": 1 } } },
+                { "type": "value", "options": { "exited": { "color": "orange", "index": 2 } } },
+                { "type": "value", "options": { "dead": { "color": "orange", "index": 3 } } }
+              ]}
+            ]
+          }
+        ]
+      }
+    },
+
+    {
+      "id": 8,
+      "type": "table",
+      "title": "Docker containers",
+      "description": "All Docker containers across all nodes.",
+      "gridPos": { "h": 14, "w": 12, "x": 12, "y": 14 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "eventhorizon" },
+      "targets": [{
+        "refId": "A",
+        "format": "table",
+        "rawSql": "SELECT node_name, service_name AS container, image, status, collected_at FROM node_services WHERE service_type='docker' AND collected_at > NOW() - INTERVAL '2 hours' AND ($node = 'All' OR node_name = ANY(string_to_array('$node',','))) ORDER BY node_name, service_name"
+      }],
+      "options": { "showHeader": true, "footer": { "show": false } },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "left" } },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "status" },
+            "properties": [
+              { "id": "custom.cellOptions", "value": { "type": "color-background" } },
+              { "id": "mappings", "value": [
+                { "type": "regex", "options": { "pattern": "^Up.*", "result": { "color": "green", "index": 0 } } },
+                { "type": "regex", "options": { "pattern": "^Exited.*", "result": { "color": "orange", "index": 1 } } }
+              ]}
+            ]
+          }
+        ]
+      }
+    },
+
+    {
+      "id": 9,
+      "type": "row",
+      "title": "Network Ports",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 28 },
+      "collapsed": false
+    },
+
+    {
+      "id": 10,
+      "type": "table",
+      "title": "Listening ports",
+      "description": "All TCP/UDP ports listening on each node (from ss). Refreshed on every collection run.",
+      "gridPos": { "h": 14, "w": 24, "x": 0, "y": 29 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "eventhorizon" },
+      "targets": [{
+        "refId": "A",
+        "format": "table",
+        "rawSql": "SELECT node_name, protocol, address, port, process_name, collected_at FROM node_ports WHERE collected_at > NOW() - INTERVAL '2 hours' AND ($node = 'All' OR node_name = ANY(string_to_array('$node',','))) ORDER BY node_name, port, protocol"
+      }],
+      "options": { "showHeader": true, "footer": { "show": false } },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "left" } },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "port" },
+            "properties": [{ "id": "custom.width", "value": 80 }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "protocol" },
+            "properties": [{ "id": "custom.width", "value": 70 }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "address" },
+            "properties": [{ "id": "custom.width", "value": 130 }]
+          }
+        ]
+      }
+    },
+
+    {
+      "id": 11,
+      "type": "row",
+      "title": "Package Versions",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 43 },
+      "collapsed": false
+    },
+
+    {
+      "id": 12,
+      "type": "table",
+      "title": "Key package versions",
+      "description": "Version of tracked packages per node. Cross-node drift is visible when versions differ.",
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 44 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "eventhorizon" },
+      "targets": [{
+        "refId": "A",
+        "format": "table",
+        "rawSql": "SELECT package_name, MAX(CASE WHEN node_name LIKE '%LOSANGELES%' THEN version END) AS la, MAX(CASE WHEN node_name LIKE '%NEWJERSEY%' THEN version END) AS nj, MAX(CASE WHEN node_name LIKE '%HILLSBORO%' THEN version END) AS hillsboro FROM node_packages WHERE collected_at > NOW() - INTERVAL '2 hours' GROUP BY package_name ORDER BY package_name"
+      }],
+      "options": { "showHeader": true, "footer": { "show": false } },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "left" } },
+        "overrides": []
+      }
+    },
+
+    {
+      "id": 13,
+      "type": "row",
+      "title": "Collection Health",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 56 },
+      "collapsed": false
+    },
+
+    {
+      "id": 14,
+      "type": "table",
+      "title": "Last collection time per node",
+      "description": "If collected_at is older than 1 hour, the collector cron may have failed.",
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 57 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "eventhorizon" },
+      "targets": [{
+        "refId": "A",
+        "format": "table",
+        "rawSql": "SELECT node_name, MAX(collected_at) AS last_collection, EXTRACT(EPOCH FROM (NOW() - MAX(collected_at)))/60 AS minutes_ago FROM node_services GROUP BY node_name ORDER BY node_name"
+      }],
+      "options": { "showHeader": true, "footer": { "show": false } },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "left" } },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "minutes_ago" },
+            "properties": [
+              { "id": "unit", "value": "short" },
+              { "id": "displayName", "value": "minutes ago" },
+              { "id": "custom.cellOptions", "value": { "type": "color-background" } },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [
+                { "color": "green", "value": null },
+                { "color": "yellow", "value": 45 },
+                { "color": "red", "value": 90 }
+              ]}}
+            ]
+          }
+        ]
+      }
+    },
+
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "Service count over time (running, per node)",
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 57 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "eventhorizon" },
+      "targets": [{
+        "refId": "A",
+        "format": "time_series",
+        "rawSql": "SELECT collected_at AS time, node_name AS metric, COUNT(*) AS running_count FROM node_services WHERE service_type='systemd' AND status='running' AND $__timeFilter(collected_at) GROUP BY collected_at, node_name ORDER BY 1"
+      }],
+      "fieldConfig": {
+        "defaults": { "custom": { "lineWidth": 2, "fillOpacity": 5 } },
+        "overrides": []
+      }
+    }
+
+  ]
+}

@@ -1,0 +1,28 @@
+# Dozzle agent — lightweight Docker log forwarder for NJ and Hillsboro
+# Connects back to the Dozzle hub on LA (10.8.0.1:9999).
+#
+# Deploy on NJ (10.8.0.5) and Hillsboro (10.8.0.6):
+#   mkdir -p /opt/bhn-dozzle
+#   scp infrastructure/services/dozzle/docker-compose-agent.yml root@<node>:/opt/bhn-dozzle/docker-compose.yml
+#   ssh root@<node> 'cd /opt/bhn-dozzle && docker compose up -d'
+#
+# NJ pre-requisite: Docker is not installed by default on NJ.
+# Install before deploying the agent:
+#   apt-get update && apt-get install -y docker.io
+#   systemctl enable --now docker
+#
+# The agent listens on 7007/tcp (WG-internal). The LA hub connects inbound
+# to this port — no internet exposure needed; WireGuard carries the traffic.
+
+services:
+  dozzle-agent:
+    image: amir20/dozzle:latest
+    container_name: bhn-dozzle-agent
+    restart: unless-stopped
+    command: agent
+    ports:
+      - "7007:7007"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      DOZZLE_NO_ANALYTICS: "true"

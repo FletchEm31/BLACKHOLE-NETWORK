@@ -1,0 +1,56 @@
+---
+# BHN Health Check — runs on all nodes
+# Usage: ansible-playbook playbooks/health-check.yml
+#        ansible-playbook playbooks/health-check.yml --limit la
+
+- name: BHN node health check
+  hosts: bhn_all
+  gather_facts: false
+
+  tasks:
+
+    - name: Uptime and load
+      command: uptime
+      register: uptime_out
+      changed_when: false
+
+    - name: Memory usage
+      command: free -h
+      register: mem_out
+      changed_when: false
+
+    - name: Disk usage
+      shell: df -h | grep -vE '(tmpfs|udev|loop)' | head -10
+      register: disk_out
+      changed_when: false
+
+    - name: Failed systemd units
+      shell: systemctl --failed --no-legend --no-pager 2>/dev/null | head -20 || true
+      register: failed_units
+      changed_when: false
+
+    - name: Docker containers
+      shell: docker ps -a --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}' 2>/dev/null || echo "Docker not available"
+      register: docker_out
+      changed_when: false
+
+    - name: WireGuard peers
+      shell: wg show 2>/dev/null || echo "wg not running"
+      register: wg_out
+      changed_when: false
+
+    - name: Print health summary
+      debug:
+        msg: |
+          ========== {{ inventory_hostname }} ({{ bhn_node_name }}) ==========
+          UPTIME:   {{ uptime_out.stdout }}
+          MEMORY:
+          {{ mem_out.stdout }}
+          DISK:
+          {{ disk_out.stdout }}
+          FAILED UNITS:
+          {{ failed_units.stdout | default('none') }}
+          DOCKER:
+          {{ docker_out.stdout }}
+          WIREGUARD:
+          {{ wg_out.stdout }}
