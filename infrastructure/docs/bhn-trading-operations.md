@@ -206,3 +206,103 @@ SELECT * FROM circuit_breaker_log WHERE strategy_id='strat_4_momentum';
 ```
 
 Audit data is retained indefinitely. The 80%-of-PG-capacity safety net (`eh-purge --check-capacity`) does NOT purge trading tables — they're flagged as `keep-forever` in the purge config.
+
+---
+
+## WeatherBHN — Kalshi prediction market trading operations
+
+WeatherBHN runs on LA (not NJ). All timers live on LA. The framework is always `DRY_RUN=true` + `KALSHI_PAPER_ONLY=true` until operator explicitly flips.
+
+### Key tables
+
+| Table | Updated by | Cadence |
+|-------|-----------|---------|
+| `weather_gold_daily_edge_sheet` | `weather_edge_calculator.py` | Every 5 min |
+| `weather_model_accuracy` | `weather_settlement_reconciliation.py` | 10 AM ET daily |
+| `weather_gold_contract_ledger` | `refresh_contract_ledger()` (called from recon) | 10 AM ET daily |
+
+### Contract ledger — the primary analysis table
+
+`weather_gold_contract_ledger` is the master performance table. One row per Kalshi contract ticker. Pre-settlement rows have NULL in `actual_tmax_f`, `contract_resolved_yes`, `paper_pnl`. After settlement those columns populate.
+
+**Manual bootstrap** (after applying the migration for the first time):
+```sql
+-- Snapshot first:
+sudo -u postgres pg_dump eventhorizon > /mnt/eh-nvme-hot/backups/pre-contract-ledger-$(date +%Y%m%d-%H%M).sql
+
+-- Apply migration:
+sudo -u postgres psql -d eventhorizon -f /opt/bhn/sql/migrations/2026-06-25-contract-ledger.sql
+
+-- Bootstrap all historical contracts:
+sudo -u postgres psql -d eventhorizon -c "SELECT refresh_contract_ledger(NULL);"
+```
+
+**Verify bootstrap:**
+```sql
+SELECT
+    COUNT(*) AS total_rows,
+    COUNT(*) FILTER (WHERE contract_resolved_yes IS NOT NULL) AS settled,
+    COUNT(*) FILTER (WHERE recommended_action IN ('BET_YES', 'BET_NO')) AS bet_recommendations,
+    ROUND(100.0 * COUNT(*) FILTER (WHERE bhn_correct)
+          / NULLIF(COUNT(*) FILTER (WHERE bhn_correct IS NOT NULL), 0), 1) AS accuracy_pct,
+    ROUND(SUM(paper_pnl), 2) AS total_paper_pnl
+FROM weather_gold_contract_ledger;
+```
+
+**Refresh manually** (after any ad-hoc settlement recon run):
+```sql
+-- All dates:
+SELECT refresh_contract_ledger(NULL);
+
+-- One date:
+SELECT refresh_contract_ledger('2026-06-20');
+```
+
+The function is called automatically from `weather_settlement_reconciliation.py` at the end of every reconciliation run (lines 277-286 of that script).
+
+### Settlement reconciliation timing
+
+NWS CLI reports publish ~6-8 AM ET for the prior day's observations. The settlement recon timer fires at 10 AM ET to give NWS time to publish:
+
+```bash
+# Check timer status on LA:
+sudo systemctl status bhn-weather-settlement-recon.timer
+
+# Check last reconciliation run:
+sudo journalctl -u bhn-weather-settlement-recon.service --since today | tail -30
+
+# Run manually for a specific date (dry-run first):
+python3 /opt/bhn/scripts/trading/weather_settlement_reconciliation.py --dry-run --date 2026-06-20
+python3 /opt/bhn/scripts/trading/weather_settlement_reconciliation.py --date 2026-06-20
+```
+
+If the recon runs but finds zero actuals, check that `weather_bronze_nws_actuals` has rows for that date:
+```sql
+SELECT station_code, target_date, final_tmax_f, report_issued_at
+FROM weather_bronze_nws_actuals
+WHERE target_date = '2026-06-20'
+ORDER BY station_code;
+```
+
+### WeatherBHN paper → live checklist
+
+**Default posture: stay in DRY_RUN.** Do not flip without all boxes checked.
+
+- [ ] `weather_gold_contract_ledger` has ≥ 60 settled contracts with `recommended_action IN ('BET_YES','BET_NO')`
+- [ ] `bhn_correct` rate ≥ 55% across those contracts
+- [ ] Platt/isotonic calibration implemented and `calibrator_version` != `v0_passthrough`
+- [ ] Edge distribution audit: BET_YES at edge ≥ 10% has higher accuracy than BET_YES at edge 5-10%
+- [ ] VC backfill complete (3 years of actuals in `weather_bronze_visual_crossing_actuals`)
+- [ ] Grafana contract-ledger dashboard reviewed for no obvious data-quality anomalies
+- [ ] Daily loss limit reviewed and set in `strat9.env`
+- [ ] Kalshi API key confirmed working (live, not sandbox)
+
+If all checked, flip in `strat9.env` on LA:
+```bash
+sudo nano /etc/bhn-trading/strat9.env
+# Change: DRY_RUN=true → DRY_RUN=false
+# KALSHI_PAPER_ONLY stays true until operator explicitly removes it
+sudo systemctl restart bhn-weather-edge-calculator.timer
+```
+
+Watch the next edge calculator run (5-min cycle) and confirm orders appear in `bhn-weather-contract-ledger` Grafana dashboard before removing `KALSHI_PAPER_ONLY`.

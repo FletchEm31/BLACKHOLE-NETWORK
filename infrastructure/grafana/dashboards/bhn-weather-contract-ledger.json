@@ -1,0 +1,419 @@
+{
+  "uid": "bhn-weather-ledger",
+  "title": "WeatherBHN — Contract Ledger",
+  "description": "Master contract performance ledger. One row per settled/active Kalshi weather contract. Source: weather_gold_contract_ledger, populated by refresh_contract_ledger() after each settlement reconciliation run.",
+  "tags": ["weatherbhn", "kalshi", "trading", "ledger", "strat9"],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "5m",
+  "time": { "from": "now-90d", "to": "now" },
+  "panels": [
+
+    {
+      "id": 1,
+      "type": "row",
+      "title": "PERFORMANCE OVERVIEW",
+      "collapsed": false,
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 1 }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Total Contracts",
+      "datasource": { "uid": "eventhorizon", "type": "grafana-postgresql-datasource" },
+      "gridPos": { "x": 0, "y": 1, "w": 4, "h": 4 },
+      "options": { "colorMode": "none", "graphMode": "none", "textMode": "auto" },
+      "targets": [{
+        "refId": "A",
+        "rawSql": "SELECT COUNT(*) AS total FROM weather_gold_contract_ledger",
+        "format": "table"
+      }]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Settled",
+      "datasource": { "uid": "eventhorizon", "type": "grafana-postgresql-datasource" },
+      "gridPos": { "x": 4, "y": 1, "w": 4, "h": 4 },
+      "options": { "colorMode": "none", "graphMode": "none", "textMode": "auto" },
+      "targets": [{
+        "refId": "A",
+        "rawSql": "SELECT COUNT(*) FILTER (WHERE contract_resolved_yes IS NOT NULL) AS settled FROM weather_gold_contract_ledger",
+        "format": "table"
+      }]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "BHN Accuracy (BET_YES + BET_NO)",
+      "description": "% of BET_YES/BET_NO recommendations that were correct among settled contracts",
+      "datasource": { "uid": "eventhorizon", "type": "grafana-postgresql-datasource" },
+      "gridPos": { "x": 8, "y": 1, "w": 4, "h": 4 },
+      "options": { "colorMode": "background", "graphMode": "none", "textMode": "auto" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 50 },
+              { "color": "green", "value": 55 }
+            ]
+          }
+        }
+      },
+      "targets": [{
+        "refId": "A",
+        "rawSql": "SELECT ROUND(100.0 * COUNT(*) FILTER (WHERE bhn_correct) / NULLIF(COUNT(*) FILTER (WHERE bhn_correct IS NOT NULL), 0), 1) AS accuracy_pct FROM weather_gold_contract_ledger WHERE recommended_action IN ('BET_YES', 'BET_NO')",
+        "format": "table"
+      }]
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Calibration Accuracy (all contracts)",
+      "description": "% where calibrated_prob > 0.5 matched the settlement outcome (no action required)",
+      "datasource": { "uid": "eventhorizon", "type": "grafana-postgresql-datasource" },
+      "gridPos": { "x": 12, "y": 1, "w": 4, "h": 4 },
+      "options": { "colorMode": "background", "graphMode": "none", "textMode": "auto" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 50 },
+              { "color": "green", "value": 55 }
+            ]
+          }
+        }
+      },
+      "targets": [{
+        "refId": "A",
+        "rawSql": "SELECT ROUND(100.0 * COUNT(*) FILTER (WHERE bhn_predicted_correctly) / NULLIF(COUNT(*) FILTER (WHERE bhn_predicted_correctly IS NOT NULL), 0), 1) AS calib_accuracy_pct FROM weather_gold_contract_ledger",
+        "format": "table"
+      }]
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Cumulative Paper P&L",
+      "datasource": { "uid": "eventhorizon", "type": "grafana-postgresql-datasource" },
+      "gridPos": { "x": 16, "y": 1, "w": 4, "h": 4 },
+      "options": { "colorMode": "background", "graphMode": "none", "textMode": "auto" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 0 },
+              { "color": "green", "value": 10 }
+            ]
+          }
+        }
+      },
+      "targets": [{
+        "refId": "A",
+        "rawSql": "SELECT COALESCE(ROUND(SUM(paper_pnl), 2), 0) AS total_paper_pnl FROM weather_gold_contract_ledger",
+        "format": "table"
+      }]
+    },
+    {
+      "id": 7,
+      "type": "stat",
+      "title": "Avg P&L per Bet",
+      "datasource": { "uid": "eventhorizon", "type": "grafana-postgresql-datasource" },
+      "gridPos": { "x": 20, "y": 1, "w": 4, "h": 4 },
+      "options": { "colorMode": "background", "graphMode": "none", "textMode": "auto" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 0 },
+              { "color": "green", "value": 1 }
+            ]
+          }
+        }
+      },
+      "targets": [{
+        "refId": "A",
+        "rawSql": "SELECT ROUND(AVG(paper_pnl), 2) AS avg_pnl_per_bet FROM weather_gold_contract_ledger WHERE recommended_action IN ('BET_YES', 'BET_NO') AND paper_pnl IS NOT NULL",
+        "format": "table"
+      }]
+    },
+
+    {
+      "id": 10,
+      "type": "row",
+      "title": "CONTRACT LEDGER",
+      "collapsed": false,
+      "gridPos": { "x": 0, "y": 5, "w": 24, "h": 1 }
+    },
+    {
+      "id": 11,
+      "type": "table",
+      "title": "Contract Ledger — All contracts",
+      "description": "One row per Kalshi contract. Settled = has actual_tmax_f. Sort by target_date desc, then edge desc.",
+      "datasource": { "uid": "eventhorizon", "type": "grafana-postgresql-datasource" },
+      "gridPos": { "x": 0, "y": 6, "w": 24, "h": 12 },
+      "options": { "sortBy": [{ "displayName": "target_date", "desc": true }] },
+      "fieldConfig": {
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "recommended_action" }, "properties": [{ "id": "custom.width", "value": 110 }] },
+          { "matcher": { "id": "byName", "options": "result" }, "properties": [{ "id": "custom.width", "value": 80 }, { "id": "custom.displayMode", "value": "color-background" }, { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] } }] },
+          { "matcher": { "id": "byName", "options": "paper_pnl" }, "properties": [{ "id": "unit", "value": "currencyUSD" }, { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 0 }] } }, { "id": "custom.displayMode", "value": "color-background" }] },
+          { "matcher": { "id": "byName", "options": "edge_pct" }, "properties": [{ "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }, { "color": "yellow", "value": 5 }, { "color": "green", "value": 10 }] } }, { "id": "custom.displayMode", "value": "color-background" }] }
+        ]
+      },
+      "targets": [{
+        "refId": "A",
+        "rawSql": "SELECT city, target_date, bucket_label, ROUND(calibrated_prob * 100, 1) AS model_pct, ROUND(market_implied_prob * 100, 1) AS market_pct, ROUND(edge_pct, 1) AS edge_pct, recommended_action, signal_strength, model_confidence, stake_usd, actual_tmax_f, CASE WHEN contract_resolved_yes IS NULL THEN 'pending' WHEN contract_resolved_yes THEN 'YES' ELSE 'NO' END AS outcome, CASE WHEN bhn_correct IS NULL THEN '-' WHEN bhn_correct THEN 'correct' ELSE 'wrong' END AS result, ROUND(paper_pnl, 2) AS paper_pnl, CASE WHEN afternoon_storm_flag THEN 'storm' ELSE NULL END AS storm_flag, CASE WHEN sea_breeze_flag THEN 'sea_breeze' ELSE NULL END AS sea_breeze, enso_phase, signal_generated_at FROM weather_gold_contract_ledger ORDER BY target_date DESC, city, bucket_floor",
+        "format": "table"
+      }]
+    },
+
+    {
+      "id": 20,
+      "type": "row",
+      "title": "P&L TIMELINE",
+      "collapsed": false,
+      "gridPos": { "x": 0, "y": 18, "w": 24, "h": 1 }
+    },
+    {
+      "id": 21,
+      "type": "timeseries",
+      "title": "Cumulative Paper P&L Over Time",
+      "datasource": { "uid": "eventhorizon", "type": "grafana-postgresql-datasource" },
+      "gridPos": { "x": 0, "y": 19, "w": 16, "h": 8 },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "fieldConfig": {
+        "defaults": { "unit": "currencyUSD", "decimals": 2 },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "cumulative_pnl" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } }] }
+        ]
+      },
+      "targets": [{
+        "refId": "A",
+        "rawSql": "SELECT target_date AS time, SUM(SUM(COALESCE(paper_pnl, 0))) OVER (ORDER BY target_date) AS cumulative_pnl FROM weather_gold_contract_ledger WHERE recommended_action IN ('BET_YES', 'BET_NO') GROUP BY target_date ORDER BY target_date",
+        "format": "time_series"
+      }]
+    },
+    {
+      "id": 22,
+      "type": "table",
+      "title": "Daily P&L Breakdown",
+      "datasource": { "uid": "eventhorizon", "type": "grafana-postgresql-datasource" },
+      "gridPos": { "x": 16, "y": 19, "w": 8, "h": 8 },
+      "fieldConfig": {
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "daily_pnl" }, "properties": [{ "id": "unit", "value": "currencyUSD" }, { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 0 }] } }, { "id": "custom.displayMode", "value": "color-background" }] }
+        ]
+      },
+      "targets": [{
+        "refId": "A",
+        "rawSql": "SELECT target_date, city, COUNT(*) FILTER (WHERE recommended_action IN ('BET_YES', 'BET_NO') AND paper_pnl IS NOT NULL) AS bets, COUNT(*) FILTER (WHERE bhn_correct) AS correct, ROUND(SUM(paper_pnl), 2) AS daily_pnl FROM weather_gold_contract_ledger GROUP BY target_date, city ORDER BY target_date DESC, city",
+        "format": "table"
+      }]
+    },
+
+    {
+      "id": 30,
+      "type": "row",
+      "title": "ACCURACY ANALYSIS",
+      "collapsed": false,
+      "gridPos": { "x": 0, "y": 27, "w": 24, "h": 1 }
+    },
+    {
+      "id": 31,
+      "type": "barchart",
+      "title": "Accuracy by Model Confidence",
+      "description": "HIGH = ensemble_spread ≤ 2°F or NWS-GFS delta < 2°F. Does higher confidence = higher accuracy?",
+      "datasource": { "uid": "eventhorizon", "type": "grafana-postgresql-datasource" },
+      "gridPos": { "x": 0, "y": 28, "w": 8, "h": 8 },
+      "options": { "xField": "model_confidence", "stacking": "none" },
+      "fieldConfig": { "defaults": { "unit": "percent" } },
+      "targets": [{
+        "refId": "A",
+        "rawSql": "SELECT model_confidence, ROUND(100.0 * COUNT(*) FILTER (WHERE bhn_correct) / NULLIF(COUNT(*) FILTER (WHERE bhn_correct IS NOT NULL), 0), 1) AS accuracy_pct, COUNT(*) FILTER (WHERE bhn_correct IS NOT NULL) AS n_bets FROM weather_gold_contract_ledger WHERE recommended_action IN ('BET_YES', 'BET_NO') GROUP BY model_confidence ORDER BY model_confidence",
+        "format": "table"
+      }]
+    },
+    {
+      "id": 32,
+      "type": "barchart",
+      "title": "Accuracy by Signal Strength",
+      "description": "STRONG = |edge| ≥ 15%, MODERATE ≥ 8%, WEAK < 8%. Validates that larger edge = more accurate.",
+      "datasource": { "uid": "eventhorizon", "type": "grafana-postgresql-datasource" },
+      "gridPos": { "x": 8, "y": 28, "w": 8, "h": 8 },
+      "options": { "xField": "signal_strength", "stacking": "none" },
+      "fieldConfig": { "defaults": { "unit": "percent" } },
+      "targets": [{
+        "refId": "A",
+        "rawSql": "SELECT signal_strength, ROUND(100.0 * COUNT(*) FILTER (WHERE bhn_correct) / NULLIF(COUNT(*) FILTER (WHERE bhn_correct IS NOT NULL), 0), 1) AS accuracy_pct, COUNT(*) FILTER (WHERE bhn_correct IS NOT NULL) AS n_bets, ROUND(AVG(paper_pnl), 2) AS avg_pnl FROM weather_gold_contract_ledger WHERE recommended_action IN ('BET_YES', 'BET_NO') AND bhn_correct IS NOT NULL GROUP BY signal_strength ORDER BY signal_strength",
+        "format": "table"
+      }]
+    },
+    {
+      "id": 33,
+      "type": "barchart",
+      "title": "Accuracy by ENSO Phase",
+      "description": "Does El Niño / La Niña systematically affect forecast accuracy for KDEN or KMIA?",
+      "datasource": { "uid": "eventhorizon", "type": "grafana-postgresql-datasource" },
+      "gridPos": { "x": 16, "y": 28, "w": 8, "h": 8 },
+      "options": { "xField": "enso_phase", "stacking": "none" },
+      "fieldConfig": { "defaults": { "unit": "percent" } },
+      "targets": [{
+        "refId": "A",
+        "rawSql": "SELECT COALESCE(enso_phase, 'unknown') AS enso_phase, ROUND(100.0 * COUNT(*) FILTER (WHERE bhn_correct) / NULLIF(COUNT(*) FILTER (WHERE bhn_correct IS NOT NULL), 0), 1) AS accuracy_pct, COUNT(*) FILTER (WHERE bhn_correct IS NOT NULL) AS n_bets FROM weather_gold_contract_ledger WHERE recommended_action IN ('BET_YES', 'BET_NO') GROUP BY enso_phase ORDER BY enso_phase",
+        "format": "table"
+      }]
+    },
+
+    {
+      "id": 40,
+      "type": "row",
+      "title": "MIAMI FEATURE FLAGS (KMIA only)",
+      "collapsed": false,
+      "gridPos": { "x": 0, "y": 36, "w": 24, "h": 1 }
+    },
+    {
+      "id": 41,
+      "type": "barchart",
+      "title": "Afternoon Storm Flag vs Accuracy (KMIA)",
+      "description": "When NWS shows >20% PoP in hours 12-17. Afternoon convection suppresses the daily high ~2-4°F — does the model capture this?",
+      "datasource": { "uid": "eventhorizon", "type": "grafana-postgresql-datasource" },
+      "gridPos": { "x": 0, "y": 37, "w": 8, "h": 8 },
+      "options": { "xField": "storm_flag", "stacking": "none" },
+      "fieldConfig": { "defaults": { "unit": "percent" } },
+      "targets": [{
+        "refId": "A",
+        "rawSql": "SELECT CASE WHEN afternoon_storm_flag THEN 'storm flagged' ELSE 'no storm' END AS storm_flag, ROUND(100.0 * COUNT(*) FILTER (WHERE bhn_correct) / NULLIF(COUNT(*) FILTER (WHERE bhn_correct IS NOT NULL), 0), 1) AS accuracy_pct, COUNT(*) FILTER (WHERE bhn_correct IS NOT NULL) AS n_bets FROM weather_gold_contract_ledger WHERE station_code = 'KMIA' AND recommended_action IN ('BET_YES', 'BET_NO') AND afternoon_storm_flag IS NOT NULL GROUP BY afternoon_storm_flag ORDER BY afternoon_storm_flag",
+        "format": "table"
+      }]
+    },
+    {
+      "id": 42,
+      "type": "barchart",
+      "title": "Sea Breeze Flag vs Accuracy (KMIA)",
+      "description": "When wind is SE/S at >5mph during peak heating. Onshore flow limits afternoon heating ~1.5°F.",
+      "datasource": { "uid": "eventhorizon", "type": "grafana-postgresql-datasource" },
+      "gridPos": { "x": 8, "y": 37, "w": 8, "h": 8 },
+      "options": { "xField": "sea_breeze", "stacking": "none" },
+      "fieldConfig": { "defaults": { "unit": "percent" } },
+      "targets": [{
+        "refId": "A",
+        "rawSql": "SELECT CASE WHEN sea_breeze_flag THEN 'sea breeze' ELSE 'no sea breeze' END AS sea_breeze, ROUND(100.0 * COUNT(*) FILTER (WHERE bhn_correct) / NULLIF(COUNT(*) FILTER (WHERE bhn_correct IS NOT NULL), 0), 1) AS accuracy_pct, COUNT(*) FILTER (WHERE bhn_correct IS NOT NULL) AS n_bets FROM weather_gold_contract_ledger WHERE station_code = 'KMIA' AND recommended_action IN ('BET_YES', 'BET_NO') AND sea_breeze_flag IS NOT NULL GROUP BY sea_breeze_flag ORDER BY sea_breeze_flag",
+        "format": "table"
+      }]
+    },
+    {
+      "id": 43,
+      "type": "barchart",
+      "title": "Pre-Peak Storm Flag vs Accuracy (KMIA)",
+      "description": "Storm in [12, peak_hour) — occurs before peak heating, stronger suppression than post-peak.",
+      "datasource": { "uid": "eventhorizon", "type": "grafana-postgresql-datasource" },
+      "gridPos": { "x": 16, "y": 37, "w": 8, "h": 8 },
+      "options": { "xField": "pre_peak_flag", "stacking": "none" },
+      "fieldConfig": { "defaults": { "unit": "percent" } },
+      "targets": [{
+        "refId": "A",
+        "rawSql": "SELECT CASE WHEN pre_peak_storm_flag THEN 'pre-peak storm' ELSE 'no pre-peak storm' END AS pre_peak_flag, ROUND(100.0 * COUNT(*) FILTER (WHERE bhn_correct) / NULLIF(COUNT(*) FILTER (WHERE bhn_correct IS NOT NULL), 0), 1) AS accuracy_pct, COUNT(*) FILTER (WHERE bhn_correct IS NOT NULL) AS n_bets FROM weather_gold_contract_ledger WHERE station_code = 'KMIA' AND recommended_action IN ('BET_YES', 'BET_NO') AND pre_peak_storm_flag IS NOT NULL GROUP BY pre_peak_storm_flag ORDER BY pre_peak_storm_flag",
+        "format": "table"
+      }]
+    },
+
+    {
+      "id": 50,
+      "type": "row",
+      "title": "EDGE CALIBRATION",
+      "collapsed": false,
+      "gridPos": { "x": 0, "y": 45, "w": 24, "h": 1 }
+    },
+    {
+      "id": 51,
+      "type": "table",
+      "title": "Accuracy by Edge Bucket — Is bigger edge = more accurate?",
+      "description": "Edge bucketed into 5% bands. Well-calibrated model: accuracy should rise with edge magnitude.",
+      "datasource": { "uid": "eventhorizon", "type": "grafana-postgresql-datasource" },
+      "gridPos": { "x": 0, "y": 46, "w": 12, "h": 8 },
+      "fieldConfig": {
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "accuracy_pct" }, "properties": [{ "id": "unit", "value": "percent" }, { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "yellow", "value": 50 }, { "color": "green", "value": 55 }] } }, { "id": "custom.displayMode", "value": "color-background" }] }
+        ]
+      },
+      "targets": [{
+        "refId": "A",
+        "rawSql": "SELECT CONCAT(CAST(FLOOR(ABS(edge_pct) / 5) * 5 AS INT), '-', CAST(FLOOR(ABS(edge_pct) / 5) * 5 + 5 AS INT), '%') AS edge_band, COUNT(*) FILTER (WHERE bhn_correct IS NOT NULL) AS n_bets, ROUND(100.0 * COUNT(*) FILTER (WHERE bhn_correct) / NULLIF(COUNT(*) FILTER (WHERE bhn_correct IS NOT NULL), 0), 1) AS accuracy_pct, ROUND(AVG(paper_pnl), 2) AS avg_pnl FROM weather_gold_contract_ledger WHERE recommended_action IN ('BET_YES', 'BET_NO') AND edge_pct IS NOT NULL GROUP BY FLOOR(ABS(edge_pct) / 5) ORDER BY FLOOR(ABS(edge_pct) / 5)",
+        "format": "table"
+      }]
+    },
+    {
+      "id": 52,
+      "type": "table",
+      "title": "Best and Worst Temperature Buckets by Avg P&L",
+      "description": "Which bucket ranges does the model most and least reliably predict? Min 3 settled bets.",
+      "datasource": { "uid": "eventhorizon", "type": "grafana-postgresql-datasource" },
+      "gridPos": { "x": 12, "y": 46, "w": 12, "h": 8 },
+      "fieldConfig": {
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "avg_pnl" }, "properties": [{ "id": "unit", "value": "currencyUSD" }, { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 0 }] } }, { "id": "custom.displayMode", "value": "color-background" }] }
+        ]
+      },
+      "targets": [{
+        "refId": "A",
+        "rawSql": "SELECT city, bucket_label, COUNT(*) FILTER (WHERE paper_pnl IS NOT NULL) AS settled_bets, ROUND(SUM(paper_pnl), 2) AS total_pnl, ROUND(AVG(paper_pnl), 2) AS avg_pnl, ROUND(100.0 * COUNT(*) FILTER (WHERE bhn_correct) / NULLIF(COUNT(*) FILTER (WHERE bhn_correct IS NOT NULL), 0), 1) AS accuracy_pct FROM weather_gold_contract_ledger WHERE recommended_action IN ('BET_YES', 'BET_NO') AND paper_pnl IS NOT NULL GROUP BY city, bucket_label HAVING COUNT(*) FILTER (WHERE paper_pnl IS NOT NULL) >= 3 ORDER BY avg_pnl DESC",
+        "format": "table"
+      }]
+    },
+
+    {
+      "id": 60,
+      "type": "row",
+      "title": "MODEL ERROR — Source Comparison",
+      "collapsed": false,
+      "gridPos": { "x": 0, "y": 54, "w": 24, "h": 1 }
+    },
+    {
+      "id": 61,
+      "type": "table",
+      "title": "NWS vs GFS MAE by City (last 90 days)",
+      "description": "Mean absolute error per forecast source. Lower = better. MAE drives sigma for the Gaussian model and will weight the ensemble once Brier-score history is sufficient.",
+      "datasource": { "uid": "eventhorizon", "type": "grafana-postgresql-datasource" },
+      "gridPos": { "x": 0, "y": 55, "w": 12, "h": 8 },
+      "fieldConfig": {
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "mae_f" }, "properties": [{ "id": "unit", "value": "fahrenheit" }, { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 3 }, { "color": "red", "value": 5 }] } }, { "id": "custom.displayMode", "value": "color-background" }] }
+        ]
+      },
+      "targets": [{
+        "refId": "A",
+        "rawSql": "SELECT source_name, city, COUNT(*) AS sample_size, ROUND(AVG(ABS(forecast_error_f)), 2) AS mae_f, ROUND(AVG(forecast_error_f), 2) AS avg_bias_f, ROUND(STDDEV(forecast_error_f), 2) AS sigma_f FROM weather_silver_forecast_error WHERE target_date > CURRENT_DATE - 90 GROUP BY source_name, city ORDER BY city, mae_f",
+        "format": "table"
+      }]
+    },
+    {
+      "id": 62,
+      "type": "table",
+      "title": "NWS vs NBM vs GFS Probability Comparison (recent)",
+      "description": "Per settled contract: NWS Gaussian prob, NBM piecewise CDF prob, GFS ensemble member prob, and the blended raw_model_prob. Where do they diverge?",
+      "datasource": { "uid": "eventhorizon", "type": "grafana-postgresql-datasource" },
+      "gridPos": { "x": 12, "y": 55, "w": 12, "h": 8 },
+      "targets": [{
+        "refId": "A",
+        "rawSql": "SELECT city, target_date, bucket_label, ROUND(nws_high_prob_pct * 100, 1) AS nws_nbm_pct, ROUND(gfs_high_prob_pct * 100, 1) AS gfs_pct, ROUND(raw_model_prob * 100, 1) AS blended_pct, ROUND(market_implied_prob * 100, 1) AS market_pct, CASE WHEN contract_resolved_yes THEN 'YES' WHEN contract_resolved_yes = FALSE THEN 'NO' ELSE 'pending' END AS outcome FROM weather_gold_contract_ledger WHERE contract_resolved_yes IS NOT NULL ORDER BY target_date DESC LIMIT 40",
+        "format": "table"
+      }]
+    }
+
+  ]
+}
