@@ -449,7 +449,7 @@ COMMIT;
 --      SMTP_USER=...
 --      SMTP_PASSWORD=...
 --      SMTP_FROM=horizon@eventhorizonvpn.com
---      SMTP_TO=hayden.harper92@proton.me
+--      SMTP_TO=your@email.com
 --
 -- 4. First-run sequence (after env is set up):
 --      python3 scripts/horizon/market_data_collector.py --backfill

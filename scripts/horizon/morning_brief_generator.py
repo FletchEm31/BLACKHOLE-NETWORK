@@ -529,7 +529,7 @@ def send_email(body: str) -> bool:
     user = os.environ.get("SMTP_USER")
     pwd  = os.environ.get("SMTP_PASSWORD")
     sender = os.environ.get("SMTP_FROM", user)
-    to     = os.environ.get("SMTP_TO", "hayden.harper92@proton.me")
+    to     = os.environ.get("SMTP_TO")
 
     if not all((host, user, pwd, sender, to)):
         logger.error("SMTP credentials incomplete — set SMTP_HOST/PORT/USER/PASSWORD/FROM/TO "
