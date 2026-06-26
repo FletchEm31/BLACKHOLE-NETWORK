@@ -51,9 +51,26 @@ DAILY_ICAO_MAP: dict[str, str] = {
     "USW00094789": "KJFK",   # JFK International Airport
 }
 
+# Hourly normals stations — 1981-2010 CDO download.
+# Station IDs verified from STATION column in each CSV file.
+# NOTE: USW00023036 = Aurora Buckley AFB (KAFF), NOT Denver Intl (KDEN/USW00003017).
 HOURLY_ICAO_MAP: dict[str, str] = {
-    "USW00012839": "KMIA",   # Miami International Airport
-    "USW00023036": "KAFF",   # Aurora Buckley Field ANGB (≠ KDEN/Denver Intl)
+    "USW00012839": "KMIA",   # Miami International Airport, FL
+    "USW00023036": "KAFF",   # Aurora Buckley Field ANGB, CO (≠ KDEN)
+    "USW00094789": "KJFK",   # JFK International Airport, NY
+    "USW00094846": "KORD",   # Chicago O'Hare International Airport, IL
+    # Dallas: CDO may export Dallas FAA HQ (USW00013960=KDAL) or DFW (USW00003927=KDFW)
+    # — station ID confirmed from CSV STATION column on arrival
+    "USW00013960": "KDAL",   # Dallas Love Field (Dallas FAA HQ station)
+    "USW00003927": "KDFW",   # Dallas/Fort Worth International Airport
+    "USW00093721": "KIAD",   # Washington Dulles International Airport, VA
+    "USW00023234": "KSFO",   # San Francisco International Airport, CA
+    "USW00013874": "KATL",   # Hartsfield-Jackson Atlanta International Airport, GA
+    "USW00023174": "KLAX",   # Los Angeles International Airport, CA
+    "USW00013904": "KAUS",   # Austin-Bergstrom International Airport, TX
+    "USW00023183": "KPHX",   # Phoenix Sky Harbor International Airport, AZ
+    "USW00093037": "KCOS",   # City of Colorado Springs Municipal Airport, CO
+    # Fallback: log unknown station IDs rather than silently dropping
 }
 
 # Expected CDO filenames (partial match — strip leading path)
@@ -205,7 +222,11 @@ def load_hourly_file(conn: psycopg2.extensions.connection, path: Path) -> int:
             station_id = raw.get("STATION", "").strip()
             icao_code = HOURLY_ICAO_MAP.get(station_id)
             if not icao_code:
-                logger.warning(f"Unknown hourly station: {station_id}")
+                station_name_peek = raw.get("NAME", "unknown").strip().strip('"')
+                logger.warning(
+                    f"Unknown hourly station: {station_id} ({station_name_peek}) — "
+                    f"add to HOURLY_ICAO_MAP and rerun"
+                )
                 continue
 
             date_str = raw.get("DATE", "").strip()  # e.g. "01-01T01:00:00"
@@ -225,6 +246,7 @@ def load_hourly_file(conn: psycopg2.extensions.connection, path: Path) -> int:
                 month_day,
                 hour,
                 date_str,
+                "1981-2010",
                 _f(raw.get("HLY-TEMP-NORMAL")),
                 _f(raw.get("HLY-TEMP-10PCTL")),
                 _f(raw.get("HLY-TEMP-90PCTL")),
@@ -260,7 +282,7 @@ def load_hourly_file(conn: psycopg2.extensions.connection, path: Path) -> int:
     sql = """
         INSERT INTO weather_bronze_noaa_hourly_normals
             (station_id, icao_code, station_name,
-             month_day, hour, normal_date_str,
+             month_day, hour, normal_date_str, normal_period,
              temp_normal_f, temp_10pct_f, temp_90pct_f,
              dewp_normal_f, dewp_10pct_f, dewp_90pct_f,
              hidx_normal_f, wchl_normal_f,
@@ -271,6 +293,7 @@ def load_hourly_file(conn: psycopg2.extensions.connection, path: Path) -> int:
              cldh_normal, htdh_normal)
         VALUES %s
         ON CONFLICT (station_id, month_day, hour) DO UPDATE SET
+            normal_period   = EXCLUDED.normal_period,
             temp_normal_f   = EXCLUDED.temp_normal_f,
             temp_10pct_f    = EXCLUDED.temp_10pct_f,
             temp_90pct_f    = EXCLUDED.temp_90pct_f,

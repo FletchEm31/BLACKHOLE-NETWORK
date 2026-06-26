@@ -124,6 +124,7 @@ CREATE TABLE IF NOT EXISTS weather_bronze_noaa_hourly_normals (
     htdh_normal     NUMERIC,               -- HLY-HTDH-NORMAL (heating degree hours)
 
     -- Metadata
+    normal_period   TEXT NOT NULL DEFAULT '1981-2010', -- CDO normal period e.g. '1981-2010'
     loaded_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
     CONSTRAINT noaa_hourly_normals_unique UNIQUE (station_id, month_day, hour)
