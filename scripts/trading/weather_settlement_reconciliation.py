@@ -273,6 +273,18 @@ def reconcile(target_date: Optional[date] = None, dry_run: bool = False) -> int:
         f"{rows_skipped_exists} already existed | "
         f"{rows_skipped_no_actual} stations had no edge rows"
     )
+
+    if not dry_run:
+        try:
+            with tc.get_pg_conn() as ledger_conn:
+                with ledger_conn.cursor() as cur:
+                    cur.execute("SELECT refresh_contract_ledger(%s)", (target_date,))
+                    ledger_rows = cur.fetchone()[0]
+                ledger_conn.commit()
+            logger.info(f"refresh_contract_ledger: {ledger_rows} rows upserted")
+        except Exception as exc:
+            logger.warning(f"refresh_contract_ledger failed (non-fatal): {exc}")
+
     return rows_written
 
 
