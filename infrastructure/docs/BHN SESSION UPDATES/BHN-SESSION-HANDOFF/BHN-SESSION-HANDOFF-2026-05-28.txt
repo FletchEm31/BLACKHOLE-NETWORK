@@ -15,9 +15,9 @@ SECTION 1 — NETWORK SNAPSHOT
 ==================================================================
 
 NODE            IP (PUBLIC)         TUNNEL IP   SSH         STATUS
-LA (hub)        149.28.91.100       10.8.0.1    port 22     OPERATIONAL — hub, PG, n8n, HORIZON, Redis, Wallos
-NJ (trading)    140.82.4.35         10.8.0.5    port 2222   OPERATIONAL — trading stack, Grafana, Metabase
-Hillsboro       5.78.94.237         10.8.0.6    port 22     OPERATIONAL — tinyproxy egress, Tor relay BHNHeliosUS3
+LA (hub)        <BHN_LA_PUBLIC_IP>       10.8.0.1    port 22     OPERATIONAL — hub, PG, n8n, HORIZON, Redis, Wallos
+NJ (trading)    <BHN_NJ_PUBLIC_IP>         10.8.0.5    port 2222   OPERATIONAL — trading stack, Grafana, Metabase
+Hillsboro       <BHN_HIL_PUBLIC_IP>         10.8.0.6    port 22     OPERATIONAL — tinyproxy egress, Tor relay BHNHeliosUS3
 Frankfurt       192.248.187.208     10.9.0.2    port 22     DECOMMISSIONING — pending next session
 
 WireGuard Mesh (hub-and-spoke, LA is hub):
@@ -33,10 +33,10 @@ Laptop SSH key: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFTizS5J0MtOYMxpjtOd8GLwfUV3
 
 CONSOLE TERMINOLOGY (STRICT — never mix up):
   REMOTE BROWSER WINDOW = noVNC web console (Vultr or Hetzner)
-  PC LA CONSOLE         = ssh root@149.28.91.100
+  PC LA CONSOLE         = ssh root@<BHN_LA_PUBLIC_IP>
   PC GE CONSOLE         = ssh root@192.248.187.208
-  PC NJ CONSOLE         = ssh -p 2222 root@140.82.4.35  <-- ALWAYS port 2222
-  PC Hillsboro          = ssh root@5.78.94.237
+  PC NJ CONSOLE         = ssh -p 2222 root@<BHN_NJ_PUBLIC_IP>  <-- ALWAYS port 2222
+  PC Hillsboro          = ssh root@<BHN_HIL_PUBLIC_IP>
   LA->Frankfurt:        ssh frankfurt  (alias from LA)
   LA->NJ:               ssh nj         (alias from LA)
   LA->Hillsboro:        ssh hillsboro  (alias from LA)
@@ -439,7 +439,7 @@ LA SECURITY CONFIG:
   INPUT default:     DROP
 
 TRADING ACCOUNTS (Alpaca paper):
-  PA39LSUT2NW8 — $100k account
+  <ALPACA_PAPER_ACCOUNT_ID> — $100k account
   PA3AZX0UE3JC — $25k account
   PA37PRN150AG — $25k account
   Status: PAUSED — hotfix a7ba358 committed
@@ -490,7 +490,7 @@ SECTION 13 — HARD RULES (NEVER DEVIATE)
 PROJECT NAME:     BLACKHOLE NETWORK (BHN) — never "EventHorizon"
                   (EventHorizon = PostgreSQL DB name only)
 
-NJ SSH PORT:      ALWAYS port 2222 — ssh -p 2222 root@140.82.4.35
+NJ SSH PORT:      ALWAYS port 2222 — ssh -p 2222 root@<BHN_NJ_PUBLIC_IP>
 
 GITHUB COMMITS:   ALWAYS provide Summary AND Description first
                   No exceptions — no blind commits

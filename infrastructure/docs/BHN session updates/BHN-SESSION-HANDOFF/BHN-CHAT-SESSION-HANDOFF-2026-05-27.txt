@@ -361,7 +361,7 @@ FUTURE SESSION (infrastructure):
     1. Fix Hillsboro SSH (investigate sshd status, firewall, key issues)
     2. Verify tinyproxy running on Hillsboro (curl --proxy 10.8.0.6:8888)
     3. Run LA egress lockdown scripts in order per README
-    4. Verify LA outbound traffic exits via Hillsboro (5.78.94.237)
+    4. Verify LA outbound traffic exits via Hillsboro (<BHN_HIL_PUBLIC_IP>)
 
 ================================================================================
 END OF HANDOFF — 2026-05-27 CHAT SESSION

@@ -49,7 +49,7 @@ STEP 3 — Remove any MyFamily references to BHNFornaxEU1 from Hillsboro
 and NJ Tor configs if present.
 
 ssh root@10.8.0.6 'grep -r "BHNFornax" /etc/tor/ /opt/bhn-tor-relay/'
-ssh -p 2222 root@140.82.4.35 'grep -r "BHNFornax" /etc/tor/ /opt/ 2>/dev/null'
+ssh -p 2222 root@<BHN_NJ_PUBLIC_IP> 'grep -r "BHNFornax" /etc/tor/ /opt/ 2>/dev/null'
 
 If found, remove from MyFamily lines and restart Tor on those nodes.
 
@@ -65,12 +65,12 @@ file changes. Doc moves are handled by Brief 1.
 WORKSTREAM 2 — NJ NODE HEALTH + FINANCIAL API DATA CHECK
 ================================================================================
 
-NJ is the trading node (BHN|VPS-NEWJERSEY-US2, 140.82.4.35, port 2222).
-SSH: ssh -p 2222 root@140.82.4.35
+NJ is the trading node (BHN|VPS-NEWJERSEY-US2, <BHN_NJ_PUBLIC_IP>, port 2222).
+SSH: ssh -p 2222 root@<BHN_NJ_PUBLIC_IP>
 
 STEP 1 — Basic node health check on NJ.
 
-ssh -p 2222 root@140.82.4.35 'uptime && free -h && df -h && wg show wg0'
+ssh -p 2222 root@<BHN_NJ_PUBLIC_IP> 'uptime && free -h && df -h && wg show wg0'
 
 Check: WireGuard tunnel to LA (10.8.0.1) is up and has a recent handshake.
 Check: Disk space is not critical.
@@ -78,7 +78,7 @@ Check: Memory is not exhausted.
 
 STEP 2 — Verify trading stack is deployed on NJ.
 
-ssh -p 2222 root@140.82.4.35 'ls /opt/bhn/trading/ && ls /etc/bhn-trading/'
+ssh -p 2222 root@<BHN_NJ_PUBLIC_IP> 'ls /opt/bhn/trading/ && ls /etc/bhn-trading/'
 
 Expected files in /opt/bhn/trading/:
 trading_core.py, strategy files, rules.json, reconciliation_daemon.py
@@ -92,7 +92,7 @@ document what is and is not there.
 
 STEP 3 — Check connectivity from NJ to LA PostgreSQL.
 
-ssh -p 2222 root@140.82.4.35 'pg_isready -h 10.8.0.1 -p 5432 -U log_shipper'
+ssh -p 2222 root@<BHN_NJ_PUBLIC_IP> 'pg_isready -h 10.8.0.1 -p 5432 -U log_shipper'
 
 Should return "accepting connections". If it fails, check the WireGuard
 tunnel first, then check UFW on LA allows NJ tunnel IP (10.8.0.5) to 5432.
@@ -167,15 +167,15 @@ Only strat_13_rsi_intraday should show active. Everything else paused.
 
 STEP 2 — Check Strat 13 is actually running on NJ.
 
-ssh -p 2222 root@140.82.4.35 'systemctl status bhn-strategy@strat_13_rsi_intraday.service 2>/dev/null || echo "systemd unit not found"'
+ssh -p 2222 root@<BHN_NJ_PUBLIC_IP> 'systemctl status bhn-strategy@strat_13_rsi_intraday.service 2>/dev/null || echo "systemd unit not found"'
 
-ssh -p 2222 root@140.82.4.35 'systemctl list-timers | grep bhn'
+ssh -p 2222 root@<BHN_NJ_PUBLIC_IP> 'systemctl list-timers | grep bhn'
 
 If the systemd unit does not exist, check if strat 13 is being run by
 any other mechanism (cron, screen session, manual run):
-ssh -p 2222 root@140.82.4.35 'ps aux | grep -i strat'
-ssh -p 2222 root@140.82.4.35 'crontab -l'
-ssh -p 2222 root@140.82.4.35 'ls /etc/cron.d/ | grep bhn'
+ssh -p 2222 root@<BHN_NJ_PUBLIC_IP> 'ps aux | grep -i strat'
+ssh -p 2222 root@<BHN_NJ_PUBLIC_IP> 'crontab -l'
+ssh -p 2222 root@<BHN_NJ_PUBLIC_IP> 'ls /etc/cron.d/ | grep bhn'
 
 Document exactly how Strat 13 is currently being executed. If it is not
 running at all, flag it but do not attempt to deploy the full systemd stack
@@ -214,13 +214,13 @@ the underlying issue is clearly gone).
 
 STEP 5 — Check rules.json on NJ for Strat 13 config.
 
-ssh -p 2222 root@140.82.4.35 'cat /opt/bhn/trading/rules.json 2>/dev/null || cat /etc/bhn/rules.json 2>/dev/null || echo "rules.json not found"'
+ssh -p 2222 root@<BHN_NJ_PUBLIC_IP> 'cat /opt/bhn/trading/rules.json 2>/dev/null || cat /etc/bhn/rules.json 2>/dev/null || echo "rules.json not found"'
 
 Verify strat_13_rsi_intraday block exists and has enabled = true.
 Verify ALPACA_BASE_URL does NOT include /v2 suffix anywhere in the env files.
 This was a known bug that was fixed — verify it stayed fixed:
 
-ssh -p 2222 root@140.82.4.35 'grep ALPACA_BASE_URL /etc/bhn-trading/env /etc/bhn-trading/strat13.env 2>/dev/null'
+ssh -p 2222 root@<BHN_NJ_PUBLIC_IP> 'grep ALPACA_BASE_URL /etc/bhn-trading/env /etc/bhn-trading/strat13.env 2>/dev/null'
 
 Should read: ALPACA_BASE_URL=https://paper-api.alpaca.markets
 Should NOT read: ALPACA_BASE_URL=https://paper-api.alpaca.markets/v2
@@ -256,7 +256,7 @@ single-strategy validation mode only.
 Do NOT attempt a full trading stack redeploy if systemd units are missing.
 Just document the gap and flag it for a dedicated session.
 
-SSH to NJ always uses port 2222: ssh -p 2222 root@140.82.4.35
+SSH to NJ always uses port 2222: ssh -p 2222 root@<BHN_NJ_PUBLIC_IP>
 
 All database commands run as: sudo -u postgres psql -d eventhorizon
 

@@ -265,9 +265,9 @@ WHAT HAS CHANGED SINCE HORIZON WAS LAST UPDATED (full system state):
 Platform is now called BLACKHOLE NETWORK (BHN) — never EventHorizon.
 
 Node inventory (current):
-  LA hub          149.28.91.100   10.8.0.1    Hub, PG, n8n, Grafana
-  New Jersey      140.82.4.35     10.8.0.5    Trading node (port 2222)
-  Hillsboro       5.78.94.237     10.8.0.6    Egress proxy (tinyproxy)
+  LA hub          <BHN_LA_PUBLIC_IP>   10.8.0.1    Hub, PG, n8n, Grafana
+  New Jersey      <BHN_NJ_PUBLIC_IP>     10.8.0.5    Trading node (port 2222)
+  Hillsboro       <BHN_HIL_PUBLIC_IP>     10.8.0.6    Egress proxy (tinyproxy)
   Frankfurt       DECOMMISSIONED  — offline and being destroyed this session
 
 Database: eventhorizon on LA — now 78+ tables. agent_reader has SELECT on all.
@@ -294,7 +294,7 @@ sudo -u postgres psql -d eventhorizon -f sql/horizon-agent-reader-grants-verify.
 Trading stack status (HORIZON must know this):
   Only strat_13_rsi_intraday is active. All other strategies paused.
   This is by operator decision — single-strategy validation mode.
-  Three Alpaca paper accounts: PA39LSUT2NW8 (PRIMARY $100k),
+  Three Alpaca paper accounts: <ALPACA_PAPER_ACCOUNT_ID> (PRIMARY $100k),
   PA3AZX0UE3JC (FUNDAMENTAL $25k), PA37PRN150AG (SIGNALS $25k).
   ALPACA_BASE_URL = https://paper-api.alpaca.markets (no /v2 suffix).
 

@@ -1,6 +1,6 @@
 # BHN tinyproxy — egress proxy on Hillsboro for LA outbound
 
-Single forward HTTP/HTTPS proxy that LA's outbound traffic flows through. All external API calls from LA hub (Anthropic, Twilio outbound SMS/voice, ElevenLabs TTS, NewsAPI polling, OpenWeatherMap polling, FMP, Quiver, Alpaca REST + WebSocket-CONNECT, Polymarket, Kalshi, apt, certbot, CrowdSec central, anything else on 443) exits via this proxy with Hillsboro's public IP (5.78.94.237, Hetzner).
+Single forward HTTP/HTTPS proxy that LA's outbound traffic flows through. All external API calls from LA hub (Anthropic, Twilio outbound SMS/voice, ElevenLabs TTS, NewsAPI polling, OpenWeatherMap polling, FMP, Quiver, Alpaca REST + WebSocket-CONNECT, Polymarket, Kalshi, apt, certbot, CrowdSec central, anything else on 443) exits via this proxy with Hillsboro's public IP (<BHN_HIL_PUBLIC_IP>, Hetzner).
 
 LA INBOUND webhooks (Twilio voice/SMS callbacks, n8n workflow webhook URLs, ElevenLabs async callbacks) are NOT affected — they continue to land directly on LA's public IP via Vultr. Asymmetric by design — see `[[project-la-egress-isolation]]` in memory.
 
@@ -14,7 +14,7 @@ LA INBOUND webhooks (Twilio voice/SMS callbacks, n8n workflow webhook URLs, Elev
 
 tinyproxy binds to `10.8.0.6:8888` — Hillsboro's WG tunnel IP — never to the public NIC. Public-internet access to the proxy is blocked at two layers:
 
-1. **Bind address.** The socket is on the WG interface only; the public NIC (enp1s0 with IP 5.78.94.237) never has a listening socket on 8888.
+1. **Bind address.** The socket is on the WG interface only; the public NIC (enp1s0 with IP <BHN_HIL_PUBLIC_IP>) never has a listening socket on 8888.
 2. **UFW.** `ufw allow from 10.8.0.0/24 to 10.8.0.6 port 8888 proto tcp` — only the BHN mesh can reach it.
 
 If both layers fail, tinyproxy still requires the request originate from `Allow 10.8.0.0/24` per its own ACL.
@@ -34,11 +34,11 @@ sudo bash install.sh
 ## Verify from LA
 
 ```bash
-# Direct (without proxy) — should leak LA's public IP (149.28.91.100)
+# Direct (without proxy) — should leak LA's public IP (<BHN_LA_PUBLIC_IP>)
 curl -fsS https://api.ipify.org && echo
 # (After LA UFW rewrite blocks direct 443 egress, this will fail with timeout — that's the goal.)
 
-# Via tinyproxy — should return Hillsboro's public IP (5.78.94.237)
+# Via tinyproxy — should return Hillsboro's public IP (<BHN_HIL_PUBLIC_IP>)
 curl -fsS -x http://10.8.0.6:8888 https://api.ipify.org && echo
 
 # Anthropic reachability through proxy

@@ -165,14 +165,14 @@ Run on your PC (with FULL WireGuard profile active):
 
 Expected:
   ✅ 192.248.187.208 (Frankfurt) — when routing is working
-  ❌ 149.28.91.100 (LA) — routing broken, exits via hub
+  ❌ <BHN_LA_PUBLIC_IP> (LA) — routing broken, exits via hub
   ❌ Your home IP — not on VPN
 
 Run on PC LA CONSOLE (proxy test):
   curl -x http://10.8.0.6:8888 https://api.ipify.org
 
 Expected:
-  ✅ 5.78.94.237 (Hillsboro) — proxy working
+  ✅ <BHN_HIL_PUBLIC_IP> (Hillsboro) — proxy working
 
 ─────────────────────────────────────────────────────────────
 SMOKE TEST 4 — Security Services
@@ -328,10 +328,10 @@ PENTEST 1 — External Port Scan
 ─────────────────────────────────────────────────────────────
 From a NON-BHN IP (e.g. your home internet, not through VPN):
 
-  nmap -sV -p 1-65535 149.28.91.100   (LA)
+  nmap -sV -p 1-65535 <BHN_LA_PUBLIC_IP>   (LA)
   nmap -sV -p 1-65535 192.248.187.208 (Frankfurt)
-  nmap -sV -p 1-65535 5.78.94.237     (Hillsboro)
-  nmap -sV -p 1-65535 140.82.4.35     (NJ)
+  nmap -sV -p 1-65535 <BHN_HIL_PUBLIC_IP>     (Hillsboro)
+  nmap -sV -p 1-65535 <BHN_NJ_PUBLIC_IP>     (NJ)
 
 Expected results:
   LA:         22/tcp open ssh (or filtered)
@@ -355,7 +355,7 @@ From a NON-BHN IP:
 
   ssh -o "StrictHostKeyChecking=no" \
       -o "PasswordAuthentication=yes" \
-      root@149.28.91.100
+      root@<BHN_LA_PUBLIC_IP>
 
 Expected:
   ✅ Connection refused or permission denied immediately
@@ -389,7 +389,7 @@ PENTEST 4 — WireGuard Silent Drop Test
 ─────────────────────────────────────────────────────────────
 From external IP, send UDP probe to WireGuard port:
 
-  nc -u 149.28.91.100 51820
+  nc -u <BHN_LA_PUBLIC_IP> 51820
   (type anything, wait 5 seconds)
 
 Expected:
@@ -418,7 +418,7 @@ PENTEST 6 — PostgreSQL Exposure Test
 ─────────────────────────────────────────────────────────────
 From external IP (not on WireGuard):
 
-  psql -h 149.28.91.100 -U postgres -d eventhorizon
+  psql -h <BHN_LA_PUBLIC_IP> -U postgres -d eventhorizon
 
 Expected:
   ✅ Connection refused or timeout (PostgreSQL not exposed externally)
@@ -429,7 +429,7 @@ PENTEST 7 — tinyproxy Access Control Test
 ─────────────────────────────────────────────────────────────
 From external IP (not 10.8.0.0/24):
 
-  curl -x http://5.78.94.237:8888 https://api.ipify.org
+  curl -x http://<BHN_HIL_PUBLIC_IP>:8888 https://api.ipify.org
 
 Expected:
   ✅ Connection refused or 403 forbidden

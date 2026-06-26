@@ -7,7 +7,7 @@
  *
  * Runs from operator PC; requires SSH access to:
  *   - root@10.8.0.1            (LA)
- *   - root@140.82.4.35 :2222   (NJ)
+ *   - root@<BHN_NJ_PUBLIC_IP> :2222   (NJ)
  *
  * Each poller's behavior on missing API key / env file is "graceful" - log + exit 0 -
  * so half-configured state won't break cron or other workflows. Env files (with API
@@ -34,9 +34,9 @@ const NODE = {
     la: { ssh: ['ssh', '-o', 'BatchMode=yes', 'root@10.8.0.1'],
           scp: ['scp', '-q', '-o', 'BatchMode=yes'],
           dest: 'root@10.8.0.1' },
-    nj: { ssh: ['ssh', '-o', 'BatchMode=yes', '-p', '2222', 'root@140.82.4.35'],
+    nj: { ssh: ['ssh', '-o', 'BatchMode=yes', '-p', '2222', 'root@<BHN_NJ_PUBLIC_IP>'],
           scp: ['scp', '-q', '-o', 'BatchMode=yes', '-P', '2222'],
-          dest: 'root@140.82.4.35' },
+          dest: 'root@<BHN_NJ_PUBLIC_IP>' },
 };
 
 // ---------------------------------------------------------------------------

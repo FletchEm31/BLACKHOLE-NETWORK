@@ -40,7 +40,7 @@ Do NOT let it trade unvalidated.
 CURRENT NODE STATUS
 ================================================================================
 
-LA Hub      149.28.91.100 / 10.8.0.1
+LA Hub      <BHN_LA_PUBLIC_IP> / 10.8.0.1
             Ubuntu 22.04.5 LTS, Linux 5.15.0-177-generic
             AMD EPYC-Genoa, 2 vCPU, 1.9GB RAM (TIGHT — upgrade recommended)
             PostgreSQL 14 (active, running clean after restart)
@@ -51,11 +51,11 @@ LA Hub      149.28.91.100 / 10.8.0.1
             DNS privacy logging DISABLED ✅ (committed b137c21)
             ⚠️ System restart still required (kernel update pending reboot)
 
-NJ          140.82.4.35 / 10.8.0.5 (SSH port 2222)
+NJ          <BHN_NJ_PUBLIC_IP> / 10.8.0.5 (SSH port 2222)
             Alpaca paper trading. Strat 13 armed (SEE CRITICAL above).
             NJ true deployment state UNVERIFIED this session.
 
-Hillsboro   5.78.94.237 / 10.8.0.6
+Hillsboro   <BHN_HIL_PUBLIC_IP> / 10.8.0.6
             tinyproxy egress, Tor relay BHNHeliosUS3. Healthy.
 
 Frankfurt   DECOMMISSIONED. Vultr destroy pending Monday.
@@ -138,8 +138,8 @@ WHAT GOT DONE — 2026-05-24 SESSION (TODAY)
 
 TABBY SSH PROFILES SET UP ✅
 - PC LA CONSOLE: root@10.8.0.1, port 22, key auth id_ed25519, color #FF4500
-- PC NJ CONSOLE: root@140.82.4.35, port 2222, key auth id_ed25519
-- PC Hillsboro: root@5.78.94.237, port 22, key auth id_ed25519
+- PC NJ CONSOLE: root@<BHN_NJ_PUBLIC_IP>, port 2222, key auth id_ed25519
+- PC Hillsboro: root@<BHN_HIL_PUBLIC_IP>, port 22, key auth id_ed25519
 - LA→NJ and LA→Hillsboro: use SSH aliases from inside LA (`ssh nj`, `ssh hillsboro`)
   already configured in ~/.ssh/config on LA — no new profiles needed.
 
@@ -326,8 +326,8 @@ QUICK REFERENCE — KEY COMMANDS
 
 SSH (from PC, WireGuard on):
   LA:        Click "PC LA CONSOLE" in Tabby (or ssh root@10.8.0.1)
-  NJ:        Click "PC NJ CONSOLE" in Tabby (or ssh -p 2222 root@140.82.4.35)
-  Hillsboro: Click "PC Hillsboro" in Tabby (or ssh root@5.78.94.237)
+  NJ:        Click "PC NJ CONSOLE" in Tabby (or ssh -p 2222 root@<BHN_NJ_PUBLIC_IP>)
+  Hillsboro: Click "PC Hillsboro" in Tabby (or ssh root@<BHN_HIL_PUBLIC_IP>)
 
 From inside LA:
   ssh nj          → jump to NJ

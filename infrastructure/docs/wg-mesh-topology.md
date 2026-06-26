@@ -41,11 +41,11 @@ provisioned-but-dormant since May.
 
 A **dedicated point-to-point WireGuard tunnel between LA and Hillsboro,
 parallel to the main `wg0` mesh**, used to forward full-tunnel client
-traffic through Hillsboro's public IP `5.78.94.237`.
+traffic through Hillsboro's public IP `<BHN_HIL_PUBLIC_IP>`.
 
 - LA side: `wg1` interface, key `V3RenHJ/3UQTD1gl3bfqWnAC/iaqXGvVCzogVlDH8GQ=`, listens on `51822`, self IP `10.10.0.1/30`, `fwmark 0xca6c` (same as wg0 — keeps wg1's underlay packets out of table `51820`).
 - Hillsboro side: a `[Peer]` block in `wg0.conf` for pubkey `V3RenH...` with `AllowedIPs = 10.10.0.0/30`. Endpoint learned dynamically. Return route `10.10.0.0/30 dev wg0` added 2026-05-28.
-- LA's wg1 peer endpoint: `5.78.94.237:51821` (Hillsboro's wg0 listener — same port as the wg0 peer; demultiplexed by handshake key).
+- LA's wg1 peer endpoint: `<BHN_HIL_PUBLIC_IP>:51821` (Hillsboro's wg0 listener — same port as the wg0 peer; demultiplexed by handshake key).
 
 ### How traffic actually moves
 
@@ -59,11 +59,11 @@ The script wires:
 3. `ip rule from {10.8.0.2, 10.8.0.4, 10.8.0.7, 10.8.0.8, 10.8.0.9, 10.10.0.0/30} lookup 200 priority 201`. Mesh peers (NJ `10.8.0.5`, Hillsboro `10.8.0.6`, LA itself `10.8.0.1`) are intentionally NOT in this list — they keep their existing egress.
 4. `iptables FORWARD wg0↔wg1 ACCEPT`, `OUTPUT wg1 ACCEPT`, `nat POSTROUTING -o wg1 MASQUERADE` (SNATs to `10.10.0.1` so Hillsboro's V3RenH `AllowedIPs = 10.10.0.0/30` matches), `mangle FORWARD -o wg1 TCPMSS --clamp-mss-to-pmtu`.
 
-On Hillsboro: the existing `iptables nat POSTROUTING -o eth0 MASQUERADE` SNATs again to `5.78.94.237`. UFW rule 12 (`Anywhere on eth0 ALLOW FWD Anywhere on wg0`) covers the forward path. UFW egress rule on Hillsboro now also allows UDP `51822` back to LA (needed for wg1 handshake replies).
+On Hillsboro: the existing `iptables nat POSTROUTING -o eth0 MASQUERADE` SNATs again to `<BHN_HIL_PUBLIC_IP>`. UFW rule 12 (`Anywhere on eth0 ALLOW FWD Anywhere on wg0`) covers the forward path. UFW egress rule on Hillsboro now also allows UDP `51822` back to LA (needed for wg1 handshake replies).
 
 ### Verifying it works
 
-From LA: `curl --interface wg1 --noproxy '*' -k -s https://1.1.1.1/cdn-cgi/trace | grep ip=` → returns `ip=5.78.94.237`. From a client running a full-tunnel profile: `curl https://1.1.1.1/cdn-cgi/trace` should likewise show Hillsboro's IP.
+From LA: `curl --interface wg1 --noproxy '*' -k -s https://1.1.1.1/cdn-cgi/trace | grep ip=` → returns `ip=<BHN_HIL_PUBLIC_IP>`. From a client running a full-tunnel profile: `curl https://1.1.1.1/cdn-cgi/trace` should likewise show Hillsboro's IP.
 
 ### Adding a new full-tunnel client peer
 

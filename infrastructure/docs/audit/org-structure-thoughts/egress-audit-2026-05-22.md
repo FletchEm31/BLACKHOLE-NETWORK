@@ -2,7 +2,7 @@
 
 > **Operator question:** "Right now everything is being pushed out of LA. We want most to be going out of Hillsboro and Frankfurt."
 >
-> **TL;DR (one-liner):** The Hillsboro proxy lockdown is *fully designed and staged in the repo* but **was never executed on the live LA node.** Direct 443/587/80 egress is still allowed; processes have no proxy env set; LA's Vultr IP `149.28.91.100` is what hits Anthropic / Twilio / ElevenLabs / FMP. Three additional configuration gaps will bite even after `deploy.sh` runs — the biggest is that ~15 trading + horizon systemd units use `EnvironmentFile=/etc/bhn-trading/env` (not `/etc/environment`), so they'll bypass the proxy unless that file is updated. Frankfurt is a separate egress class entirely — design routes only **operator personal browsing** through it; if you also want some **service traffic** to exit via FRA, that's a new design decision.
+> **TL;DR (one-liner):** The Hillsboro proxy lockdown is *fully designed and staged in the repo* but **was never executed on the live LA node.** Direct 443/587/80 egress is still allowed; processes have no proxy env set; LA's Vultr IP `<BHN_LA_PUBLIC_IP>` is what hits Anthropic / Twilio / ElevenLabs / FMP. Three additional configuration gaps will bite even after `deploy.sh` runs — the biggest is that ~15 trading + horizon systemd units use `EnvironmentFile=/etc/bhn-trading/env` (not `/etc/environment`), so they'll bypass the proxy unless that file is updated. Frankfurt is a separate egress class entirely — design routes only **operator personal browsing** through it; if you also want some **service traffic** to exit via FRA, that's a new design decision.
 
 ---
 
@@ -12,7 +12,7 @@
 
 | Class | What's in it | Should exit via | Currently exits via | State |
 |-------|--------------|-----------------|---------------------|-------|
-| **LA operational / service** | Anthropic, Twilio (outbound), ElevenLabs, FMP, FRED, Finnhub, EIA, USDA, Quiver, Kalshi, Polymarket, CoinGecko, NewsAPI, OpenWeatherMap, apt, certbot, GitHub | **Hillsboro tinyproxy** → `5.78.94.237` (Hetzner) | **LA direct** → `149.28.91.100` (Vultr) | 🔴 **GAP** — lockdown staged, not applied |
+| **LA operational / service** | Anthropic, Twilio (outbound), ElevenLabs, FMP, FRED, Finnhub, EIA, USDA, Quiver, Kalshi, Polymarket, CoinGecko, NewsAPI, OpenWeatherMap, apt, certbot, GitHub | **Hillsboro tinyproxy** → `<BHN_HIL_PUBLIC_IP>` (Hetzner) | **LA direct** → `<BHN_LA_PUBLIC_IP>` (Vultr) | 🔴 **GAP** — lockdown staged, not applied |
 | **Inbound webhooks** | Twilio SMS/voice callbacks, n8n webhook URLs, ElevenLabs async | LA direct (asymmetric by design) | LA direct | ✅ LIVE |
 | **NJ trading** | Alpaca REST/stream | NJ direct (intentional separation) | NJ direct | ✅ LIVE |
 | **Operator personal browsing** | Operator device full-tunnel | **Frankfurt** → `192.248.187.208` (DE) | Currently loses internet entirely | 🔴 **BROKEN** — FRA MASQUERADE missing, fix tracked in `frankfurt-exit-backlog.md` |
@@ -27,7 +27,7 @@
 │                            INTENDED STATE                                │
 ├─────────────────────────────────────────────────────────────────────────┤
 │                                                                          │
-│   LA process ──► tinyproxy@Hillsboro (10.8.0.6:8888) ──► 5.78.94.237    │
+│   LA process ──► tinyproxy@Hillsboro (10.8.0.6:8888) ──► <BHN_HIL_PUBLIC_IP>    │
 │                  (Anthropic, Twilio out, ElevenLabs, FMP, apt, etc.)    │
 │                                                                          │
 │   Operator PC ──► FRA exit (192.248.187.208) ──► personal browsing      │
@@ -40,7 +40,7 @@
 │                          CURRENT STATE                                   │
 ├─────────────────────────────────────────────────────────────────────────┤
 │                                                                          │
-│   LA process ──► LA direct (149.28.91.100) ──► Anthropic/Twilio/etc.    │
+│   LA process ──► LA direct (<BHN_LA_PUBLIC_IP>) ──► Anthropic/Twilio/etc.    │
 │                          ▲                                               │
 │                          └─ tinyproxy never used. UFW still allows       │
 │                             direct 443. No HTTPS_PROXY env set.          │
@@ -170,11 +170,11 @@ systemctl show grafana-server -p Environment | tr ' ' '\n' | grep -i proxy
 
 # 6. Is tinyproxy reachable from LA right now?
 curl -fsS --max-time 5 -x http://10.8.0.6:8888 https://api.ipify.org
-# expect: 5.78.94.237
+# expect: <BHN_HIL_PUBLIC_IP>
 
 # 7. What does direct egress look like? (sanity)
 curl -fsS --max-time 5 https://api.ipify.org
-# probable: 149.28.91.100  (LA direct)
+# probable: <BHN_LA_PUBLIC_IP>  (LA direct)
 
 # 8. /etc/bhn-trading/env contents on LA (HORIZON collectors)
 sudo cat /etc/bhn-trading/env | grep -iE 'proxy|http|https'
@@ -216,7 +216,7 @@ The five "expected: ❓" rows in Section 2's table get answered by checks 2–6.
 11. `sudo bash ufw-rewrite.sh lockdown` on LA. Script runs its own reachability check before applying; if it fails, no change.
 12. Verify external calls now exit Hillsboro:
     ```bash
-    curl -fsS https://api.ipify.org   # → 5.78.94.237 (Hetzner)
+    curl -fsS https://api.ipify.org   # → <BHN_HIL_PUBLIC_IP> (Hetzner)
     sudo apt-get update                # → succeeds via proxy
     ```
 13. Re-smoke HORIZON. Confirm Anthropic/Twilio/ElevenLabs/FMP all still work via the proxy.

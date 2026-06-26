@@ -89,9 +89,9 @@ is reserved for the future separate commercial product.
 SERVERS
 -------
 LA Hub (Brain/Primary):
-  Public IP:    149.28.91.100
+  Public IP:    <BHN_LA_PUBLIC_IP>
   Tunnel IP:    10.8.0.1
-  SSH:          ssh root@149.28.91.100 (password in Proton Pass: LA-VPS-Root)
+  SSH:          ssh root@<BHN_LA_PUBLIC_IP> (password in Proton Pass: LA-VPS-Root)
   SSH via VPN:  ssh root@10.8.0.1 (key auth only)
   SSH Key:      C:\Users\fletc\.ssh\id_ed25519
   Role:         Hub, PostgreSQL, n8n/HORIZON, Grafana, WireGuard hub
@@ -106,12 +106,12 @@ Frankfurt Exit + Privacy Node:
                 see infrastructure/docs/bhn-frankfurt-exit-routing.md + scripts/bhn-frankfurt-exit.sh)
 
 NJ Trading Node:
-  Public IP:    140.82.4.35
+  Public IP:    <BHN_NJ_PUBLIC_IP>
   Tunnel IP:    10.8.0.5 (peer on LA's wg0 hub — not on a separate wg2)
   SSH (from LA): ssh nj         (alias → root@10.8.0.5:2222 via wg0 tunnel)
-  SSH (from PC): ssh -p 2222 root@140.82.4.35   (direct works from operator PC; cross-region block only between Vultr VPSes)
+  SSH (from PC): ssh -p 2222 root@<BHN_NJ_PUBLIC_IP>   (direct works from operator PC; cross-region block only between Vultr VPSes)
   Role:         Trading node (Buffett-style screening, Congress.gov polling, Polymarket/Kalshi, Alpaca paper)
-  Tunnel operational since 2026-05-12; required LA-side UFW egress allows for both 140.82.4.35:51820/udp underlay AND 10.8.0.5 inner-tunnel
+  Tunnel operational since 2026-05-12; required LA-side UFW egress allows for both <BHN_NJ_PUBLIC_IP>:51820/udp underlay AND 10.8.0.5 inner-tunnel
 
 WireGuard:
   Server pubkey: TOYnFt18v4NynEN91o6zkmV5hsvHBLJTb8qL7GG/KAo=

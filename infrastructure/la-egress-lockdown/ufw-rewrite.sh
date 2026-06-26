@@ -96,7 +96,7 @@ case "${1:-status}" in
 
     log "Lockdown applied. LA's outbound HTTP/HTTPS now requires the proxy. DNS/NTP/WG/intra-mesh unchanged."
     log "WireGuard full-tunnel clients retain direct internet access via forwarding rule."
-    log "Verify: curl https://api.ipify.org → should return 5.78.94.237 (via env vars routed through proxy)"
+    log "Verify: curl https://api.ipify.org → should return <BHN_HIL_PUBLIC_IP> (via env vars routed through proxy)"
     log "       curl --noproxy '*' https://api.ipify.org → should TIME OUT (direct egress gone)"
     ;;
 

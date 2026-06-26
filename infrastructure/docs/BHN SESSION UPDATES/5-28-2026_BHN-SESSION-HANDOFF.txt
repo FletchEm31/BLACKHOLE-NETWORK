@@ -197,7 +197,7 @@ FRANKFURT DECOMMISSION PREP
       crowdsec + bouncer + fail2ban + netdata
 
   WireGuard:
-      wg1 interface, peer LA at 149.28.91.100:51820
+      wg1 interface, peer LA at <BHN_LA_PUBLIC_IP>:51820
       Allowed IPs from LA: 10.8.0.0/24 (mesh) + 0.0.0.0/0 (egress)
 
   Before final decom:

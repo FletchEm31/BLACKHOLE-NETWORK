@@ -58,7 +58,7 @@ Phase 2: Inbound SMS (whitelist only)
   - Twilio webhook → n8n
   - 4-layer security (per horizon-inbound-webhook-security.md)
   - Layer 5: caller whitelist (Hayden's cell only)
-  - Prereqs: webhook.eventhorizonvpn.com DNS A → 149.28.91.100
+  - Prereqs: webhook.eventhorizonvpn.com DNS A → <BHN_LA_PUBLIC_IP>
              nginx narrow re-enable + certbot SSL
              UFW Twilio IP allowlist
              HMAC validator

@@ -104,7 +104,7 @@ FINAL DNS CHAIN ON LA (VERIFIED)
 VERIFIED LEAK TEST RESULTS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-   Exit IP:        5.78.94.237 (Hetzner Hillsboro) ✅
+   Exit IP:        <BHN_HIL_PUBLIC_IP> (Hetzner Hillsboro) ✅
    Home IP:        not visible ✅
    DNS providers:  only Cloudflare / M247 visible, no home ISP ✅
    WebRTC:         "No WebRTC leaks detected" ✅

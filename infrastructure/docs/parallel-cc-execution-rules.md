@@ -24,7 +24,7 @@ writes are forbidden without explicit operator handoff.
 ### CC2 owns
 - `scripts/trading/` (trading_core.py, strategies, reconciliation)
 - `/etc/bhn-trading/` on NJ (env files, strat envs)
-- NJ node (`140.82.4.35:2222`) — systemd units, cron, rules.json
+- NJ node (`<BHN_NJ_PUBLIC_IP>:2222`) — systemd units, cron, rules.json
 - Frankfurt server-side teardown: WireGuard peer removal on LA,
   MyFamily/Tor cleanup on Hillsboro + NJ
 - Trading-related SQL only inside `trading_strategies`, `signals_log`,

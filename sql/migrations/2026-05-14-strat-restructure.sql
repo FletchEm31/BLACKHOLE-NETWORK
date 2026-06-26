@@ -6,7 +6,7 @@
 --       strat_9 prediction-alpha (never registered in trading_strategies anyway),
 --       strat_10/11 (planned but dropped: january-barometer, bollinger-spy)
 --   * Account consolidation: strat_6/7/8 now share Account 1 (BHN-STRAT-PRIMARY,
---     PA39LSUT2NW8) — was 3 separate accounts. strat_3 stays on Account 2
+--     <ALPACA_PAPER_ACCOUNT_ID>) — was 3 separate accounts. strat_3 stays on Account 2
 --     (BHN-STRAT-FUNDAMENTAL, PA3AZX0UE3JC). strat_4 + strat_13 share Account 3
 --     (BHN-STRAT-SIGNALS, PA37PRN150AG).
 --   * New allocations per restructure:
@@ -40,14 +40,14 @@ WHERE id IN ('strat_1_congress', 'strat_2_value', 'strat_5_pred_mkt')
 UPDATE trading_strategies
 SET capital_allocation = 40000.00,
     notes = 'Daily 09:40 ET fire; Monday signal recompute. Shared Account 1 '
-            '(BHN-STRAT-PRIMARY, PA39LSUT2NW8) with strat_7/strat_8. Keys in '
+            '(BHN-STRAT-PRIMARY, <ALPACA_PAPER_ACCOUNT_ID>) with strat_7/strat_8. Keys in '
             '/etc/bhn-trading/strat6.env. 5% trailing stop, 13.25% profit '
             'target, 60d max hold. Enabled via rules.json.'
 WHERE id = 'strat_6_nasdaq_long';
 
 UPDATE trading_strategies
 SET capital_allocation = 40000.00,
-    notes = 'Shared Account 1 (BHN-STRAT-PRIMARY, PA39LSUT2NW8) with strat_6/'
+    notes = 'Shared Account 1 (BHN-STRAT-PRIMARY, <ALPACA_PAPER_ACCOUNT_ID>) with strat_6/'
             'strat_8. Keys in /etc/bhn-trading/strat7.env. Requires margin '
             '(short QQQ + short SPY). Disabled until strat_6 validated. 5% '
             'trailing stop, 15% profit target, 60d max hold.'
@@ -56,7 +56,7 @@ WHERE id = 'strat_7_nasdaq_short';
 UPDATE trading_strategies
 SET capital_allocation = 20000.00,
     notes = 'Daily rebalance 15:55 ET. Shared Account 1 (BHN-STRAT-PRIMARY, '
-            'PA39LSUT2NW8) with strat_6/strat_7. Keys in /etc/bhn-trading/'
+            '<ALPACA_PAPER_ACCOUNT_ID>) with strat_6/strat_7. Keys in /etc/bhn-trading/'
             'strat8.env. 5% trailing stop, 13.25% profit target, signal-driven '
             'rotation (no max hold).'
 WHERE id = 'strat_8_sector_rotation';
@@ -98,7 +98,7 @@ END $$;
 COMMIT;
 
 -- Post-deploy operator action items:
--- 1. Create /etc/bhn-trading/strat{6,7,8}.env on NJ with PA39LSUT2NW8 credentials.
+-- 1. Create /etc/bhn-trading/strat{6,7,8}.env on NJ with <ALPACA_PAPER_ACCOUNT_ID> credentials.
 -- 2. Create /etc/bhn-trading/strat13.env on NJ with PA37PRN150AG credentials.
 -- 3. Update rules.json on LA — add strat_13_rsi_intraday block, rewrite
 --    strat_6/7/8 broker subblocks to point at the shared-account env vars.

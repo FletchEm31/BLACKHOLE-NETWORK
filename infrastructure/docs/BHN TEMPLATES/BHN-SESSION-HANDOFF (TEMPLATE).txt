@@ -17,10 +17,10 @@ SECTION 1 — NETWORK SNAPSHOT (current state)
 ==================================================================
 
 NODE          IP (PUBLIC)       TUNNEL IP   STATUS
-LA Hub        149.28.91.100     10.8.0.1    OPERATIONAL (hub, PG, n8n, HORIZON, Grafana)
+LA Hub        <BHN_LA_PUBLIC_IP>     10.8.0.1    OPERATIONAL (hub, PG, n8n, HORIZON, Grafana)
 Frankfurt     192.248.187.208   10.9.0.2    OPERATIONAL (exit EU1, LibreSpeed, SearXNG, Tor)
-New Jersey    140.82.4.35       10.8.0.5    OPERATIONAL (trading node — stack NOT deployed)
-Hillsboro     5.78.94.237       10.8.0.6    OPERATIONAL (tinyproxy verified, Tor bootstrapping)
+New Jersey    <BHN_NJ_PUBLIC_IP>       10.8.0.5    OPERATIONAL (trading node — stack NOT deployed)
+Hillsboro     <BHN_HIL_PUBLIC_IP>       10.8.0.6    OPERATIONAL (tinyproxy verified, Tor bootstrapping)
 
 WireGuard Mesh (hub-and-spoke, LA is hub):
   Operator PC:    10.8.0.4   PSK: ✅
@@ -37,10 +37,10 @@ Tor Relays:
 
 CONSOLE TERMINOLOGY (STRICT):
   REMOTE BROWSER WINDOW = noVNC web console (Vultr/Hetzner)
-  PC LA CONSOLE         = ssh root@149.28.91.100
+  PC LA CONSOLE         = ssh root@<BHN_LA_PUBLIC_IP>
   PC GE CONSOLE         = ssh root@192.248.187.208
-  PC NJ CONSOLE         = ssh -p 2222 root@140.82.4.35   ← port 2222
-  PC Hillsboro          = ssh root@5.78.94.237
+  PC NJ CONSOLE         = ssh -p 2222 root@<BHN_NJ_PUBLIC_IP>   ← port 2222
+  PC Hillsboro          = ssh root@<BHN_HIL_PUBLIC_IP>
   LA→Frankfurt:         ssh frankfurt  (from LA)
   LA→NJ:                ssh nj         (from LA)
   LA→Hillsboro:         ssh hillsboro  (from LA)
@@ -51,7 +51,7 @@ SECTION 2 — LAST SESSION COMPLETED (May 13, 2026)
 
   ✅ Hillsboro US3 (Hetzner) — fully deployed
        Bootstrap complete, WireGuard tunnel (10.8.0.6), PSK applied
-       tinyproxy deployed and verified (curl returns 5.78.94.237)
+       tinyproxy deployed and verified (curl returns <BHN_HIL_PUBLIC_IP>)
        Tor relay BHNHeliosUS3 bootstrapping
        ssh hillsboro alias working from LA
        Added to nightly diagnostic

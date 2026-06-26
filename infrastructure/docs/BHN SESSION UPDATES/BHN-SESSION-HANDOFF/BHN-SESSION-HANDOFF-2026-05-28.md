@@ -12,7 +12,7 @@
 |-----------|--------|-------|
 | LA Node (Vultr) | ✅ Online | 10.8.0.1 |
 | Frankfurt Node | ✅ Online | 192.248.187.208, WG reachable |
-| Hillsboro Node | ✅ Online | 5.78.94.237, clean IP |
+| Hillsboro Node | ✅ Online | <BHN_HIL_PUBLIC_IP>, clean IP |
 | WireGuard VPN | ✅ Active | Full tunnel confirmed |
 | n8n | ✅ Running | Docker container on LA |
 | PostgreSQL (eventhorizon) | ✅ Running | LA, peer auth |
@@ -126,7 +126,7 @@
 ## SCRAPER STATUS & RESUME INSTRUCTIONS
 
 ### Why Scraper Is Down
-- LA IP (149.28.91.100) got 403'd by eBay at 01:35 UTC 2026-05-27
+- LA IP (<BHN_LA_PUBLIC_IP>) got 403'd by eBay at 01:35 UTC 2026-05-27
 - Node fetch() bypasses HTTPS_PROXY — always hit eBay direct from LA
 - 24-72hr cooldown minimum
 
@@ -288,8 +288,8 @@ Steps:
 ## IMPORTANT NOTES FOR NEXT SESSION
 
 ### eBay IP Status
-- 149.28.91.100 (LA) — BURNED. No scraping for 24-72hrs from 01:35 UTC 2026-05-27
-- 5.78.94.237 (Hillsboro) — CLEAN. n8n/curl only — Node fetch does NOT route here
+- <BHN_LA_PUBLIC_IP> (LA) — BURNED. No scraping for 24-72hrs from 01:35 UTC 2026-05-27
+- <BHN_HIL_PUBLIC_IP> (Hillsboro) — CLEAN. n8n/curl only — Node fetch does NOT route here
 - 192.248.187.208 (Frankfurt) — CLEAN. Use for scraping via SOCKS5
 
 ### Frankfurt Decommission Warning

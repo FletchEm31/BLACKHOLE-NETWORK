@@ -12,7 +12,7 @@ The EH stack today (2 nodes) is constrained:
 
 | Node | Role | Resource ceiling | Suitable for |
 |------|------|------------------|--------------|
-| **LA Hub** (149.28.91.100) | Network hub, n8n, PG, Grafana, Suricata, etc. | 2 GB RAM (already 60-80% used by core stack) | Lightweight tools only (≤ 100 MB RAM each) |
+| **LA Hub** (<BHN_LA_PUBLIC_IP>) | Network hub, n8n, PG, Grafana, Suricata, etc. | 2 GB RAM (already 60-80% used by core stack) | Lightweight tools only (≤ 100 MB RAM each) |
 | **Frankfurt Exit** (192.248.187.208) | WG exit node | Light — mostly idle CPU | Privacy-front tools (Whoogle, SearXNG) and per-region services (Librespeed) |
 
 **For heavier tools (Ollama, Stirling, JDownloader, Metube)**, plan a third dedicated services VPS — operator's call when to provision. Until then, defer those.

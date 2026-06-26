@@ -55,7 +55,7 @@ DNS        = 10.8.0.1
 [Peer]
 PublicKey    = TOYnFt18v4NynEN91o6zkmV5hsvHBLJTb8qL7GG/KAo=
 PresharedKey = <PSK>
-Endpoint     = 149.28.91.100:51820
+Endpoint     = <BHN_LA_PUBLIC_IP>:51820
 AllowedIPs   = 10.8.0.0/24
 PersistentKeepalive = 25
 ```

@@ -69,7 +69,7 @@ ss -tlnp | grep 8090
 # Should show LISTEN on 10.8.0.1:8090, NOT 0.0.0.0:8090
 
 # Public IP must NOT serve:
-curl --max-time 3 http://149.28.91.100:8090/ 2>&1 | head -3
+curl --max-time 3 http://<BHN_LA_PUBLIC_IP>:8090/ 2>&1 | head -3
 # Should fail (connection refused or timeout)
 
 # From operator's PC over WG:

@@ -16,10 +16,10 @@ SECTION 1 — NETWORK TOPOLOGY
 
 INTERNAL NODES (BHN-controlled)
 ---------------------------------
-  BHN|VPS-LOSANGELES-US1    149.28.91.100 / 10.8.0.1   LA Hub (Vultr)
+  BHN|VPS-LOSANGELES-US1    <BHN_LA_PUBLIC_IP> / 10.8.0.1   LA Hub (Vultr)
   BHN|VPS-FRANKFURT-EU1     192.248.187.208 / 10.9.0.2  Frankfurt (Vultr)
-  BHN|VPS-NEWJERSEY-US2     140.82.4.35 / 10.8.0.5      NJ Trading (Vultr)
-  BHN-HILLSBORO-US3         5.78.94.237 / 10.8.0.6      Hillsboro (Hetzner)
+  BHN|VPS-NEWJERSEY-US2     <BHN_NJ_PUBLIC_IP> / 10.8.0.5      NJ Trading (Vultr)
+  BHN-HILLSBORO-US3         <BHN_HIL_PUBLIC_IP> / 10.8.0.6      Hillsboro (Hetzner)
 
 OPERATOR DEVICES (BHN-connected)
 ----------------------------------
@@ -80,8 +80,8 @@ PEER REGISTRY:
   Peer              Public IP         Tunnel IP   PSK      Port
   ─────────────────────────────────────────────────────────────
   Frankfurt EU1     192.248.187.208   10.9.0.2    ✅       51821
-  NJ US2            140.82.4.35       10.8.0.5    ❌ pend  51820
-  Hillsboro US3     5.78.94.237       10.8.0.6    ✅       51821
+  NJ US2            <BHN_NJ_PUBLIC_IP>       10.8.0.5    ❌ pend  51820
+  Hillsboro US3     <BHN_HIL_PUBLIC_IP>       10.8.0.6    ✅       51821
   FLETCH-DESKTOP    dynamic           10.8.0.4    ✅       dynamic
   FLETCH-PHONE      dynamic           10.8.0.2    ✅       dynamic
   FLETCH-LAPTOP     dynamic           10.8.0.7    ❌ pend  dynamic
@@ -124,8 +124,8 @@ TARGET STATE (LA egress lockdown — PENDING):
   LA Hub
     → WireGuard tunnel → Hillsboro (10.8.0.6)
     → tinyproxy (port 8888) → internet
-  External APIs see: Hillsboro IP (5.78.94.237) [US-West/Hetzner]
-  LA's real IP (149.28.91.100) NEVER appears in API logs
+  External APIs see: Hillsboro IP (<BHN_HIL_PUBLIC_IP>) [US-West/Hetzner]
+  LA's real IP (<BHN_LA_PUBLIC_IP>) NEVER appears in API logs
 
 CURRENT STATE:
   tinyproxy deployed and verified on Hillsboro
@@ -284,8 +284,8 @@ Tor relay traffic is independent of VPN client traffic.
 
 RELAY ROSTER:
   BHNFornaxEU1  Frankfurt  192.248.187.208:9001  LIVE
-  BHNHeliosUS3  Hillsboro  5.78.94.237:9001      Bootstrapping
-  BHNNebulaUS2  NJ         140.82.4.35:9001      Deployed, not live
+  BHNHeliosUS3  Hillsboro  <BHN_HIL_PUBLIC_IP>:9001      Bootstrapping
+  BHNNebulaUS2  NJ         <BHN_NJ_PUBLIC_IP>:9001      Deployed, not live
   LA            —          No relay (hub stays dark)
 
 ==================================================================
@@ -320,13 +320,13 @@ HETZNER (Hillsboro provider):
   Knows: you're a customer with 1 VPS
 
 YOUR ISP:
-  Full tunnel: encrypted WireGuard UDP to 149.28.91.100 only
+  Full tunnel: encrypted WireGuard UDP to <BHN_LA_PUBLIC_IP> only
   Split tunnel: normal traffic + WireGuard UDP to LA
   Cannot see: any BHN traffic content
 
 ANTHROPIC (Claude API):
-  Current: sees LA IP (149.28.91.100) in API logs
-  Target: sees Hillsboro IP (5.78.94.237) after egress lockdown
+  Current: sees LA IP (<BHN_LA_PUBLIC_IP>) in API logs
+  Target: sees Hillsboro IP (<BHN_HIL_PUBLIC_IP>) after egress lockdown
   Cannot see: your infrastructure or network topology
 
 TWILIO:
@@ -334,7 +334,7 @@ TWILIO:
   Outbound calls: sees Hillsboro IP (target, after egress lockdown)
 
 ALPACA MARKETS:
-  Sees: NJ IP (140.82.4.35) — trading node connects directly
+  Sees: NJ IP (<BHN_NJ_PUBLIC_IP>) — trading node connects directly
   Note: monitor for flag risk if NJ Tor relay goes live
 
 TOR DIRECTORY AUTHORITIES:

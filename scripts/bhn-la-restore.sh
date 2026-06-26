@@ -26,7 +26,7 @@
 # IMPORTANT: When wg-quick down runs, LA's SSH-over-wg path drops too. If
 # you're SSH'd into LA via the tunnel (not via public 22/tcp), this will
 # disconnect you. Recommended: run from a local console OR from a direct
-# SSH to LA's public IP (149.28.91.100:22).
+# SSH to LA's public IP (<BHN_LA_PUBLIC_IP>:22).
 #
 # Modes:
 #   restore  — apply the fix (default if no arg)

@@ -3,7 +3,7 @@
 #
 # Purpose: Bring up wg1 between LA and Hillsboro AND wire policy routing so
 # that traffic from full-tunnel client peers on wg0 is forwarded through wg1
-# (egress IP becomes Hillsboro 5.78.94.237).
+# (egress IP becomes Hillsboro <BHN_HIL_PUBLIC_IP>).
 #
 # Replaces the pre-2026-05-28 bhn-frankfurt-exit.sh which routed full-tunnel
 # clients via Frankfurt (decommissioned 2026-05-28).
@@ -14,7 +14,7 @@ set -euo pipefail
 
 WG1_PRIVKEY="/etc/wireguard/wg1-private.key"
 WG1_PUBKEY_HIL="EwBHwkT4iJXzhJZMvtlo70NOLx+wPv8IXmAGSa89zBg="
-HIL_ENDPOINT="5.78.94.237:51821"
+HIL_ENDPOINT="<BHN_HIL_PUBLIC_IP>:51821"
 WG1_ADDR="10.10.0.1/30"
 WG1_PORT=51822
 TABLE=200

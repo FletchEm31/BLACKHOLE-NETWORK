@@ -23,7 +23,7 @@ all:
           ansible_port: 22
           bhn_node_name: BHN-LOSANGELES-US1
           bhn_role: hub
-          bhn_public_ip: 149.28.91.100
+          bhn_public_ip: <BHN_LA_PUBLIC_IP>
           bhn_has_docker: true
           bhn_has_postgres: true
           bhn_grafana_port: 3000         # Grafana migrated to NJ; kept here as reference
@@ -36,7 +36,7 @@ all:
           ansible_port: 2222
           bhn_node_name: BHN-NEWJERSEY-US2
           bhn_role: trading
-          bhn_public_ip: 140.82.4.35
+          bhn_public_ip: <BHN_NJ_PUBLIC_IP>
           bhn_has_docker: false          # Docker not installed by default; see dozzle/README.md
           bhn_grafana_port: 3000
 
@@ -48,7 +48,7 @@ all:
           ansible_port: 22
           bhn_node_name: BHN-HILLSBORO-US3
           bhn_role: egress-proxy
-          bhn_public_ip: 5.78.94.237
+          bhn_public_ip: <BHN_HIL_PUBLIC_IP>
           bhn_has_docker: true
           bhn_tinyproxy_port: 8888
 

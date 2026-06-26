@@ -3,7 +3,7 @@ BHN SESSION HANDOFF — 2026-06-10
 ================================================================================
 Branch: main
 Working tree: C:\GITHUB REPOSITORY\BLACKHOLE-NETWORK
-LA node: ssh root@149.28.91.100 (public IP; WireGuard tunnel 10.8.0.1 was
+LA node: ssh root@<BHN_LA_PUBLIC_IP> (public IP; WireGuard tunnel 10.8.0.1 was
          unreachable from this Windows session)
 
 ================================================================================

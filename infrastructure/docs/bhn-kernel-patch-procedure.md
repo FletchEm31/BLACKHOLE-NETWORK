@@ -264,7 +264,7 @@ If any check fails: stop, diagnose before proceeding to the second node.
 
 ## Per-node specifics
 
-### LA (149.28.91.100, hub)
+### LA (<BHN_LA_PUBLIC_IP>, hub)
 
 - **Stakes:** Highest. Holds PG cluster + n8n + HORIZON + all BHN orchestration state.
 - **PG pin:** Mandatory. Always Phase 2.
@@ -281,14 +281,14 @@ If any check fails: stop, diagnose before proceeding to the second node.
 - **Order:** After LA is fully verified.
 - **SSH:** Via `ssh frankfurt` from LA (wg1 tunnel) OR Vultr console fallback. NO direct public-IP SSH (Vultr cross-region TCP block).
 
-### NJ (140.82.4.35, trading node) — when applicable
+### NJ (<BHN_NJ_PUBLIC_IP>, trading node) — when applicable
 
 - **Stakes:** Medium. Trading workloads (when live) tolerate downtime if scheduled.
 - **PG pin:** Defensive (no PG on NJ as of 2026-05-12).
 - **Backup before:** Trading state — once it exists, snapshot before patching.
 - **Reboot expected downtime:** ~60-90s. WG tunnel re-handshakes via LA's wg0 hub.
 - **Order:** After LA + Frankfurt verified.
-- **SSH:** `ssh nj` from LA (wg0 tunnel) OR direct `ssh -p 2222 root@140.82.4.35` from operator's PC.
+- **SSH:** `ssh nj` from LA (wg0 tunnel) OR direct `ssh -p 2222 root@<BHN_NJ_PUBLIC_IP>` from operator's PC.
 
 ---
 

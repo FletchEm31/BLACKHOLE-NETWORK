@@ -4,7 +4,7 @@ Exact, ordered steps to diagnose and recover a **hanging SSH** to Hillsboro (`BH
 
 **Context:** Hillsboro is BHN's operational egress proxy (tinyproxy `10.8.0.6:8888`). SSH to it normally goes over the WireGuard mesh to `10.8.0.6`. A wedge on 2026-05-13 self-recovered by 2026-05-14 (WG handshake came back healthy); this runbook is the preserved playbook for next time.
 
-**Addresses:** WG mesh `10.8.0.6` (wg0) · public `5.78.94.237` (Hetzner) · provider out-of-band: Hetzner Cloud Console (vKVM).
+**Addresses:** WG mesh `10.8.0.6` (wg0) · public `<BHN_HIL_PUBLIC_IP>` (Hetzner) · provider out-of-band: Hetzner Cloud Console (vKVM).
 
 ---
 
@@ -48,7 +48,7 @@ ssh root@10.8.0.1 'systemctl restart wg-quick@wg0'   # affects LA hub briefly �
 If the tunnel can't be coaxed back, confirm Hillsboro itself is up before assuming SSH is the problem:
 
 ```bash
-ping -c 3 5.78.94.237          # Hetzner public IP — ICMP may be filtered, not definitive
+ping -c 3 <BHN_HIL_PUBLIC_IP>          # Hetzner public IP — ICMP may be filtered, not definitive
 ```
 
 If no signs of life: **Hetzner Cloud Console → vKVM** for the Hillsboro server. This is the true out-of-band path — you get a console regardless of SSH/WG/network state. From the console you can:

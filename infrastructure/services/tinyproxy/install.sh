@@ -45,4 +45,4 @@ ss -lntp | grep -E ':8888\s' | grep -q '10\.8\.0\.6' \
 echo "[tinyproxy] OK — listening on 10.8.0.6:8888, accepting only from 10.8.0.0/24"
 echo "[tinyproxy] On LA, set: export https_proxy=http://10.8.0.6:8888"
 echo "[tinyproxy] Verify from LA: curl -x http://10.8.0.6:8888 https://api.ipify.org"
-echo "[tinyproxy]   (should return 5.78.94.237 — Hillsboro's public IP)"
+echo "[tinyproxy]   (should return <BHN_HIL_PUBLIC_IP> — Hillsboro's public IP)"

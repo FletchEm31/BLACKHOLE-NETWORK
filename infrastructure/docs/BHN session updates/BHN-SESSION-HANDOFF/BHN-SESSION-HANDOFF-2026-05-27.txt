@@ -138,7 +138,7 @@ SECTION 5 — CURRENT DB STATE (as of 2026-05-27 pre-load)
 SECTION 6 — INFRASTRUCTURE NOTES
 ==================================================================
 
-  LA node: 149.28.91.100 | WireGuard: 10.8.0.1
+  LA node: <BHN_LA_PUBLIC_IP> | WireGuard: 10.8.0.1
   BHN_RUN_ON_LA=1 — added to /etc/bhn-trading/env this session ✅
   Scraper deploy path: /opt/bhn/ebay-sold-scraper/
   Scraper output path: /var/lib/bhn-ebay-sold/

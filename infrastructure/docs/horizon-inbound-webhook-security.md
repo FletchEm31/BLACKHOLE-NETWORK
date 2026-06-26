@@ -100,7 +100,7 @@ server {
 }
 ```
 
-Operator action: create the `webhook.eventhorizonvpn.com` DNS A record pointing at `149.28.91.100`. Then `certbot --nginx -d webhook.eventhorizonvpn.com` to provision the cert.
+Operator action: create the `webhook.eventhorizonvpn.com` DNS A record pointing at `<BHN_LA_PUBLIC_IP>`. Then `certbot --nginx -d webhook.eventhorizonvpn.com` to provision the cert.
 
 The OLD `eventhorizonvpn.com` DNS A record stays deleted (we removed it 2026-05-09). The new `webhook.` subdomain is the only thing that resolves to LA publicly.
 

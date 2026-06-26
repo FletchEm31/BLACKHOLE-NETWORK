@@ -6,9 +6,9 @@ Last Updated: May 13, 2026
 SERVERS
 -------
 LA Hub (Brain/Primary):
-  Public IP:    149.28.91.100
+  Public IP:    <BHN_LA_PUBLIC_IP>
   Tunnel IP:    10.8.0.1
-  SSH:          ssh root@149.28.91.100 (password in Proton Pass: LA-VPS-Root)
+  SSH:          ssh root@<BHN_LA_PUBLIC_IP> (password in Proton Pass: LA-VPS-Root)
   SSH via VPN:  ssh root@10.8.0.1 (key auth only)
   SSH Key:      C:\Users\fletc\.ssh\id_ed25519
   Provider:     Vultr
@@ -23,17 +23,17 @@ Frankfurt Exit Node (EU1):
   NOTE:         Frankfurt exit routing partially working — MASQUERADE fix still needed
  
 New Jersey Trading Node (US2):
-  Public IP:    140.82.4.35
+  Public IP:    <BHN_NJ_PUBLIC_IP>
   Tunnel IP:    10.8.0.5
-  SSH:          ssh -p 2222 root@140.82.4.35   ← NOTE: port 2222
+  SSH:          ssh -p 2222 root@<BHN_NJ_PUBLIC_IP>   ← NOTE: port 2222
   Provider:     Vultr
   Role:         Trading node (Alpaca paper trading, 5 strategies)
   Status:       Operational — trading stack NOT yet deployed
  
 Hillsboro Proxy/Exit Node (US3):  ← NEW 2026-05-13
-  Public IP:    5.78.94.237
+  Public IP:    <BHN_HIL_PUBLIC_IP>
   Tunnel IP:    10.8.0.6
-  SSH:          ssh root@5.78.94.237
+  SSH:          ssh root@<BHN_HIL_PUBLIC_IP>
   Provider:     Hetzner (German company, US-West datacenter)
   Role:         US exit node + LA egress proxy (tinyproxy)
   Status:       Operational — bootstrap complete, tinyproxy verified
@@ -50,10 +50,10 @@ WireGuard Mesh:
  
 CONSOLE TERMINOLOGY (STRICT — DO NOT DEVIATE):
   REMOTE BROWSER WINDOW = noVNC Vultr/Hetzner web console
-  PC LA CONSOLE         = SSH session from PC to LA (ssh root@149.28.91.100)
+  PC LA CONSOLE         = SSH session from PC to LA (ssh root@<BHN_LA_PUBLIC_IP>)
   PC GE CONSOLE         = SSH session from PC to Frankfurt (ssh root@192.248.187.208)
-  PC NJ CONSOLE         = SSH session from PC to NJ (ssh -p 2222 root@140.82.4.35)
-  PC Hillsboro          = SSH session from PC to Hillsboro (ssh root@5.78.94.237)
+  PC NJ CONSOLE         = SSH session from PC to NJ (ssh -p 2222 root@<BHN_NJ_PUBLIC_IP>)
+  PC Hillsboro          = SSH session from PC to Hillsboro (ssh root@<BHN_HIL_PUBLIC_IP>)
   LA→Frankfurt:         ssh frankfurt  (from LA, uses SSH alias)
   LA→NJ:                ssh nj         (from LA, uses SSH alias)
   LA→Hillsboro:         ssh hillsboro  (from LA, uses SSH alias)
@@ -198,7 +198,7 @@ PROTON PASS — KEY ENTRIES
   EH-NewsAPI-APIKey              News API
   EH-HORIZON-Chat-URL            HORIZON webhook chat URL
   EH-Horizon-SMTP-Token          Proton SMTP token
-  BHN-Alpaca-Paper-KeyID         Alpaca paper key (PA39LSUT2NW8)
+  BHN-Alpaca-Paper-KeyID         Alpaca paper key (<ALPACA_PAPER_ACCOUNT_ID>)
   BHN-Alpaca-Paper-Secret        Alpaca paper secret
   BHN-SearXNG-Secret             SearXNG secret key
   BHN-Postgres-bootstrap-writer  BHN-Bootstrap-2026
@@ -260,12 +260,12 @@ TINYPROXY — LA EGRESS PROXY
 ==================================================================
  
 Location:  Hillsboro US3 (10.8.0.6:8888)
-Purpose:   All LA outbound API calls exit via Hillsboro IP (5.78.94.237)
+Purpose:   All LA outbound API calls exit via Hillsboro IP (<BHN_HIL_PUBLIC_IP>)
            Anthropic/Twilio/etc never see LA's IP in their logs
 Status:    DEPLOYED AND VERIFIED
  
 Verify:    curl -x http://10.8.0.6:8888 https://api.ipify.org
-Expected:  5.78.94.237
+Expected:  <BHN_HIL_PUBLIC_IP>
  
 LA egress lockdown (PENDING — do in order):
   1. /etc/environment: https_proxy=http://10.8.0.6:8888
@@ -279,7 +279,7 @@ Inbound to LA stays direct (Twilio callbacks, n8n webhooks, WireGuard peers)
 TRADING STACK (code complete, NOT yet deployed to NJ)
 ==================================================================
  
-Alpaca paper account: PA39LSUT2NW8
+Alpaca paper account: <ALPACA_PAPER_ACCOUNT_ID>
 Endpoint: https://paper-api.alpaca.markets/v2
  
 Strategies ($100k total):

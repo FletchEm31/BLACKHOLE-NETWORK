@@ -94,7 +94,7 @@ TUNNEL_IP="${TUNNEL_IP_OVERRIDE:-$TUNNEL_IP}"
 BOOTSTRAP_TS="$(date -u +%FT%TZ)"
 
 # Hub identity (defaults — overridable for new hubs / migrations)
-HUB_IP="${HUB_IP:-149.28.91.100}"
+HUB_IP="${HUB_IP:-<BHN_LA_PUBLIC_IP>}"
 HUB_PUBKEY="${HUB_PUBKEY:-TOYnFt18v4NynEN91o6zkmV5hsvHBLJTb8qL7GG/KAo=}"
 HUB_WG_PORT="${HUB_WG_PORT:-51820}"
 

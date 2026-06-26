@@ -355,7 +355,7 @@ Runs on NJ trading node (BHN|VPS-NEWJERSEY-US2). Paper trading via Alpaca.
 > See `project_strat_2_6_8_shared_account.md` for the audit trail.                <!-- 🟢 ADD -->
 
 ```
-Account 1 — BHN-STRAT-PRIMARY (PA39LSUT2NW8)    $100,000
+Account 1 — BHN-STRAT-PRIMARY (<ALPACA_PAPER_ACCOUNT_ID>)    $100,000
   Strat 6  — BHN-NASDAQ-LONG      enabled    $40,000   Mon 9:40am ET
   Strat 7  — BHN-NASDAQ-SHORT     disabled   $40,000   pending Strat 6 validation
   Strat 8  — BHN-SECTOR-ROTATION  enabled    $20,000   daily 3:55pm ET

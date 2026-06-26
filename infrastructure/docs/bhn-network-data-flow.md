@@ -12,9 +12,9 @@ How traffic moves across the BHN mesh — by traffic *class*, not just by node. 
 
 | Node | Role | WG (tunnel) | Public IP | Provider |
 |------|------|-------------|-----------|----------|
-| **LA** (`BHN-LOSANGELES-US1`) | Hub — PG, n8n, HORIZON, Netdata parent | `10.8.0.1` (wg0) | `149.28.91.100` | Vultr (US) |
+| **LA** (`BHN-LOSANGELES-US1`) | Hub — PG, n8n, HORIZON, Netdata parent | `10.8.0.1` (wg0) | `<BHN_LA_PUBLIC_IP>` | Vultr (US) |
 | **NJ** (`BHN\|VPS-NEWJERSEY-US2`) | Trading (Alpaca), Grafana, Metabase | `10.8.0.5` (wg0) | — | (US) |
-| **Hillsboro** (`BHN-HILLSBORO-US3`) | Operational egress proxy | `10.8.0.6` (wg0) | `5.78.94.237` | Hetzner (US) |
+| **Hillsboro** (`BHN-HILLSBORO-US3`) | Operational egress proxy | `10.8.0.6` (wg0) | `<BHN_HIL_PUBLIC_IP>` | Hetzner (US) |
 
 Frankfurt (`BHN|VPS-FRANKFURT-EU1`, `192.248.187.208`, `10.9.0.2/wg1`) was decommissioned 2026-05-28 — see `infrastructure/archive/frankfurt/README.md`.
 
@@ -24,13 +24,13 @@ Frankfurt (`BHN|VPS-FRANKFURT-EU1`, `192.248.187.208`, `10.9.0.2/wg1`) was decom
 
 ### 1. LA operational / service egress → **Hillsboro** (primary) — [DESIGNED]
 
-LA's outbound API calls (Anthropic, Twilio, ElevenLabs, financial data, apt, certbot) route through Hillsboro's tinyproxy (`10.8.0.6:8888`) and exit Hillsboro's Hetzner IP (`5.78.94.237`), so LA's Vultr IP (`149.28.91.100`) stops appearing in those vendors' access logs.
+LA's outbound API calls (Anthropic, Twilio, ElevenLabs, financial data, apt, certbot) route through Hillsboro's tinyproxy (`10.8.0.6:8888`) and exit Hillsboro's Hetzner IP (`<BHN_HIL_PUBLIC_IP>`), so LA's Vultr IP (`<BHN_LA_PUBLIC_IP>`) stops appearing in those vendors' access logs.
 
 ```
 LA process ──http(s)_proxy──► 10.8.0.6:8888 (tinyproxy on Hillsboro)
                                    │  MASQUERADE
                                    ▼
-                            exits 5.78.94.237 (Hetzner)
+                            exits <BHN_HIL_PUBLIC_IP> (Hetzner)
 ```
 
 - **Inbound** API callbacks (Twilio voice/SMS webhooks, n8n webhook URLs, ElevenLabs async callbacks) still land **directly on LA**. The asymmetry is deliberate — see `infrastructure/la-egress-lockdown/README.md`.

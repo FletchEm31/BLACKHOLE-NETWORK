@@ -166,7 +166,7 @@ Services running across BHN nodes (all access restricted to WireGuard tunnel unl
 | Netdata | All nodes | `10.8.0.x:19999` | Real-time system monitoring |
 | Wallos | LA | `10.8.0.1:8090` | Subscription / cost tracking |
 | tinyproxy | Hillsboro | `10.8.0.6:8888` | LA outbound API egress proxy (hides LA IP) |
-| Tor relay (BHNHeliosUS3) | Hillsboro | `5.78.94.237:9001` (public) | Non-exit middle relay |
+| Tor relay (BHNHeliosUS3) | Hillsboro | `<BHN_HIL_PUBLIC_IP>:9001` (public) | Non-exit middle relay |
 | Shadowsocks | Hillsboro | public | DPI-resistant traffic obfuscation |
 | fail2ban | All nodes | — | Brute force / intrusion blocking |
 | CrowdSec | LA, Hillsboro | — | Collaborative threat intelligence |
@@ -203,7 +203,7 @@ Runs on NJ trading node (BHN|VPS-NEWJERSEY-US2). Paper trading via Alpaca.
 > strategy set (capital/schedule), not the current live set.
 
 ```
-Account 1 — BHN-STRAT-PRIMARY (PA39LSUT2NW8)    $100,000
+Account 1 — BHN-STRAT-PRIMARY (<ALPACA_PAPER_ACCOUNT_ID>)    $100,000
   Strat 6  — BHN-NASDAQ-LONG      enabled    $40,000   Mon 9:40am ET
   Strat 7  — BHN-NASDAQ-SHORT     disabled   $40,000   pending Strat 6 validation
   Strat 8  — BHN-SECTOR-ROTATION  enabled    $20,000   daily 3:55pm ET
@@ -455,9 +455,9 @@ Tor relay nicknames:
 | Term | Definition |
 |------|------------|
 | **REMOTE BROWSER WINDOW** | noVNC web console (Vultr/Hetzner) — emergency fallback only |
-| **PC LA CONSOLE** | SSH from operator PC to LA hub (`ssh root@149.28.91.100`) |
-| **PC NJ CONSOLE** | SSH from operator PC to NJ (`ssh -p 2222 root@140.82.4.35`) — port 2222 |
-| **PC Hillsboro** | SSH from operator PC to Hillsboro (`ssh root@5.78.94.237`) |
+| **PC LA CONSOLE** | SSH from operator PC to LA hub (`ssh root@<BHN_LA_PUBLIC_IP>`) |
+| **PC NJ CONSOLE** | SSH from operator PC to NJ (`ssh -p 2222 root@<BHN_NJ_PUBLIC_IP>`) — port 2222 |
+| **PC Hillsboro** | SSH from operator PC to Hillsboro (`ssh root@<BHN_HIL_PUBLIC_IP>`) |
 | **LA→NJ** | `ssh nj` (alias from LA, via WireGuard tunnel) |
 | **LA→Hillsboro** | `ssh hillsboro` (alias from LA, via WireGuard tunnel) |
 

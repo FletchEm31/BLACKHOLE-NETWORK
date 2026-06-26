@@ -1,6 +1,6 @@
 # BHN Tor relay — non-exit middle relay on Hillsboro
 
-Runs a Tor **non-exit middle relay** on the Hillsboro egress-proxy node (BHN-HILLSBORO-US3, Hetzner US-WEST, 5.78.94.237). Third relay in the BHN family — joins Frankfurt and NJ to triangulate consensus presence across providers (Vultr / Hetzner) and continents.
+Runs a Tor **non-exit middle relay** on the Hillsboro egress-proxy node (BHN-HILLSBORO-US3, Hetzner US-WEST, <BHN_HIL_PUBLIC_IP>). Third relay in the BHN family — joins Frankfurt and NJ to triangulate consensus presence across providers (Vultr / Hetzner) and continents.
 
 **Not an exit.** ExitRelay=0, ExitPolicy=reject all.
 **Not a bridge.** Listed in public consensus.

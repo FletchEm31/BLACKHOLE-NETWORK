@@ -1,6 +1,6 @@
 # LA egress lockdown — proxy LA's outbound via Hillsboro tinyproxy
 
-Routes all LA hub outbound HTTP/HTTPS through `BHN-HILLSBORO-US3`'s tinyproxy at `10.8.0.6:8888`. End state: LA's public IP (`149.28.91.100`, Vultr) no longer appears in Anthropic/Twilio/ElevenLabs/financial-data API access logs; that traffic exits via Hillsboro's IP (`5.78.94.237`, Hetzner).
+Routes all LA hub outbound HTTP/HTTPS through `BHN-HILLSBORO-US3`'s tinyproxy at `10.8.0.6:8888`. End state: LA's public IP (`<BHN_LA_PUBLIC_IP>`, Vultr) no longer appears in Anthropic/Twilio/ElevenLabs/financial-data API access logs; that traffic exits via Hillsboro's IP (`<BHN_HIL_PUBLIC_IP>`, Hetzner).
 
 Inbound webhooks (Twilio voice/SMS callbacks, n8n workflow webhook URLs, ElevenLabs async callbacks) continue to land directly on LA. That asymmetry is deliberate — see `memory/project_la_egress_isolation.md`.
 
@@ -9,7 +9,7 @@ Inbound webhooks (Twilio voice/SMS callbacks, n8n workflow webhook URLs, ElevenL
 1. tinyproxy already deployed + verified on Hillsboro (`infrastructure/services/tinyproxy/`). Confirm with:
    ```bash
    ssh hillsboro 'ss -lntp | grep 8888'
-   curl -fsS -x http://10.8.0.6:8888 https://api.ipify.org   # from LA, expect 5.78.94.237
+   curl -fsS -x http://10.8.0.6:8888 https://api.ipify.org   # from LA, expect <BHN_HIL_PUBLIC_IP>
    ```
 2. LA's outbound UFW rule for `10.8.0.6` already in place (it is — added 2026-05-13 in the WG resolution fix).
 
@@ -53,16 +53,16 @@ systemctl show grafana-server -p Environment | tr ' ' '\n' | grep -i proxy
 
 #    e) A direct external call from LA still works (because direct egress is
 #       still allowed — we haven't pulled it yet):
-curl -fsS https://api.ipify.org   # → 149.28.91.100  (LA direct — expected)
+curl -fsS https://api.ipify.org   # → <BHN_LA_PUBLIC_IP>  (LA direct — expected)
 
 #    f) The same call via proxy:
-https_proxy=http://10.8.0.6:8888 curl -fsS https://api.ipify.org   # → 5.78.94.237
+https_proxy=http://10.8.0.6:8888 curl -fsS https://api.ipify.org   # → <BHN_HIL_PUBLIC_IP>
 
 # 4. ONLY when 3a–3f all pass, run the lockdown:
 sudo bash ufw-rewrite.sh lockdown
 
 # 5. Now confirm everything that used to work direct still works via proxy:
-curl -fsS https://api.ipify.org   # → should now return 5.78.94.237 (via env vars)
+curl -fsS https://api.ipify.org   # → should now return <BHN_HIL_PUBLIC_IP> (via env vars)
 sudo apt-get update                # → succeeds via apt proxy config
 # n8n & grafana don't auto-test — exercise them by triggering a workflow / alert
 ```
@@ -94,4 +94,4 @@ LA is back to direct outbound. Re-bootstrap-recover safe.
 | n8n workflow HTTP-request node hangs | systemd drop-in not active — `systemctl show n8n -p Environment` |
 | Grafana alert webhook fails | same — check `systemctl show grafana-server -p Environment` |
 | Everything fails | tinyproxy down on Hillsboro — `ssh hillsboro 'systemctl status tinyproxy'` |
-| Anthropic API works but Twilio 403s | Twilio's IP allowlist may not include Hillsboro's `5.78.94.237` — add Hetzner IP to Twilio account allowlist |
+| Anthropic API works but Twilio 403s | Twilio's IP allowlist may not include Hillsboro's `<BHN_HIL_PUBLIC_IP>` — add Hetzner IP to Twilio account allowlist |

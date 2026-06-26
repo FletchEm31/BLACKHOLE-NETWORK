@@ -17,10 +17,10 @@ SECTION 1 — NETWORK SNAPSHOT (current state)
 ==================================================================
 
 NODE          IP (PUBLIC)       TUNNEL IP   STATUS
-LA Hub        149.28.91.100     10.8.0.1    OPERATIONAL (hub, PG, n8n, HORIZON, Grafana)
+LA Hub        <BHN_LA_PUBLIC_IP>     10.8.0.1    OPERATIONAL (hub, PG, n8n, HORIZON, Grafana)
 Frankfurt     192.248.187.208   10.9.0.2    OPERATIONAL (exit EU1, LibreSpeed, SearXNG, Tor)
-New Jersey    140.82.4.35       10.8.0.5    OPERATIONAL (trading stack LIVE — 5 strategies running)
-Hillsboro     5.78.94.237       10.8.0.6    OPERATIONAL (tinyproxy verified, Tor bootstrapping)
+New Jersey    <BHN_NJ_PUBLIC_IP>       10.8.0.5    OPERATIONAL (trading stack LIVE — 5 strategies running)
+Hillsboro     <BHN_HIL_PUBLIC_IP>       10.8.0.6    OPERATIONAL (tinyproxy verified, Tor bootstrapping)
 
 WireGuard Mesh (hub-and-spoke, LA is hub):
   Operator PC:     10.8.0.4   PSK: ✅
@@ -37,10 +37,10 @@ Tor Relays:
 
 CONSOLE TERMINOLOGY (STRICT):
   REMOTE BROWSER WINDOW = noVNC web console (Vultr/Hetzner)
-  PC LA CONSOLE         = ssh root@149.28.91.100
+  PC LA CONSOLE         = ssh root@<BHN_LA_PUBLIC_IP>
   PC GE CONSOLE         = ssh root@192.248.187.208
-  PC NJ CONSOLE         = ssh -p 2222 root@140.82.4.35   ← port 2222
-  PC Hillsboro          = ssh root@5.78.94.237
+  PC NJ CONSOLE         = ssh -p 2222 root@<BHN_NJ_PUBLIC_IP>   ← port 2222
+  PC Hillsboro          = ssh root@<BHN_HIL_PUBLIC_IP>
   LA→Frankfurt:         ssh frankfurt  (from LA)
   LA→NJ:                ssh nj         (from LA)
   LA→Hillsboro:         ssh hillsboro  (from LA)
@@ -51,7 +51,7 @@ SECTION 2 — TRADING STACK STATUS
 
 ACTIVE STRATEGIES ON NJ:
 
-Account 1 — BHN-STRAT-PRIMARY (PA39LSUT2NW8) $100,000:
+Account 1 — BHN-STRAT-PRIMARY (<ALPACA_PAPER_ACCOUNT_ID>) $100,000:
   Strat 6  — BHN-NASDAQ-LONG      enabled    $40,000   Mon 9:40am ET
   Strat 7  — BHN-NASDAQ-SHORT     DISABLED   $40,000   pending Strat 6 validation
   Strat 8  — BHN-SECTOR-ROTATION  enabled    $20,000   daily 3:55pm ET

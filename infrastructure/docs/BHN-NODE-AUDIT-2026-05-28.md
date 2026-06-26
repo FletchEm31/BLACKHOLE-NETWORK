@@ -18,9 +18,9 @@ services and RAM are not — those reflect 2026-05-28 ~07:45 UTC only.
 
 | Node | Hostname | Public IP | WG IP | vCPU | RAM | RAM used | RAM avail | Disk used | Role |
 |------|----------|-----------|-------|------|-----|----------|-----------|-----------|------|
-| **LA** | `vultr` | 149.28.91.100 | 10.8.0.1 | 2 | 1.9 GB | 961 MB | 801 MB | 24/56 GB | Postgres master, n8n, HORIZON, Grafana (migrating), Redis, embeddings, mesh hub |
-| **NJ** | `BHN-NEWJERSEY-US2` | 140.82.4.35 | 10.8.0.5 | 1 | 1.9 GB | 581 MB | 1.2 GB | 16/60 GB | Trading executor; Grafana NJ (new); spare capacity for Metabase |
-| **Hillsboro** | `BHN-HILLSBORO-US3` | 5.78.94.237 | 10.8.0.6 | 2 | 1.9 GB | 993 MB | 764 MB | 7.6/38 GB | tinyproxy HTTP egress, Tor relay (BHNHeliosUS3), mesh-spoke |
+| **LA** | `vultr` | <BHN_LA_PUBLIC_IP> | 10.8.0.1 | 2 | 1.9 GB | 961 MB | 801 MB | 24/56 GB | Postgres master, n8n, HORIZON, Grafana (migrating), Redis, embeddings, mesh hub |
+| **NJ** | `BHN-NEWJERSEY-US2` | <BHN_NJ_PUBLIC_IP> | 10.8.0.5 | 1 | 1.9 GB | 581 MB | 1.2 GB | 16/60 GB | Trading executor; Grafana NJ (new); spare capacity for Metabase |
+| **Hillsboro** | `BHN-HILLSBORO-US3` | <BHN_HIL_PUBLIC_IP> | 10.8.0.6 | 2 | 1.9 GB | 993 MB | 764 MB | 7.6/38 GB | tinyproxy HTTP egress, Tor relay (BHNHeliosUS3), mesh-spoke |
 | **Frankfurt** | `BHN-FRANKFURT-EU1` | 192.248.187.208 | 10.9.0.2 | 1 | 951 MB | 274 MB | 532 MB | 11/23 GB | SearXNG, Redis, LibreSpeed, SOCKS scrape egress (port 10808 via ssh tunnel from LA), Shadowsocks |
 
 All four are Ubuntu 22.04.5 LTS. Kernels: LA/NJ/FRA at 5.15.0-177, Hillsboro at 5.15.0-164 (slightly behind — apply during next maintenance).
@@ -153,7 +153,7 @@ All four are Ubuntu 22.04.5 LTS. Kernels: LA/NJ/FRA at 5.15.0-177, Hillsboro at 
 
 **WireGuard (`wg0`):**
 - Self pubkey: `ylnSJOqwkqrNZwt/saJdqoMG7j3l35hoUk+zejru1Sk=`
-- Single peer: LA (`TOYnFt...` at `149.28.91.100:51820`, allowed `10.8.0.0/24`) — 44 MB rx / 56 MB tx
+- Single peer: LA (`TOYnFt...` at `<BHN_LA_PUBLIC_IP>:51820`, allowed `10.8.0.0/24`) — 44 MB rx / 56 MB tx
 
 **Public-facing UFW exposure:** ports 22, 2222, 51820. Everything else mesh-only.
 
@@ -198,7 +198,7 @@ All four are Ubuntu 22.04.5 LTS. Kernels: LA/NJ/FRA at 5.15.0-177, Hillsboro at 
 **WireGuard (`wg0`):**
 - Self pubkey: `EwBHwkT4iJXzhJZMvtlo70NOLx+wPv8IXmAGSa89zBg=`
 - Peer LA (`TOYnFt...`, allowed `10.8.0.0/24`) — 8.2 MB rx / 313 MB tx
-- Peer `V3RenHJ...` (allowed `10.10.0.0/30`, endpoint same `149.28.91.100:51822`) — **purpose unknown, low traffic 2.58 MB / 714 KB**
+- Peer `V3RenHJ...` (allowed `10.10.0.0/30`, endpoint same `<BHN_LA_PUBLIC_IP>:51822`) — **purpose unknown, low traffic 2.58 MB / 714 KB**
 
 **Public-facing UFW exposure:** ports 22 (SSH), 9001 (Tor ORPort). 51821 + 8388 are restricted to LA only. Everything else mesh- or peer-restricted.
 
@@ -246,7 +246,7 @@ All four are Ubuntu 22.04.5 LTS. Kernels: LA/NJ/FRA at 5.15.0-177, Hillsboro at 
 
 **WireGuard (`wg1`):**
 - Self pubkey: `zkfJNbdL9Ptdxv+fxwV2e1q0mbCR5Z/9T80QanSxKA8=`
-- Single peer: LA (`TOYnFt...` at `149.28.91.100:51820`, allowed `10.8.0.0/24`) — 251 MB rx / 2.35 GB tx (the 2.35 GB is mostly SOCKS scrape egress traffic)
+- Single peer: LA (`TOYnFt...` at `<BHN_LA_PUBLIC_IP>:51820`, allowed `10.8.0.0/24`) — 251 MB rx / 2.35 GB tx (the 2.35 GB is mostly SOCKS scrape egress traffic)
 
 **Public-facing UFW exposure:** 22, 2222, 9001 (now orphan rule — remove), 8088/8089 are mesh-only via WG. Everything else WG-restricted.
 

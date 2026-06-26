@@ -129,7 +129,7 @@ SEED = [
         "tags": ["network", "architecture", "infrastructure"],
         "content": (
             "Two-node WireGuard mesh as of 2026-05-09: "
-            "LA hub (public 149.28.91.100, tunnel 10.8.0.1, wg0, listen 51820/udp) "
+            "LA hub (public <BHN_LA_PUBLIC_IP>, tunnel 10.8.0.1, wg0, listen 51820/udp) "
             "hosts PostgreSQL on encrypted NVMe, Grafana on 10.8.0.1:3000 (VPN-only), "
             "n8n on 10.8.0.1:5678 (VPN-only), dnscrypt-proxy on 10.8.0.1:53, Suricata, "
             "CrowdSec, Shadowsocks. Encrypted block storage: 101GB NVMe hot tier, "

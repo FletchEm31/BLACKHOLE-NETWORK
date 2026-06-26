@@ -38,7 +38,7 @@ FRA_TIMEOUT=15  # seconds for SSH connect+exec
 
 # NJ trading node — reachable via wg0 hub (NJ joined as a peer on LA's existing
 # wg0 at 10.8.0.5/32; NOT on a separate wg2). Tunnel operational since 2026-05-12
-# after egress UFW allowlist on LA was patched (both 140.82.4.35:51820/udp underlay
+# after egress UFW allowlist on LA was patched (both <BHN_NJ_PUBLIC_IP>:51820/udp underlay
 # and 10.8.0.5 inner-tunnel rules were needed — see reference_nj_ssh_path memory).
 NJ_HOST=10.8.0.5           # NJ's wg0 peer IP (on LA's hub)
 NJ_PORT=2222               # sshd port on NJ

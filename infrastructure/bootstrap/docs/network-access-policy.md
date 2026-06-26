@@ -43,7 +43,7 @@ These are substituted at apply time by the bootstrap, so the same policy file wo
 
 | Placeholder              | Substituted with                              |
 |--------------------------|-----------------------------------------------|
-| `<HUB_IP>`               | `$HUB_IP` (default `149.28.91.100`)           |
+| `<HUB_IP>`               | `$HUB_IP` (default `<BHN_LA_PUBLIC_IP>`)           |
 | `<HUB_TUNNEL_NETWORK>`   | `10.8.0.0/24` (hub's wg0 subnet)              |
 | `<WG_INTERFACE>`         | `$WG_INTERFACE` (e.g. `wg0`, `wg2`)           |
 | `<NET_IFACE>`            | Default route's NIC (e.g. `enp1s0`, `eth0`)   |
@@ -64,7 +64,7 @@ The parser in `modules/network-policy.sh` translates each line:
 |----------------------------------------------|------------------------------------------------------------------------|
 | `INBOUND 22/tcp`                             | `ufw allow 22/tcp`                                                     |
 | `INBOUND 22/tcp from 10.8.0.0/24`            | `ufw allow from 10.8.0.0/24 to any port 22 proto tcp`                  |
-| `INBOUND 51821/udp from 149.28.91.100`       | `ufw allow from 149.28.91.100 to any port 51821 proto udp`             |
+| `INBOUND 51821/udp from <BHN_LA_PUBLIC_IP>`       | `ufw allow from <BHN_LA_PUBLIC_IP> to any port 51821 proto udp`             |
 | `OUTBOUND 443/tcp`                           | `ufw allow out 443/tcp`                                                |
 | `OUTBOUND 51821/udp to 192.248.187.208`      | `ufw allow out to 192.248.187.208 port 51821 proto udp`                |
 | `OUTBOUND any to 10.9.0.0/24`                | `ufw allow out to 10.9.0.0/24`                                         |

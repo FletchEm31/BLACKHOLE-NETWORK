@@ -5,11 +5,11 @@
 ---
 
 When the operator wants to resume eBay scraping (held since the 2026-05-27 403
-against LA's IP `149.28.91.100`), route through Frankfurt's untouched IP.
+against LA's IP `<BHN_LA_PUBLIC_IP>`), route through Frankfurt's untouched IP.
 
 ## Why
 
-- Hillsboro's `5.78.94.237` is the LA egress for `curl`/n8n/grafana but **NOT** for Node native `fetch()`. Node fetch bypasses `HTTPS_PROXY` env vars, so the scraper hits eBay direct from LA's own public IP `149.28.91.100`.
+- Hillsboro's `<BHN_HIL_PUBLIC_IP>` is the LA egress for `curl`/n8n/grafana but **NOT** for Node native `fetch()`. Node fetch bypasses `HTTPS_PROXY` env vars, so the scraper hits eBay direct from LA's own public IP `<BHN_LA_PUBLIC_IP>`.
 - That IP got 403'd by eBay on 2026-05-27 at 01:35:59 UTC.
 - Frankfurt's `192.248.187.208` has never made an eBay request for this operator. Clean slate.
 

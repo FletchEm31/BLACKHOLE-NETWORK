@@ -3,7 +3,7 @@ BHN SESSION HANDOFF — 2026-06-03
 ================================================================================
 Branch: fix/ebay-scraper-impers-rework (merged to main early session)
 Working tree: C:\GITHUB REPOSITORY\BLACKHOLE-NETWORK
-LA node: ssh root@10.8.0.1 (via WireGuard tunnel; public IP 149.28.91.100 was
+LA node: ssh root@10.8.0.1 (via WireGuard tunnel; public IP <BHN_LA_PUBLIC_IP> was
          unreachable this session — use the 10.8.0.1 tunnel IP)
 PostgreSQL: sudo -u postgres psql -d eventhorizon (peer auth, no -h flag)
 

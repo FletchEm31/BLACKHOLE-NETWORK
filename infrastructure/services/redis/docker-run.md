@@ -47,7 +47,7 @@ ss -tlnp | grep 6379
 # Expect: LISTEN on 10.8.0.1:6379  (NOT 0.0.0.0:6379)
 
 # Public IP must NOT serve:
-curl --max-time 3 telnet://149.28.91.100:6379 2>&1 | head -3
+curl --max-time 3 telnet://<BHN_LA_PUBLIC_IP>:6379 2>&1 | head -3
 # Expect: connection refused / timeout
 
 # From the n8n container on LA (over the docker-host network):

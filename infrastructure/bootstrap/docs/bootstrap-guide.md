@@ -37,7 +37,7 @@ bash infrastructure/bootstrap/bhn-node-bootstrap.sh \
 ATTACH_NVME=/dev/vdb \
 ATTACH_HDD=/dev/vdc \
 bash infrastructure/bootstrap/bhn-node-bootstrap.sh \
-    BHN-VPS-LOSANGELES-US1 149.28.91.100 wg0 hub US-WEST
+    BHN-VPS-LOSANGELES-US1 <BHN_LA_PUBLIC_IP> wg0 hub US-WEST
 
 # Exit node
 bash infrastructure/bootstrap/bhn-node-bootstrap.sh \
@@ -84,7 +84,7 @@ If phase 3 fails, the node is still in phase-1's open-window state — recover b
 | `INSTALL_SURICATA`        | `1` to force Suricata install                                                        | auto-on for `hub` and `scan`  |
 | `EH_BOOTSTRAP_PG_DSN`     | DSN for hub PG to register this node, e.g. `postgresql://bootstrap_writer:PASS@10.8.0.1/eventhorizon` | unset (SQL staged for manual apply) |
 | `EH_NTFY_URL`             | ntfy endpoint, e.g. `https://ntfy.sh/eh-bootstrap-<topic>`                           | unset (skipped)               |
-| `HUB_IP`                  | Override hub IP — useful when bootstrapping a new hub or migrating                   | `149.28.91.100`               |
+| `HUB_IP`                  | Override hub IP — useful when bootstrapping a new hub or migrating                   | `<BHN_LA_PUBLIC_IP>`               |
 | `HUB_PUBKEY`              | Override hub WG pubkey — paired with `HUB_IP` for new hubs                           | LA hub pubkey                 |
 
 ## Identity file: `/etc/eh-node-info.conf`
@@ -99,7 +99,7 @@ NODE_PUBLIC_IP=1.2.3.4
 NODE_TUNNEL_IP=10.10.0.2
 WG_INTERFACE=wg2
 WG_PUBKEY=...
-HUB_IP=149.28.91.100
+HUB_IP=<BHN_LA_PUBLIC_IP>
 HUB_PUBKEY=TOYnFt18v4NynEN91o6zkmV5hsvHBLJTb8qL7GG/KAo=
 BOOTSTRAP_VERSION=4
 BOOTSTRAP_TIMESTAMP=2026-05-08T23:50:12Z

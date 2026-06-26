@@ -159,11 +159,11 @@ OTHER OPEN BTEH ITEMS (verify/remediate future sessions)
 ================================================================================
 CURRENT NODE STATUS
 ================================================================================
-LA Hub      149.28.91.100 / 10.8.0.1  — PostgreSQL eventhorizon, n8n, HORIZON,
+LA Hub      <BHN_LA_PUBLIC_IP> / 10.8.0.1  — PostgreSQL eventhorizon, n8n, HORIZON,
             Grafana, Redis, Docker. Healthy. DNS logging now OFF.
-NJ          140.82.4.35 / 10.8.0.5 (SSH port 2222) — Alpaca paper trading.
+NJ          <BHN_NJ_PUBLIC_IP> / 10.8.0.5 (SSH port 2222) — Alpaca paper trading.
             Strat 13 armed (SEE CRITICAL).
-Hillsboro   5.78.94.237 / 10.8.0.6 — tinyproxy egress, Tor relay BHNHeliosUS3.
+Hillsboro   <BHN_HIL_PUBLIC_IP> / 10.8.0.6 — tinyproxy egress, Tor relay BHNHeliosUS3.
 Frankfurt   DECOMMISSIONED. VPS destroy pending Monday. wg0 egress peer parked.
 
 

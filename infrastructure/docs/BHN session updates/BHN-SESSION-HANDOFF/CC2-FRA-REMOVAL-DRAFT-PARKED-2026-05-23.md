@@ -33,7 +33,7 @@ If FRA still pingable, operator hasn't destroyed yet — STOP, ask before procee
 | `ip rule: 100: from all fwmark 0x100 lookup 100` | live runtime | Remove |
 | `ip route … table 100` (default via 10.9.0.2, hub subnet, LA public IP) | live runtime | Flush |
 | `iptables -t mangle PREROUTING` rule: `-s 10.8.0.8 -j MARK 0x100` | live runtime | **Re-target to 0x200** (Phase 1) |
-| `iptables -t mangle PREROUTING` rule: `-s 10.8.0.9 -d 5.78.94.237 -j RETURN` | live runtime | Leave alone |
+| `iptables -t mangle PREROUTING` rule: `-s 10.8.0.9 -d <BHN_HIL_PUBLIC_IP> -j RETURN` | live runtime | Leave alone |
 | `iptables FORWARD: -i wg0 -o wg0 -j ACCEPT` | live runtime | Leave (Hillsboro hairpin still needs it) |
 | `/etc/wireguard/bhn-frankfurt-exit.sh` script | LA filesystem | Move to `/etc/wireguard/archive/` |
 

@@ -15,15 +15,15 @@ SECTION 1 — NETWORK SNAPSHOT
 ==================================================================
 
 NODE          IP (PUBLIC)       TUNNEL IP   STATUS
-LA Hub        149.28.91.100     10.8.0.1    OPERATIONAL (hub, PG, n8n, collectors)
-NJ            140.82.4.35       10.8.0.5    OPERATIONAL (trading stack — offline)
-Hillsboro     5.78.94.237       10.8.0.6    OPERATIONAL (tinyproxy, Tor egress)
+LA Hub        <BHN_LA_PUBLIC_IP>     10.8.0.1    OPERATIONAL (hub, PG, n8n, collectors)
+NJ            <BHN_NJ_PUBLIC_IP>       10.8.0.5    OPERATIONAL (trading stack — offline)
+Hillsboro     <BHN_HIL_PUBLIC_IP>       10.8.0.6    OPERATIONAL (tinyproxy, Tor egress)
 Frankfurt     192.248.187.208   10.9.0.2    DECOMMISSIONED
 
 CONSOLE TERMINOLOGY (STRICT — never deviate):
   PC LA CONSOLE  = ssh root@10.8.0.1        (WG tunnel)
   PC NJ CONSOLE  = ssh -p 2222 root@10.8.0.5 (always port 2222)
-  PC Hillsboro   = ssh root@5.78.94.237
+  PC Hillsboro   = ssh root@<BHN_HIL_PUBLIC_IP>
 
 SSH KEY: C:\Users\fletc\.ssh\id_ed25519
 LA ROOT PASSWORD: in Proton Pass

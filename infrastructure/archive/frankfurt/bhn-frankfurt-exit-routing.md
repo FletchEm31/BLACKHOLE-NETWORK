@@ -8,7 +8,7 @@ How VPN client traffic on the "full" profile gets routed via Frankfurt's public 
 
 ## Why
 
-Today operator's "full" WireGuard profile (`AllowedIPs = 0.0.0.0/0`) routes all client traffic through LA. LA's kernel routes the unmasqued inner packets out its own enp1s0 → exits as LA's US public IP (149.28.91.100).
+Today operator's "full" WireGuard profile (`AllowedIPs = 0.0.0.0/0`) routes all client traffic through LA. LA's kernel routes the unmasqued inner packets out its own enp1s0 → exits as LA's US public IP (<BHN_LA_PUBLIC_IP>).
 
 Target: route those packets out via wg1 to Frankfurt, which masquerades them out enp1s0 → exits as Frankfurt's German public IP (192.248.187.208).
 
@@ -29,7 +29,7 @@ op-PC (10.8.0.4)
 LA wg0 (10.8.0.1)
   │  decapsulates; inner packet has src=10.8.0.4 dst=<arbitrary internet IP>
   │  kernel routes via DEFAULT route → enp1s0
-  │  MASQUERADE (SNAT) → src becomes 149.28.91.100
+  │  MASQUERADE (SNAT) → src becomes <BHN_LA_PUBLIC_IP>
   ▼
 public internet — exits LA's US IP
 ```
@@ -142,7 +142,7 @@ ssh root@10.8.0.1 '/etc/wireguard/bhn-frankfurt-exit.sh apply'
 # Switch WG client to "full" profile on operator's PC
 # Then:
 curl https://api.ipify.org
-# Expected output BEFORE Phase 1: 149.28.91.100 (LA's IP)
+# Expected output BEFORE Phase 1: <BHN_LA_PUBLIC_IP> (LA's IP)
 # Expected output AFTER  Phase 1: 192.248.187.208 (Frankfurt's IP)
 
 # Also verify reach is intact:

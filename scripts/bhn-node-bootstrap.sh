@@ -41,7 +41,7 @@ NODE_IP=${2:-""}
 WG_INTERFACE=${3:-"wg1"}
 
 # ─── Constants (LA hub) ────────────────────────────────────────
-LA_IP="149.28.91.100"
+LA_IP="<BHN_LA_PUBLIC_IP>"
 LA_PUBKEY="TOYnFt18v4NynEN91o6zkmV5hsvHBLJTb8qL7GG/KAo="
 LA_WG_PORT="51820"
 SS_PORT="8388"

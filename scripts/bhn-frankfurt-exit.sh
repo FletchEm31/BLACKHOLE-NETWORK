@@ -32,7 +32,7 @@ set -uo pipefail
 # internally via AllowedIPs = 10.9.0.2/32, no ARP needed).
 FRA_TUNNEL_IP="10.9.0.2"
 FRA_PEER_ALLOWED="10.9.0.2/32"
-LA_PUBLIC_IP="149.28.91.100"
+LA_PUBLIC_IP="<BHN_LA_PUBLIC_IP>"
 WG_HUB_SUBNET="10.8.0.0/24"
 FWMARK="0x100"
 TABLE_ID=100

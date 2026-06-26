@@ -146,10 +146,21 @@ where:
 
 Full Kelly maximizes log-expected wealth but is notoriously sensitive to model error — a miscalibrated `p` can result in oversize positions and ruin. The system uses **quarter-Kelly** (`f = f* × 0.25`) to account for model uncertainty and parameter estimation error during the calibration period. This will be revisited once Platt calibration is fully live.
 
+**Current parameter values (Phase 1):**
+
+| Parameter | Value | Rationale |
+|-----------|-------|-----------|
+| Kelly multiplier | 0.25× (quarter-Kelly) | Reduces sensitivity to model miscalibration during accumulation period; revisit after Platt scaling is live |
+| Edge threshold (weather strategy) | 5% minimum `\|calibrated_prob − market_implied_prob\|` | Below this the signal is too close to noise; 5% chosen empirically from distribution of historical edge magnitudes |
+| Edge threshold (prediction signal) | 8% minimum edge | Tighter filter for the primary prediction alpha strategy where Kelly fractions are larger |
+| Spread filter | >20¢ YES/NO spread → skip | Ensures adequate liquidity; wider spread implies the market is thin or uncertain |
+| Max OI fraction | 10% of open interest per contract | Prevents moving a thin market against itself |
+| Max daily volume fraction | 5% of 24h volume | Secondary liquidity cap |
+
 **Hard position limits apply regardless of Kelly output:**
-- Maximum exposure per contract: capped as a fraction of open interest to avoid moving the market
+- Maximum exposure per contract: capped at max OI fraction above
 - Maximum exposure per city per day: limits geographic concentration
-- Spread filter: contracts with YES–NO spread >20¢ are skipped (insufficient liquidity)
+- Spread filter enforced at signal generation time, not order time
 
 **Kelly stop condition:** if the model's rolling Brier score on settled contracts exceeds a threshold over a trailing window, the strategy auto-pauses pending recalibration. This is a model quality circuit breaker, not a P&L stop.
 

@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS wg_peer_stats (
     bytes_received   BIGINT NOT NULL,            -- cumulative since wg interface up (hub's view: rx from peer)
     bytes_sent       BIGINT NOT NULL,            -- cumulative since wg interface up (hub's view: tx to peer)
     latest_handshake TIMESTAMPTZ,                -- NULL if no handshake yet
-    endpoint         TEXT                        -- peer's public endpoint, e.g. '5.78.94.237:51821'
+    endpoint         TEXT                        -- peer's public endpoint, e.g. '<BHN_HIL_PUBLIC_IP>:51821'
 );
 
 CREATE INDEX IF NOT EXISTS wg_peer_stats_time_idx
