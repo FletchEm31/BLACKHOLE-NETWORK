@@ -67,15 +67,19 @@ services:
       - '--web.listen-address=127.0.0.1:9121'
 
   adguard-exporter:
-    image: bakito/adguardhome-exporter:latest
+    image: ebrianne/adguard-exporter:latest
     container_name: adguard-exporter
     network_mode: host
     restart: unless-stopped
     env_file: /opt/prometheus/.env
     environment:
-      ADGUARD_ADDR: "http://127.0.0.1:3001"
-      ADGUARD_USERNAME: "FletchEm88"
-      ADGUARD_PASSWORD: "${ADGUARD_PASSWORD}"
+      adguard_protocol: "http"
+      adguard_hostname: "127.0.0.1"
+      adguard_port: "3001"
+      adguard_username: "FletchEm88"
+      adguard_password: "${ADGUARD_PASSWORD}"
+      interval: "30s"
+      log_limit: "10000"
 
   wireguard-exporter:
     image: mindflavor/prometheus-wireguard-exporter:latest
