@@ -8,7 +8,7 @@ A privacy-focused personal infrastructure platform built on WireGuard with deep 
 
 Blackhole Network is a self-hosted private intelligence and trading infrastructure platform operated by a single operator. Built on battle-tested open-source tools with custom automation and AI-driven monitoring.
 
-**Domain model:** BLACKHOLE-NETWORK (BHN) is the infrastructure platform. Three data domains run on it — **PokemonBHN**, **FinancialBHN**, and **SecurityBHN** — over shared infrastructure (HORIZON, WireGuard, PostgreSQL, n8n). The naming pattern is `{Domain}BHN`; a thing earns a domain label only if it has its own distinct tables, scripts, and services. A companion game front-end, *Pokemon Blackhole*, lives in a separate repo (`TEAM-ROCKET-BHN`) and consumes PokemonBHN data.
+**Domain model:** BLACKHOLE-NETWORK (BHN) is the infrastructure platform. Four data domains run on it — **FinancialBHN**, **WeatherBHN**, **PokemonBHN**, and **SecurityBHN** — over shared infrastructure (HORIZON, WireGuard, PostgreSQL, n8n). The naming pattern is `{Domain}BHN`; a thing earns a domain label only if it has its own distinct tables, scripts, and services. A companion game front-end, *Pokemon Blackhole*, lives in a separate repo (`TEAM-ROCKET-BHN`) and consumes PokemonBHN data.
 
 ### Shared infrastructure
 
@@ -19,6 +19,20 @@ WireGuard mesh VPN (3 nodes across US-West and US-East), PostgreSQL, Grafana, n8
 ### FinancialBHN — trading & financial intelligence
 
 Algorithmic paper trading via Alpaca on the NJ trading node, across 3 accounts / $150k total capital. As of 2026-05-21, only **Strat 13 (`BHN-RSI-INTRADAY`)** is active as an operational test to validate execution and protocol; the remaining strategies are sidelined pending that validation. Financial intelligence is surfaced through 6 Grafana dashboards covering market regime, ETF prices, macro indicators, sentiment, commodities, energy, agriculture, prediction markets, and options flow.
+
+---
+
+### WeatherBHN — Kalshi temperature prediction market trading
+
+A systematic, model-driven strategy trading daily high/low temperature contracts on [Kalshi](https://kalshi.com), the U.S.-regulated prediction market exchange. The core thesis: NWS probabilistic forecast data, processed through an ensemble modeling layer and calibrated against historical actuals, produces probability estimates that diverge measurably from Kalshi's market-implied probabilities. That divergence is the tradeable signal.
+
+The pipeline is end-to-end and fully automated: four independent forecast sources (NWS Gridpoint API, Open-Meteo GFS ensemble, Visual Crossing, NOAA GHCND actuals) are ingested every 30 minutes into bronze tables, conformed to a standard schema in silver, and synthesized into a gold edge sheet that refreshes every 5 minutes. Contracts where calibrated model probability diverges from market-implied probability beyond a threshold are sized using quarter-Kelly and tracked for paper P&L.
+
+**Phase 1 cities:** Denver (KDEN) and Miami (KMIA). Chosen for contrasting forecast regimes — Denver has high temperature volatility and low humidity (cleaner thermodynamic signal); Miami has strong diurnal patterns with afternoon convective suppression and a dominant sea breeze signal.
+
+**Currently:** live signal generation in DRY_RUN mode (paper P&L only). 30-day calibration accumulation in progress; Platt scaling calibration parameters pending.
+
+→ See [`docs/kalshi-weather-trading.md`](docs/kalshi-weather-trading.md) for the full technical write-up: ensemble weighting, Platt calibration, Kelly sizing, risk controls, and roadmap.
 
 ---
 
@@ -404,6 +418,9 @@ Phase 5 — Autonomous Management
 ```
 .
 ├── README.md                        Project overview (this file)
+├── docs/                            Public technical documentation
+│   ├── kalshi-weather-trading.md    WeatherBHN — prediction market trading strategy
+│   └── matrixbhn.md                 MatrixBHN — private communications network
 ├── infrastructure/
 │   ├── bootstrap/                   v4 modular bootstrap
 │   │   ├── bhn-node-bootstrap.sh    Master script (open → install → lockdown)
@@ -412,17 +429,17 @@ Phase 5 — Autonomous Management
 │   │   │                            dnscrypt, firewall, ssh-hardening, storage,
 │   │   │                            network-policy, backup
 │   │   └── policies/                Declarative network policies per node type
-│   ├── docs/                        Architecture docs, roadmap, session updates
-│   │   └── BHN SESSION UPDATES/     Per-session handoff docs
+│   ├── docs/                        Architecture docs and audit findings
 │   ├── grafana/dashboards/          All 6 Grafana dashboard JSONs
 │   ├── services/                    tor-relay, tinyproxy, searxng, librespeed, wallos
 │   └── scrapers/                    Graded-card pop scrapers (CGC cron + PSA stealth) + psa-sets.json
 ├── scripts/                         Production scripts (deployed to LA)
-│   ├── trading/                     FinancialBHN trading framework (Python)
+│   ├── trading/                     FinancialBHN + WeatherBHN trading framework (Python)
 │   │   ├── trading_core.py          Core Alpaca + PostgreSQL integration
 │   │   ├── strategy_*.py            Individual strategy implementations
 │   │   ├── master_killswitch.py     Emergency halt + flatten all positions
 │   │   ├── daily_summary.py         Daily PnL summary via HORIZON/SMS
+│   │   ├── weather_*.py             WeatherBHN collectors, edge calculator, settlement recon
 │   │   └── reconciliation_daemon.py Position reconciliation
 │   └── horizon/                     Financial data collectors
 │       ├── macro_collector.py       FRED macro data (daily)
@@ -475,7 +492,10 @@ tinyproxy:        http://<BHN_WG_HIL_IP>:8888 (LA egress proxy, WireGuard only)
 ## Bootstrap (new node)
 
 ```bash
-# Copy bootstrap files to new node (repo is private — use scp not git clone)
+# Option A — clone the repo directly on the new node
+git clone https://github.com/FletchEm31/BLACKHOLE-NETWORK /opt/bhn
+
+# Option B — copy from operator workstation if the node has no outbound git access
 scp -r "D:\GITHUB REPOSITORY\BLACKHOLE-NETWORK\infrastructure" root@<IP>:/opt/bhn/
 
 # On new node:
@@ -494,4 +514,4 @@ ping -c 3 <TUNNEL_IP>
 
 ## License
 
-Private — all rights reserved.
+Source-available — all rights reserved. This repository is public for portfolio and reference purposes. No license is granted to use, copy, modify, or distribute any part of this codebase without explicit written permission from the operator.
