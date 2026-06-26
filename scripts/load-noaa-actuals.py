@@ -63,7 +63,7 @@ HOURLY_ICAO_MAP: dict[str, str] = {
     # — station ID confirmed from CSV STATION column on arrival
     "USW00013960": "KDAL",   # Dallas Love Field (Dallas FAA HQ station)
     "USW00003927": "KDFW",   # Dallas/Fort Worth International Airport
-    "USW00093721": "KIAD",   # Washington Dulles International Airport, VA
+    "USW00093738": "KIAD",   # Washington Dulles International Airport, VA
     "USW00023234": "KSFO",   # San Francisco International Airport, CA
     "USW00013874": "KATL",   # Hartsfield-Jackson Atlanta International Airport, GA
     "USW00023174": "KLAX",   # Los Angeles International Airport, CA
