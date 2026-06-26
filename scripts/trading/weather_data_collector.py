@@ -991,15 +991,18 @@ def fetch_kalshi_markets(dry_run: bool = False) -> int:
             except (ValueError, TypeError):
                 pass
 
-        yes_cents = market.get("yes_ask") or market.get("yes_bid")
-        no_cents  = market.get("no_ask")  or market.get("no_bid")
-        yes_price: Optional[float] = float(yes_cents) / 100.0 if yes_cents else None
-        no_price:  Optional[float] = float(no_cents)  / 100.0 if no_cents  else None
-
-        yes_bid_val: Optional[float] = _cents_to_frac(market.get("yes_bid"))
-        yes_ask_val: Optional[float] = _cents_to_frac(market.get("yes_ask"))
-        no_bid_val:  Optional[float] = _cents_to_frac(market.get("no_bid"))
-        no_ask_val:  Optional[float] = _cents_to_frac(market.get("no_ask"))
+        # Kalshi renamed price fields: yes_bid→yes_bid_dollars (fractional 0-1),
+        # yes_ask→yes_ask_dollars, etc.  _cents_to_frac handles both formats.
+        yes_bid_val: Optional[float] = _cents_to_frac(
+            market.get("yes_bid_dollars") or market.get("yes_bid"))
+        yes_ask_val: Optional[float] = _cents_to_frac(
+            market.get("yes_ask_dollars") or market.get("yes_ask"))
+        no_bid_val:  Optional[float] = _cents_to_frac(
+            market.get("no_bid_dollars")  or market.get("no_bid"))
+        no_ask_val:  Optional[float] = _cents_to_frac(
+            market.get("no_ask_dollars")  or market.get("no_ask"))
+        yes_price: Optional[float] = yes_ask_val or yes_bid_val
+        no_price:  Optional[float] = no_ask_val  or no_bid_val
 
         if yes_price is None and no_price is None:
             try:
@@ -1054,11 +1057,14 @@ def fetch_kalshi_markets(dry_run: bool = False) -> int:
         elif implied_prob is not None:
             yes_mid = implied_prob  # fallback when bid/ask unavailable (e.g. orderbook path)
 
-        _v24 = market.get("volume_24h")
-        volume_raw = _v24 if _v24 is not None else market.get("volume")
-        open_int_raw = market.get("open_interest")
-        volume_24h = float(volume_raw) if volume_raw is not None else None
-        open_interest = float(open_int_raw) if open_int_raw is not None else None
+        # Kalshi renamed volume/OI fields to _fp suffix (string-encoded floats).
+        volume_raw = (
+            market.get("volume_24h_fp") or market.get("volume_24h")
+            or market.get("volume_fp")   or market.get("volume")
+        )
+        open_int_raw = market.get("open_interest_fp") or market.get("open_interest")
+        volume_24h    = float(volume_raw)    if volume_raw    is not None else None
+        open_interest = float(open_int_raw)  if open_int_raw  is not None else None
         last_price_val: Optional[float] = _cents_to_frac(market.get("last_price"))
         market_status = market.get("status", "open")
         event_ticker = market.get("event_ticker")
