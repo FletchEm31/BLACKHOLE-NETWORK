@@ -1,0 +1,103 @@
+# BHN Prometheus metrics stack — LA hub
+#
+# Secrets: copy .env.example to /opt/prometheus/.env on LA and fill from Proton Pass.
+# Deploy: cd /opt/prometheus && docker compose up -d
+# Hot reload after prometheus.yml changes: curl -X POST http://10.8.0.1:9090/-/reload
+#
+# Port notes:
+#   - Prometheus binds to 10.8.0.1:9090 (WG mesh only; reachable from Grafana Docker container)
+#   - cAdvisor uses 8081 — port 8080 is held by CrowdSec on 127.0.0.1
+#   - AdGuard exporter targets port 3001 — port 3000 is Grafana
+#   - All exporters use network_mode: host to reach localhost services
+
+services:
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    network_mode: host
+    restart: unless-stopped
+    volumes:
+      - /mnt/eh-nvme-hot/prometheus:/prometheus
+      - /opt/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.listen-address=10.8.0.1:9090'
+      - '--web.enable-lifecycle'
+
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: node-exporter
+    network_mode: host
+    pid: host
+    restart: unless-stopped
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+      - '--web.listen-address=127.0.0.1:9100'
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    container_name: postgres-exporter
+    network_mode: host
+    restart: unless-stopped
+    env_file: /opt/prometheus/.env
+    environment:
+      DATA_SOURCE_NAME: "postgresql://grafana_reader:${PG_GRAFANA_READER_PASS}@localhost:5432/eventhorizon?sslmode=disable"
+    command:
+      - '--web.listen-address=127.0.0.1:9187'
+
+  redis-exporter:
+    image: oliver006/redis_exporter:latest
+    container_name: redis-exporter
+    network_mode: host
+    restart: unless-stopped
+    env_file: /opt/prometheus/.env
+    environment:
+      REDIS_ADDR: "redis://127.0.0.1:6379"
+      REDIS_PASSWORD: "${REDIS_PASSWORD}"
+    command:
+      - '--web.listen-address=127.0.0.1:9121'
+
+  adguard-exporter:
+    image: bakito/adguardhome-exporter:latest
+    container_name: adguard-exporter
+    network_mode: host
+    restart: unless-stopped
+    env_file: /opt/prometheus/.env
+    environment:
+      ADGUARD_ADDR: "http://127.0.0.1:3001"
+      ADGUARD_USERNAME: "FletchEm88"
+      ADGUARD_PASSWORD: "${ADGUARD_PASSWORD}"
+
+  wireguard-exporter:
+    image: mindflavor/prometheus-wireguard-exporter:latest
+    container_name: wireguard-exporter
+    network_mode: host
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+    command:
+      - '-v'
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    container_name: cadvisor
+    network_mode: host
+    restart: unless-stopped
+    privileged: true
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+      - /dev/disk:/dev/disk:ro
+    command:
+      - '-port=8081'
