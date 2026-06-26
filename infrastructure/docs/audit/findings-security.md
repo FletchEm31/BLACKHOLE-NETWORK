@@ -32,6 +32,34 @@ Then update `GF_DATABASE_GRAFANA_READER_PASSWORD` in `/etc/bhn-trading/env` on L
 
 ---
 
+### SEC-DNS-001 — Native App Hardcoded IP Bypass for DNS-Blocked Social Media
+
+| Field | Value |
+|-------|-------|
+| **BTEH ref** | — |
+| **Severity** | LOW (informational — DNS blocking is best-effort) |
+| **Status** | OPEN — iptables fix deferred |
+| **Found** | 2026-06-26 — during AdGuard social media blocking implementation |
+
+**Description:** Instagram, Facebook, TikTok, and Snapchat native mobile apps use hardcoded IP addresses and/or certificate pinning, bypassing DNS-based blocking at the app level. Browser-based access to these services IS blocked via AdGuard Home (HaGeZi Social list + blocked_services IDs). App-level traffic routes around DNS entirely.
+
+**Affected services:** `instagram`, `facebook`, `tiktok`, `snapchat`
+**Not affected:** `twitter`/X, `threads` (use standard DNS resolution — DNS block is effective)
+
+**Current posture:** DNS blocking only. Browser access blocked; native app access NOT blocked on mobile devices connected to the WireGuard mesh.
+
+**Remediation (future — iptables):**
+Add `iptables` DROP rules for outbound traffic to known hardcoded IP ranges used by these apps. Meta's hardcoded ranges (Instagram/Facebook/Threads) are documented in ASN 32934. TikTok (ByteDance) uses ASN 396986/138699. This requires periodic IP range maintenance and is higher operational burden than DNS.
+
+```bash
+# Example skeleton (not yet implemented)
+# ipset create meta_hardcoded hash:net
+# ipset add meta_hardcoded 179.60.192.0/22   # Meta hardcoded range
+# iptables -I FORWARD -m set --match-set meta_hardcoded dst -j DROP
+```
+
+---
+
 ## Resolved
 
 *(none yet)*
