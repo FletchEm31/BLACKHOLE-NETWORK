@@ -1,7 +1,7 @@
 #!/bin/bash
 # deploy-inventory-system.sh
 # Deploys bhn-inventory-collector.sh to LA, NJ, and Hillsboro.
-# Run this FROM LA (ssh root@10.8.0.1) after applying the SQL schema.
+# Run this FROM LA (ssh root@<BHN_WG_LA_IP>) after applying the SQL schema.
 #
 # Prerequisites:
 #   1. SQL schema applied on LA:
@@ -20,15 +20,15 @@ set -euo pipefail
 SCRIPT_SRC="$(cd "$(dirname "$0")" && pwd)/bhn-inventory-collector.sh"
 REMOTE_SCRIPT=/usr/local/bin/bhn-inventory-collector.sh
 CRON_FILE=/etc/cron.d/bhn-inventory
-PG_HOST=10.8.0.1
+PG_HOST=<BHN_WG_LA_IP>
 PG_DB=eventhorizon
 PG_USER=ehuser
 
 # Node definitions: "label|host|port|node_name"
 declare -a NODES=(
-    "LA|10.8.0.1|22|BHN-LOSANGELES-US1"
-    "NJ|10.8.0.5|2222|BHN-NEWJERSEY-US2"
-    "Hillsboro|10.8.0.6|22|BHN-HILLSBORO-US3"
+    "LA|<BHN_WG_LA_IP>|22|BHN-LOSANGELES-US1"
+    "NJ|<BHN_WG_NJ_IP>|2222|BHN-NEWJERSEY-US2"
+    "Hillsboro|<BHN_WG_HIL_IP>|22|BHN-HILLSBORO-US3"
 )
 
 SSH_KEY=/root/.ssh/id_ed25519

@@ -12,10 +12,10 @@ LA INBOUND webhooks (Twilio voice/SMS callbacks, n8n workflow webhook URLs, Elev
 
 ## Threat model
 
-tinyproxy binds to `10.8.0.6:8888` — Hillsboro's WG tunnel IP — never to the public NIC. Public-internet access to the proxy is blocked at two layers:
+tinyproxy binds to `<BHN_WG_HIL_IP>:8888` — Hillsboro's WG tunnel IP — never to the public NIC. Public-internet access to the proxy is blocked at two layers:
 
 1. **Bind address.** The socket is on the WG interface only; the public NIC (enp1s0 with IP <BHN_HIL_PUBLIC_IP>) never has a listening socket on 8888.
-2. **UFW.** `ufw allow from 10.8.0.0/24 to 10.8.0.6 port 8888 proto tcp` — only the BHN mesh can reach it.
+2. **UFW.** `ufw allow from 10.8.0.0/24 to <BHN_WG_HIL_IP> port 8888 proto tcp` — only the BHN mesh can reach it.
 
 If both layers fail, tinyproxy still requires the request originate from `Allow 10.8.0.0/24` per its own ACL.
 
@@ -39,10 +39,10 @@ curl -fsS https://api.ipify.org && echo
 # (After LA UFW rewrite blocks direct 443 egress, this will fail with timeout — that's the goal.)
 
 # Via tinyproxy — should return Hillsboro's public IP (<BHN_HIL_PUBLIC_IP>)
-curl -fsS -x http://10.8.0.6:8888 https://api.ipify.org && echo
+curl -fsS -x http://<BHN_WG_HIL_IP>:8888 https://api.ipify.org && echo
 
 # Anthropic reachability through proxy
-curl -fsS -x http://10.8.0.6:8888 https://api.anthropic.com/v1/messages \
+curl -fsS -x http://<BHN_WG_HIL_IP>:8888 https://api.anthropic.com/v1/messages \
      -H "x-api-key: $ANTHROPIC_API_KEY" -H "anthropic-version: 2023-06-01" \
      -H "content-type: application/json" \
      -d '{"model":"claude-haiku-4-5-20251001","max_tokens":10,"messages":[{"role":"user","content":"ping"}]}' \
@@ -56,10 +56,10 @@ System-wide via `/etc/environment` (covers most processes that read env at start
 ```bash
 # On LA, as root:
 cat >> /etc/environment <<'EOF'
-http_proxy=http://10.8.0.6:8888
-https_proxy=http://10.8.0.6:8888
-HTTP_PROXY=http://10.8.0.6:8888
-HTTPS_PROXY=http://10.8.0.6:8888
+http_proxy=http://<BHN_WG_HIL_IP>:8888
+https_proxy=http://<BHN_WG_HIL_IP>:8888
+HTTP_PROXY=http://<BHN_WG_HIL_IP>:8888
+HTTPS_PROXY=http://<BHN_WG_HIL_IP>:8888
 no_proxy=localhost,127.0.0.1,10.8.0.0/24,10.9.0.0/24
 NO_PROXY=localhost,127.0.0.1,10.8.0.0/24,10.9.0.0/24
 EOF
@@ -69,8 +69,8 @@ apt mirrors:
 
 ```bash
 cat > /etc/apt/apt.conf.d/95bhn-proxy <<'EOF'
-Acquire::http::Proxy "http://10.8.0.6:8888";
-Acquire::https::Proxy "http://10.8.0.6:8888";
+Acquire::http::Proxy "http://<BHN_WG_HIL_IP>:8888";
+Acquire::https::Proxy "http://<BHN_WG_HIL_IP>:8888";
 EOF
 ```
 
@@ -80,8 +80,8 @@ systemd services that don't inherit `/etc/environment` (n8n, grafana, postgresql
 mkdir -p /etc/systemd/system/n8n.service.d
 cat > /etc/systemd/system/n8n.service.d/proxy.conf <<'EOF'
 [Service]
-Environment=HTTP_PROXY=http://10.8.0.6:8888
-Environment=HTTPS_PROXY=http://10.8.0.6:8888
+Environment=HTTP_PROXY=http://<BHN_WG_HIL_IP>:8888
+Environment=HTTPS_PROXY=http://<BHN_WG_HIL_IP>:8888
 Environment=NO_PROXY=localhost,127.0.0.1,10.8.0.0/24,10.9.0.0/24
 EOF
 
@@ -102,7 +102,7 @@ ufw delete allow out 587/tcp        # was: SMTP submission direct
 ufw delete allow out to ...         # see STATUS.md:37 for current list
 
 # Add the only outbound rule LA still needs (besides WG underlay + intra-mesh):
-ufw allow out to 10.8.0.6 port 8888 proto tcp comment 'egress via Hillsboro tinyproxy'
+ufw allow out to <BHN_WG_HIL_IP> port 8888 proto tcp comment 'egress via Hillsboro tinyproxy'
 
 # Keep:
 #   - 51821/udp to FRA  (WG underlay)

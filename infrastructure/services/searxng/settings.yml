@@ -49,4 +49,4 @@ ui:
 #   enable_http2: true
 #   proxies:
 #     all://:
-#       - socks5h://10.9.0.2:9050   # Frankfurt's Tor relay SocksPort
+#       - socks5h://<BHN_WG_FRA_IP>:9050   # Frankfurt's Tor relay SocksPort

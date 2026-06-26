@@ -7,7 +7,7 @@
 -- Separate tables lets both sources coexist cleanly; silver ties them together
 -- via the actual_source discriminator.
 --
--- Run on LA (10.8.0.1):
+-- Run on LA (<BHN_WG_LA_IP>):
 --   sudo -u postgres psql eventhorizon -f sql/migrations/2026-06-25-weather-vc-actuals-table.sql
 
 CREATE TABLE IF NOT EXISTS weather_bronze_visual_crossing_actuals (

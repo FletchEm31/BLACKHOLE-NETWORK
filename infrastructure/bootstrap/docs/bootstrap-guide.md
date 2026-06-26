@@ -82,7 +82,7 @@ If phase 3 fails, the node is still in phase-1's open-window state — recover b
 | `ATTACH_HDD`              | Encrypt + mount as `/mnt/eh-hdd-cold` (hub only)                                     | unset                         |
 | `ADMIN_PUBKEYS_FILE`      | File of SSH pubkeys (one per line) to load into `/root/.ssh/authorized_keys`         | hardcoded fallback            |
 | `INSTALL_SURICATA`        | `1` to force Suricata install                                                        | auto-on for `hub` and `scan`  |
-| `EH_BOOTSTRAP_PG_DSN`     | DSN for hub PG to register this node, e.g. `postgresql://bootstrap_writer:PASS@10.8.0.1/eventhorizon` | unset (SQL staged for manual apply) |
+| `EH_BOOTSTRAP_PG_DSN`     | DSN for hub PG to register this node, e.g. `postgresql://bootstrap_writer:PASS@<BHN_WG_LA_IP>/eventhorizon` | unset (SQL staged for manual apply) |
 | `EH_NTFY_URL`             | ntfy endpoint, e.g. `https://ntfy.sh/eh-bootstrap-<topic>`                           | unset (skipped)               |
 | `HUB_IP`                  | Override hub IP — useful when bootstrapping a new hub or migrating                   | `<BHN_LA_PUBLIC_IP>`               |
 | `HUB_PUBKEY`              | Override hub WG pubkey — paired with `HUB_IP` for new hubs                           | LA hub pubkey                 |
@@ -100,7 +100,7 @@ NODE_TUNNEL_IP=10.10.0.2
 WG_INTERFACE=wg2
 WG_PUBKEY=...
 HUB_IP=<BHN_LA_PUBLIC_IP>
-HUB_PUBKEY=TOYnFt18v4NynEN91o6zkmV5hsvHBLJTb8qL7GG/KAo=
+HUB_PUBKEY=<BHN_WG_LA_PUBKEY>
 BOOTSTRAP_VERSION=4
 BOOTSTRAP_TIMESTAMP=2026-05-08T23:50:12Z
 ```

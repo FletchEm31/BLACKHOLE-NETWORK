@@ -10,7 +10,7 @@
 //   PGPASSWORD='...' node cgc-pop-insert.js ./team-rocket-1st-edition.json [more.json ...]
 //
 // Env:
-//   PGHOST     default 10.8.0.1
+//   PGHOST     default <BHN_WG_LA_IP>
 //   PGPORT     default 5432
 //   PGDATABASE default eventhorizon
 //   PGUSER     default ehuser
@@ -32,7 +32,7 @@ if (!process.env.PGPASSWORD) {
 }
 
 const PG = {
-  host: process.env.PGHOST || '10.8.0.1',
+  host: process.env.PGHOST || '<BHN_WG_LA_IP>',
   port: parseInt(process.env.PGPORT || '5432', 10),
   database: process.env.PGDATABASE || 'eventhorizon',
   user: process.env.PGUSER || 'ehuser',

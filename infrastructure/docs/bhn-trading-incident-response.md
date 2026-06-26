@@ -215,13 +215,13 @@ Then update `rules.json` per the operations runbook's "Updating rules.json" sect
 **Triage:**
 
 ```bash
-ssh nj 'pg_isready -h 10.8.0.1 -p 5432'
-ssh nj 'ping -c 3 10.8.0.1'
+ssh nj 'pg_isready -h <BHN_WG_LA_IP> -p 5432'
+ssh nj 'ping -c 3 <BHN_WG_LA_IP>'
 ssh nj 'wg show wg0 | grep -A 3 endpoint'
 ```
 
 - `pg_isready` returns "accepting connections" = PG is up; problem is probably the strategy's credential / DSN
-- `ping 10.8.0.1` fails = WG tunnel down; check the LA UFW gap pattern that bit NJ + Hillsboro (`STATUS.md:83` for NJ, `STATUS.md` Hillsboro section)
+- `ping <BHN_WG_LA_IP>` fails = WG tunnel down; check the LA UFW gap pattern that bit NJ + Hillsboro (`STATUS.md:83` for NJ, `STATUS.md` Hillsboro section)
 - `wg show` shows no handshake within the last 3 min = WG is dead; check both ends' UFW underlay rules
 
 **Action:**

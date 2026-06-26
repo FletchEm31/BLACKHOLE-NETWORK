@@ -25,13 +25,13 @@
 set -uo pipefail
 
 # ─── Constants ──────────────────────────────────────────────────────────
-# Frankfurt is a peer ON wg0 at 10.9.0.2/32 — there is no separate wg1
-# interface. Exit routing hairpins traffic back out wg0 with 10.9.0.2 as
+# Frankfurt is a peer ON wg0 at <BHN_WG_FRA_IP>/32 — there is no separate wg1
+# interface. Exit routing hairpins traffic back out wg0 with <BHN_WG_FRA_IP> as
 # the next hop. `onlink` on the default route tells the kernel to treat
-# 10.9.0.2 as directly reachable via wg0 (WireGuard handles delivery
-# internally via AllowedIPs = 10.9.0.2/32, no ARP needed).
-FRA_TUNNEL_IP="10.9.0.2"
-FRA_PEER_ALLOWED="10.9.0.2/32"
+# <BHN_WG_FRA_IP> as directly reachable via wg0 (WireGuard handles delivery
+# internally via AllowedIPs = <BHN_WG_FRA_IP>/32, no ARP needed).
+FRA_TUNNEL_IP="<BHN_WG_FRA_IP>"
+FRA_PEER_ALLOWED="<BHN_WG_FRA_IP>/32"
 LA_PUBLIC_IP="<BHN_LA_PUBLIC_IP>"
 WG_HUB_SUBNET="10.8.0.0/24"
 FWMARK="0x100"
@@ -89,7 +89,7 @@ apply_changes() {
   fi
 
   # 3. Routes in table 100
-  # Frankfurt is a wg0 peer (AllowedIPs = 10.9.0.2/32), so the default
+  # Frankfurt is a wg0 peer (AllowedIPs = <BHN_WG_FRA_IP>/32), so the default
   # gateway is reachable via wg0 with onlink (no separate next-hop route
   # needed — WireGuard handles delivery via its AllowedIPs mapping).
   declare -a routes=(
@@ -128,12 +128,12 @@ revert_changes() {
 }
 
 preflight() {
-  # Verify we're on LA + wg0 is up + the Frankfurt peer (10.9.0.2/32) is reachable
+  # Verify we're on LA + wg0 is up + the Frankfurt peer (<BHN_WG_FRA_IP>/32) is reachable
   log "Pre-flight checks..."
 
   ip link show wg0 >/dev/null 2>&1 || err "wg0 interface not present"
 
-  # Verify a wg0 peer with AllowedIPs = 10.9.0.2/32 exists and has a fresh
+  # Verify a wg0 peer with AllowedIPs = <BHN_WG_FRA_IP>/32 exists and has a fresh
   # handshake. `wg show wg0 dump` outputs tab-separated columns:
   # pubkey \t psk \t endpoint \t allowed-ips \t latest-handshake \t rx \t tx \t keepalive
   local last_hs

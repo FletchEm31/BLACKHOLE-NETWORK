@@ -50,7 +50,7 @@ NULL_ADDR = "0x0000000000000000000000000000000000000000"
 POLYGONSCAN_URL = "https://api.etherscan.io/v2/api"  # V2 endpoint; chainid=137 = Polygon PoS
 OPENSEA_EVENT_BY_TX = "https://api.opensea.io/api/v2/events"  # filter param: ?after=&before=
 
-DEFAULT_DSN = "postgresql://log_shipper:BHN-LogShipper-2026@10.8.0.1/eventhorizon"
+DEFAULT_DSN = "postgresql://log_shipper:BHN-LogShipper-2026@<BHN_WG_LA_IP>/eventhorizon"
 DEFAULT_STATE = Path("/var/lib/bhn-courtyard-backfill/state.json")
 
 CANONICAL_SETS = {

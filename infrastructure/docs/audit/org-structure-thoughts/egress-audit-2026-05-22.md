@@ -16,7 +16,7 @@
 | **Inbound webhooks** | Twilio SMS/voice callbacks, n8n webhook URLs, ElevenLabs async | LA direct (asymmetric by design) | LA direct | ✅ LIVE |
 | **NJ trading** | Alpaca REST/stream | NJ direct (intentional separation) | NJ direct | ✅ LIVE |
 | **Operator personal browsing** | Operator device full-tunnel | **Frankfurt** → `192.248.187.208` (DE) | Currently loses internet entirely | 🔴 **BROKEN** — FRA MASQUERADE missing, fix tracked in `frankfurt-exit-backlog.md` |
-| **Privacy / unlinkable** | SearXNG upstream, ad-hoc unlinkable lookups | **Frankfurt Tor SOCKS** `10.9.0.2:9050` | Partial — SOCKS available, no automatic consumers wired | 🟡 PARTIAL |
+| **Privacy / unlinkable** | SearXNG upstream, ad-hoc unlinkable lookups | **Frankfurt Tor SOCKS** `<BHN_WG_FRA_IP>:9050` | Partial — SOCKS available, no automatic consumers wired | 🟡 PARTIAL |
 | **Voice (Whisper, TTS, recording)** | ElevenLabs audio gen, Twilio call media, Whisper transcription | **LA only** (legal — §201 StGB blocks FRA) | LA | ✅ LIVE, hard constraint, do not change |
 | **Mesh-internal + DNS + NTP + WG underlay** | `10.8.0.0/24`, `10.9.0.0/24`, dnscrypt, ntp, wg UDP | Direct (stays off proxy) | Direct | ✅ LIVE |
 
@@ -27,7 +27,7 @@
 │                            INTENDED STATE                                │
 ├─────────────────────────────────────────────────────────────────────────┤
 │                                                                          │
-│   LA process ──► tinyproxy@Hillsboro (10.8.0.6:8888) ──► <BHN_HIL_PUBLIC_IP>    │
+│   LA process ──► tinyproxy@Hillsboro (<BHN_WG_HIL_IP>:8888) ──► <BHN_HIL_PUBLIC_IP>    │
 │                  (Anthropic, Twilio out, ElevenLabs, FMP, apt, etc.)    │
 │                                                                          │
 │   Operator PC ──► FRA exit (192.248.187.208) ──► personal browsing      │
@@ -118,7 +118,7 @@ The deploy script writes `/etc/cron.d/<basename>` for monitoring collectors. **C
 Grep for `--noproxy`, `verify=False`, `proxies=None`, `proxies={}` across all of `scripts/` returns **zero matches**. Every Python poller uses `requests` (which honors `HTTPS_PROXY`); shell scripts use `curl`/`wget` without `--noproxy` flags. **No code-level bypasses to fix.**
 
 ### 🟢 GAP-6 — Hillsboro inbound rule already exists
-Per the lockdown README: "LA's outbound UFW rule for `10.8.0.6` already in place — added 2026-05-13 in the WG resolution fix." So LA → Hillsboro tunnel reachability shouldn't be a blocker. **Confirm with `ufw-rewrite.sh status` before relying on this.**
+Per the lockdown README: "LA's outbound UFW rule for `<BHN_WG_HIL_IP>` already in place — added 2026-05-13 in the WG resolution fix." So LA → Hillsboro tunnel reachability shouldn't be a blocker. **Confirm with `ufw-rewrite.sh status` before relying on this.**
 
 ---
 
@@ -127,7 +127,7 @@ Per the lockdown README: "LA's outbound UFW rule for `10.8.0.6` already in place
 Your message said "**Hillsboro and Frankfurt**." The current design (`bhn-network-data-flow.md`) only routes **operator personal browsing** through Frankfurt — not service/API traffic. Frankfurt's role today:
 
 1. **Personal full-tunnel exit** (operator's WG profile) — jurisdictional isolation, DE IP. Currently **broken** (MASQUERADE rule missing).
-2. **Frankfurt Tor SOCKS** at `10.9.0.2:9050` — available, no automatic consumers configured.
+2. **Frankfurt Tor SOCKS** at `<BHN_WG_FRA_IP>:9050` — available, no automatic consumers configured.
 3. **Voice infra is LA-only** — German §201 StGB legal constraint per the salvaged HORIZON roadmap. ElevenLabs/Twilio/Whisper **must not** route via FRA.
 
 **Three options for what you mean by "and Frankfurt":**
@@ -169,7 +169,7 @@ systemctl show n8n -p Environment | tr ' ' '\n' | grep -i proxy
 systemctl show grafana-server -p Environment | tr ' ' '\n' | grep -i proxy
 
 # 6. Is tinyproxy reachable from LA right now?
-curl -fsS --max-time 5 -x http://10.8.0.6:8888 https://api.ipify.org
+curl -fsS --max-time 5 -x http://<BHN_WG_HIL_IP>:8888 https://api.ipify.org
 # expect: <BHN_HIL_PUBLIC_IP>
 
 # 7. What does direct egress look like? (sanity)

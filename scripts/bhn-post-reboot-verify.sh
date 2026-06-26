@@ -50,7 +50,7 @@ wg show
 
 echo
 echo '----- 5. n8n HTTP responding -----'
-HTTP_STATUS=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 http://10.8.0.1:5678/healthz 2>/dev/null || echo 'fail')
+HTTP_STATUS=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 http://<BHN_WG_LA_IP>:5678/healthz 2>/dev/null || echo 'fail')
 echo "n8n /healthz: HTTP $HTTP_STATUS"
 
 echo

@@ -1,6 +1,6 @@
 # BHN Tor relay — non-exit middle relay on Frankfurt
 
-Runs a Tor **non-exit middle relay** on Frankfurt. Formalizes Frankfurt's role as a privacy-routing node. Local SearXNG (and future BHN services on Frankfurt) can route their egress through Tor via the SOCKS proxy on `10.9.0.2:9050`.
+Runs a Tor **non-exit middle relay** on Frankfurt. Formalizes Frankfurt's role as a privacy-routing node. Local SearXNG (and future BHN services on Frankfurt) can route their egress through Tor via the SOCKS proxy on `<BHN_WG_FRA_IP>:9050`.
 
 **Not an exit.** ExitRelay=0, ExitPolicy=reject all. Keeps legal exposure minimal — middle relays only forward traffic between other Tor nodes; they never see plaintext or attribute traffic to operators of the relay.
 
@@ -32,7 +32,7 @@ cd /opt/bhn-tor-relay
 # 2. Copy Dockerfile + docker-compose.yml + torrc + .env.example from repo
 # Then:
 cp .env.example .env
-# BIND_IP=10.9.0.2 is the default; no edit usually needed
+# BIND_IP=<BHN_WG_FRA_IP> is the default; no edit usually needed
 
 # 3. Build + start (first run pulls debian:bookworm-slim + builds, ~30s)
 docker compose up -d --build
@@ -60,7 +60,7 @@ After bootstrapping completes (~1-2 minutes from start):
 
 ```bash
 # Test from Frankfurt host (the WG tunnel IP)
-curl --socks5h 10.9.0.2:9050 https://check.torproject.org/api/ip
+curl --socks5h <BHN_WG_FRA_IP>:9050 https://check.torproject.org/api/ip
 # Should return JSON with "IsTor": true
 ```
 
@@ -89,7 +89,7 @@ If the monthly cap is hit, the relay hibernates (stays running, refuses new conn
 
 After the relay is bootstrapped and the SocksPort works:
 
-1. In `/opt/bhn-searxng/settings.yml`, uncomment the `outgoing.proxies` block (already wired to point at `socks5h://10.9.0.2:9050`)
+1. In `/opt/bhn-searxng/settings.yml`, uncomment the `outgoing.proxies` block (already wired to point at `socks5h://<BHN_WG_FRA_IP>:9050`)
 2. `docker compose restart searxng` in the SearXNG dir
 3. Verify in SearXNG search results: response times should jump (+500-2000 ms typical Tor circuit overhead)
 

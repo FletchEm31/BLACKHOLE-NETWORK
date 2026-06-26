@@ -10,7 +10,7 @@ to run a tiny python control-protocol client against the local ControlSocket
 the container which already has python3 + tor.
 
 Reads PG DSN from /root/.bhn-tor-control-stats.env:
-  BHN_TOR_CTRL_PG_DSN='postgresql://log_shipper:<PW>@10.8.0.1/eventhorizon'
+  BHN_TOR_CTRL_PG_DSN='postgresql://log_shipper:<PW>@<BHN_WG_LA_IP>/eventhorizon'
 
 Cron (each relay node):
   */5 * * * *  root  /usr/local/sbin/bhn-tor-control-stats.py

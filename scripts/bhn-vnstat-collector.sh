@@ -8,7 +8,7 @@
 # with the latest rx/tx as vnstat continues accumulating in that bucket.
 #
 # Reads PG DSN from /root/.bhn-vnstat.env (mode 0600):
-#   BHN_VNSTAT_PG_DSN='postgresql://log_shipper:<PW>@10.8.0.1/eventhorizon'
+#   BHN_VNSTAT_PG_DSN='postgresql://log_shipper:<PW>@<BHN_WG_LA_IP>/eventhorizon'
 #
 # Cron entry on each node (/etc/cron.d/bhn-vnstat-collector):
 #   */15 * * * * root /usr/local/sbin/bhn-vnstat-collector.sh

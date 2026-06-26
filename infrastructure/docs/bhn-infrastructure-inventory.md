@@ -3,7 +3,7 @@
 **Snapshot:** May 11, 2026. Migrated 2026-05-22 from the legacy `EVENT HORIZON VPN/BHN-INFRASTRUCTURE.txt` reference doc. Content preserved verbatim inside the code block below; **some items will be stale**. Known stale-as-of 2026-05-28:
 
 - **Frankfurt is decommissioned** (server destroyed 2026-05-28). All FRA references in the body — node, WG keys, costs, security posture, phase progress — are historical only. Current egress map: `bhn-network-data-flow.md`. Archived design: `infrastructure/archive/frankfurt/`.
-- **Grafana moved to NJ** (`http://10.8.0.5:3000`); LA package purged 2026-05-28.
+- **Grafana moved to NJ** (`http://<BHN_WG_NJ_IP>:3000`); LA package purged 2026-05-28.
 - Hillsboro node was set up after the snapshot date — see `bhn-network-data-flow.md` for the current egress map.
 - The phone-number parameterization plan in `bhn-horizon-phone-parameterization.md` supersedes the literal `+1 310 929 6201` reference here.
 
@@ -20,16 +20,16 @@ Guest onboarding + split-tunnel WireGuard guide: `infrastructure/docs/bhn-guest-
 | Field | Value |
 |-------|-------|
 | Service name | **MatrixBHN** |
-| Node | LA (`10.8.0.1`) |
-| Address:Port | `10.8.0.1:8008` (HTTP, WireGuard only) |
-| DNS alias | `chat.bhn.local` → `10.8.0.1` (AdGuard rewrite) |
+| Node | LA (`<BHN_WG_LA_IP>`) |
+| Address:Port | `<BHN_WG_LA_IP>:8008` (HTTP, WireGuard only) |
+| DNS alias | `chat.bhn.local` → `<BHN_WG_LA_IP>` (AdGuard rewrite) |
 | Client | Element — https://element.io/download |
 | Federation | Disabled |
 | Registration | Disabled (admin-created accounts only) |
 | Config | `/etc/matrix-synapse/homeserver.yaml` |
 | Secrets | Proton Pass → `BHN-Matrix-Synapse-LA` |
 
-Guest peers (`10.8.0.10+`) use split-tunnel WireGuard: DNS through AdGuard,
+Guest peers (`<BHN_WG_GUEST_IP>+`) use split-tunnel WireGuard: DNS through AdGuard,
 all other traffic (streaming, browsing) via their own ISP.
 
 ---
@@ -50,9 +50,9 @@ See full detail: `infrastructure/docs/bhn-node-inventory-system.md`
 
 | Service | Node | Address:Port | Notes |
 |---------|------|-------------|-------|
-| bhn-dozzle | LA | `10.8.0.1:9999` | Unified Docker log viewer (mesh-only) |
-| bhn-dozzle-agent | NJ | `10.8.0.5:7007` | Dozzle agent (WG-internal) |
-| bhn-dozzle-agent | Hillsboro | `10.8.0.6:7007` | Dozzle agent (WG-internal) |
+| bhn-dozzle | LA | `<BHN_WG_LA_IP>:9999` | Unified Docker log viewer (mesh-only) |
+| bhn-dozzle-agent | NJ | `<BHN_WG_NJ_IP>:7007` | Dozzle agent (WG-internal) |
+| bhn-dozzle-agent | Hillsboro | `<BHN_WG_HIL_IP>:7007` | Dozzle agent (WG-internal) |
 | bhn-inventory cron | All nodes | — | `/etc/cron.d/bhn-inventory`, every 30 min |
 
 ### New scripts
@@ -90,16 +90,16 @@ SERVERS
 -------
 LA Hub (Brain/Primary):
   Public IP:    <BHN_LA_PUBLIC_IP>
-  Tunnel IP:    10.8.0.1
+  Tunnel IP:    <BHN_WG_LA_IP>
   SSH:          ssh root@<BHN_LA_PUBLIC_IP> (password in Proton Pass: LA-VPS-Root)
-  SSH via VPN:  ssh root@10.8.0.1 (key auth only)
+  SSH via VPN:  ssh root@<BHN_WG_LA_IP> (key auth only)
   SSH Key:      C:\Users\fletc\.ssh\id_ed25519
   Role:         Hub, PostgreSQL, n8n/HORIZON, Grafana, WireGuard hub
 
 Frankfurt Exit + Privacy Node:
   Public IP:    192.248.187.208
-  Tunnel IP:    10.9.0.2 (wg1)
-  SSH (from LA): ssh frankfurt   (alias → root@10.9.0.2:2222 via wg1 tunnel)
+  Tunnel IP:    <BHN_WG_FRA_IP> (wg1)
+  SSH (from LA): ssh frankfurt   (alias → root@<BHN_WG_FRA_IP>:2222 via wg1 tunnel)
   SSH (direct):  Vultr blocks cross-region public TCP — direct SSH from LA does NOT work; use tunnel
   Role:         Exit node + privacy node (Tor relay + SearXNG planned per Phase 4)
                 Operator "full" WG profile routes via Frankfurt's IP (Phase 1 deploy pending —
@@ -107,19 +107,19 @@ Frankfurt Exit + Privacy Node:
 
 NJ Trading Node:
   Public IP:    <BHN_NJ_PUBLIC_IP>
-  Tunnel IP:    10.8.0.5 (peer on LA's wg0 hub — not on a separate wg2)
-  SSH (from LA): ssh nj         (alias → root@10.8.0.5:2222 via wg0 tunnel)
+  Tunnel IP:    <BHN_WG_NJ_IP> (peer on LA's wg0 hub — not on a separate wg2)
+  SSH (from LA): ssh nj         (alias → root@<BHN_WG_NJ_IP>:2222 via wg0 tunnel)
   SSH (from PC): ssh -p 2222 root@<BHN_NJ_PUBLIC_IP>   (direct works from operator PC; cross-region block only between Vultr VPSes)
   Role:         Trading node (Buffett-style screening, Congress.gov polling, Polymarket/Kalshi, Alpaca paper)
-  Tunnel operational since 2026-05-12; required LA-side UFW egress allows for both <BHN_NJ_PUBLIC_IP>:51820/udp underlay AND 10.8.0.5 inner-tunnel
+  Tunnel operational since 2026-05-12; required LA-side UFW egress allows for both <BHN_NJ_PUBLIC_IP>:51820/udp underlay AND <BHN_WG_NJ_IP> inner-tunnel
 
 WireGuard:
-  Server pubkey: TOYnFt18v4NynEN91o6zkmV5hsvHBLJTb8qL7GG/KAo=
+  Server pubkey: <BHN_WG_LA_PUBKEY>
   Port:          51820 (wg0 hub), 51821 (wg1 FRA)
-  Operator PC:   10.8.0.4
-  Phone:         10.8.0.2
-  Frankfurt:     10.9.0.2 (wg1)
-  NJ:            10.8.0.5 (wg0 peer)
+  Operator PC:   <BHN_WG_OPC_IP>
+  Phone:         <BHN_WG_PEER_IP>
+  Frankfurt:     <BHN_WG_FRA_IP> (wg1)
+  NJ:            <BHN_WG_NJ_IP> (wg0 peer)
 
 CONSOLE TERMINOLOGY (STRICT):
   REMOTE BROWSER WINDOW = noVNC Vultr web console
@@ -141,7 +141,7 @@ N8N — DOCKER (upgraded May 10, 2026)
 ================================================================================
 
 Version: 2.19.5 (Docker container, NOT systemd)
-Access:  http://10.8.0.1:5678 (VPN only)
+Access:  http://<BHN_WG_LA_IP>:5678 (VPN only)
 
 Docker run command:
   ENC_KEY=$(jq -r '.encryptionKey' /root/.n8n/config)
@@ -149,7 +149,7 @@ Docker run command:
     --network=host \
     -v /root/.n8n:/home/node/.n8n \
     -e N8N_ENCRYPTION_KEY="$ENC_KEY" \
-    -e N8N_HOST=10.8.0.1 \
+    -e N8N_HOST=<BHN_WG_LA_IP> \
     -e N8N_PORT=5678 \
     -e N8N_PROTOCOL=http \
     -e N8N_SECURE_COOKIE=false \
@@ -180,7 +180,7 @@ Status: OPERATIONAL (recovered May 10, 2026)
 
 Workflow ID:  fTFjaf2Q2aQrOPsY
 WebhookId:    ec1592c6-8715-4b0f-8ee8-5bc02f551a27
-Chat URL:     http://10.8.0.1:5678/webhook/ec1592c6-8715-4b0f-8ee8-5bc02f551a27/chat
+Chat URL:     http://<BHN_WG_LA_IP>:5678/webhook/ec1592c6-8715-4b0f-8ee8-5bc02f551a27/chat
 
 Identity:
   Name:    HORIZON (named after Event Horizon Telescope)
@@ -201,7 +201,7 @@ POSTGRESQL
 ================================================================================
 
 Database: eventhorizon
-Host:     10.8.0.1:5432 (VPN tunnel only)
+Host:     <BHN_WG_LA_IP>:5432 (VPN tunnel only)
 
 Roles:
   ehuser          → collector scripts

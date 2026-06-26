@@ -6,7 +6,7 @@
 # of /proc/stat so it reflects the moment, not since-boot.
 #
 # Reads PG DSN from /root/.bhn-resource.env (mode 0600):
-#   BHN_RESOURCE_PG_DSN='postgresql://log_shipper:<PW>@10.8.0.1/eventhorizon'
+#   BHN_RESOURCE_PG_DSN='postgresql://log_shipper:<PW>@<BHN_WG_LA_IP>/eventhorizon'
 #
 # Cron entry on each node (/etc/cron.d/bhn-resource-collector):
 #   */5 * * * * root /usr/local/sbin/bhn-resource-collector.sh

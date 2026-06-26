@@ -15,7 +15,7 @@ LA:           cgc-pop-load.js /tmp/psa-pop/*.json | psql  ->  pop_reports   (sam
 - node + `infrastructure/scrapers/node_modules` (puppeteer-extra, stealth, pg, csv-parse) ✅
 - System Chrome + puppeteer bundled Chromium ✅
 - `psa-sets.json` with 7 mapped WOTC sets ✅
-- SSH key auth to `root@10.8.0.1` (WireGuard) ✅
+- SSH key auth to `root@<BHN_WG_LA_IP>` (WireGuard) ✅
 - LA has `/opt/bhn/cgc-pop-scraper/cgc-pop-load.js` (reused) ✅
 
 ## Sets
@@ -33,7 +33,7 @@ The first run opens a visible Chrome to clear Cloudflare and seeds
 ```
 Watch Chrome clear "Just a moment…", then confirm the LA load report. Verify:
 ```
-ssh root@10.8.0.1 "sudo -u postgres psql -d eventhorizon -c \"SELECT card_set, COUNT(*) FROM pop_reports WHERE grader='PSA' GROUP BY card_set ORDER BY card_set\""
+ssh root@<BHN_WG_LA_IP> "sudo -u postgres psql -d eventhorizon -c \"SELECT card_set, COUNT(*) FROM pop_reports WHERE grader='PSA' GROUP BY card_set ORDER BY card_set\""
 ```
 
 ## Schedule it (after a clean supervised run)

@@ -2,7 +2,7 @@
 -- HORIZON Phase 5.5 — Redis hot-memory durable system of record.
 --
 -- One row per HORIZON conversation session. While the session is live, the
--- last N turns + running summary live in Redis on LA (10.8.0.1:6379, VPN-only)
+-- last N turns + running summary live in Redis on LA (<BHN_WG_LA_IP>:6379, VPN-only)
 -- keyed by `id`. When the session closes (TTL expiry or explicit end), the
 -- session-close sweep workflow:
 --   1. Summarizes the conversation via Sonnet

@@ -7,7 +7,7 @@ Cron (NJ, 15 min, 24/7):
   */15 * * * *  root  /usr/local/sbin/bhn-quiver-poller.py
 
 Config /root/.bhn-quiver.env (mode 0600):
-  BHN_QUIVER_PG_DSN='postgresql://log_shipper:<PW>@10.8.0.1/eventhorizon'
+  BHN_QUIVER_PG_DSN='postgresql://log_shipper:<PW>@<BHN_WG_LA_IP>/eventhorizon'
   BHN_QUIVER_API_KEY='<from PM EH-Quiver-APIKey>'
   BHN_QUIVER_ENDPOINT='https://api.quiverquant.com/beta/live/congresstrading'
 

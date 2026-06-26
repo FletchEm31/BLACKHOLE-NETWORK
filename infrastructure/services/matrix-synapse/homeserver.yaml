@@ -1,4 +1,4 @@
-# BHN Matrix Synapse — LA hub (10.8.0.1)
+# BHN Matrix Synapse — LA hub (<BHN_WG_LA_IP>)
 # WireGuard-only, federation disabled, internal use only.
 # server_name is set in /etc/matrix-synapse/conf.d/server_name.yaml
 
@@ -14,7 +14,7 @@ registration_shared_secret: "REDACTED"
 listeners:
   - port: 8008
     bind_addresses:
-      - "10.8.0.1"
+      - "<BHN_WG_LA_IP>"
     type: http
     tls: false
     x_forwarded: false
@@ -24,7 +24,7 @@ listeners:
 
   - port: 8448
     bind_addresses:
-      - "10.8.0.1"
+      - "<BHN_WG_LA_IP>"
     type: http
     tls: true
     resources:
@@ -33,8 +33,8 @@ listeners:
 
 # TLS cert generated: openssl req -newkey rsa:4096 -x509 -sha256 -days 3650 -nodes
 #   -out /etc/matrix-synapse/tls.crt -keyout /etc/matrix-synapse/tls.key
-#   -subj '/CN=10.8.0.1' -addext 'subjectAltName=IP:10.8.0.1'
-# Cert on LA: /etc/matrix-synapse/tls.crt  (expires 2036-06-23, SAN=IP:10.8.0.1)
+#   -subj '/CN=<BHN_WG_LA_IP>' -addext 'subjectAltName=IP:<BHN_WG_LA_IP>'
+# Cert on LA: /etc/matrix-synapse/tls.crt  (expires 2036-06-23, SAN=IP:<BHN_WG_LA_IP>)
 tls_certificate_path: "/etc/matrix-synapse/tls.crt"
 tls_private_key_path: "/etc/matrix-synapse/tls.key"
 

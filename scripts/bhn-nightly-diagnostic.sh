@@ -30,17 +30,17 @@ EMBED_URL='http://127.0.0.1:8001/embed'
 PG_DB=eventhorizon
 
 # Frankfurt — reachable via wg1 tunnel only (Vultr blocks cross-region public TCP)
-FRA_HOST=10.9.0.2          # Frankfurt's wg1 interface IP
+FRA_HOST=<BHN_WG_FRA_IP>          # Frankfurt's wg1 interface IP
 FRA_PORT=2222              # sshd port on Frankfurt (moved off 22 for hygiene)
 FRA_USER=root
 FRA_KEY=/root/.ssh/eh_frankfurt
 FRA_TIMEOUT=15  # seconds for SSH connect+exec
 
 # NJ trading node — reachable via wg0 hub (NJ joined as a peer on LA's existing
-# wg0 at 10.8.0.5/32; NOT on a separate wg2). Tunnel operational since 2026-05-12
+# wg0 at <BHN_WG_NJ_IP>/32; NOT on a separate wg2). Tunnel operational since 2026-05-12
 # after egress UFW allowlist on LA was patched (both <BHN_NJ_PUBLIC_IP>:51820/udp underlay
-# and 10.8.0.5 inner-tunnel rules were needed — see reference_nj_ssh_path memory).
-NJ_HOST=10.8.0.5           # NJ's wg0 peer IP (on LA's hub)
+# and <BHN_WG_NJ_IP> inner-tunnel rules were needed — see reference_nj_ssh_path memory).
+NJ_HOST=<BHN_WG_NJ_IP>           # NJ's wg0 peer IP (on LA's hub)
 NJ_PORT=2222               # sshd port on NJ
 NJ_USER=root
 NJ_KEY=/root/.ssh/eh_frankfurt   # same orchestrator key as Frankfurt — key in NJ's authorized_keys

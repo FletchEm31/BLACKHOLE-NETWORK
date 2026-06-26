@@ -11,7 +11,7 @@ and anomalies. n8n wires this in:
   - Twilio SMS node — first 1500 chars to operator
 
 Config /etc/bhn/horizon-weekly.env:
-  BHN_WEEKLY_PG_DSN='postgresql://agent_reader:<PW>@10.8.0.1/eventhorizon'
+  BHN_WEEKLY_PG_DSN='postgresql://agent_reader:<PW>@<BHN_WG_LA_IP>/eventhorizon'
 """
 from __future__ import annotations
 import os, sys

@@ -2,7 +2,7 @@
 # bhn-inventory-collector.sh
 # Collects Docker containers, BHN-relevant systemd services, listening ports,
 # and key package versions from this node. Writes results to the eventhorizon
-# PostgreSQL database on LA (10.8.0.1) via the WireGuard tunnel.
+# PostgreSQL database on LA (<BHN_WG_LA_IP>) via the WireGuard tunnel.
 #
 # Cron: every 30 minutes (see /etc/cron.d/bhn-inventory)
 # Idempotent — uses upsert for services/packages; DELETE+INSERT for ports.
@@ -10,7 +10,7 @@
 # Required files on each node:
 #   /etc/bhn-node-info.conf  — must export NODE_NAME
 #   /root/.bhn-inventory.env — must export BHN_INVENTORY_PG_DSN
-#     Example DSN: postgresql://ehuser:PASSWORD@10.8.0.1:5432/eventhorizon
+#     Example DSN: postgresql://ehuser:PASSWORD@<BHN_WG_LA_IP>:5432/eventhorizon
 #
 # Exit: 0 success, 1 config error, 2 PG error
 

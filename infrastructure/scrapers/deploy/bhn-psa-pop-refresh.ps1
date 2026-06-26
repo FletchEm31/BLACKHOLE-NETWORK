@@ -10,7 +10,7 @@ $ErrorActionPreference = 'Stop'
 
 $ScraperDir = Split-Path $PSScriptRoot -Parent           # infrastructure/scrapers
 $OutDir     = Join-Path $env:LOCALAPPDATA 'bhn-psa-pop'
-$LaHost     = 'root@10.8.0.1'
+$LaHost     = 'root@<BHN_WG_LA_IP>'
 # 7 fully-mapped WOTC sets. Wizards Black Star Promos is pending multi-heading mapping (psa-sets.json).
 $Sets       = 'Base Set,Fossil,Jungle,Team Rocket,Gym Heroes,Gym Challenge,Best of Game'
 

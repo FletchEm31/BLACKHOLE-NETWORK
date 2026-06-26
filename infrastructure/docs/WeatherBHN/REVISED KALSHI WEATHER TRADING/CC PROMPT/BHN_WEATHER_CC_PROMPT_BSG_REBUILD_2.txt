@@ -799,9 +799,9 @@ TASK 9 — DEPLOY AND VERIFY
 ================================================================
 
 Deploy all scripts to LA:
-  scp scripts/trading/weather_data_collector.py root@10.8.0.1:/opt/bhn/trading/
-  scp scripts/trading/kalshi_price_poller.py root@10.8.0.1:/opt/bhn/trading/
-  scp scripts/trading/weather_edge_calculator.py root@10.8.0.1:/opt/bhn/trading/
+  scp scripts/trading/weather_data_collector.py root@<BHN_WG_LA_IP>:/opt/bhn/trading/
+  scp scripts/trading/kalshi_price_poller.py root@<BHN_WG_LA_IP>:/opt/bhn/trading/
+  scp scripts/trading/weather_edge_calculator.py root@<BHN_WG_LA_IP>:/opt/bhn/trading/
 
 Run full collector cycle:
   set -a && source /etc/bhn-trading/env && \
@@ -882,7 +882,7 @@ rows for today + tomorrow across all 8 cities."
 CONSTRAINTS
 ================================================================
 
-- LA only (ssh root@10.8.0.1)
+- LA only (ssh root@<BHN_WG_LA_IP>)
 - Do NOT drop degree_days, enso_index, weather_snapshots
 - Do NOT drop kalshi_positions or kalshi_fills if they exist
 - Get explicit operator YES before dropping old tables

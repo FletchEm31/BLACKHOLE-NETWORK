@@ -7,7 +7,7 @@ Cron (LA or NJ — operator's choice; both can reach internet via proxy):
   */15 * * * *  root  /usr/local/sbin/bhn-coingecko-poller.py
 
 Config /root/.bhn-coingecko.env:
-  BHN_COINGECKO_PG_DSN='postgresql://log_shipper:<PW>@10.8.0.1/eventhorizon'
+  BHN_COINGECKO_PG_DSN='postgresql://log_shipper:<PW>@<BHN_WG_LA_IP>/eventhorizon'
   BHN_COINGECKO_TOP_N=10                    # default 10
   BHN_COINGECKO_API_KEY=''                  # optional — paid tier; demo works without
 

@@ -15,7 +15,7 @@ poll idempotent.
 Deploy via /etc/cron.d/bhn-usda-poller with CRON_TZ at top.
 
 Config /root/.bhn-usda.env (mode 0600):
-  BHN_USDA_PG_DSN='postgresql://log_shipper:<PW>@10.8.0.1/eventhorizon'
+  BHN_USDA_PG_DSN='postgresql://log_shipper:<PW>@<BHN_WG_LA_IP>/eventhorizon'
   # API key from Proton Pass entry: BHN-USDA-APIKey
   # Sign up: https://quickstats.nass.usda.gov/api
   BHN_USDA_API_KEY='<your-key-or-empty>'

@@ -7,7 +7,7 @@
 #   3. Per-table pg_stat_user_tables + pg_total_relation_size
 #
 # Reads PG DSN from /root/.bhn-pg-stats.env (mode 0600):
-#   BHN_PG_STATS_PG_DSN='postgresql://log_shipper:<PW>@10.8.0.1/eventhorizon'
+#   BHN_PG_STATS_PG_DSN='postgresql://log_shipper:<PW>@<BHN_WG_LA_IP>/eventhorizon'
 #
 # Prereq: CREATE EXTENSION pg_stat_statements; (see schema file header)
 #

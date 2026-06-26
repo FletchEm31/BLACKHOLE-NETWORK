@@ -78,16 +78,16 @@ Systemd services tracked: grafana, postgresql, docker, crowdsec, fail2ban, suric
 
 ## Dozzle unified log viewer
 
-**Hub UI:** `http://10.8.0.1:9999` (WireGuard tunnel only)  
+**Hub UI:** `http://<BHN_WG_LA_IP>:9999` (WireGuard tunnel only)  
 **Hub container:** `bhn-dozzle` on LA  
 **Agent containers:** `bhn-dozzle-agent` on NJ and Hillsboro (port 7007)
 
 NJ requires Docker installation before the agent can run — see `infrastructure/services/dozzle/README.md`.
 
 New ports added:
-- `10.8.0.1:9999` — Dozzle UI (mesh-only; UFW restrict to wg0)
-- `10.8.0.5:7007` — Dozzle agent listener (WG-internal)
-- `10.8.0.6:7007` — Dozzle agent listener (WG-internal)
+- `<BHN_WG_LA_IP>:9999` — Dozzle UI (mesh-only; UFW restrict to wg0)
+- `<BHN_WG_NJ_IP>:7007` — Dozzle agent listener (WG-internal)
+- `<BHN_WG_HIL_IP>:7007` — Dozzle agent listener (WG-internal)
 
 ---
 
@@ -161,15 +161,15 @@ cp infrastructure/services/dozzle/docker-compose-hub.yml /opt/bhn-dozzle/docker-
 cd /opt/bhn-dozzle && docker compose up -d
 
 # 6. Deploy Dozzle agents (Hillsboro — Docker already present)
-scp infrastructure/services/dozzle/docker-compose-agent.yml root@10.8.0.6:/opt/bhn-dozzle/docker-compose.yml
-ssh root@10.8.0.6 'cd /opt/bhn-dozzle && docker compose up -d'
+scp infrastructure/services/dozzle/docker-compose-agent.yml root@<BHN_WG_HIL_IP>:/opt/bhn-dozzle/docker-compose.yml
+ssh root@<BHN_WG_HIL_IP> 'cd /opt/bhn-dozzle && docker compose up -d'
 
 # 7. NJ agent (install Docker first)
-ssh -p 2222 root@10.8.0.5 'apt-get update && apt-get install -y docker.io && systemctl enable --now docker'
-scp -P 2222 infrastructure/services/dozzle/docker-compose-agent.yml root@10.8.0.5:/opt/bhn-dozzle/docker-compose.yml
-ssh -p 2222 root@10.8.0.5 'cd /opt/bhn-dozzle && docker compose up -d'
+ssh -p 2222 root@<BHN_WG_NJ_IP> 'apt-get update && apt-get install -y docker.io && systemctl enable --now docker'
+scp -P 2222 infrastructure/services/dozzle/docker-compose-agent.yml root@<BHN_WG_NJ_IP>:/opt/bhn-dozzle/docker-compose.yml
+ssh -p 2222 root@<BHN_WG_NJ_IP> 'cd /opt/bhn-dozzle && docker compose up -d'
 
 # 8. Copy Grafana dashboard to NJ
 scp -P 2222 infrastructure/grafana/dashboards/bhn-node-inventory.json \
-    root@10.8.0.5:/var/lib/grafana/dashboards/
+    root@<BHN_WG_NJ_IP>:/var/lib/grafana/dashboards/
 ```

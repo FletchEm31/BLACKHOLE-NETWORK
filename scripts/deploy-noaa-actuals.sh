@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # deploy-noaa-actuals.sh — SCP NOAA CSVs to LA and run the loader.
 #
-# Run from operator PC (on WireGuard, can reach LA at 10.8.0.1).
+# Run from operator PC (on WireGuard, can reach LA at <BHN_WG_LA_IP>).
 #
 # Usage:
 #   bash scripts/deploy-noaa-actuals.sh
 #
 # Requires:
-#   - WireGuard tunnel up (10.8.0.1 reachable)
-#   - SSH key auth to root@10.8.0.1
+#   - WireGuard tunnel up (<BHN_WG_LA_IP> reachable)
+#   - SSH key auth to root@<BHN_WG_LA_IP>
 #   - NOAA CSV files in the repo at infrastructure/docs/WeatherBHN/
 #
 # What it does:
@@ -22,7 +22,7 @@
 
 set -euo pipefail
 
-LA="root@10.8.0.1"
+LA="root@<BHN_WG_LA_IP>"
 SSH="ssh $LA"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 NOAA_DIR="$REPO_ROOT/infrastructure/docs/WeatherBHN"

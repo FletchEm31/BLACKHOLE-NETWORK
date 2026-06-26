@@ -20,7 +20,7 @@ Pre-reqs:
   configured (reused from the chat overlay)
 - HORIZON's existing `embed_text` tool endpoint URL captured — copy the URL
   from the live HORIZON workflow's `embed_text` HTTP Request tool node
-  (typically `http://10.8.0.1:8765/embed` or similar internal address)
+  (typically `http://<BHN_WG_LA_IP>:8765/embed` or similar internal address)
 - Sonnet credential `EventHorizonVPN-Claude` (reused)
 
 > **Build this as a new standalone workflow, not nodes on the HORIZON

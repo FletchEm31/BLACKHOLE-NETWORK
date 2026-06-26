@@ -8,7 +8,7 @@ Self-hosted speedtest server. One instance per BHN node, used by `bhn-speedtest-
 
 - Docker + docker compose installed on the target node
 - PG schema applied on LA: `sudo -u postgres psql -d eventhorizon -f sql/speedtest-schema.sql`
-- Node's tunnel IP known (Frankfurt = 10.9.0.2, LA = 10.8.0.1, NJ = 10.10.0.2)
+- Node's tunnel IP known (Frankfurt = <BHN_WG_FRA_IP>, LA = <BHN_WG_LA_IP>, NJ = 10.10.0.2)
 
 ## Deploy on a node
 
@@ -21,7 +21,7 @@ cd /opt/bhn-librespeed
 # 2. Copy compose file + .env.example from repo (scp or git pull)
 # Then create .env with this node's tunnel IP:
 cp .env.example .env
-$EDITOR .env    # set BIND_IP=10.9.0.2 (Frankfurt) or 10.8.0.1 (LA), etc.
+$EDITOR .env    # set BIND_IP=<BHN_WG_FRA_IP> (Frankfurt) or <BHN_WG_LA_IP> (LA), etc.
 
 # 3. Bring it up
 docker compose up -d
@@ -38,11 +38,11 @@ ss -tlnp | grep 8088
 
 ```powershell
 # Browser:
-http://10.9.0.2:8088/      # Frankfurt
-http://10.8.0.1:8088/      # LA
+http://<BHN_WG_FRA_IP>:8088/      # Frankfurt
+http://<BHN_WG_LA_IP>:8088/      # LA
 
 # Or curl:
-curl http://10.9.0.2:8088/  | findstr -i librespeed
+curl http://<BHN_WG_FRA_IP>:8088/  | findstr -i librespeed
 ```
 
 A successful response is the LibreSpeed web UI HTML. Click "Start" in the browser to run an interactive test (download + upload + ping + jitter).
@@ -51,8 +51,8 @@ A successful response is the LibreSpeed web UI HTML. Click "Start" in the browse
 
 | Node | BIND_IP | Status |
 |------|---------|--------|
-| Frankfurt | `10.9.0.2` | Deploy now |
-| LA hub | `10.8.0.1` | Deploy now |
+| Frankfurt | `<BHN_WG_FRA_IP>` | Deploy now |
+| LA hub | `<BHN_WG_LA_IP>` | Deploy now |
 | NJ | `10.10.0.2` | Deploy after tunnel unblocks |
 | (future) | TBD | Add row |
 

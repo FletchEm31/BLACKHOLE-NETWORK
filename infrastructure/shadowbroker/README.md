@@ -23,7 +23,7 @@ the upstream clone when the new host comes online.
 - `docker-compose.override.yml` — overrides the upstream compose to bind
   the frontend to a chosen mesh IP:port and suppress the backend's host
   port mapping (frontend proxies via the Docker bridge). Defaults target
-  `10.8.0.1:8099` for LA; change the `BIND` env var and the override
+  `<BHN_WG_LA_IP>:8099` for LA; change the `BIND` env var and the override
   port for a different host.
 - `.env.example` — template for the deploy host's `.env`. Real secrets
   never go in the repo.

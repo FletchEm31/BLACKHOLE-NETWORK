@@ -2,7 +2,7 @@
 // Master XLSX export of ebay_transactions to BHN_SOLD_COMPS_MASTER.xlsx.
 //
 // Runs from the operator's Windows machine (R:); connects to LA Postgres
-// over WireGuard at 10.8.0.1:5432. Builds a multi-tab workbook:
+// over WireGuard at <BHN_WG_LA_IP>:5432. Builds a multi-tab workbook:
 //   - One "<SETCODE> - Master" tab per set: full historical comps,
 //     deduped by item_id (UNIQUE), regenerated each run.
 //   - One "<SETCODE> - <YYYY-MM-DD>" daily tab per set: appends today's
@@ -46,7 +46,7 @@ const SETS_FILTER = flag('--sets')
   ? flag('--sets').split(',').map((s) => s.trim().toUpperCase()).filter(Boolean)
   : null;
 
-const PG_HOST = process.env.PGHOST     || '10.8.0.1';
+const PG_HOST = process.env.PGHOST     || '<BHN_WG_LA_IP>';
 const PG_DB   = process.env.PGDATABASE || 'eventhorizon';
 const PG_USER = process.env.PGUSER     || 'agent_reader';
 const PG_PASS = process.env.PGPASSWORD;

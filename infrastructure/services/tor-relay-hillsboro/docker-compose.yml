@@ -8,7 +8,7 @@
 # run on Hillsboro:
 #   ufw allow 9001/tcp comment 'Tor relay ORPort'
 #
-# SocksPort 9050 is bound to Hillsboro's WG tunnel IP (10.8.0.6 on LA's wg0).
+# SocksPort 9050 is bound to Hillsboro's WG tunnel IP (<BHN_WG_HIL_IP> on LA's wg0).
 # That binding lets BHN-internal services (e.g. HORIZON, SearXNG) route
 # privacy-sensitive lookups through Hillsboro's relay over the tunnel.
 
@@ -20,7 +20,7 @@ services:
     ports:
       # ORPort — PUBLIC, required for Tor consensus reachability
       - "9001:9001/tcp"
-      # SocksPort — bound to tunnel IP (10.8.0.6 on LA's wg0)
+      # SocksPort — bound to tunnel IP (<BHN_WG_HIL_IP> on LA's wg0)
       - "${BIND_IP}:9050:9050/tcp"
     volumes:
       - tor-data:/var/lib/tor

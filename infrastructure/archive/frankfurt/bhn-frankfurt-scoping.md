@@ -1,6 +1,6 @@
 # Frankfurt — Role Scoping
 
-What Frankfurt (`BHN|VPS-FRANKFURT-EU1`, `192.248.187.208`, wg1 `10.9.0.2`) is *for*. The mechanics of each capability live in their own docs; this defines the node's role and what's load-bearing vs pending.
+What Frankfurt (`BHN|VPS-FRANKFURT-EU1`, `192.248.187.208`, wg1 `<BHN_WG_FRA_IP>`) is *for*. The mechanics of each capability live in their own docs; this defines the node's role and what's load-bearing vs pending.
 
 **Status:** scoping/intent doc, 2026-05-22. Frankfurt's role is **broadening from "pure WG exit" to "exit + privacy routing."**
 
@@ -13,7 +13,7 @@ Frankfurt is the **non-US, privacy-leaning** node. Three capabilities sit under 
 | Capability | Purpose | State |
 |------------|---------|-------|
 | **Jurisdictional exit** | Operator personal browsing exits a DE IP (outside 5 Eyes) instead of LA's US IP | **[BROKEN]** — see MASQUERADE fix below |
-| **Tor SOCKS proxy** | Unlinkable circuits for SearXNG upstream + ad-hoc tooling | **[AVAILABLE]** at `10.9.0.2:9050` |
+| **Tor SOCKS proxy** | Unlinkable circuits for SearXNG upstream + ad-hoc tooling | **[AVAILABLE]** at `<BHN_WG_FRA_IP>:9050` |
 | **Tor relay (non-exit)** | Adds capacity to BHN's privacy stack; middle/bridge relay only (NOT exit — keeps legal exposure low) | **[DESIGNED]** — roadmap "Per-node service deployment" |
 | **SearXNG meta-search** | Self-hosted, tracking-stripped search; can route upstream via the Tor SOCKS | **[DESIGNED]** |
 
@@ -41,7 +41,7 @@ Without it, packets that LA policy-routes into the FRA tunnel (source `10.8.0.x`
 
 ## SOCKS proxy — available now
 
-A Tor SOCKS proxy is reachable at **`10.9.0.2:9050`** from the mesh. This is the immediate, working privacy primitive on Frankfurt (independent of the broken full-tunnel exit). Anything on the mesh that wants a Tor circuit — SearXNG upstream, a one-off `curl --socks5-hostname 10.9.0.2:9050`, or backup-via-Tor (see roadmap) — can use it today.
+A Tor SOCKS proxy is reachable at **`<BHN_WG_FRA_IP>:9050`** from the mesh. This is the immediate, working privacy primitive on Frankfurt (independent of the broken full-tunnel exit). Anything on the mesh that wants a Tor circuit — SearXNG upstream, a one-off `curl --socks5-hostname <BHN_WG_FRA_IP>:9050`, or backup-via-Tor (see roadmap) — can use it today.
 
 **MyFamily note:** when the FRA Tor *relay* (not just the SOCKS client) goes live alongside NJ's and Sweden's relays, all torrc files must declare the joint MyFamily fingerprint so consensus never routes one circuit through two BHN relays. Tracked in `infrastructure/services/tor-relay/README.md`.
 

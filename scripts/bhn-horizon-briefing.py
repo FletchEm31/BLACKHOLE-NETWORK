@@ -25,7 +25,7 @@ Direct cron in UTC: convert based on DST. Better: schedule via n8n which
 handles timezone.
 
 Config /etc/bhn/horizon-briefing.env:
-  BHN_BRIEFING_PG_DSN='postgresql://agent_reader:<PW>@10.8.0.1/eventhorizon'
+  BHN_BRIEFING_PG_DSN='postgresql://agent_reader:<PW>@<BHN_WG_LA_IP>/eventhorizon'
 """
 from __future__ import annotations
 import os, sys, textwrap

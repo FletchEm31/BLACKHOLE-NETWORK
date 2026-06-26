@@ -18,7 +18,7 @@
 #   ADMIN_PUBKEYS_FILE=<path>      File of SSH pubkeys, one per line
 #   INSTALL_SURICATA=1             Force-enable Suricata IDS (auto-on for hub+scan)
 #   EH_BOOTSTRAP_PG_DSN=<dsn>      DSN for hub PG to register this node
-#                                  e.g. postgresql://bootstrap_writer:PASS@10.8.0.1/eventhorizon
+#                                  e.g. postgresql://bootstrap_writer:PASS@<BHN_WG_LA_IP>/eventhorizon
 #                                  If unset, registration SQL is staged at
 #                                  /root/eh-node-register.sql for manual apply.
 #   EH_NTFY_URL=<url>              ntfy endpoint to notify on completion
@@ -28,7 +28,7 @@
 #   HUB_PUBKEY=<key>               Override hub WG pubkey
 #   TUNNEL_IP_OVERRIDE=<ip>        Override derived TUNNEL_IP. Use when joining
 #                                  the hub's flat /24 instead of getting your own
-#                                  (e.g. NJ at 10.8.0.5, Hillsboro at 10.8.0.6
+#                                  (e.g. NJ at <BHN_WG_NJ_IP>, Hillsboro at <BHN_WG_HIL_IP>
 #                                  both on LA's wg0 alongside personal peers).
 #
 # Exit codes:
@@ -95,7 +95,7 @@ BOOTSTRAP_TS="$(date -u +%FT%TZ)"
 
 # Hub identity (defaults — overridable for new hubs / migrations)
 HUB_IP="${HUB_IP:-<BHN_LA_PUBLIC_IP>}"
-HUB_PUBKEY="${HUB_PUBKEY:-TOYnFt18v4NynEN91o6zkmV5hsvHBLJTb8qL7GG/KAo=}"
+HUB_PUBKEY="${HUB_PUBKEY:-<BHN_WG_LA_PUBKEY>}"
 HUB_WG_PORT="${HUB_WG_PORT:-51820}"
 
 # Service constants

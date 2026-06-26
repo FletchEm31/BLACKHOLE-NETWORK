@@ -128,11 +128,11 @@ sudo -u postgres psql -d eventhorizon -At -c "SELECT summary FROM pulse_reports 
 echo
 echo '===== FRANKFURT REACHABILITY ====='
 echo '--- ICMP ping (over WG tunnel; Vultr blocks public-IP TCP between regions) ---'
-timeout 6 ping -c 3 -W 2 10.9.0.2 2>&1 | tail -5
+timeout 6 ping -c 3 -W 2 <BHN_WG_FRA_IP> 2>&1 | tail -5
 echo '--- WG tunnel handshake ---'
 wg show wg1 2>/dev/null | grep -E 'latest handshake|transfer'
 echo '--- SSH port reachable (port 2222 via tunnel) ---'
-timeout 5 nc -zv 10.9.0.2 2222 2>&1
+timeout 5 nc -zv <BHN_WG_FRA_IP> 2222 2>&1
 
 echo
 echo '===== RECENT JOURNAL ERRORS (last 30 min) ====='

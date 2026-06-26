@@ -12,11 +12,11 @@ How traffic moves across the BHN mesh — by traffic *class*, not just by node. 
 
 | Node | Role | WG (tunnel) | Public IP | Provider |
 |------|------|-------------|-----------|----------|
-| **LA** (`BHN-LOSANGELES-US1`) | Hub — PG, n8n, HORIZON, Netdata parent | `10.8.0.1` (wg0) | `<BHN_LA_PUBLIC_IP>` | Vultr (US) |
-| **NJ** (`BHN\|VPS-NEWJERSEY-US2`) | Trading (Alpaca), Grafana, Metabase | `10.8.0.5` (wg0) | — | (US) |
-| **Hillsboro** (`BHN-HILLSBORO-US3`) | Operational egress proxy | `10.8.0.6` (wg0) | `<BHN_HIL_PUBLIC_IP>` | Hetzner (US) |
+| **LA** (`BHN-LOSANGELES-US1`) | Hub — PG, n8n, HORIZON, Netdata parent | `<BHN_WG_LA_IP>` (wg0) | `<BHN_LA_PUBLIC_IP>` | Vultr (US) |
+| **NJ** (`BHN\|VPS-NEWJERSEY-US2`) | Trading (Alpaca), Grafana, Metabase | `<BHN_WG_NJ_IP>` (wg0) | — | (US) |
+| **Hillsboro** (`BHN-HILLSBORO-US3`) | Operational egress proxy | `<BHN_WG_HIL_IP>` (wg0) | `<BHN_HIL_PUBLIC_IP>` | Hetzner (US) |
 
-Frankfurt (`BHN|VPS-FRANKFURT-EU1`, `192.248.187.208`, `10.9.0.2/wg1`) was decommissioned 2026-05-28 — see `infrastructure/archive/frankfurt/README.md`.
+Frankfurt (`BHN|VPS-FRANKFURT-EU1`, `192.248.187.208`, `<BHN_WG_FRA_IP>/wg1`) was decommissioned 2026-05-28 — see `infrastructure/archive/frankfurt/README.md`.
 
 ---
 
@@ -24,10 +24,10 @@ Frankfurt (`BHN|VPS-FRANKFURT-EU1`, `192.248.187.208`, `10.9.0.2/wg1`) was decom
 
 ### 1. LA operational / service egress → **Hillsboro** (primary) — [DESIGNED]
 
-LA's outbound API calls (Anthropic, Twilio, ElevenLabs, financial data, apt, certbot) route through Hillsboro's tinyproxy (`10.8.0.6:8888`) and exit Hillsboro's Hetzner IP (`<BHN_HIL_PUBLIC_IP>`), so LA's Vultr IP (`<BHN_LA_PUBLIC_IP>`) stops appearing in those vendors' access logs.
+LA's outbound API calls (Anthropic, Twilio, ElevenLabs, financial data, apt, certbot) route through Hillsboro's tinyproxy (`<BHN_WG_HIL_IP>:8888`) and exit Hillsboro's Hetzner IP (`<BHN_HIL_PUBLIC_IP>`), so LA's Vultr IP (`<BHN_LA_PUBLIC_IP>`) stops appearing in those vendors' access logs.
 
 ```
-LA process ──http(s)_proxy──► 10.8.0.6:8888 (tinyproxy on Hillsboro)
+LA process ──http(s)_proxy──► <BHN_WG_HIL_IP>:8888 (tinyproxy on Hillsboro)
                                    │  MASQUERADE
                                    ▼
                             exits <BHN_HIL_PUBLIC_IP> (Hetzner)

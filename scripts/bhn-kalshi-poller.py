@@ -6,7 +6,7 @@ Cron (NJ, every 10 min, 24/7):
   */10 * * * *  root  /usr/local/sbin/bhn-kalshi-poller.py
 
 Config /root/.bhn-kalshi.env:
-  BHN_KALSHI_PG_DSN='postgresql://log_shipper:<PW>@10.8.0.1/eventhorizon'
+  BHN_KALSHI_PG_DSN='postgresql://log_shipper:<PW>@<BHN_WG_LA_IP>/eventhorizon'
   BHN_KALSHI_API_KEY_ID='<from PM EH-Kalshi-APIKeyID>'
   BHN_KALSHI_API_PRIVATE_KEY='<PEM-encoded RSA private key>'
   BHN_KALSHI_TOP_N=50

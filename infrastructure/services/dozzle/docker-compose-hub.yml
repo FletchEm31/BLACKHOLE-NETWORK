@@ -1,8 +1,8 @@
 # Dozzle — central log viewer on LA hub
-# Access: http://10.8.0.1:9999 (WireGuard tunnel only)
+# Access: http://<BHN_WG_LA_IP>:9999 (WireGuard tunnel only)
 #
-# Streams logs from local Docker AND remote agents on NJ (10.8.0.5:7007)
-# and Hillsboro (10.8.0.6:7007). Agents must be running before Dozzle
+# Streams logs from local Docker AND remote agents on NJ (<BHN_WG_NJ_IP>:7007)
+# and Hillsboro (<BHN_WG_HIL_IP>:7007). Agents must be running before Dozzle
 # starts, otherwise Dozzle will retry automatically every 30 s.
 #
 # Deploy on LA:
@@ -19,11 +19,11 @@ services:
     container_name: bhn-dozzle
     restart: unless-stopped
     ports:
-      - "10.8.0.1:9999:8080"
+      - "<BHN_WG_LA_IP>:9999:8080"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:
-      DOZZLE_REMOTE_AGENT: "10.8.0.5:7007,10.8.0.6:7007"
+      DOZZLE_REMOTE_AGENT: "<BHN_WG_NJ_IP>:7007,<BHN_WG_HIL_IP>:7007"
       DOZZLE_HOSTNAME: "BHN-LOSANGELES-US1"
       DOZZLE_NO_ANALYTICS: "true"
       DOZZLE_LEVEL: "info"

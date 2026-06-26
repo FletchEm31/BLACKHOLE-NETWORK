@@ -1,6 +1,6 @@
 # LA egress lockdown — proxy LA's outbound via Hillsboro tinyproxy
 
-Routes all LA hub outbound HTTP/HTTPS through `BHN-HILLSBORO-US3`'s tinyproxy at `10.8.0.6:8888`. End state: LA's public IP (`<BHN_LA_PUBLIC_IP>`, Vultr) no longer appears in Anthropic/Twilio/ElevenLabs/financial-data API access logs; that traffic exits via Hillsboro's IP (`<BHN_HIL_PUBLIC_IP>`, Hetzner).
+Routes all LA hub outbound HTTP/HTTPS through `BHN-HILLSBORO-US3`'s tinyproxy at `<BHN_WG_HIL_IP>:8888`. End state: LA's public IP (`<BHN_LA_PUBLIC_IP>`, Vultr) no longer appears in Anthropic/Twilio/ElevenLabs/financial-data API access logs; that traffic exits via Hillsboro's IP (`<BHN_HIL_PUBLIC_IP>`, Hetzner).
 
 Inbound webhooks (Twilio voice/SMS callbacks, n8n workflow webhook URLs, ElevenLabs async callbacks) continue to land directly on LA. That asymmetry is deliberate — see `memory/project_la_egress_isolation.md`.
 
@@ -9,9 +9,9 @@ Inbound webhooks (Twilio voice/SMS callbacks, n8n workflow webhook URLs, ElevenL
 1. tinyproxy already deployed + verified on Hillsboro (`infrastructure/services/tinyproxy/`). Confirm with:
    ```bash
    ssh hillsboro 'ss -lntp | grep 8888'
-   curl -fsS -x http://10.8.0.6:8888 https://api.ipify.org   # from LA, expect <BHN_HIL_PUBLIC_IP>
+   curl -fsS -x http://<BHN_WG_HIL_IP>:8888 https://api.ipify.org   # from LA, expect <BHN_HIL_PUBLIC_IP>
    ```
-2. LA's outbound UFW rule for `10.8.0.6` already in place (it is — added 2026-05-13 in the WG resolution fix).
+2. LA's outbound UFW rule for `<BHN_WG_HIL_IP>` already in place (it is — added 2026-05-13 in the WG resolution fix).
 
 If either fails, **stop and fix before touching anything in this directory**. Pulling direct egress before the proxy path works cuts LA off from Anthropic / apt / certbot / n8n external calls instantly.
 
@@ -40,7 +40,7 @@ sudo bash deploy.sh
 
 # 3. Verify each layer is using the proxy BEFORE removing direct egress:
 #    a) Login shell sees the env vars (after `bash -l` or new SSH session):
-echo "$https_proxy"   # → http://10.8.0.6:8888
+echo "$https_proxy"   # → http://<BHN_WG_HIL_IP>:8888
 
 #    b) apt routes via proxy:
 sudo apt-get update -o Debug::Acquire::http=true 2>&1 | grep -i 'proxy\|connect'
@@ -56,7 +56,7 @@ systemctl show grafana-server -p Environment | tr ' ' '\n' | grep -i proxy
 curl -fsS https://api.ipify.org   # → <BHN_LA_PUBLIC_IP>  (LA direct — expected)
 
 #    f) The same call via proxy:
-https_proxy=http://10.8.0.6:8888 curl -fsS https://api.ipify.org   # → <BHN_HIL_PUBLIC_IP>
+https_proxy=http://<BHN_WG_HIL_IP>:8888 curl -fsS https://api.ipify.org   # → <BHN_HIL_PUBLIC_IP>
 
 # 4. ONLY when 3a–3f all pass, run the lockdown:
 sudo bash ufw-rewrite.sh lockdown

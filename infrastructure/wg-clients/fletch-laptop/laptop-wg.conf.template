@@ -3,7 +3,7 @@
 # Replace the three <PLACEHOLDER> values below:
 #   <LAPTOP_PRIVKEY>      from Step 1 of README.md (your laptop's WG private key)
 #   <PSK>                 from Step 2's banner output (paste from password manager)
-#   <LAPTOP_TUNNEL_IP>    10.8.0.7  (or your chosen IP — must match what was set on LA)
+#   <LAPTOP_TUNNEL_IP>    <BHN_WG_PEER_IP>  (or your chosen IP — must match what was set on LA)
 #
 # Save TWO copies of this file — one for each profile — with the AllowedIPs
 # (+ DNS on full) edited per the comments below.
@@ -18,11 +18,11 @@ Address    = <LAPTOP_TUNNEL_IP>/32
 # (no DNS line — laptop keeps its local DNS for non-mesh traffic)
 
 # --- FLETCH-LAPTOP-FULL (full-tunnel-through-Frankfurt profile) ---
-# DNS = 10.8.0.1
+# DNS = <BHN_WG_LA_IP>
 
 [Peer]
 # LA hub
-PublicKey           = TOYnFt18v4NynEN91o6zkmV5hsvHBLJTb8qL7GG/KAo=
+PublicKey           = <BHN_WG_LA_PUBKEY>
 PresharedKey        = <PSK>
 Endpoint            = <BHN_LA_PUBLIC_IP>:51820
 PersistentKeepalive = 25

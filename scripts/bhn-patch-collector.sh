@@ -5,7 +5,7 @@
 # /var/run/reboot-required to surface kernel-pending reboots.
 #
 # Reads PG DSN from /root/.bhn-patch.env (mode 0600):
-#   BHN_PATCH_PG_DSN='postgresql://log_shipper:<PW>@10.8.0.1/eventhorizon'
+#   BHN_PATCH_PG_DSN='postgresql://log_shipper:<PW>@<BHN_WG_LA_IP>/eventhorizon'
 #
 # Cron (every node, daily — heavy apt update is once/day on the script):
 #   0 5 * * * root /usr/local/sbin/bhn-patch-collector.sh

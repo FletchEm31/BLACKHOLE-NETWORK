@@ -1,6 +1,6 @@
 # Frankfurt (EU1) — Archive
 
-Frankfurt was the BHN EU exit node (`BHN|VPS-FRANKFURT-EU1`, public IP `192.248.187.208`). **Decommissioned May 2026** in favor of a simplified single-egress topology — all LA-originated operational/API traffic now exits via Hillsboro tinyproxy (`10.8.0.6:8888`) on Hetzner.
+Frankfurt was the BHN EU exit node (`BHN|VPS-FRANKFURT-EU1`, public IP `192.248.187.208`). **Decommissioned May 2026** in favor of a simplified single-egress topology — all LA-originated operational/API traffic now exits via Hillsboro tinyproxy (`<BHN_WG_HIL_IP>:8888`) on Hetzner.
 
 This folder is the resting place for FRA-specific configuration and documentation. Decommission-completion doc moves landed 2026-05-23.
 
@@ -10,9 +10,9 @@ This folder is the resting place for FRA-specific configuration and documentatio
 |---------|------|--------------------------|
 | WireGuard `wg1` interface (10.9.0.0/24) | EU side of the BHN mesh | Removed from LA hub |
 | `BHNFornaxEU1` (Tor middle relay) | MyFamily participant | Removed; MyFamily reduced to `BHNHeliosUS3` (Hillsboro) + `BHNNebulaUS2` (NJ) |
-| Frankfurt Tor SOCKS at `10.9.0.2:9050` | Unlinkable-circuit egress option | Removed |
-| SearXNG (`10.9.0.2:8089`) | Private meta-search | Offline; relocation TBD (operator-PC, LA, or Hillsboro candidates) |
-| LibreSpeed (`10.9.0.2:8088`) | EU speedtest endpoint | Offline; no relocation planned |
+| Frankfurt Tor SOCKS at `<BHN_WG_FRA_IP>:9050` | Unlinkable-circuit egress option | Removed |
+| SearXNG (`<BHN_WG_FRA_IP>:8089`) | Private meta-search | Offline; relocation TBD (operator-PC, LA, or Hillsboro candidates) |
+| LibreSpeed (`<BHN_WG_FRA_IP>:8088`) | EU speedtest endpoint | Offline; no relocation planned |
 | Operator full-tunnel exit (`192.248.187.208`) | Jurisdictional isolation for personal browsing | Off the table — personal browsing rides Hillsboro or stays on local ISP |
 
 ## Archived contents (2026-05-23 cleanup)

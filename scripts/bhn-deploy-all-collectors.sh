@@ -31,7 +31,7 @@
 #                                conntrack resource-stats tor-stats
 #   Hillsboro   ssh hillsboro    vnstat iptables fail2ban dns-log
 #                                conntrack resource-stats tor-stats proxy-log
-#   NJ          ssh -p 2222 root@10.8.0.5  vnstat iptables fail2ban dns-log
+#   NJ          ssh -p 2222 root@<BHN_WG_NJ_IP>  vnstat iptables fail2ban dns-log
 #                                          conntrack resource-stats
 #               (NJ runs sshd on port 2222 — alias `nj` is not used, the script
 #                dials the WG tunnel IP + explicit port directly so it works
@@ -74,14 +74,14 @@ if [[ -n "$INCLUDE_NODES" && -n "$SKIP_NODES" ]]; then
 fi
 
 SCRIPTS_DIR="$(cd "$(dirname "$0")" && pwd)"
-LA_PG_DSN="postgresql://log_shipper:BHN-LogShipper-2026@10.8.0.1/eventhorizon"
+LA_PG_DSN="postgresql://log_shipper:BHN-LogShipper-2026@<BHN_WG_LA_IP>/eventhorizon"
 
 # ----- node + collector topology --------------------------------------------
 declare -A NODE_SSH=(
     [LA]=""                  # empty target = run locally
     [Frankfurt]="frankfurt"  # SSH config alias on LA (~/.ssh/config)
     [Hillsboro]="hillsboro"  # SSH config alias on LA
-    [NJ]="root@10.8.0.5"     # explicit user@tunnel-IP — port set in NODE_SSH_PORT
+    [NJ]="root@<BHN_WG_NJ_IP>"     # explicit user@tunnel-IP — port set in NODE_SSH_PORT
 )
 # Per-node SSH/SCP port override. Unset/empty = default 22.
 # NJ runs sshd on 2222 (Vultr template hardening); we set it here so the

@@ -16,7 +16,7 @@
 #
 # Verify VPN-only:
 #   ss -tlnp | grep 6379
-#   # Expect: LISTEN on 10.8.0.1:6379, NOT 0.0.0.0:6379
+#   # Expect: LISTEN on <BHN_WG_LA_IP>:6379, NOT 0.0.0.0:6379
 
 services:
   redis:

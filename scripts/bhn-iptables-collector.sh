@@ -7,7 +7,7 @@
 # compute deltas with LAG().
 #
 # Reads PG DSN from /root/.bhn-iptables.env:
-#   BHN_IPTABLES_PG_DSN='postgresql://log_shipper:<PW>@10.8.0.1/eventhorizon'
+#   BHN_IPTABLES_PG_DSN='postgresql://log_shipper:<PW>@<BHN_WG_LA_IP>/eventhorizon'
 #
 # Cron (every node):
 #   */5 * * * * root /usr/local/sbin/bhn-iptables-collector.sh

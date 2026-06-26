@@ -27,9 +27,9 @@ FWMARK_WG=51820
 
 # Client peer IPs that should egress via wg1 when running full-tunnel profiles.
 # Keep in sync with the [Peer] AllowedIPs blocks in /etc/wireguard/wg0.conf.
-# Mesh-internal peers (NJ 10.8.0.5, Hillsboro 10.8.0.6) are intentionally
+# Mesh-internal peers (NJ <BHN_WG_NJ_IP>, Hillsboro <BHN_WG_HIL_IP>) are intentionally
 # excluded — they don't egress through this hub.
-CLIENT_IPS=(10.8.0.2 10.8.0.4 10.8.0.7 10.8.0.8 10.8.0.9)
+CLIENT_IPS=(<BHN_WG_PEER_IP> <BHN_WG_OPC_IP> <BHN_WG_PEER_IP> <BHN_WG_PEER_IP> <BHN_WG_PEER_IP>)
 
 GREEN='\033[0;32m'; CYAN='\033[0;36m'; RED='\033[0;31m'; NC='\033[0m'
 log() { echo -e "${CYAN}[BHN-WG1]${NC} $*"; }

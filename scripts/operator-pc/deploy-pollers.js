@@ -6,7 +6,7 @@
  * docstring, with a /etc/cron.d/<name> entry on each side.
  *
  * Runs from operator PC; requires SSH access to:
- *   - root@10.8.0.1            (LA)
+ *   - root@<BHN_WG_LA_IP>            (LA)
  *   - root@<BHN_NJ_PUBLIC_IP> :2222   (NJ)
  *
  * Each poller's behavior on missing API key / env file is "graceful" - log + exit 0 -
@@ -31,9 +31,9 @@ const CRON_DIR_REPO = path.join(REPO_ROOT, 'infrastructure', 'cron.d');
 
 // SSH connection details per node
 const NODE = {
-    la: { ssh: ['ssh', '-o', 'BatchMode=yes', 'root@10.8.0.1'],
+    la: { ssh: ['ssh', '-o', 'BatchMode=yes', 'root@<BHN_WG_LA_IP>'],
           scp: ['scp', '-q', '-o', 'BatchMode=yes'],
-          dest: 'root@10.8.0.1' },
+          dest: 'root@<BHN_WG_LA_IP>' },
     nj: { ssh: ['ssh', '-o', 'BatchMode=yes', '-p', '2222', 'root@<BHN_NJ_PUBLIC_IP>'],
           scp: ['scp', '-q', '-o', 'BatchMode=yes', '-P', '2222'],
           dest: 'root@<BHN_NJ_PUBLIC_IP>' },

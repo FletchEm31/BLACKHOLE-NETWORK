@@ -2,14 +2,14 @@
 
 Hot working-memory tier for HORIZON conversations. Holds the last N turns + running summary of every live session, keyed by `horizon:sess:<session_id>:*`. **Cache only** — durable state lives in PostgreSQL (`memories` + `conversation_sessions`). Persistence (AOF/RDB) is intentionally off.
 
-**LA-only.** Bound to LA's WG tunnel (`10.8.0.1:6379`). Public eth0 never exposes 6379. The HORIZON n8n workflow connects from the same host over the loopback-equivalent WG bind.
+**LA-only.** Bound to LA's WG tunnel (`<BHN_WG_LA_IP>:6379`). Public eth0 never exposes 6379. The HORIZON n8n workflow connects from the same host over the loopback-equivalent WG bind.
 
 Pairs with `sql/redis-memory-schema.sql` (table `conversation_sessions`) and Phase 5.5 of `infrastructure/docs/horizon-roadmap.md`.
 
 ## Prerequisites
 
 - Docker + docker compose on LA
-- WG tunnel up (LA = `10.8.0.1` on wg0)
+- WG tunnel up (LA = `<BHN_WG_LA_IP>` on wg0)
 - Proton Pass entry **`EH-Redis-Password`** populated with a strong random (generated in-conversation at deploy time)
 - `sql/redis-memory-schema.sql` already applied to the `eventhorizon` database
 
@@ -44,20 +44,20 @@ docker exec bhn-horizon-redis redis-cli -a "$REDIS_PASSWORD" PING
 ```bash
 # On LA, after deploy
 ss -tlnp | grep 6379
-# Expect: LISTEN on 10.8.0.1:6379  (NOT 0.0.0.0:6379)
+# Expect: LISTEN on <BHN_WG_LA_IP>:6379  (NOT 0.0.0.0:6379)
 
 # Public IP must NOT serve:
 curl --max-time 3 telnet://<BHN_LA_PUBLIC_IP>:6379 2>&1 | head -3
 # Expect: connection refused / timeout
 
 # From the n8n container on LA (over the docker-host network):
-docker exec -i bhn-n8n sh -c 'apk add --no-cache redis >/dev/null 2>&1; redis-cli -h 10.8.0.1 -a "$REDIS_PASSWORD" PING'
+docker exec -i bhn-n8n sh -c 'apk add --no-cache redis >/dev/null 2>&1; redis-cli -h <BHN_WG_LA_IP> -a "$REDIS_PASSWORD" PING'
 # Expect: PONG
 ```
 
 ## UFW
 
-No UFW change required. `10.8.0.1:6379` is on the WG interface (wg0), not on eth0. UFW's existing wg0 ACCEPT rule covers it. Confirm with:
+No UFW change required. `<BHN_WG_LA_IP>:6379` is on the WG interface (wg0), not on eth0. UFW's existing wg0 ACCEPT rule covers it. Confirm with:
 
 ```bash
 sudo ufw status verbose | grep -E '(wg0|6379)'
@@ -73,7 +73,7 @@ Add a new credential in the HORIZON n8n instance:
 |-------|-------|
 | Name | `EH HORIZON Redis (LA)` |
 | Type | Redis |
-| Host | `10.8.0.1` |
+| Host | `<BHN_WG_LA_IP>` |
 | Port | `6379` |
 | Password | (paste from Proton Pass — same `EH-Redis-Password` value) |
 | Database | `0` |

@@ -82,7 +82,7 @@ groups:
                 - evaluator: { type: lt, params: [1] }
         annotations:
           summary: "PostgreSQL is unreachable from Grafana"
-          description: "Grafana's PG data source heartbeat query failed or returned no rows. PG service likely down, listening socket unreachable, or grafana_reader credentials revoked. Check: systemctl status postgresql; ss -lntp | grep 5432; pg_isready -h 10.8.0.1."
+          description: "Grafana's PG data source heartbeat query failed or returned no rows. PG service likely down, listening socket unreachable, or grafana_reader credentials revoked. Check: systemctl status postgresql; ss -lntp | grep 5432; pg_isready -h <BHN_WG_LA_IP>."
         labels:
           severity: critical
           dedup_key: bhn-pg-unreachable
@@ -305,9 +305,9 @@ contactPoints:
           # Webhook URL — token portion is a 32-hex random secret generated
           # at n8n workflow creation time. Token = bearer auth (anyone who
           # knows the URL can fire alerts).
-          # Bind via the tunnel address 10.8.0.1 so externally-routable
+          # Bind via the tunnel address <BHN_WG_LA_IP> so externally-routable
           # 5678 stays VPN-only.
-          url: "http://10.8.0.1:5678/webhook/<BHN_ALERT_WEBHOOK_TOKEN>/grafana-alert"
+          url: "http://<BHN_WG_LA_IP>:5678/webhook/<BHN_ALERT_WEBHOOK_TOKEN>/grafana-alert"
           httpMethod: POST
           maxAlerts: 10
 

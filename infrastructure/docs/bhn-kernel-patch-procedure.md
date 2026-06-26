@@ -208,7 +208,7 @@ done
 echo
 echo "=== n8n container (LA only) ==="
 docker ps --filter name=n8n --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}' 2>/dev/null
-curl -sS -o /dev/null -w "n8n healthz: %{http_code}\n" http://10.8.0.1:5678/healthz 2>/dev/null
+curl -sS -o /dev/null -w "n8n healthz: %{http_code}\n" http://<BHN_WG_LA_IP>:5678/healthz 2>/dev/null
 
 echo
 echo "=== WireGuard handshakes ==="

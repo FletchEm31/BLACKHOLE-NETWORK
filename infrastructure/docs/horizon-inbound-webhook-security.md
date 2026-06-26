@@ -76,11 +76,11 @@ server {
     }
 
     location /horizon/twilio/ {
-        # Forward to n8n webhook. n8n is bound to 10.8.0.1:5678 (VPN-only) —
+        # Forward to n8n webhook. n8n is bound to <BHN_WG_LA_IP>:5678 (VPN-only) —
         # this nginx server block is the ONLY thing on LA reaching across that
         # boundary, so the n8n webhook namespace stays VPN-protected from
         # everything except Twilio (which is gated by Layer 1 + Layer 4).
-        proxy_pass         http://10.8.0.1:5678;
+        proxy_pass         http://<BHN_WG_LA_IP>:5678;
         proxy_http_version 1.1;
         proxy_set_header   Host $host;
         proxy_set_header   X-Real-IP $remote_addr;

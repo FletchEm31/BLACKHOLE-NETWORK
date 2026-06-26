@@ -24,7 +24,7 @@ const hasFlag = (k) => args.includes(k);
 
 const CSV_PATH  = flag('--csv')  || path.join(__dirname, 'data', 'BHN_sold_comp scrape.csv');
 const DRY_RUN   = hasFlag('--dry-run');
-const PG_HOST   = flag('--host') || process.env.PGHOST     || '10.8.0.1';
+const PG_HOST   = flag('--host') || process.env.PGHOST     || '<BHN_WG_LA_IP>';
 const PG_DB     = flag('--db')   || process.env.PGDATABASE || 'eventhorizon';
 const PG_USER   = flag('--user') || process.env.PGUSER     || 'postgres';
 const PG_PORT   = parseInt(flag('--port') || process.env.PGPORT || '5432', 10);

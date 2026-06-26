@@ -23,7 +23,7 @@ screen -S fra-socks
 ssh -i /root/.ssh/eh_frankfurt \
     -o ConnectTimeout=10 -o ServerAliveInterval=30 -o ServerAliveCountMax=4 \
     -o ExitOnForwardFailure=yes \
-    -N -D 127.0.0.1:10808 root@10.9.0.2
+    -N -D 127.0.0.1:10808 root@<BHN_WG_FRA_IP>
 # detach screen: Ctrl-A, then D
 ```
 

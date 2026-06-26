@@ -68,7 +68,7 @@ Plus the **n8n workflow spec below** that the operator builds in the n8n UI (n8n
 ### Step 1 — Apply the schema on LA
 
 ```bash
-ssh root@10.8.0.1
+ssh root@<BHN_WG_LA_IP>
 sudo -u postgres psql -d eventhorizon -f /path/to/repo/sql/alerts-schema.sql
 sudo -u postgres psql -d eventhorizon -c "\d alerts"
 ```
@@ -86,7 +86,7 @@ Keep this value handy — it goes into BOTH the Grafana provisioning file AND th
 
 ### Step 3 — Build the `bhn-alert-router` workflow in n8n UI
 
-In n8n at `http://10.8.0.1:5678`, create a new workflow named `bhn-alert-router` per the spec below. **Don't refresh the browser tab** mid-edit (n8n 2.8.4 hazard). After every save, snapshot the DB:
+In n8n at `http://<BHN_WG_LA_IP>:5678`, create a new workflow named `bhn-alert-router` per the spec below. **Don't refresh the browser tab** mid-edit (n8n 2.8.4 hazard). After every save, snapshot the DB:
 
 ```bash
 cp /root/.n8n/database.sqlite /root/.n8n/database.sqlite.snap-$(date +%s)
@@ -259,7 +259,7 @@ After all 7 nodes wired:
 
 ```bash
 # Copy provisioning YAML to LA
-scp infrastructure/grafana/provisioning/alerting/bhn-alerts.yaml root@10.8.0.1:/etc/grafana/provisioning/alerting/
+scp infrastructure/grafana/provisioning/alerting/bhn-alerts.yaml root@<BHN_WG_LA_IP>:/etc/grafana/provisioning/alerting/
 
 # On LA — substitute the webhook token placeholder
 TOKEN=$(cat /root/.bhn-alert-webhook-token)
@@ -272,7 +272,7 @@ systemctl is-active grafana-server
 
 # Verify rules loaded
 curl -fsS -u admin:$(cat /etc/grafana/admin-password 2>/dev/null) \
-  http://10.8.0.1:3000/api/ruler/grafana/api/v1/rules 2>/dev/null \
+  http://<BHN_WG_LA_IP>:3000/api/ruler/grafana/api/v1/rules 2>/dev/null \
   | python3 -m json.tool | head -30
 ```
 
@@ -294,9 +294,9 @@ Once all the above is in place:
 
 ```bash
 # Trigger a synthetic alert by stopping PG briefly:
-ssh root@10.8.0.1 'systemctl stop postgresql'
+ssh root@<BHN_WG_LA_IP> 'systemctl stop postgresql'
 sleep 60   # wait for Grafana's 1m eval cycle + 2m for: clause to expire
-ssh root@10.8.0.1 'systemctl start postgresql'
+ssh root@<BHN_WG_LA_IP> 'systemctl start postgresql'
 
 # Verify the alert flow:
 sudo -u postgres psql -d eventhorizon -c "SELECT id, fired_at, rule_uid, state, sms_sent, ntfy_sent FROM alerts ORDER BY fired_at DESC LIMIT 5;"
@@ -333,7 +333,7 @@ For the 3 metric-collection alerts:
 ## Security posture
 
 - **Webhook token**: 32-hex random, stored in `/root/.bhn-alert-webhook-token` (mode 0600) on LA, NOT committed to repo. Acts as bearer auth on the Grafana → n8n hop.
-- **Webhook binding**: n8n listens on the tunnel IP `10.8.0.1:5678` (already VPN-only per existing setup). External attackers cannot reach the webhook even if they knew the token, because LA's UFW blocks public 5678.
+- **Webhook binding**: n8n listens on the tunnel IP `<BHN_WG_LA_IP>:5678` (already VPN-only per existing setup). External attackers cannot reach the webhook even if they knew the token, because LA's UFW blocks public 5678.
 - **Twilio credentials**: existing `EH-Twilio` n8n credential — never in config files or alerts table.
 - **ntfy topic**: `eh-alerts-hayden-x7k2` — the existing operator-only topic from Pulse. Anyone who learns the topic name can publish to it, but ntfy.sh's subscribe model means only the operator's phone (with the topic pre-subscribed) receives pushes.
 - **alerts table payload**: `raw_payload` contains the full Grafana webhook body, including label values. Not sensitive enough to encrypt; protected by PG access control (only n8n_user can write, only agent_reader + grafana_reader can read).
@@ -349,5 +349,5 @@ For the 3 metric-collection alerts:
 | Audit row in `alerts` table | Operator can ask HORIZON "what alerted overnight?" via existing query_db. Also gives Grafana a "recent alerts" panel data source if desired. |
 | ntfy as primary channel today | Works immediately, no A2P gate, already wired in Pulse. SMS adds redundancy once A2P approves. |
 | Dedup at 15 min default + per-severity override | Stops spam during a sustained outage. `repeat_interval` in the notification policy controls the re-fire cadence. |
-| Webhook on tunnel-bound 10.8.0.1:5678 | Public exposure of n8n's webhook endpoint would be a real risk. Tunnel-bound limits it to authenticated peers. |
+| Webhook on tunnel-bound <BHN_WG_LA_IP>:5678 | Public exposure of n8n's webhook endpoint would be a real risk. Tunnel-bound limits it to authenticated peers. |
 | HMAC vs bearer token in URL | Grafana doesn't support HMAC signing natively. Token-in-URL is the standard pattern that Grafana supports out of the box. Combined with tunnel-only binding, the security posture is equivalent. |

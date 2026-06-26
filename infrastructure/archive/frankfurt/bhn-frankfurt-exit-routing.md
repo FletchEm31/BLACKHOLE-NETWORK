@@ -23,11 +23,11 @@ Target: route those packets out via wg1 to Frankfurt, which masquerades them out
 ### Today (Phase 0 state)
 
 ```
-op-PC (10.8.0.4)
+op-PC (<BHN_WG_OPC_IP>)
   │  AllowedIPs=0.0.0.0/0 → encapsulates ALL outbound, sends to LA:51820
   ▼
-LA wg0 (10.8.0.1)
-  │  decapsulates; inner packet has src=10.8.0.4 dst=<arbitrary internet IP>
+LA wg0 (<BHN_WG_LA_IP>)
+  │  decapsulates; inner packet has src=<BHN_WG_OPC_IP> dst=<arbitrary internet IP>
   │  kernel routes via DEFAULT route → enp1s0
   │  MASQUERADE (SNAT) → src becomes <BHN_LA_PUBLIC_IP>
   ▼
@@ -37,25 +37,25 @@ public internet — exits LA's US IP
 ### Phase 1 target
 
 ```
-op-PC (10.8.0.4)
+op-PC (<BHN_WG_OPC_IP>)
   │  AllowedIPs=0.0.0.0/0 (no client config change)
   ▼
-LA wg0 (10.8.0.1)
+LA wg0 (<BHN_WG_LA_IP>)
   │  PREROUTING mangle marks packet (fwmark 0x100) for "came in via wg0"
   │  ip rule: marked packets → routing table 100
-  │  table 100 default → 10.9.0.2 dev wg1
+  │  table 100 default → <BHN_WG_FRA_IP> dev wg1
   ▼
-LA wg1 (10.9.0.1, encapsulated by wg again)
+LA wg1 (<BHN_WG_FRA_HUB_IP>, encapsulated by wg again)
   ▼
-Frankfurt wg1 (10.9.0.2)
-  │  decapsulates; inner packet has src=10.8.0.4 dst=<internet>
+Frankfurt wg1 (<BHN_WG_FRA_IP>)
+  │  decapsulates; inner packet has src=<BHN_WG_OPC_IP> dst=<internet>
   │  forwards via enp1s0 (already wg1→enp1s0 FORWARD allowed per FRA's current UFW state)
   │  MASQUERADE (SNAT) → src becomes 192.248.187.208
   ▼
 public internet — exits Frankfurt's DE IP
 ```
 
-Return path is the inverse: packet from internet → Frankfurt enp1s0 (matches conntrack from MASQUERADE) → wg1 → LA wg1 (10.9.0.1) → LA routes to 10.8.0.4 via wg0 → op-PC.
+Return path is the inverse: packet from internet → Frankfurt enp1s0 (matches conntrack from MASQUERADE) → wg1 → LA wg1 (<BHN_WG_FRA_HUB_IP>) → LA routes to <BHN_WG_OPC_IP> via wg0 → op-PC.
 
 ## Behavior matrix
 
@@ -64,7 +64,7 @@ Return path is the inverse: packet from internet → Frankfurt enp1s0 (matches c
 | op-PC "admin" profile | Internal (10.8.0.0/24, 10.9.0.0/24) | LA hub, then wg-internal | unchanged — split tunneling keeps internet on local ISP |
 | op-PC "full" profile | Internet (0.0.0.0/0) | LA → wg1 → Frankfurt | **changes after Phase 1 deploy** |
 | op-phone (similar profiles) | Same as PC | Same | |
-| NJ (10.8.0.5) | Internal BHN only (AllowedIPs=10.8.0.0/24 on its peer entry for LA) | LA, no internet routing | unchanged — NJ's trading API calls go from NJ's own eth0, not via tunnel |
+| NJ (<BHN_WG_NJ_IP>) | Internal BHN only (AllowedIPs=10.8.0.0/24 on its peer entry for LA) | LA, no internet routing | unchanged — NJ's trading API calls go from NJ's own eth0, not via tunnel |
 | LA's own outbound | apt updates, n8n→Anthropic, dnscrypt-proxy upstream | enp1s0 direct | unchanged — LA-originated traffic isn't `-i wg0`, so doesn't get marked |
 
 ## What gets installed on LA
@@ -117,14 +117,14 @@ ssh frankfurt 'iptables -t nat -A POSTROUTING -s 10.8.0.0/24 -o enp1s0 -j MASQUE
 
 ```bash
 # From operator's PC (or LA-cloned repo):
-scp scripts/bhn-frankfurt-exit.sh root@10.8.0.1:/etc/wireguard/bhn-frankfurt-exit.sh
-ssh root@10.8.0.1 'chmod 750 /etc/wireguard/bhn-frankfurt-exit.sh'
+scp scripts/bhn-frankfurt-exit.sh root@<BHN_WG_LA_IP>:/etc/wireguard/bhn-frankfurt-exit.sh
+ssh root@<BHN_WG_LA_IP> 'chmod 750 /etc/wireguard/bhn-frankfurt-exit.sh'
 ```
 
 ### Step 3 — Dry-run check
 
 ```bash
-ssh root@10.8.0.1 '/etc/wireguard/bhn-frankfurt-exit.sh dry-run'
+ssh root@<BHN_WG_LA_IP> '/etc/wireguard/bhn-frankfurt-exit.sh dry-run'
 # Should print every iptables/ip-rule/ip-route command that WOULD be applied
 # Verify no surprises before next step
 ```
@@ -132,7 +132,7 @@ ssh root@10.8.0.1 '/etc/wireguard/bhn-frankfurt-exit.sh dry-run'
 ### Step 4 — Apply (with 5-min auto-rollback)
 
 ```bash
-ssh root@10.8.0.1 '/etc/wireguard/bhn-frankfurt-exit.sh apply'
+ssh root@<BHN_WG_LA_IP> '/etc/wireguard/bhn-frankfurt-exit.sh apply'
 # Output ends with: "Auto-rollback scheduled for 5 minutes from now. Run confirm if traffic verifies."
 ```
 
@@ -154,10 +154,10 @@ ping -c 3 1.1.1.1
 
 ```bash
 # If verification passed:
-ssh root@10.8.0.1 '/etc/wireguard/bhn-frankfurt-exit.sh confirm'
+ssh root@<BHN_WG_LA_IP> '/etc/wireguard/bhn-frankfurt-exit.sh confirm'
 
 # If traffic broken — manually:
-ssh root@10.8.0.1 '/etc/wireguard/bhn-frankfurt-exit.sh rollback'
+ssh root@<BHN_WG_LA_IP> '/etc/wireguard/bhn-frankfurt-exit.sh rollback'
 
 # Or do nothing for 5 min — auto-rollback fires
 ```
@@ -165,7 +165,7 @@ ssh root@10.8.0.1 '/etc/wireguard/bhn-frankfurt-exit.sh rollback'
 ### Step 7 — Install reboot persistence (only after Step 6 confirm)
 
 ```bash
-ssh root@10.8.0.1 '/etc/wireguard/bhn-frankfurt-exit.sh install-persistence'
+ssh root@<BHN_WG_LA_IP> '/etc/wireguard/bhn-frankfurt-exit.sh install-persistence'
 # This patches /etc/wireguard/wg0.conf to add PostUp/PostDown hooks
 # Routing now survives reboot
 ```
@@ -173,7 +173,7 @@ ssh root@10.8.0.1 '/etc/wireguard/bhn-frankfurt-exit.sh install-persistence'
 ### Step 8 — Reboot survival test (optional but recommended)
 
 ```bash
-ssh root@10.8.0.1 'systemctl restart wg-quick@wg0'
+ssh root@<BHN_WG_LA_IP> 'systemctl restart wg-quick@wg0'
 # Wait 5 seconds, then from operator's PC re-test:
 curl https://api.ipify.org
 # Should STILL show Frankfurt's IP
@@ -194,7 +194,7 @@ curl https://api.ipify.org
 
 | Limitation | Phase 2 fix |
 |-----------|-------------|
-| DNS queries from "full" profile resolve via LA's dnscrypt-proxy (DNS query exits LA's enp1s0, not Frankfurt's). DNS leak from a privacy-purist perspective. | Phase 2: rebind Frankfurt's dnscrypt-proxy to listen on `10.9.0.2:53`, update operator's "full" profile to `DNS = 10.9.0.2`. Both queries + browsing then exit DE. |
+| DNS queries from "full" profile resolve via LA's dnscrypt-proxy (DNS query exits LA's enp1s0, not Frankfurt's). DNS leak from a privacy-purist perspective. | Phase 2: rebind Frankfurt's dnscrypt-proxy to listen on `<BHN_WG_FRA_IP>:53`, update operator's "full" profile to `DNS = <BHN_WG_FRA_IP>`. Both queries + browsing then exit DE. |
 | ICMP from LA tools (mtr, traceroute) to internet still exits LA | Acceptable — LA-originated traffic intentionally untouched |
 | MTU pessimization (double-encapsulation) may slow some sites slightly | WG default MTU 1420 + Frankfurt MASQUERADE generally handles. If issues: lower client MTU to 1280. |
 | Latency penalty: PC → LA → FRA → internet adds ~140ms vs LA-direct | Acceptable for privacy/jurisdiction trade; web browsing tolerates +140ms |
@@ -204,10 +204,10 @@ curl https://api.ipify.org
 Not in this commit. When ready:
 
 1. SSH to Frankfurt, edit dnscrypt-proxy config:
-   - `listen_addresses = ['10.9.0.2:53']`
+   - `listen_addresses = ['<BHN_WG_FRA_IP>:53']`
    - Restart dnscrypt-proxy
-2. UFW: allow inbound 53/udp+tcp on wg1 to 10.9.0.2
-3. Update operator's WG "full" client profile: `DNS = 10.9.0.2`
+2. UFW: allow inbound 53/udp+tcp on wg1 to <BHN_WG_FRA_IP>
+3. Update operator's WG "full" client profile: `DNS = <BHN_WG_FRA_IP>`
 4. Reconnect on operator's PC, verify via dnsleaktest.com → should show Frankfurt's resolvers
 
 ---

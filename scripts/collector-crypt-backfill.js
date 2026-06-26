@@ -13,7 +13,7 @@
 // State:      /var/lib/bhn-cc-backfill/state.json for kill/resume.
 //
 // Usage (run on LA, peer auth as postgres):
-//   HELIUS_API_KEY=xxx sudo -u postgres env HTTPS_PROXY=http://10.8.0.6:8888 \
+//   HELIUS_API_KEY=xxx sudo -u postgres env HTTPS_PROXY=http://<BHN_WG_HIL_IP>:8888 \
 //     node scripts/collector-crypt-backfill.js [--dry-run] [--max-pages N]
 //   flags: --host /var/run/postgresql  --db eventhorizon  --user postgres
 //          --dry-run   (report only, no writes)

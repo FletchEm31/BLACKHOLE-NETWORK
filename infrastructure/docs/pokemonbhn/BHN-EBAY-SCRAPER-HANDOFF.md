@@ -39,7 +39,7 @@ File: `bhn_sold_comps.csv` (445 rows, Team Rocket 1st Edition only)
 `infrastructure/scrapers/sets.json`             — set registry pattern
 
 ### Database
-- Host: `10.8.0.1` (WireGuard VPN — must be on VPN to reach)
+- Host: `<BHN_WG_LA_IP>` (WireGuard VPN — must be on VPN to reach)
 - Database: `eventhorizon`
 - Target table: `ebay_transactions` (back-compat view: `sold_listings`)
 - Auth: standard postgres credentials (check `/etc/bhn-trading/env` pattern on LA)
@@ -280,7 +280,7 @@ The seed CSV (`bhn_sold_comps.csv`, 445 rows) from today's manual scrape needs t
 be loaded into `ebay_transactions` first.
 
 **Steps:**
-1. SCP the CSV to LA: `scp bhn_sold_comps.csv root@10.8.0.1:/tmp/`
+1. SCP the CSV to LA: `scp bhn_sold_comps.csv root@<BHN_WG_LA_IP>:/tmp/`
 2. The loader script should:
    - Read the CSV
    - Strip `$` from sold_price before inserting

@@ -9,7 +9,7 @@
 # Then: systemctl restart dnscrypt-proxy.
 #
 # Reads PG DSN from /root/.bhn-dns-log.env:
-#   BHN_DNS_LOG_PG_DSN='postgresql://log_shipper:<PW>@10.8.0.1/eventhorizon'
+#   BHN_DNS_LOG_PG_DSN='postgresql://log_shipper:<PW>@<BHN_WG_LA_IP>/eventhorizon'
 #
 # Cron (every node running dnscrypt-proxy):
 #   */5 * * * * root /usr/local/sbin/bhn-dns-log-collector.sh
@@ -35,7 +35,7 @@ esc() { printf '%s' "$1" | sed "s/'/''/g"; }
 node_esc="$(esc "$NODE_NAME")"
 
 # dnscrypt-proxy TSV format:
-#   [2026-05-13 14:23:45]<TAB>10.8.0.1<TAB>example.com<TAB>A<TAB>PASS<TAB>0ms<TAB>cloudflare
+#   [2026-05-13 14:23:45]<TAB><BHN_WG_LA_IP><TAB>example.com<TAB>A<TAB>PASS<TAB>0ms<TAB>cloudflare
 # Some versions wrap the timestamp in [..], some don't; some include qclass column.
 # Handle both by stripping brackets.
 

@@ -7,7 +7,7 @@
 # for "current state" and the whole table is the history.
 #
 # Reads PG DSN from /root/.bhn-crowdsec.env (mode 0600):
-#   BHN_CROWDSEC_PG_DSN='postgresql://log_shipper:<PW>@10.8.0.1/eventhorizon'
+#   BHN_CROWDSEC_PG_DSN='postgresql://log_shipper:<PW>@<BHN_WG_LA_IP>/eventhorizon'
 #
 # Cron entry on each node (/etc/cron.d/bhn-crowdsec-collector):
 #   */5 * * * * root /usr/local/sbin/bhn-crowdsec-collector.sh

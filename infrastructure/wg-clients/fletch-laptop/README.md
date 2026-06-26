@@ -4,7 +4,7 @@ Adds the operator's laptop as a new WG peer on LA's `wg0`. Mirrors FLETCH-DESKTO
 
 ## Tunnel IP assignment
 
-Recommended: **`10.8.0.7`** (next free slot above current peers).
+Recommended: **`<BHN_WG_PEER_IP>`** (next free slot above current peers).
 
 Current allocations on LA's `wg0/24`:
 - `.1` LA hub
@@ -15,7 +15,7 @@ Current allocations on LA's `wg0/24`:
 - `.6` BHN-HILLSBORO-US3
 - `.7` ← **FLETCH-LAPTOP** (proposed)
 
-Alternative: use `.3` if you prefer to fill the gap and keep personal devices in `.2–.4`. Both work; convention isn't strict. The rest of this doc uses `10.8.0.7`.
+Alternative: use `.3` if you prefer to fill the gap and keep personal devices in `.2–.4`. Both work; convention isn't strict. The rest of this doc uses `<BHN_WG_PEER_IP>`.
 
 ## Step 1 — Generate the laptop's keypair (on the LAPTOP)
 
@@ -45,11 +45,11 @@ sudo cat /etc/wireguard/fletch-laptop.pubkey
 This whole block runs on LA over the existing SSH alias.
 
 ```bash
-ssh la   # or: ssh -J root@frankfurt root@10.8.0.1
+ssh la   # or: ssh -J root@frankfurt root@<BHN_WG_LA_IP>
 
 # === On LA, as root ===
 LAPTOP_PUBKEY='paste-the-pubkey-from-Step-1-here'
-LAPTOP_TUNNEL_IP='10.8.0.7'
+LAPTOP_TUNNEL_IP='<BHN_WG_PEER_IP>'
 PSK=$(wg genpsk)
 
 # Apply on LA — adds the peer to wg0 with PSK
@@ -79,7 +79,7 @@ unset PSK
 Add a row to `STATUS.md` "WireGuard peer registry" table:
 
 ```
-| **FLETCH-LAPTOP** | operator laptop | `<LAPTOP_PUBKEY>` | `10.8.0.7/32` | `<dynamic — laptop's home/cafe NAT>` | `FLETCH-LAPTOP-SPLIT` + `FLETCH-LAPTOP-FULL` (same PSK + privkey across both, only `AllowedIPs` + `DNS` differ) |
+| **FLETCH-LAPTOP** | operator laptop | `<LAPTOP_PUBKEY>` | `<BHN_WG_PEER_IP>/32` | `<dynamic — laptop's home/cafe NAT>` | `FLETCH-LAPTOP-SPLIT` + `FLETCH-LAPTOP-FULL` (same PSK + privkey across both, only `AllowedIPs` + `DNS` differ) |
 ```
 
 Add to the "🟠 WireGuard pre-shared keys" Secrets inventory table:
@@ -101,7 +101,7 @@ Commit the STATUS update.
 Use `laptop-wg.conf.template` in this directory. Replace the four placeholders:
 - `<LAPTOP_PRIVKEY>` — from Step 1 (Windows: in the GUI; Linux/Mac: `sudo cat /etc/wireguard/fletch-laptop.privkey`)
 - `<PSK>` — the value from Step 2's banner (paste from PM, then delete from clipboard)
-- `<LAPTOP_TUNNEL_IP>` — `10.8.0.7` (or whatever was used in Step 2)
+- `<LAPTOP_TUNNEL_IP>` — `<BHN_WG_PEER_IP>` (or whatever was used in Step 2)
 - (no other placeholders — LA hub pubkey + endpoint are baked into the template)
 
 Two profile variants:
@@ -113,7 +113,7 @@ Two profile variants:
 
 ### FLETCH-LAPTOP-FULL — full tunnel through Frankfurt exit
 - `AllowedIPs = 0.0.0.0/0, ::/0`
-- `DNS = 10.8.0.1` (forces lookups through LA's dnscrypt-proxy)
+- `DNS = <BHN_WG_LA_IP>` (forces lookups through LA's dnscrypt-proxy)
 - Use this profile when you want all laptop traffic to exit at Frankfurt's IP
 - ⚠️ Currently broken — see `STATUS.md:70` "Exit-routing for operator 'full' profile" until the Frankfurt MASQUERADE fix is applied
 
@@ -127,10 +127,10 @@ FLETCH-LAPTOP is a *client* peer. LA never initiates traffic to it — laptop in
 
 ```bash
 # On the laptop, activate FLETCH-LAPTOP-SPLIT, then:
-ping -c 3 10.8.0.1            # LA hub
-ping -c 3 10.8.0.5            # NJ
-ping -c 3 10.9.0.2            # Frankfurt
-curl http://10.8.0.1:3000     # Grafana login page
+ping -c 3 <BHN_WG_LA_IP>            # LA hub
+ping -c 3 <BHN_WG_NJ_IP>            # NJ
+ping -c 3 <BHN_WG_FRA_IP>            # Frankfurt
+curl http://<BHN_WG_LA_IP>:3000     # Grafana login page
 
 # From LA:
 ssh la 'wg show wg0 | awk "/^peer: <LAPTOP_PUBKEY>/,/^$/"'

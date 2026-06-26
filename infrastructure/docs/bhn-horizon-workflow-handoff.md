@@ -20,13 +20,13 @@ After all three: save workflow, export JSON, replace `n8n-workflows/bhn-horizon.
 
 ## Item 27 — Wire SearXNG into HORIZON
 
-Replace any "web search" tool HORIZON uses (or add a new one) with an HTTP Request node pointing at Frankfurt's SearXNG instance at `http://10.9.0.2:8089`.
+Replace any "web search" tool HORIZON uses (or add a new one) with an HTTP Request node pointing at Frankfurt's SearXNG instance at `http://<BHN_WG_FRA_IP>:8089`.
 
 **n8n HTTP Request node config:**
 
 ```
 Method:    GET
-URL:       http://10.9.0.2:8089/search
+URL:       http://<BHN_WG_FRA_IP>:8089/search
 Query Parameters:
   q          = {{ $json.query }}
   format     = json
@@ -192,7 +192,7 @@ Committed in `ef830eb` (recover script) + `800b89c` (10-min alert). No workflow 
 
 ## What's left for operator's next n8n session
 
-1. Open n8n at `http://10.8.0.1:5678`
+1. Open n8n at `http://<BHN_WG_LA_IP>:5678`
 2. Item 28 fixes (1-2 min each)
 3. Add SearXNG HTTP node to HORIZON (item 27)
 4. Create new "Security alert automation" workflow (item 30)

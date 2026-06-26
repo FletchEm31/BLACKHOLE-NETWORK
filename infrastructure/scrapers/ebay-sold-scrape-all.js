@@ -3,7 +3,7 @@
 //
 // ╔══════════════════════════════════════════════════════════════════════════════╗
 // ║  DEPLOYMENT RULES — NON-NEGOTIABLE                                          ║
-// ║  • This scraper MUST only run on LA (10.8.0.1).                             ║
+// ║  • This scraper MUST only run on LA (<BHN_WG_LA_IP>).                             ║
 // ║  • NEVER run from the operator's home IP.                                   ║
 // ║  • NEVER authenticate to eBay from LA. Guest-only, no cookies, no login.   ║
 // ║  • Set  BHN_RUN_ON_LA=1  in the LA environment to unlock execution.        ║
@@ -36,7 +36,7 @@
     console.error(
       '\n╔══════════════════════════════════════════════════════════════════════════════╗\n' +
       '║  BLOCKED: BHN_RUN_ON_LA=1 is not set.                                      ║\n' +
-      '║  This scraper must only run on the LA server (10.8.0.1).                   ║\n' +
+      '║  This scraper must only run on the LA server (<BHN_WG_LA_IP>).                   ║\n' +
       '║  Running it from your home IP risks associating your personal IP with       ║\n' +
       '║  automated eBay scraping. Deploy to LA and set BHN_RUN_ON_LA=1 there.      ║\n' +
       '╚══════════════════════════════════════════════════════════════════════════════╝\n'
@@ -49,8 +49,8 @@
 })();
 
 // ── Egress: LA-direct, no proxy ──────────────────────────────────────────────
-// The old FRA SOCKS5 tunnel (Frankfurt 10.9.0.2 / 192.248.187.208) was RETIRED
-// 2026-05-28 when Frankfurt was decommissioned — 10.9.0.2 is unreachable. It is
+// The old FRA SOCKS5 tunnel (Frankfurt <BHN_WG_FRA_IP> / 192.248.187.208) was RETIRED
+// 2026-05-28 when Frankfurt was decommissioned — <BHN_WG_FRA_IP> is unreachable. It is
 // also no longer needed: the 2026-05-28 TLS-fingerprint finding showed the eBay
 // block is TLS/JA3-fingerprint-based, not IP reputation, and impers+firefox144
 // returns real listings directly from LA's own IP (see fetchPage in
@@ -77,7 +77,7 @@ const CONFIG_PATH    = flag('--config')         || path.join(__dirname, 'ebay_sc
 const NO_UI          = hasF('--no-ui');
 const DRY_RUN        = hasF('--dry-run');
 
-const PG_HOST = flag('--host') || process.env.PGHOST     || '10.8.0.1';
+const PG_HOST = flag('--host') || process.env.PGHOST     || '<BHN_WG_LA_IP>';
 const PG_DB   = flag('--db')   || process.env.PGDATABASE || 'eventhorizon';
 const PG_USER = flag('--user') || process.env.PGUSER     || 'postgres';
 const PG_PORT = parseInt(flag('--port') || process.env.PGPORT || '5432', 10);

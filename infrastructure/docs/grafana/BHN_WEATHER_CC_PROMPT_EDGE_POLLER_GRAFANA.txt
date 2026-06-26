@@ -384,7 +384,7 @@ TASK 5 — Updated Metabase SQL:
 CONSTRAINTS
 ================================================================
 
-- LA only (ssh root@10.8.0.1)
+- LA only (ssh root@<BHN_WG_LA_IP>)
 - Get operator approval before creating kalshi_positions table
 - DRY_RUN stays true, enabled stays false in rules.json
 - Do NOT modify existing working collectors

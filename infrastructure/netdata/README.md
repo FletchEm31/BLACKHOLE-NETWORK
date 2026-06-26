@@ -1,17 +1,17 @@
 # BHN Netdata fleet
 
-Per-node Netdata agents installed 2026-05-28, with LA (`10.8.0.1`) acting as
+Per-node Netdata agents installed 2026-05-28, with LA (`<BHN_WG_LA_IP>`) acting as
 the streaming parent. NJ, Hillsboro, and Frankfurt stream their metrics to
-LA so a single dashboard at `http://10.8.0.1:19999` shows the whole fleet.
+LA so a single dashboard at `http://<BHN_WG_LA_IP>:19999` shows the whole fleet.
 
 ## URLs
 
 | Node | Per-node UI | Role |
 |------|-------------|------|
-| LA | http://10.8.0.1:19999 | Parent — aggregates all four |
-| NJ | http://10.8.0.5:19999 | Child |
-| Hillsboro | http://10.8.0.6:19999 | Child |
-| Frankfurt | http://10.9.0.2:19999 | Child |
+| LA | http://<BHN_WG_LA_IP>:19999 | Parent — aggregates all four |
+| NJ | http://<BHN_WG_NJ_IP>:19999 | Child |
+| Hillsboro | http://<BHN_WG_HIL_IP>:19999 | Child |
+| Frankfurt | http://<BHN_WG_FRA_IP>:19999 | Child |
 
 All four are UFW-restricted to `10.8.0.0/24` + `10.9.0.0/24`.
 

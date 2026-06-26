@@ -6,7 +6,7 @@
 # Detecting "new bans" is then a windowed query against the table.
 #
 # Reads PG DSN from /root/.bhn-fail2ban.env (mode 0600):
-#   BHN_FAIL2BAN_PG_DSN='postgresql://log_shipper:<PW>@10.8.0.1/eventhorizon'
+#   BHN_FAIL2BAN_PG_DSN='postgresql://log_shipper:<PW>@<BHN_WG_LA_IP>/eventhorizon'
 #
 # Cron entry on each node (/etc/cron.d/bhn-fail2ban-collector):
 #   */5 * * * * root /usr/local/sbin/bhn-fail2ban-collector.sh

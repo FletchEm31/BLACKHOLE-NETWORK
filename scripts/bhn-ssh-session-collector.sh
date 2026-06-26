@@ -8,7 +8,7 @@
 #      (requires infrastructure/audit/bhn-ssh-audit.rules deployed)
 #
 # Reads PG DSN from /root/.bhn-ssh-sessions.env:
-#   BHN_SSH_PG_DSN='postgresql://log_shipper:<PW>@10.8.0.1/eventhorizon'
+#   BHN_SSH_PG_DSN='postgresql://log_shipper:<PW>@<BHN_WG_LA_IP>/eventhorizon'
 #
 # Cron (every node):
 #   */5 * * * * root /usr/local/sbin/bhn-ssh-session-collector.sh

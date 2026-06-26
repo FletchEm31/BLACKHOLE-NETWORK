@@ -1,12 +1,12 @@
 # BHN trading framework — NJ deployment runbook
 
-End-to-end procedure for deploying the trading framework (`scripts/trading/`) on `BHN-VPS-NEWJERSEY-US2`. Assumes NJ has been bootstrapped, is reachable from LA over WG (`10.8.0.5`), and has Docker installed (or accepts the apt-installed Python stack — no Docker required for the trading framework itself).
+End-to-end procedure for deploying the trading framework (`scripts/trading/`) on `BHN-VPS-NEWJERSEY-US2`. Assumes NJ has been bootstrapped, is reachable from LA over WG (`<BHN_WG_NJ_IP>`), and has Docker installed (or accepts the apt-installed Python stack — no Docker required for the trading framework itself).
 
 ## Prerequisites
 
 - `BHN-VPS-NEWJERSEY-US2` bootstrapped (status='online' in `nodes` table on LA)
-- WG tunnel LA↔NJ functional (`ssh nj 'ping -c 3 10.8.0.1'` succeeds)
-- LA PG reachable from NJ (`ssh nj 'pg_isready -h 10.8.0.1 -p 5432'`)
+- WG tunnel LA↔NJ functional (`ssh nj 'ping -c 3 <BHN_WG_LA_IP>'` succeeds)
+- LA PG reachable from NJ (`ssh nj 'pg_isready -h <BHN_WG_LA_IP> -p 5432'`)
 - Alpaca **paper** account created — never use a live account until "Paper → Live" criteria in `bhn-trading-operations.md` are met
 - Operator password manager entries exist:
   - `Alpaca-Paper-Key-ID`, `Alpaca-Paper-Secret`
@@ -34,7 +34,7 @@ Expected: rows for `trading_strategies`, `paper_trades`, `paper_signals`, `circu
 
 ```bash
 # From operator's workstation
-ssh nj   # or: ssh -J root@frankfurt root@10.8.0.5 (if direct alias not configured)
+ssh nj   # or: ssh -J root@frankfurt root@<BHN_WG_NJ_IP> (if direct alias not configured)
 
 # === On NJ, as root ===
 mkdir -p /opt/bhn /opt/bhn/trading /etc/bhn-trading /var/log/bhn-trading /var/lib/bhn/trading
@@ -86,7 +86,7 @@ ALPACA_API_SECRET=...                   # paper secret
 ALPACA_BASE_URL=https://paper-api.alpaca.markets
 
 # PostgreSQL on LA hub via WG tunnel
-BHN_TRADING_PG_DSN=postgresql://n8n_user:<PW>@10.8.0.1:5432/eventhorizon
+BHN_TRADING_PG_DSN=postgresql://n8n_user:<PW>@<BHN_WG_LA_IP>:5432/eventhorizon
 
 # Local SQLite mirror path (for reconciliation 3-way compare)
 BHN_TRADING_SQLITE=/var/lib/bhn/trading/state.sqlite
@@ -115,7 +115,7 @@ sudo -u root bash -c 'set -a; . /etc/bhn-trading/env; python3 /opt/bhn/trading/t
 
 If any of the three fail, fix before installing units. The most common issues:
 - `Alpaca FAIL`: env value typo, key revoked in Alpaca dashboard, or `ALPACA_BASE_URL` is live-api by accident
-- `PG FAIL`: WG tunnel down, n8n_user password rotated, LA PG firewall blocking 10.8.0.5
+- `PG FAIL`: WG tunnel down, n8n_user password rotated, LA PG firewall blocking <BHN_WG_NJ_IP>
 - `SQLite FAIL`: `/var/lib/bhn/trading/` not writable
 
 ## Phase 4 — install systemd units

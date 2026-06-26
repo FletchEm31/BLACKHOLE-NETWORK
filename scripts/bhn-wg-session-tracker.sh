@@ -9,7 +9,7 @@
 # Else no-op.
 #
 # Reads PG DSN from /root/.bhn-wg-sessions.env:
-#   BHN_WG_SESSIONS_PG_DSN='postgresql://log_shipper:<PW>@10.8.0.1/eventhorizon'
+#   BHN_WG_SESSIONS_PG_DSN='postgresql://log_shipper:<PW>@<BHN_WG_LA_IP>/eventhorizon'
 #
 # Cron (LA): */5 * * * * root /usr/local/sbin/bhn-wg-session-tracker.sh
 

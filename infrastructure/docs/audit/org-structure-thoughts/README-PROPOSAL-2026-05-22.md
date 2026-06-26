@@ -204,9 +204,9 @@ Phase 3: AI INTEGRATION                 [in progress]
 
 Phase 4: PER-NODE SERVICES              [~80% complete]
 ├─ Trading stack live on NJ — Strat 13 operational test (others sidelined), 3 Alpaca accounts
-├─ Wallos (LA) — subscription / cost tracking [✅] http://10.8.0.1:8090
-├─ SearXNG (Frankfurt) — private meta-search [✅] http://10.9.0.2:8089
-├─ LibreSpeed Frankfurt (EU speedtest) [✅] http://10.9.0.2:8088
+├─ Wallos (LA) — subscription / cost tracking [✅] http://<BHN_WG_LA_IP>:8090
+├─ SearXNG (Frankfurt) — private meta-search [✅] http://<BHN_WG_FRA_IP>:8089
+├─ LibreSpeed Frankfurt (EU speedtest) [✅] http://<BHN_WG_FRA_IP>:8088
 ├─ tinyproxy (Hillsboro) — LA egress proxy [✅] verified, lockdown pending
 ├─ Tor relays: BHNFornaxEU1 (Frankfurt, live), BHNHeliosUS3 (Hillsboro, bootstrapping),
 │              BHNNebulaUS2 (NJ, deployed not live)

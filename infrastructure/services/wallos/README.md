@@ -7,7 +7,7 @@ Local subscription tracker for BHN's recurring costs (Vultr × N, Anthropic, Ele
 ## Prerequisites
 
 - Docker + docker compose on LA
-- WG tunnel up (LA = 10.8.0.1 on wg0)
+- WG tunnel up (LA = <BHN_WG_LA_IP> on wg0)
 
 ## Deploy
 
@@ -19,14 +19,14 @@ cd /opt/bhn-wallos
 # 2. Copy docker-compose.yml + .env.example from repo
 # Then:
 cp .env.example .env
-# BIND_IP=10.8.0.1 is default; no edit usually needed
+# BIND_IP=<BHN_WG_LA_IP> is default; no edit usually needed
 
 # 3. Bring it up
 docker compose up -d
 docker compose logs --tail 30
 
 # 4. First-run setup happens in the browser:
-#    http://10.8.0.1:8090/
+#    http://<BHN_WG_LA_IP>:8090/
 #    Create the operator admin account, set master password
 ```
 
@@ -66,14 +66,14 @@ Schema + workflow are out of scope for this session. Open as a separate ticket w
 ```bash
 # On LA, after deploy
 ss -tlnp | grep 8090
-# Should show LISTEN on 10.8.0.1:8090, NOT 0.0.0.0:8090
+# Should show LISTEN on <BHN_WG_LA_IP>:8090, NOT 0.0.0.0:8090
 
 # Public IP must NOT serve:
 curl --max-time 3 http://<BHN_LA_PUBLIC_IP>:8090/ 2>&1 | head -3
 # Should fail (connection refused or timeout)
 
 # From operator's PC over WG:
-curl http://10.8.0.1:8090/ | head -10
+curl http://<BHN_WG_LA_IP>:8090/ | head -10
 # Should return Wallos HTML
 ```
 

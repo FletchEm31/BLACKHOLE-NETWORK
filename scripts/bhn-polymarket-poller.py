@@ -7,7 +7,7 @@ Cron (NJ, every 10 min, 24/7):
   */10 * * * *  root  /usr/local/sbin/bhn-polymarket-poller.py
 
 Config /root/.bhn-polymarket.env:
-  BHN_POLYMARKET_PG_DSN='postgresql://log_shipper:<PW>@10.8.0.1/eventhorizon'
+  BHN_POLYMARKET_PG_DSN='postgresql://log_shipper:<PW>@<BHN_WG_LA_IP>/eventhorizon'
   BHN_POLYMARKET_TOP_N=50
 
 No auth required.

@@ -8,7 +8,7 @@ When to run this: any time a peer's private key or pre-shared key is exposed (ch
 
 WireGuard's `allowed-ips` are unique per interface. The moment you `wg set wg0 peer NEW allowed-ips 10.8.0.X/32`, the kernel **moves** that IP from the existing peer to the new one — even before any explicit `remove`. So your "additive" step is implicitly destructive: the old peer's tunnel breaks immediately, your SSH session gets reset, and any subsequent commands (the heredoc that prints the new private key, the explicit `remove`, the `wg-quick save`) execute on the server but their output never makes it back to you. The new private key ends up in a now-dead bash process and is **lost forever**.
 
-The fix: run all rotation commands via a path that does **not** depend on the peer being rotated. For client-peer rotations, use direct public-IP SSH to the hub (`ssh root@<hub-public-ip>`) instead of the tunnel-IP path (`ssh root@10.8.0.1`).
+The fix: run all rotation commands via a path that does **not** depend on the peer being rotated. For client-peer rotations, use direct public-IP SSH to the hub (`ssh root@<hub-public-ip>`) instead of the tunnel-IP path (`ssh root@<BHN_WG_LA_IP>`).
 
 ## Pre-flight
 
@@ -76,7 +76,7 @@ ssh root@<HUB_PUBLIC_IP> 'wg show wg0 | grep -A4 "<NEW_PUB>"'
 
 If the rotated profile is full-tunnel:
 
-- **DNS** — visit `https://dnsleaktest.com`. Resolvers should be the dnscrypt upstreams (Cloudflare, Quad9, Mullvad, AdGuard, NextDNS, Anexia/Digitale Gesellschaft). If you see your local ISP, add `DNS = 10.8.0.1` under `[Interface]`.
+- **DNS** — visit `https://dnsleaktest.com`. Resolvers should be the dnscrypt upstreams (Cloudflare, Quad9, Mullvad, AdGuard, NextDNS, Anexia/Digitale Gesellschaft). If you see your local ISP, add `DNS = <BHN_WG_LA_IP>` under `[Interface]`.
 - **IPv4 egress** — `curl -s https://ifconfig.me/ip` should return the hub's public IP.
 - **IPv6** — `curl -6 -s https://ifconfig.me/ip` should error out (kill-switch blocks v6 since `::/0` isn't in `AllowedIPs`). If it returns an IPv6 from your ISP, IPv6 is leaking — add `::/0` to `AllowedIPs`.
 
@@ -98,6 +98,6 @@ If a workstation needs both admin access (low-burden, default) and full-tunnel p
 | Profile | `AllowedIPs` | `DNS` | When to use |
 |---------|--------------|-------|-------------|
 | `EH-admin` (split) | `10.8.0.0/24, 10.9.0.0/24` | (optional) | Default — admin work, dev, browsing via local ISP |
-| `EH-full` (full)   | `0.0.0.0/0`                | `10.8.0.1` | Coffee shops, hotels, paranoid mode |
+| `EH-full` (full)   | `0.0.0.0/0`                | `<BHN_WG_LA_IP>` | Coffee shops, hotels, paranoid mode |
 
 Both profiles register **once** on the hub. The hub doesn't see the `AllowedIPs` difference — that's a client-side routing decision. Toggle between profiles in the WireGuard GUI; only one is active at a time.

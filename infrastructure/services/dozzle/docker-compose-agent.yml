@@ -1,7 +1,7 @@
 # Dozzle agent — lightweight Docker log forwarder for NJ and Hillsboro
-# Connects back to the Dozzle hub on LA (10.8.0.1:9999).
+# Connects back to the Dozzle hub on LA (<BHN_WG_LA_IP>:9999).
 #
-# Deploy on NJ (10.8.0.5) and Hillsboro (10.8.0.6):
+# Deploy on NJ (<BHN_WG_NJ_IP>) and Hillsboro (<BHN_WG_HIL_IP>):
 #   mkdir -p /opt/bhn-dozzle
 #   scp infrastructure/services/dozzle/docker-compose-agent.yml root@<node>:/opt/bhn-dozzle/docker-compose.yml
 #   ssh root@<node> 'cd /opt/bhn-dozzle && docker compose up -d'

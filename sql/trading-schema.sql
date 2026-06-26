@@ -412,11 +412,11 @@ COMMIT;
 --    then chgrp bhn-trading + chmod 0640 once that user exists).
 --
 -- 2. Extend pg_hba.conf on LA to allow bhn_trader from NJ's tunnel IP:
---      host  eventhorizon  bhn_trader  10.8.0.5/32  scram-sha-256
+--      host  eventhorizon  bhn_trader  <BHN_WG_NJ_IP>/32  scram-sha-256
 --    Then reload PG: systemctl reload postgresql
 --
 -- 3. Verify connectivity from NJ:
---      ssh nj 'PGPASSWORD="<pw>" psql -h 10.8.0.1 -U bhn_trader -d eventhorizon -c "SELECT id, status FROM trading_strategies;"'
+--      ssh nj 'PGPASSWORD="<pw>" psql -h <BHN_WG_LA_IP> -U bhn_trader -d eventhorizon -c "SELECT id, status FROM trading_strategies;"'
 --    Should return 6 rows.
 --
 -- 4. Schema is now ready for trading_core.py to consume.

@@ -31,7 +31,7 @@
    └────────────────────┘         │                        │                  │ pg_dump eventhorizon│
                                   │ bhn-vault-sync.ps1     │                  │ → zstd → stdout     │
                                   │  1. verify sentinel    │                  │                     │
-                                  │  2. ping 10.8.0.1 (WG) │                  │ n8n workflow export │
+                                  │  2. ping <BHN_WG_LA_IP> (WG) │                  │ n8n workflow export │
                                   │  3. acquire lock       │                  │ → tar.zst → stdout  │
                                   │  4. for each artifact: │                  │                     │
                                   │     ssh + stream pull  │                  │ (artifacts ephemeral│
@@ -85,11 +85,11 @@ Pseudocode:
 $VAULT = "E:\"
 $LOG_DIR = "$VAULT\_backup-log"
 $LOCK = "$LOG_DIR\.sync-lock"
-$LA_SSH = "ssh root@10.8.0.1"
+$LA_SSH = "ssh root@<BHN_WG_LA_IP>"
 
 # 1. Sanity
 if (-not (Test-Path "$VAULT\.bhn-vault-identity")) { Write-Error "Not BHN-BLACKBOX vault"; exit 2 }
-if (-not (Test-Connection 10.8.0.1 -Count 2 -Quiet)) { LogAbort "WG tunnel not reachable"; exit 3 }
+if (-not (Test-Connection <BHN_WG_LA_IP> -Count 2 -Quiet)) { LogAbort "WG tunnel not reachable"; exit 3 }
 
 # 2. Debounce
 $last = Get-Content "$LOG_DIR\last-success-timestamp" -ErrorAction SilentlyContinue
@@ -110,7 +110,7 @@ try {
         $remote = "/tmp/bhn-backup-$(Get-Random).tmp"
         & $LA_SSH "bhn-backup-produce.sh $($a.id) $remote"
         $hash_expected = & $LA_SSH "sha256sum $remote | cut -d' ' -f1"
-        & scp "root@10.8.0.1:$remote" "$VAULT\$($a.dest)\$($a.filename)"
+        & scp "root@<BHN_WG_LA_IP>:$remote" "$VAULT\$($a.dest)\$($a.filename)"
         $hash_actual = (Get-FileHash "$VAULT\$($a.dest)\$($a.filename)" -Algorithm SHA256).Hash.ToLower()
         if ($hash_actual -ne $hash_expected) { throw "sha256 mismatch on $($a.id)" }
         & $LA_SSH "rm $remote"

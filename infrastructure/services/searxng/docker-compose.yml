@@ -5,7 +5,7 @@
 # Deploy:
 #   cd /opt/bhn-searxng
 #   cp .env.example .env
-#   # Set BIND_IP=10.9.0.2 and generate SEARXNG_SECRET (instructions in README)
+#   # Set BIND_IP=<BHN_WG_FRA_IP> and generate SEARXNG_SECRET (instructions in README)
 #   docker compose up -d
 #
 # Verify:

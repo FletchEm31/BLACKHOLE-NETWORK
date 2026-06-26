@@ -40,7 +40,7 @@ cd /opt/bhn-tor-relay
 
 # 2. Copy Dockerfile + docker-compose.yml + torrc + .env.example from repo
 cp .env.example .env
-# BIND_IP=10.8.0.6 default — Hillsboro's IP on LA's wg0.
+# BIND_IP=<BHN_WG_HIL_IP> default — Hillsboro's IP on LA's wg0.
 
 # 3. Build + start
 docker compose up -d --build

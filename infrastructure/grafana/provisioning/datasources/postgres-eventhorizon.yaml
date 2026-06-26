@@ -1,7 +1,7 @@
 # /etc/grafana/provisioning/datasources/postgres-eventhorizon.yaml
 #
 # Provisions the eventhorizon Postgres datasource on the Grafana host.
-# After the 2026-05-28 LA→NJ migration this file lives on NJ (10.8.0.5)
+# After the 2026-05-28 LA→NJ migration this file lives on NJ (<BHN_WG_NJ_IP>)
 # and points at LA's PG over the WireGuard tunnel.
 #
 # The password is loaded from an environment variable so the actual value
@@ -16,7 +16,7 @@ datasources:
     type: postgres
     uid: eventhorizon
     access: proxy
-    url: 10.8.0.1:5432
+    url: <BHN_WG_LA_IP>:5432
     database: eventhorizon
     user: grafana_reader
     isDefault: true

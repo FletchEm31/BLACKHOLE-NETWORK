@@ -58,7 +58,7 @@
 
     3. Ensure SSH alias 'la' is configured in %USERPROFILE%\.ssh\config:
          Host la
-             Hostname 10.8.0.1
+             Hostname <BHN_WG_LA_IP>
              User root
              # If WG-to-LA is broken, add: ProxyJump <jump-host>
 

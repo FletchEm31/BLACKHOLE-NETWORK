@@ -6,7 +6,7 @@
 # UPSERTs to proxy_request_logs. Dedup via UNIQUE(node, log_time, pid, dst).
 #
 # Reads PG DSN from /root/.bhn-proxy-log.env (mode 0600):
-#   BHN_PROXY_LOG_PG_DSN='postgresql://log_shipper:<PW>@10.8.0.1/eventhorizon'
+#   BHN_PROXY_LOG_PG_DSN='postgresql://log_shipper:<PW>@<BHN_WG_LA_IP>/eventhorizon'
 #
 # Cron (Hillsboro only):
 #   */5 * * * * root /usr/local/sbin/bhn-proxy-log-collector.sh
@@ -32,7 +32,7 @@ esc() { printf '%s' "$1" | sed "s/'/''/g"; }
 node_esc="$(esc "$NODE_NAME")"
 
 # Parse two line patterns from tinyproxy LogLevel=Info|Connect:
-# A) CONNECT  May 13 22:00:01 [12345]: Connect (file descriptor 7): 10.8.0.1 [10.8.0.1] - returning request for "GET https://api.anthropic.com/...":
+# A) CONNECT  May 13 22:00:01 [12345]: Connect (file descriptor 7): <BHN_WG_LA_IP> [<BHN_WG_LA_IP>] - returning request for "GET https://api.anthropic.com/...":
 #    → captures pid, src_ip, dst_url
 # B) CONNECT  May 13 22:00:01 [12345]: Established connection to "api.anthropic.com" using file descriptor 8.
 #    → captures pid, dst_host (no src_ip here)

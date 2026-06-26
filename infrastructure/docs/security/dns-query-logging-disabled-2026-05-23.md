@@ -30,7 +30,7 @@ Privacy-debt finding from the 2026-05-23 LA infra audit, resolved same session.
 
 ## Why it matters
 
-The disk log + PG table together paired **client tunnel IPs** (e.g. `10.8.0.4`) with **resolved qnames** (e.g. `v20.events.data.microsoft.com`). For a solo-operator network today the only identifiable client is the operator, but per BHN's external-observer principle no qname↔client_ip pairing should be retained at rest. Disabling at the source (dnscrypt-proxy) is the durable fix; truncating the table and wiping the disk logs clears the historical debt.
+The disk log + PG table together paired **client tunnel IPs** (e.g. `<BHN_WG_OPC_IP>`) with **resolved qnames** (e.g. `v20.events.data.microsoft.com`). For a solo-operator network today the only identifiable client is the operator, but per BHN's external-observer principle no qname↔client_ip pairing should be retained at rest. Disabling at the source (dnscrypt-proxy) is the durable fix; truncating the table and wiping the disk logs clears the historical debt.
 
 ## Reversal procedure (if ever needed)
 

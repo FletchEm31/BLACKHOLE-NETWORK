@@ -5,7 +5,7 @@
 #
 # Differences from upstream:
 #   - Frontend bound to the WG mesh interface only (operator-specified host
-#     + port — defaults below assume LA at 10.8.0.1:8099)
+#     + port — defaults below assume LA at <BHN_WG_LA_IP>:8099)
 #   - Backend's host port mapping suppressed entirely. Frontend proxies API
 #     calls to the backend over the Docker bridge network using the
 #     `backend` service name; nothing needs to be exposed on the host.
@@ -21,7 +21,7 @@
 services:
   frontend:
     ports: !override
-      - "10.8.0.1:8099:3000"
+      - "<BHN_WG_LA_IP>:8099:3000"
     deploy:
       resources:
         limits:

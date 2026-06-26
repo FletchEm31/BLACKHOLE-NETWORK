@@ -101,7 +101,7 @@ Phase 3: AI INTEGRATION                 [in progress, ~60% complete]
 
 Phase 4: PER-NODE SERVICES              [~80% complete]
 ├─ Trading stack live on NJ — Strat 13 operational test (others sidelined), 3 Alpaca accounts
-├─ Wallos (LA) — subscription / cost tracking [✅] http://10.8.0.1:8090
+├─ Wallos (LA) — subscription / cost tracking [✅] http://<BHN_WG_LA_IP>:8090
 ├─ tinyproxy (Hillsboro) — LA egress proxy [✅] verified, lockdown pending
 ├─ Tor relays: BHNHeliosUS3 (Hillsboro, bootstrapping),
 │              BHNNebulaUS2 (NJ, deployed not live)
@@ -156,16 +156,16 @@ Services running across BHN nodes (all access restricted to WireGuard tunnel unl
 | Service | Node | Address | Purpose |
 |---|---|---|---|
 | WireGuard | LA (hub) | `51820/udp` (public) | Encrypted mesh VPN |
-| AdGuard Home | LA | `10.8.0.1:3001` | Network-wide ad/tracker blocking + DNS filtering |
+| AdGuard Home | LA | `<BHN_WG_LA_IP>:3001` | Network-wide ad/tracker blocking + DNS filtering |
 | dnscrypt-proxy | LA | `127.0.0.1:5353` | Encrypted DoH transport (Cloudflare + Mullvad fallback) |
 | Unbound | LA | `127.0.0.1:5354` | Fully recursive DNS resolver (queries root servers directly) |
-| PostgreSQL 14 | LA | `10.8.0.1:5432` | Primary database (`eventhorizon`, 146 tables) |
-| n8n | LA | `10.8.0.1:5678` | Workflow automation + HORIZON AI orchestration |
-| Redis | LA | `10.8.0.1:6379` | HORIZON short-term session cache |
-| Grafana | LA | `10.8.0.1:3000` | Data dashboards (Docker, host network) |
+| PostgreSQL 14 | LA | `<BHN_WG_LA_IP>:5432` | Primary database (`eventhorizon`, 146 tables) |
+| n8n | LA | `<BHN_WG_LA_IP>:5678` | Workflow automation + HORIZON AI orchestration |
+| Redis | LA | `<BHN_WG_LA_IP>:6379` | HORIZON short-term session cache |
+| Grafana | LA | `<BHN_WG_LA_IP>:3000` | Data dashboards (Docker, host network) |
 | Netdata | All nodes | `10.8.0.x:19999` | Real-time system monitoring |
-| Wallos | LA | `10.8.0.1:8090` | Subscription / cost tracking |
-| tinyproxy | Hillsboro | `10.8.0.6:8888` | LA outbound API egress proxy (hides LA IP) |
+| Wallos | LA | `<BHN_WG_LA_IP>:8090` | Subscription / cost tracking |
+| tinyproxy | Hillsboro | `<BHN_WG_HIL_IP>:8888` | LA outbound API egress proxy (hides LA IP) |
 | Tor relay (BHNHeliosUS3) | Hillsboro | `<BHN_HIL_PUBLIC_IP>:9001` (public) | Non-exit middle relay |
 | Shadowsocks | Hillsboro | public | DPI-resistant traffic obfuscation |
 | fail2ban | All nodes | — | Brute force / intrusion blocking |
@@ -464,12 +464,12 @@ Tor relay nicknames:
 ## Services map (VPN required)
 
 ```
-n8n:              http://10.8.0.1:5678
-HORIZON chat:     http://10.8.0.1:5678/webhook/ec1592c6-8715-4b0f-8ee8-5bc02f551a27/chat
-Grafana:          http://10.8.0.1:3000
-Wallos:           http://10.8.0.1:8090
-PostgreSQL:       psql -h 10.8.0.1 -U <role> -d eventhorizon
-tinyproxy:        http://10.8.0.6:8888 (LA egress proxy, WireGuard only)
+n8n:              http://<BHN_WG_LA_IP>:5678
+HORIZON chat:     http://<BHN_WG_LA_IP>:5678/webhook/ec1592c6-8715-4b0f-8ee8-5bc02f551a27/chat
+Grafana:          http://<BHN_WG_LA_IP>:3000
+Wallos:           http://<BHN_WG_LA_IP>:8090
+PostgreSQL:       psql -h <BHN_WG_LA_IP> -U <role> -d eventhorizon
+tinyproxy:        http://<BHN_WG_HIL_IP>:8888 (LA egress proxy, WireGuard only)
 ```
 
 ## Bootstrap (new node)
@@ -480,7 +480,7 @@ scp -r "D:\GITHUB REPOSITORY\BLACKHOLE-NETWORK\infrastructure" root@<IP>:/opt/bh
 
 # On new node:
 export TUNNEL_IP_OVERRIDE=<TUNNEL_IP>
-export EH_BOOTSTRAP_PG_DSN='postgresql://bootstrap_writer:BHN-Bootstrap-2026@10.8.0.1/eventhorizon'
+export EH_BOOTSTRAP_PG_DSN='postgresql://bootstrap_writer:BHN-Bootstrap-2026@<BHN_WG_LA_IP>/eventhorizon'
 export ADMIN_PUBKEYS_FILE=/root/admin_pubkeys
 export INSTALL_SURICATA=1
 bash /opt/bhn/infrastructure/bootstrap/bhn-node-bootstrap.sh NAME IP wg0 TYPE REGION

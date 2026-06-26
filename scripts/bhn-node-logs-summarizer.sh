@@ -10,7 +10,7 @@
 # windows that gain late-arriving rows update cleanly.
 #
 # Reads PG DSN from /root/.bhn-node-logs-summary.env:
-#   BHN_NLS_PG_DSN='postgresql://ehuser:<PW>@10.8.0.1/eventhorizon'
+#   BHN_NLS_PG_DSN='postgresql://ehuser:<PW>@<BHN_WG_LA_IP>/eventhorizon'
 #
 # Cron (LA): */15 * * * * root /usr/local/sbin/bhn-node-logs-summarizer.sh
 

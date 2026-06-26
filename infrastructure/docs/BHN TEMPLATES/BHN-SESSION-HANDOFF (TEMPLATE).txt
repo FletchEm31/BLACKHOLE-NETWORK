@@ -17,18 +17,18 @@ SECTION 1 — NETWORK SNAPSHOT (current state)
 ==================================================================
 
 NODE          IP (PUBLIC)       TUNNEL IP   STATUS
-LA Hub        <BHN_LA_PUBLIC_IP>     10.8.0.1    OPERATIONAL (hub, PG, n8n, HORIZON, Grafana)
-Frankfurt     192.248.187.208   10.9.0.2    OPERATIONAL (exit EU1, LibreSpeed, SearXNG, Tor)
-New Jersey    <BHN_NJ_PUBLIC_IP>       10.8.0.5    OPERATIONAL (trading node — stack NOT deployed)
-Hillsboro     <BHN_HIL_PUBLIC_IP>       10.8.0.6    OPERATIONAL (tinyproxy verified, Tor bootstrapping)
+LA Hub        <BHN_LA_PUBLIC_IP>     <BHN_WG_LA_IP>    OPERATIONAL (hub, PG, n8n, HORIZON, Grafana)
+Frankfurt     192.248.187.208   <BHN_WG_FRA_IP>    OPERATIONAL (exit EU1, LibreSpeed, SearXNG, Tor)
+New Jersey    <BHN_NJ_PUBLIC_IP>       <BHN_WG_NJ_IP>    OPERATIONAL (trading node — stack NOT deployed)
+Hillsboro     <BHN_HIL_PUBLIC_IP>       <BHN_WG_HIL_IP>    OPERATIONAL (tinyproxy verified, Tor bootstrapping)
 
 WireGuard Mesh (hub-and-spoke, LA is hub):
-  Operator PC:    10.8.0.4   PSK: ✅
-  Operator Phone: 10.8.0.2   PSK: ✅
-  NJ:             10.8.0.5   PSK: ❌ pending
-  Hillsboro:      10.8.0.6   PSK: ✅
-  Frankfurt:      10.9.0.2   PSK: ✅
-  Laptop:         10.8.0.7   PSK: ❌ pending (not added yet)
+  Operator PC:    <BHN_WG_OPC_IP>   PSK: ✅
+  Operator Phone: <BHN_WG_PEER_IP>   PSK: ✅
+  NJ:             <BHN_WG_NJ_IP>   PSK: ❌ pending
+  Hillsboro:      <BHN_WG_HIL_IP>   PSK: ✅
+  Frankfurt:      <BHN_WG_FRA_IP>   PSK: ✅
+  Laptop:         <BHN_WG_PEER_IP>   PSK: ❌ pending (not added yet)
 
 Tor Relays:
   BHNFornaxEU1  → Frankfurt   LIVE
@@ -50,7 +50,7 @@ SECTION 2 — LAST SESSION COMPLETED (May 13, 2026)
 ==================================================================
 
   ✅ Hillsboro US3 (Hetzner) — fully deployed
-       Bootstrap complete, WireGuard tunnel (10.8.0.6), PSK applied
+       Bootstrap complete, WireGuard tunnel (<BHN_WG_HIL_IP>), PSK applied
        tinyproxy deployed and verified (curl returns <BHN_HIL_PUBLIC_IP>)
        Tor relay BHNHeliosUS3 bootstrapping
        ssh hillsboro alias working from LA
@@ -89,12 +89,12 @@ IMMEDIATE (do these first):
        Verify: curl https://api.ipify.org → should return 192.248.187.208
 
   2. LA egress lockdown via tinyproxy (in this order):
-       /etc/environment: https_proxy=http://10.8.0.6:8888
+       /etc/environment: https_proxy=http://<BHN_WG_HIL_IP>:8888
        /etc/apt/apt.conf.d/95bhn-proxy
        systemd drop-ins for n8n + grafana
        LAST: UFW rewrite — remove direct 443/587 egress from LA
 
-  3. Add operator laptop as WireGuard peer (tunnel IP: 10.8.0.7)
+  3. Add operator laptop as WireGuard peer (tunnel IP: <BHN_WG_PEER_IP>)
        Generate keypair, add to wg0 on LA, add UFW egress rules immediately
 
 NEXT SESSION:
@@ -116,7 +116,7 @@ NEXT SESSION:
         configure Grafana alert rules, test SMS (A2P pending ~May 23-30)
 
   8.  Frankfurt DNS Phase 2
-        Rebind dnscrypt to 10.9.0.2:53, UFW allow 53, update WG DNS, verify
+        Rebind dnscrypt to <BHN_WG_FRA_IP>:53, UFW allow 53, update WG DNS, verify
 
   9.  SearXNG → Tor routing
         Uncomment Tor proxy in /opt/bhn-searxng/settings.yml, restart container
@@ -149,14 +149,14 @@ NEXT SESSION:
 SECTION 4 — KEY SERVICES & ACCESS
 ==================================================================
 
-  n8n:           http://10.8.0.1:5678          (VPN required)
-  HORIZON chat:  http://10.8.0.1:5678/webhook/ec1592c6-8715-4b0f-8ee8-5bc02f551a27/chat
-  Grafana:       http://10.8.0.1:3000          (VPN required)
-  Wallos:        http://10.8.0.1:8090          (VPN required)
-  PostgreSQL:    psql -h 10.8.0.1 -U ehuser -d eventhorizon
-  LibreSpeed:    http://10.9.0.2:8088
-  SearXNG:       http://10.9.0.2:8089
-  tinyproxy:     http://10.8.0.6:8888          (LA egress proxy, WG only)
+  n8n:           http://<BHN_WG_LA_IP>:5678          (VPN required)
+  HORIZON chat:  http://<BHN_WG_LA_IP>:5678/webhook/ec1592c6-8715-4b0f-8ee8-5bc02f551a27/chat
+  Grafana:       http://<BHN_WG_LA_IP>:3000          (VPN required)
+  Wallos:        http://<BHN_WG_LA_IP>:8090          (VPN required)
+  PostgreSQL:    psql -h <BHN_WG_LA_IP> -U ehuser -d eventhorizon
+  LibreSpeed:    http://<BHN_WG_FRA_IP>:8088
+  SearXNG:       http://<BHN_WG_FRA_IP>:8089
+  tinyproxy:     http://<BHN_WG_HIL_IP>:8888          (LA egress proxy, WG only)
 
 HORIZON:
   Status:      OPERATIONAL

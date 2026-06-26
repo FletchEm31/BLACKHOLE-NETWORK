@@ -11,7 +11,7 @@
 CREATE TABLE IF NOT EXISTS wg_peer_stats (
     id               BIGSERIAL PRIMARY KEY,
     measured_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    peer_ip          TEXT NOT NULL,             -- tunnel IP, e.g. '10.8.0.6'
+    peer_ip          TEXT NOT NULL,             -- tunnel IP, e.g. '<BHN_WG_HIL_IP>'
     peer_label       TEXT NOT NULL,             -- 'Phone', 'PC', 'NJ', 'Hillsboro', 'Frankfurt'
     peer_pubkey      TEXT,                       -- WG public key (cross-ref to nodes.wg_pubkey)
     bytes_received   BIGINT NOT NULL,            -- cumulative since wg interface up (hub's view: rx from peer)

@@ -113,7 +113,7 @@ How to add queries to Metabase, configure tabs, and pin dashboards.
 
 ---
 
-## SYSTEMD SERVICES (on LA — 10.8.0.1)
+## SYSTEMD SERVICES (on LA — <BHN_WG_LA_IP>)
 
 | Unit | Cadence | Description |
 |------|---------|-------------|

@@ -3,8 +3,8 @@
 -- Reference schema files: sql/weather-bronze-schema.sql, weather-silver-schema.sql, weather-gold-schema.sql
 --
 -- Deploy:
---   scp sql/migrations/2026-06-11-weather-bsg-tables.sql root@10.8.0.1:/tmp/
---   ssh root@10.8.0.1 "sudo -u postgres psql -d eventhorizon -f /tmp/2026-06-11-weather-bsg-tables.sql"
+--   scp sql/migrations/2026-06-11-weather-bsg-tables.sql root@<BHN_WG_LA_IP>:/tmp/
+--   ssh root@<BHN_WG_LA_IP> "sudo -u postgres psql -d eventhorizon -f /tmp/2026-06-11-weather-bsg-tables.sql"
 --
 -- All tables use CREATE TABLE IF NOT EXISTS — safe to re-run.
 -- Old tables are NOT modified or dropped here.

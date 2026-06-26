@@ -3,8 +3,8 @@
 **Protocol:** Matrix (Synapse homeserver)  
 **Client:** Element (iOS / Android / Desktop / Web)  
 **Status:** Live on LA hub  
-**Access:** WireGuard mesh only — HTTP `10.8.0.1:8008` / HTTPS `10.8.0.1:8448`  
-**DNS alias:** `chat.bhn.local` → `10.8.0.1` (AdGuard rewrite)
+**Access:** WireGuard mesh only — HTTP `<BHN_WG_LA_IP>:8008` / HTTPS `<BHN_WG_LA_IP>:8448`  
+**DNS alias:** `chat.bhn.local` → `<BHN_WG_LA_IP>` (AdGuard rewrite)
 
 ---
 
@@ -12,20 +12,20 @@
 
 | Field | Value |
 |-------|-------|
-| Homeserver URL (HTTPS) | `https://10.8.0.1:8448` (recommended — mobile Element) |
-| Homeserver URL (HTTP) | `http://10.8.0.1:8008` (desktop Element, no cert warning) |
+| Homeserver URL (HTTPS) | `https://<BHN_WG_LA_IP>:8448` (recommended — mobile Element) |
+| Homeserver URL (HTTP) | `http://<BHN_WG_LA_IP>:8008` (desktop Element, no cert warning) |
 | Server name | `BHN-LOSANGELES-US1.local` |
-| TLS cert | Self-signed, SAN=IP:10.8.0.1, expires 2036-06-23 |
+| TLS cert | Self-signed, SAN=IP:<BHN_WG_LA_IP>, expires 2036-06-23 |
 | Federation | **Disabled** — no external Matrix servers |
 | Registration | **Disabled** — accounts created by admin only |
 
-**WireGuard must be active** before connecting. Both ports bind to `10.8.0.1`
+**WireGuard must be active** before connecting. Both ports bind to `<BHN_WG_LA_IP>`
 only and are unreachable from the public internet.
 
 ### TLS cert trust (one-time, per device)
 
 Element mobile will show a certificate warning on first connect — tap
-**Proceed anyway** / **Trust**. The cert is self-signed for `10.8.0.1`
+**Proceed anyway** / **Trust**. The cert is self-signed for `<BHN_WG_LA_IP>`
 and stays valid until 2036. Desktop Element on HTTP 8008 avoids this entirely.
 
 ---
@@ -35,13 +35,13 @@ and stays valid until 2036. Desktop Element on HTTP 8008 avoids this entirely.
 **Desktop (HTTP — no cert prompt):**
 1. Download Element: https://element.io/download
 2. Open Element → **Sign in** → **Edit** homeserver URL
-3. Enter: `http://10.8.0.1:8008`
+3. Enter: `http://<BHN_WG_LA_IP>:8008`
 4. Sign in with your BHN credentials
 
 **Mobile (HTTPS — accept self-signed cert):**
 1. Install Element mobile (iOS / Android)
 2. Sign in → **Edit** homeserver URL
-3. Enter: `https://10.8.0.1:8448`
+3. Enter: `https://<BHN_WG_LA_IP>:8448`
 4. Accept the self-signed certificate warning
 5. Sign in with your BHN credentials
 
@@ -65,7 +65,7 @@ Run on LA:
 /opt/venvs/matrix-synapse/bin/register_new_matrix_user \
   -u <username> -p <password> -a \
   -c /etc/matrix-synapse/homeserver.yaml \
-  http://10.8.0.1:8008
+  http://<BHN_WG_LA_IP>:8008
 ```
 
 Remove `-a` for non-admin accounts.
@@ -77,7 +77,7 @@ Remove `-a` for non-admin accounts.
 See `infrastructure/docs/bhn-guest-wireguard-onboarding.md` for the full
 WireGuard config template and MatrixBHN connection steps sent to new peers.
 
-Guest peers use `10.8.0.10+` and receive a **split-tunnel config** by default:
+Guest peers use `<BHN_WG_GUEST_IP>+` and receive a **split-tunnel config** by default:
 DNS routes through WireGuard (AdGuard protection), all other traffic uses
 the guest's own ISP directly.
 

@@ -10,7 +10,7 @@ symbol, inserts one market_signals row per (symbol, signal_type='price').
 
 Config:
   /root/.bhn-fmp.env (mode 0600):
-    BHN_FMP_PG_DSN='postgresql://log_shipper:<PW>@10.8.0.1/eventhorizon'
+    BHN_FMP_PG_DSN='postgresql://log_shipper:<PW>@<BHN_WG_LA_IP>/eventhorizon'
     BHN_FMP_API_KEY='<from PM EH-FMP-APIKey>'
     BHN_FMP_RULES_PATH='/opt/bhn/trading/rules.json'    # optional
 

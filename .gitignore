@@ -56,6 +56,11 @@ desktop.ini
 # Claude Code local state (per-machine, not for sharing)
 .claude/
 
+# Session handoff docs — internal operational notes (IPs, CVE status, BTEH findings)
+# Not for public consumption; maintained locally by operator only
+infrastructure/docs/BHN SESSION UPDATES/
+infrastructure/docs/BHN session updates/
+
 # Local-only ops artifacts
 *.local.*
 *.private.*

@@ -7,7 +7,7 @@
 # raw bytes / percentages and INSERT one row per container.
 #
 # Reads PG DSN from /root/.bhn-docker-stats.env:
-#   BHN_DOCKER_STATS_PG_DSN='postgresql://log_shipper:<PW>@10.8.0.1/eventhorizon'
+#   BHN_DOCKER_STATS_PG_DSN='postgresql://log_shipper:<PW>@<BHN_WG_LA_IP>/eventhorizon'
 #
 # Cron (any node running Docker):
 #   */5 * * * * root /usr/local/sbin/bhn-docker-stats-collector.sh

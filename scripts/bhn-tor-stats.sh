@@ -16,7 +16,7 @@
 #     torrc edit + rebuild.
 #
 # Reads PG DSN from /root/.bhn-tor-stats.env (mode 0600):
-#   BHN_TOR_STATS_PG_DSN='postgresql://n8n_user:<PW>@10.8.0.1/eventhorizon'
+#   BHN_TOR_STATS_PG_DSN='postgresql://n8n_user:<PW>@<BHN_WG_LA_IP>/eventhorizon'
 #
 # Exit: 0 success, 1 missing config, 2 PG failure, 3 docker/exec failure.
 

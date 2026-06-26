@@ -6,7 +6,7 @@
 # /var/lib/bhn-n8n-stats/state.json tracks the highwater id.
 #
 # Reads PG DSN from /root/.bhn-n8n-stats.env:
-#   BHN_N8N_STATS_PG_DSN='postgresql://log_shipper:<PW>@10.8.0.1/eventhorizon'
+#   BHN_N8N_STATS_PG_DSN='postgresql://log_shipper:<PW>@<BHN_WG_LA_IP>/eventhorizon'
 #   BHN_N8N_SQLITE_PATH='/root/.n8n/database.sqlite'   # override if non-default
 #
 # Cron (LA only):

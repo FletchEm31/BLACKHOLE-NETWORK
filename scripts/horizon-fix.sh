@@ -43,7 +43,7 @@ echo '--- 8. Published/draft classification (looking for "1 published") ---'
 sudo docker logs n8n --tail 40 2>&1 | grep -iE 'published|draft|migration error' | tail -10
 echo
 echo '--- 9. Smoke test: POST to chat webhook ---'
-curl -sS -w '\n--- HTTP %{http_code} ---\n' -X POST "http://10.8.0.1:5678/webhook/$WEBHOOK_PATH" \
+curl -sS -w '\n--- HTTP %{http_code} ---\n' -X POST "http://<BHN_WG_LA_IP>:5678/webhook/$WEBHOOK_PATH" \
   -H 'Content-Type: application/json' \
   -d '{"chatInput":"What is the current network status?","sessionId":"recovery-final"}' \
   --max-time 30 | head -80

@@ -6,7 +6,7 @@
 # older than 14 days to keep table size bounded.
 #
 # Reads PG DSN from /root/.bhn-conntrack.env:
-#   BHN_CONNTRACK_PG_DSN='postgresql://log_shipper:<PW>@10.8.0.1/eventhorizon'
+#   BHN_CONNTRACK_PG_DSN='postgresql://log_shipper:<PW>@<BHN_WG_LA_IP>/eventhorizon'
 #
 # Cron (every node):
 #   */5 * * * * root /usr/local/sbin/bhn-conntrack-collector.sh
@@ -34,8 +34,8 @@ esc() { printf '%s' "$1" | sed "s/'/''/g"; }
 node_esc="$(esc "$NODE_NAME")"
 
 # /proc/net/nf_conntrack format (space-separated, varies by proto):
-# ipv4 2 tcp 6 431999 ESTABLISHED src=10.8.0.1 dst=10.8.0.4 sport=22 dport=64978
-#       packets=12 bytes=2048 src=10.8.0.4 dst=10.8.0.1 sport=64978 dport=22 packets=10 bytes=1024 [ASSURED] mark=0 use=1
+# ipv4 2 tcp 6 431999 ESTABLISHED src=<BHN_WG_LA_IP> dst=<BHN_WG_OPC_IP> sport=22 dport=64978
+#       packets=12 bytes=2048 src=<BHN_WG_OPC_IP> dst=<BHN_WG_LA_IP> sport=64978 dport=22 packets=10 bytes=1024 [ASSURED] mark=0 use=1
 #
 # We extract: proto, state, src/dst/sport/dport from the FIRST direction tuple,
 # plus packets/bytes from each direction.

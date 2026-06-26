@@ -53,7 +53,7 @@ The exit routing should look like:
 2. **LA wg0** receives the packet, kernel routing decides next hop
 3. `/etc/wireguard/bhn-frankfurt-exit.sh up` should install a **policy route** like:
    - `ip rule add fwmark 0x100 table 100 priority 100`
-   - `ip route add default via 10.9.0.2 dev wg0 table 100`
+   - `ip route add default via <BHN_WG_FRA_IP> dev wg0 table 100`
 4. **Marker for "this is a full-tunnel packet"**: a netfilter rule that marks packets matching some criterion with fwmark `0x100`. *This is the missing piece in the production config — the script may install the policy route table but not the marking rule, OR may install both but be matching the wrong packets.*
 5. **Then** packets with fwmark `0x100` go into table 100, which routes them via the FRA tunnel.
 6. **At FRA**, the inbound packet on `wg0` (FRA-side) needs to be FORWARDed to `enp1s0` and SNAT'd via the Frankfurt MASQUERADE rule from `bhn-frankfurt-masquerade-fix.sh`.
@@ -73,9 +73,9 @@ In rough priority order:
 2. **Then test with the current `bhn-frankfurt-exit.sh up` PostUp left in place.** It may already work once FRA-side MASQUERADE lands.
 3. **If still broken, instrument `bhn-frankfurt-exit.sh`:** add `set -x` + log every `ip rule` / `ip route` / `iptables` call to a file. Run apply; capture the file. Verify each step actually took effect with corresponding `ip rule list`, `ip route show table 100`, `iptables -t mangle -L -n -v`.
 4. **Manual fwmark experiment** — instead of trusting bhn-frankfurt-exit.sh, manually:
-   - Add an OUTPUT or PREROUTING rule on LA that marks packets matching the full-tunnel client's tunnel IP (e.g. `10.8.0.4` for FLETCH-DESKTOP) with fwmark `0x100`.
+   - Add an OUTPUT or PREROUTING rule on LA that marks packets matching the full-tunnel client's tunnel IP (e.g. `<BHN_WG_OPC_IP>` for FLETCH-DESKTOP) with fwmark `0x100`.
    - Verify with `iptables -t mangle -L -n -v` — the rule should have a non-zero packet counter when client makes traffic.
-   - Then policy route fwmark `0x100` → table 100 → `default via 10.9.0.2`.
+   - Then policy route fwmark `0x100` → table 100 → `default via <BHN_WG_FRA_IP>`.
 5. **Verify packet path with tcpdump** on both ends: `tcpdump -i wg0 -n 'host <client-IP>'` on LA + `tcpdump -i enp1s0 -n 'host <target>'` on FRA. The packet should appear on FRA's wg0 (inbound from LA), then get NAT'd and reappear on enp1s0 outbound with source = `192.248.187.208`.
 
 ## Files involved

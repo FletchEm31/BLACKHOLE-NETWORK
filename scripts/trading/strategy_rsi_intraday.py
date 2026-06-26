@@ -92,7 +92,7 @@ def _get_latest_rsi(ticker: str = TICKER) -> Optional[tuple[Decimal, datetime.da
 
     market_daily lives on LA's PG; this query runs against the
     eventhorizon DB via trading_core's shared connection pool (PG_HOST is
-    set to 10.8.0.1 on NJ deployments)."""
+    set to <BHN_WG_LA_IP> on NJ deployments)."""
     with tc.get_pg_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""

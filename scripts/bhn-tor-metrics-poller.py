@@ -7,7 +7,7 @@ Cron (LA, daily):
   15 7 * * *  root  /usr/local/sbin/bhn-tor-metrics-poller.py
 
 Config /root/.bhn-tor-metrics.env:
-  BHN_TOR_METRICS_PG_DSN='postgresql://log_shipper:<PW>@10.8.0.1/eventhorizon'
+  BHN_TOR_METRICS_PG_DSN='postgresql://log_shipper:<PW>@<BHN_WG_LA_IP>/eventhorizon'
 
 Fingerprints are discovered from tor_relay_stats — whatever the per-node
 collector has shipped most recently. No hardcoding.

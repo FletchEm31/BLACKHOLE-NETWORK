@@ -279,7 +279,7 @@ Sweden also runs a Tor non-exit middle relay (`BHNSweden`, joins MyFamily with F
                                                   │ HTTPS webhook
                                                   ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                       LA hub (10.8.0.1)                     │
+│                       LA hub (<BHN_WG_LA_IP>)                     │
 │                                                             │
 │  ┌────────────────┐   ┌──────────────────┐                  │
 │  │      n8n       │──►│   ElevenLabs     │ (TTS — outbound) │
@@ -391,7 +391,7 @@ turn arrives ─► n8n loads working memory (Redis GET, ~1 ms)
 
 **Components:**
 
-- **Redis service** — Docker container on LA, VPN-only on `10.8.0.1:6379`, `requirepass` from new Proton Pass entry `EH-Redis-Password`. AOF + RDB persistence **off** (Redis is a cache; durable state lives in PG + pgvector). Deploy doc lives at `infrastructure/services/redis/docker-run.md`.
+- **Redis service** — Docker container on LA, VPN-only on `<BHN_WG_LA_IP>:6379`, `requirepass` from new Proton Pass entry `EH-Redis-Password`. AOF + RDB persistence **off** (Redis is a cache; durable state lives in PG + pgvector). Deploy doc lives at `infrastructure/services/redis/docker-run.md`.
 - **PG schema** — new file `sql/redis-memory-schema.sql` containing one table: `conversation_sessions(id uuid PK, channel text, started_at timestamptz, closed_at timestamptz NULL, turn_count int, summary text, summary_embedding vector(384))`. One row per session, `closed_at` NULL while live; the summary embedding lets pgvector search across past sessions by topic. Granted to `n8n_user` write + `agent_reader` read.
 - **Redis key shape:**
   - `horizon:sess:<session_id>:turns` — list, LPUSH new turn JSON, LTRIM to last 20
@@ -534,7 +534,7 @@ Once 1-7 done and keys are in PM, Session 1 can build M1 (Voice Pipeline) and st
 
 ## Future considerations (not in current scope, captured for completeness)
 
-- **Backup-via-Tor** *(planned feature — intent only, no implementation yet)* — route BHN backup pushes over a Tor circuit so the transport is unlinkable and the storage endpoint never sees a BHN origin IP. Phase 5.2 already specifies the concrete instance of this (LA's `restic`-via-Tor push to Sweden's hidden-service SFTP). This entry generalizes the intent: any backup destination should be reachable over Tor, using the **FRA Tor SOCKS proxy at `10.9.0.2:9050`** (already available — see `bhn-frankfurt-scoping.md`) for nodes that don't run their own onion routing. Out of scope until Phase 5 backup plumbing lands; captured here so backup design defaults to Tor transport rather than clearnet.
+- **Backup-via-Tor** *(planned feature — intent only, no implementation yet)* — route BHN backup pushes over a Tor circuit so the transport is unlinkable and the storage endpoint never sees a BHN origin IP. Phase 5.2 already specifies the concrete instance of this (LA's `restic`-via-Tor push to Sweden's hidden-service SFTP). This entry generalizes the intent: any backup destination should be reachable over Tor, using the **FRA Tor SOCKS proxy at `<BHN_WG_FRA_IP>:9050`** (already available — see `bhn-frankfurt-scoping.md`) for nodes that don't run their own onion routing. Out of scope until Phase 5 backup plumbing lands; captured here so backup design defaults to Tor transport rather than clearnet.
 - **EU voice processing** — N/A under personal-only direction. Voice infrastructure stays on LA. (Any future public VPN product is a separate concern on different infrastructure under a different entity — out of scope here.)
 - **Multi-region failover** — HORIZON depends on LA single-host today. Future: replication of `memories` + `call_transcripts` to a secondary node for DR.
 - **Voice biometric authentication** — operator-voice match could gate sensitive actions (live trades, large eBay purchases). Not yet planned.

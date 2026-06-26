@@ -18,10 +18,10 @@ services and RAM are not — those reflect 2026-05-28 ~07:45 UTC only.
 
 | Node | Hostname | Public IP | WG IP | vCPU | RAM | RAM used | RAM avail | Disk used | Role |
 |------|----------|-----------|-------|------|-----|----------|-----------|-----------|------|
-| **LA** | `vultr` | <BHN_LA_PUBLIC_IP> | 10.8.0.1 | 2 | 1.9 GB | 961 MB | 801 MB | 24/56 GB | Postgres master, n8n, HORIZON, Grafana (migrating), Redis, embeddings, mesh hub |
-| **NJ** | `BHN-NEWJERSEY-US2` | <BHN_NJ_PUBLIC_IP> | 10.8.0.5 | 1 | 1.9 GB | 581 MB | 1.2 GB | 16/60 GB | Trading executor; Grafana NJ (new); spare capacity for Metabase |
-| **Hillsboro** | `BHN-HILLSBORO-US3` | <BHN_HIL_PUBLIC_IP> | 10.8.0.6 | 2 | 1.9 GB | 993 MB | 764 MB | 7.6/38 GB | tinyproxy HTTP egress, Tor relay (BHNHeliosUS3), mesh-spoke |
-| **Frankfurt** | `BHN-FRANKFURT-EU1` | 192.248.187.208 | 10.9.0.2 | 1 | 951 MB | 274 MB | 532 MB | 11/23 GB | SearXNG, Redis, LibreSpeed, SOCKS scrape egress (port 10808 via ssh tunnel from LA), Shadowsocks |
+| **LA** | `vultr` | <BHN_LA_PUBLIC_IP> | <BHN_WG_LA_IP> | 2 | 1.9 GB | 961 MB | 801 MB | 24/56 GB | Postgres master, n8n, HORIZON, Grafana (migrating), Redis, embeddings, mesh hub |
+| **NJ** | `BHN-NEWJERSEY-US2` | <BHN_NJ_PUBLIC_IP> | <BHN_WG_NJ_IP> | 1 | 1.9 GB | 581 MB | 1.2 GB | 16/60 GB | Trading executor; Grafana NJ (new); spare capacity for Metabase |
+| **Hillsboro** | `BHN-HILLSBORO-US3` | <BHN_HIL_PUBLIC_IP> | <BHN_WG_HIL_IP> | 2 | 1.9 GB | 993 MB | 764 MB | 7.6/38 GB | tinyproxy HTTP egress, Tor relay (BHNHeliosUS3), mesh-spoke |
+| **Frankfurt** | `BHN-FRANKFURT-EU1` | 192.248.187.208 | <BHN_WG_FRA_IP> | 1 | 951 MB | 274 MB | 532 MB | 11/23 GB | SearXNG, Redis, LibreSpeed, SOCKS scrape egress (port 10808 via ssh tunnel from LA), Shadowsocks |
 
 All four are Ubuntu 22.04.5 LTS. Kernels: LA/NJ/FRA at 5.15.0-177, Hillsboro at 5.15.0-164 (slightly behind — apply during next maintenance).
 
@@ -32,7 +32,7 @@ All four are Ubuntu 22.04.5 LTS. Kernels: LA/NJ/FRA at 5.15.0-177, Hillsboro at 
 ### What this audit confirmed
 
 - **Tor relay BHNFornaxEU1 (FRA) is fully decommissioned.** Marker file present at `/opt/bhn-tor-relay/DECOMMISSIONED-2026-05-28.txt`, no `tor` processes, no container. ~250 MB freed on FRA.
-- **Grafana 13.0.1+security-01 is live on both LA and NJ.** NJ binds `10.8.0.5:3000`, UFW open to mesh only, all 10 dashboards provisioned. Datasource provisioning yaml in place but PG connection blocked at LA pg_hba.conf (see "Pending Decisions").
+- **Grafana 13.0.1+security-01 is live on both LA and NJ.** NJ binds `<BHN_WG_NJ_IP>:3000`, UFW open to mesh only, all 10 dashboards provisioned. Datasource provisioning yaml in place but PG connection blocked at LA pg_hba.conf (see "Pending Decisions").
 - **Netdata 1.x agent is running on every node.** Listening on `0.0.0.0:19999`; UFW restricts to `10.8.0.0/24` + `10.9.0.0/24`. Process RSS sits at 60–120 MB per node.
 - **LA egress lockdown is wired but only partially active.** `/etc/environment`, `/etc/apt/apt.conf.d/95proxy`, and the systemd Docker drop-in are all in place; the Docker drop-in is staged but `systemctl daemon-reload && systemctl restart docker` has not run yet (would briefly stop n8n/redis/wallos).
 - **Hillsboro Suricata is stopped + disabled, 2 GB swap added, swappiness=10.** Memory pressure resolved; box is healthy (993 MB used, 764 MB available).
@@ -53,7 +53,7 @@ All four are Ubuntu 22.04.5 LTS. Kernels: LA/NJ/FRA at 5.15.0-177, Hillsboro at 
 
 ---
 
-## NODE 1: LA (10.8.0.1, `vultr`)
+## NODE 1: LA (<BHN_WG_LA_IP>, `vultr`)
 
 **Role:** Primary mesh hub. PostgreSQL master. n8n orchestrator. HORIZON. Grafana (migrating out tonight). Redis cache. Local embedding service. Shadowsocks server. dnscrypt-proxy. Outbound SOCKS to FRA on 10808 for eBay scrape egress.
 
@@ -65,11 +65,11 @@ All four are Ubuntu 22.04.5 LTS. Kernels: LA/NJ/FRA at 5.15.0-177, Hillsboro at 
 - `0.0.0.0:22` SSH (UFW-open public)
 - `0.0.0.0:8388` Shadowsocks server (UFW-open public)
 - `0.0.0.0:19999` Netdata (UFW restricted to mesh)
-- `10.8.0.1:53` dnscrypt-proxy (DNS-from-tunnel)
-- `10.8.0.1:3000` Grafana
-- `10.8.0.1:5432` PostgreSQL 14 (eventhorizon DB; 8 connections active)
-- `10.8.0.1:6379` Redis (Docker)
-- `10.8.0.1:8090` (docker-proxy — unknown service)
+- `<BHN_WG_LA_IP>:53` dnscrypt-proxy (DNS-from-tunnel)
+- `<BHN_WG_LA_IP>:3000` Grafana
+- `<BHN_WG_LA_IP>:5432` PostgreSQL 14 (eventhorizon DB; 8 connections active)
+- `<BHN_WG_LA_IP>:6379` Redis (Docker)
+- `<BHN_WG_LA_IP>:8090` (docker-proxy — unknown service)
 - `127.0.0.1:5679` HORIZON (Python MainThread)
 - `127.0.0.1:6060,8080` CrowdSec
 - `127.0.0.1:8001` Python (HORIZON-related?)
@@ -82,7 +82,7 @@ All four are Ubuntu 22.04.5 LTS. Kernels: LA/NJ/FRA at 5.15.0-177, Hillsboro at 
 - `grafana-server` — 13.0.1+security-01 (migrating)
 - `docker` + `containerd` — bhn-horizon-redis (Redis 7-alpine, 24h), bhn-wallos (3 days, healthy), n8n (2h)
 - `eh-embed.service` — BGE-small-en-v1.5 fastembed (Python, port 8001)
-- `dnscrypt-proxy` — local DNS resolver, 10.8.0.1:53 + 127.0.0.1:53
+- `dnscrypt-proxy` — local DNS resolver, <BHN_WG_LA_IP>:53 + 127.0.0.1:53
 - `crowdsec` + `crowdsec-firewall-bouncer` — IPS layer
 - `fail2ban`, `suricata` (still active), `netdata`, `shadowsocks-libev`, `vnstat`
 - `unattended-upgrades`, `cron`, `watchdog`
@@ -104,12 +104,12 @@ All four are Ubuntu 22.04.5 LTS. Kernels: LA/NJ/FRA at 5.15.0-177, Hillsboro at 
 **UFW (26 rules):** mesh-only on 3000 / 5432 (from FRA + NJ), 5678 (n8n), 53 DNS; public 22 / 51820 / 8388. Egress restricted to specific endpoints (FRA 51821, NJ 51820, Hillsboro 51821, DNS 53, NTP 123). `wg1` (port 51822) interface also listening — purpose?
 
 **WireGuard (`wg0` only listed in audit):**
-- Self pubkey: `TOYnFt18v4NynEN91o6zkmV5hsvHBLJTb8qL7GG/KAo=`
-- Peer 10.8.0.5 (NJ, `ylnSJOq...`) — 51 MB rx / 44 MB tx
-- Peer 10.8.0.4 (operator workstation, `y+ekkxK...`) — 5.5 GB rx / 38 GB tx
+- Self pubkey: `<BHN_WG_LA_PUBKEY>`
+- Peer <BHN_WG_NJ_IP> (NJ, `ylnSJOq...`) — 51 MB rx / 44 MB tx
+- Peer <BHN_WG_OPC_IP> (operator workstation, `y+ekkxK...`) — 5.5 GB rx / 38 GB tx
 - Peer FRA via wg1 (`zkfJNbd...`, allowed 0.0.0.0/0) — 2.3 GB rx / 252 MB tx
-- Peer 10.8.0.2 (`N9Tg0dO...`, `68.96.70.83:51352`) — 1.67 GB rx / 19.3 GB tx (second operator endpoint?)
-- Peer Hillsboro (`EwBHwk...`, allowed `10.8.0.6/32, 10.8.0.0/24`) — 313 MB rx / 8 MB tx
+- Peer <BHN_WG_PEER_IP> (`N9Tg0dO...`, `<OPERATOR_HOME_IP>:51352`) — 1.67 GB rx / 19.3 GB tx (second operator endpoint?)
+- Peer Hillsboro (`EwBHwk...`, allowed `<BHN_WG_HIL_IP>/32, 10.8.0.0/24`) — 313 MB rx / 8 MB tx
 
 **Public-facing UFW exposure:** ports 22 (SSH), 51820 (WG), 8388 (Shadowsocks). All other public ingress is denied. wg1 listener on 51822 is also exposed (peer-to-peer).
 
@@ -117,7 +117,7 @@ All four are Ubuntu 22.04.5 LTS. Kernels: LA/NJ/FRA at 5.15.0-177, Hillsboro at 
 
 ---
 
-## NODE 2: NJ (10.8.0.5, `BHN-NEWJERSEY-US2`)
+## NODE 2: NJ (<BHN_WG_NJ_IP>, `BHN-NEWJERSEY-US2`)
 
 **Role:** Trading executor (Alpaca strategies). New home of Grafana as of 2026-05-28. Spare capacity for Metabase install (Track 3, deferred).
 
@@ -128,7 +128,7 @@ All four are Ubuntu 22.04.5 LTS. Kernels: LA/NJ/FRA at 5.15.0-177, Hillsboro at 
 **Listening ports:**
 - `0.0.0.0:2222` SSH (non-standard port)
 - `0.0.0.0:19999` Netdata (UFW mesh-only)
-- `10.8.0.5:3000` Grafana (UFW mesh-only)
+- `<BHN_WG_NJ_IP>:3000` Grafana (UFW mesh-only)
 - `127.0.0.1:4317` `otel-plugin` (OpenTelemetry gRPC collector — unknown purpose / not documented?)
 - `127.0.0.1:6060,8080` CrowdSec
 - `127.0.0.1:8125` Netdata StatsD
@@ -161,9 +161,9 @@ All four are Ubuntu 22.04.5 LTS. Kernels: LA/NJ/FRA at 5.15.0-177, Hillsboro at 
 
 ---
 
-## NODE 3: HILLSBORO (10.8.0.6, `BHN-HILLSBORO-US3`)
+## NODE 3: HILLSBORO (<BHN_WG_HIL_IP>, `BHN-HILLSBORO-US3`)
 
-**Role:** HTTP egress proxy (tinyproxy on `10.8.0.6:8888`), Tor relay (BHNHeliosUS3, in Docker), mesh spoke. Acts as LA's outbound HTTP funnel for the egress-lockdown initiative.
+**Role:** HTTP egress proxy (tinyproxy on `<BHN_WG_HIL_IP>:8888`), Tor relay (BHNHeliosUS3, in Docker), mesh spoke. Acts as LA's outbound HTTP funnel for the egress-lockdown initiative.
 
 **Hardware:** AMD EPYC-Rome, 2 vCPU, 1.9 GB RAM, 2 GB swap (added 2026-05-28; 2 MB used), 38 GB disk. swappiness=10. Load 0.27 / 0.11 / 0.04 — quiet box. Uptime 15 days.
 
@@ -174,12 +174,12 @@ All four are Ubuntu 22.04.5 LTS. Kernels: LA/NJ/FRA at 5.15.0-177, Hillsboro at 
 - `0.0.0.0:53` dnscrypt-proxy
 - `0.0.0.0:9001` Tor ORPort (docker-proxy)
 - `0.0.0.0:19999` Netdata (mesh-only)
-- `10.8.0.6:8888` tinyproxy (mesh-only — `Allow 10.8.0.0/24`)
-- `10.8.0.6:9050` Tor SOCKS (docker-proxy, mesh-only)
+- `<BHN_WG_HIL_IP>:8888` tinyproxy (mesh-only — `Allow 10.8.0.0/24`)
+- `<BHN_WG_HIL_IP>:9050` Tor SOCKS (docker-proxy, mesh-only)
 - `127.0.0.1:6060,8080` CrowdSec
 
 **Active services** (22 total). Notable:
-- `tinyproxy` — HTTP proxy (port 8888, listens on 10.8.0.6)
+- `tinyproxy` — HTTP proxy (port 8888, listens on <BHN_WG_HIL_IP>)
 - `docker` + `containerd` — Tor container running
 - `crowdsec` + `crowdsec-firewall-bouncer`, `dnscrypt-proxy`, `netdata`
 - `suricata` — **stopped + disabled** (intentional, 2026-05-28)
@@ -193,7 +193,7 @@ All four are Ubuntu 22.04.5 LTS. Kernels: LA/NJ/FRA at 5.15.0-177, Hillsboro at 
 
 **Tor relay:** `BHNHeliosUS3`. Runs in a Docker container (no `/etc/tor/torrc` on host). MyFamily previously listed `BHNFornaxEU1` (decommissioned today). Tor's directory consensus will mark Fornax down within ~24h; no urgent action.
 
-**UFW (21 rules):** in 22 (public), 51821/udp + 8388 from LA only, 22 from `10.9.0.0/24` (FRA mesh), 9001 (Tor public). Outbound restricted to DNS, NTP, 443, plus specific peer endpoints. Tinyproxy rule explicit: `10.8.0.6:8888 ALLOW IN 10.8.0.0/24`.
+**UFW (21 rules):** in 22 (public), 51821/udp + 8388 from LA only, 22 from `10.9.0.0/24` (FRA mesh), 9001 (Tor public). Outbound restricted to DNS, NTP, 443, plus specific peer endpoints. Tinyproxy rule explicit: `<BHN_WG_HIL_IP>:8888 ALLOW IN 10.8.0.0/24`.
 
 **WireGuard (`wg0`):**
 - Self pubkey: `EwBHwkT4iJXzhJZMvtlo70NOLx+wPv8IXmAGSa89zBg=`
@@ -204,7 +204,7 @@ All four are Ubuntu 22.04.5 LTS. Kernels: LA/NJ/FRA at 5.15.0-177, Hillsboro at 
 
 ---
 
-## NODE 4: FRANKFURT (10.9.0.2, `BHN-FRANKFURT-EU1`)
+## NODE 4: FRANKFURT (<BHN_WG_FRA_IP>, `BHN-FRANKFURT-EU1`)
 
 **Role:** EU-side spoke. SearXNG search aggregator, Redis cache, LibreSpeed bandwidth test, Shadowsocks server, SOCKS scrape-egress endpoint for the eBay scraper (operator runs `ssh -D 10808` from LA). Formerly hosted Tor relay BHNFornaxEU1 (decommissioned 2026-05-28).
 
@@ -215,7 +215,7 @@ All four are Ubuntu 22.04.5 LTS. Kernels: LA/NJ/FRA at 5.15.0-177, Hillsboro at 
 **Listening ports:**
 - `0.0.0.0:22, :2222` SSH (both ports open)
 - `0.0.0.0:8388` Shadowsocks
-- `10.9.0.2:8088, :8089` docker-proxy (SearXNG + LibreSpeed)
+- `<BHN_WG_FRA_IP>:8088, :8089` docker-proxy (SearXNG + LibreSpeed)
 - `0.0.0.0:19999` Netdata (mesh-only)
 - `127.0.0.1:6060,8080` CrowdSec
 - `127.0.0.53` systemd-resolved
@@ -254,7 +254,7 @@ All four are Ubuntu 22.04.5 LTS. Kernels: LA/NJ/FRA at 5.15.0-177, Hillsboro at 
 
 ## Pending Decisions (operator action required)
 
-1. **LA pg_hba.conf entry for NJ.** Grafana on NJ cannot query `eventhorizon` until LA's PG allows `10.8.0.5/32` as `grafana_reader`. Adding the line touches PG — operator's "do not touch" constraint requires explicit approval.
+1. **LA pg_hba.conf entry for NJ.** Grafana on NJ cannot query `eventhorizon` until LA's PG allows `<BHN_WG_NJ_IP>/32` as `grafana_reader`. Adding the line touches PG — operator's "do not touch" constraint requires explicit approval.
 2. **`EH-PG-grafana_reader` password for NJ env file.** Append to `/etc/bhn-trading/env` as `GF_DATABASE_GRAFANA_READER_PASSWORD=<value>`.
 3. **Suricata on LA / NJ / FRA — stop and disable?** Only Hillsboro had it removed. Decision pending whether the CrowdSec + fail2ban + WireGuard layers are sufficient.
 4. **Fail2ban missing on Hillsboro.** Add or accept?

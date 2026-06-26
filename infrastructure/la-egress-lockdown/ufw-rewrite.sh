@@ -2,7 +2,7 @@
 # BHN LA egress lockdown — UFW rewrite.
 #
 # Two modes, applied separately so the operator can verify between phases:
-#   add-proxy-route          (additive, no risk) — adds `allow out to 10.8.0.6 port 8888 proto tcp`
+#   add-proxy-route          (additive, no risk) — adds `allow out to <BHN_WG_HIL_IP> port 8888 proto tcp`
 #                            so LA can reach the tinyproxy endpoint.
 #   lockdown                 (destructive) — removes direct egress for 443/tcp, 587/tcp, 80/tcp.
 #                            DO NOT RUN until the proxy path is verified end-to-end (see README).
@@ -32,7 +32,7 @@ err()  { echo -e "${RED}[✗]${NC} $*" >&2; exit "${2:-1}"; }
 
 [[ $EUID -ne 0 ]] && err "Must run as root"
 
-HSB_TUNNEL_IP="10.8.0.6"
+HSB_TUNNEL_IP="<BHN_WG_HIL_IP>"
 PROXY_PORT="8888"
 
 # Idempotent rule helpers
@@ -129,7 +129,7 @@ case "${1:-status}" in
     cat <<USAGE
 Usage: $0 {add-proxy-route|lockdown|restore-direct-egress|status}
 
-  add-proxy-route        Add outbound 8888/tcp to 10.8.0.6 (Hillsboro tinyproxy). Additive, safe.
+  add-proxy-route        Add outbound 8888/tcp to <BHN_WG_HIL_IP> (Hillsboro tinyproxy). Additive, safe.
   lockdown               Remove direct 443/587/80 egress. Cuts non-proxied calls. Verifies
                          proxy reachability before applying. Adds WireGuard client forwarding rule.
   restore-direct-egress  Re-add direct 443/587/80 rules (rollback). Removes WireGuard forwarding rule.

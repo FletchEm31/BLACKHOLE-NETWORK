@@ -18,7 +18,7 @@ writes are forbidden without explicit operator handoff.
 - `infrastructure/docs/pokemonbhn/` (collectibles standard, set docs)
 - `infrastructure/services/redis/` and any HORIZON-memory-layer config
 - `scripts/operator-pc/` (clone/ingest scripts for collectibles)
-- LA hub (`10.8.0.1`) — Docker stack, PG schema, n8n DB inspection only
+- LA hub (`<BHN_WG_LA_IP>`) — Docker stack, PG schema, n8n DB inspection only
   (n8n UI changes are operator-only; CC1 flags and waits)
 
 ### CC2 owns
@@ -92,7 +92,7 @@ The operator is the only message bus between CC1 and CC2.
   on LA RAM pressure.)
 - Database writes from CC must use targeted `UPDATE … WHERE id = …` or
   schema migrations under `sql/migrations/`. No ad-hoc bulk updates.
-- SSH multiplexing: prefer one-shot `ssh root@10.8.0.1 '<cmd>'` over
+- SSH multiplexing: prefer one-shot `ssh root@<BHN_WG_LA_IP> '<cmd>'` over
   persistent sessions, so the other CC's SSH attempts are not blocked.
 
 ---

@@ -7,9 +7,9 @@ audit. If a peer or interface is added/removed, update this file.
 
 | Iface | Node | Self IP | Listen | Pubkey (truncated) | Purpose |
 |-------|------|---------|--------|--------------------|---------|
-| `wg0` | LA | 10.8.0.1 | UDP 51820 | `TOYnFt...` | **Primary mesh hub.** All BHN mesh members connect here. |
-| `wg0` | NJ | 10.8.0.5 | UDP 51820 | `ylnSJO...` | Mesh client. Single peer (LA). |
-| `wg0` | Hillsboro | 10.8.0.6 | UDP 51821 | `EwBHwk...` | Mesh spoke. Hosts tinyproxy egress for LA. |
+| `wg0` | LA | <BHN_WG_LA_IP> | UDP 51820 | `TOYnFt...` | **Primary mesh hub.** All BHN mesh members connect here. |
+| `wg0` | NJ | <BHN_WG_NJ_IP> | UDP 51820 | `ylnSJO...` | Mesh client. Single peer (LA). |
+| `wg0` | Hillsboro | <BHN_WG_HIL_IP> | UDP 51821 | `EwBHwk...` | Mesh spoke. Hosts tinyproxy egress for LA. |
 | `wg1` | LA | 10.10.0.1 | UDP 51822 | `V3RenH...` | **Dedicated point-to-point to Hillsboro on 10.10.0.0/30.** See note below. |
 
 Active subnets:
@@ -23,10 +23,10 @@ Retired:
 
 | From | To | Iface | AllowedIPs | PSK | Notes |
 |------|----|----|------------|-----|-------|
-| LA wg0 | NJ | wg0 | `10.8.0.5/32` | yes (PSK, rotated 2026-05-28) | Was PSK-less before 2026-05-28. PSK added to both sides via `wg syncconf`; backups at `wg0.conf.bak-2026-05-28` on both nodes. |
-| LA wg0 | Hillsboro | wg0 | `10.8.0.6/32, 10.8.0.0/24` | yes (PSK) | The catch-all `10.8.0.0/24` means Hillsboro answers for mesh broadcast paths. |
-| LA wg0 | Operator workstation 10.8.0.4 | wg0 | `10.8.0.4/32` | yes (PSK) | High-traffic peer (5.5 GB rx / 38 GB tx). |
-| LA wg0 | Operator workstation 10.8.0.2 | wg0 | `10.8.0.2/32` | yes (PSK) | Second operator endpoint (1.67 GB rx / 19.3 GB tx). |
+| LA wg0 | NJ | wg0 | `<BHN_WG_NJ_IP>/32` | yes (PSK, rotated 2026-05-28) | Was PSK-less before 2026-05-28. PSK added to both sides via `wg syncconf`; backups at `wg0.conf.bak-2026-05-28` on both nodes. |
+| LA wg0 | Hillsboro | wg0 | `<BHN_WG_HIL_IP>/32, 10.8.0.0/24` | yes (PSK) | The catch-all `10.8.0.0/24` means Hillsboro answers for mesh broadcast paths. |
+| LA wg0 | Operator workstation <BHN_WG_OPC_IP> | wg0 | `<BHN_WG_OPC_IP>/32` | yes (PSK) | High-traffic peer (5.5 GB rx / 38 GB tx). |
+| LA wg0 | Operator workstation <BHN_WG_PEER_IP> | wg0 | `<BHN_WG_PEER_IP>/32` | yes (PSK) | Second operator endpoint (1.67 GB rx / 19.3 GB tx). |
 | NJ wg0 | LA | wg0 | `10.8.0.0/24` | yes (PSK, rotated 2026-05-28) | Matching side of the LA↔NJ rotation. |
 | Hillsboro wg0 | LA | wg0 | `10.8.0.0/24` | yes (PSK) | Primary mesh return path. |
 | Hillsboro wg0 | LA wg1 (point-to-point) | wg0 | `10.10.0.0/30` | **none** | The 10.10.0.0/30 link. Returns keepalive every ~25s. |
@@ -56,7 +56,7 @@ Lifecycle is driven by `/etc/wireguard/bhn-wg1-hillsboro.sh` (repo copy:
 The script wires:
 1. `wg1` interface up with the Hillsboro peer.
 2. Routing table `200`: `default dev wg1`, `10.8.0.0/24 dev wg0`, `10.10.0.0/30 dev wg1`.
-3. `ip rule from {10.8.0.2, 10.8.0.4, 10.8.0.7, 10.8.0.8, 10.8.0.9, 10.10.0.0/30} lookup 200 priority 201`. Mesh peers (NJ `10.8.0.5`, Hillsboro `10.8.0.6`, LA itself `10.8.0.1`) are intentionally NOT in this list — they keep their existing egress.
+3. `ip rule from {<BHN_WG_PEER_IP>, <BHN_WG_OPC_IP>, <BHN_WG_PEER_IP>, <BHN_WG_PEER_IP>, <BHN_WG_PEER_IP>, 10.10.0.0/30} lookup 200 priority 201`. Mesh peers (NJ `<BHN_WG_NJ_IP>`, Hillsboro `<BHN_WG_HIL_IP>`, LA itself `<BHN_WG_LA_IP>`) are intentionally NOT in this list — they keep their existing egress.
 4. `iptables FORWARD wg0↔wg1 ACCEPT`, `OUTPUT wg1 ACCEPT`, `nat POSTROUTING -o wg1 MASQUERADE` (SNATs to `10.10.0.1` so Hillsboro's V3RenH `AllowedIPs = 10.10.0.0/30` matches), `mangle FORWARD -o wg1 TCPMSS --clamp-mss-to-pmtu`.
 
 On Hillsboro: the existing `iptables nat POSTROUTING -o eth0 MASQUERADE` SNATs again to `<BHN_HIL_PUBLIC_IP>`. UFW rule 12 (`Anywhere on eth0 ALLOW FWD Anywhere on wg0`) covers the forward path. UFW egress rule on Hillsboro now also allows UDP `51822` back to LA (needed for wg1 handshake replies).
@@ -89,10 +89,10 @@ For grep-ability when comparing audit dumps:
 
 | Owner | Pubkey |
 |-------|--------|
-| LA wg0 | `TOYnFt18v4NynEN91o6zkmV5hsvHBLJTb8qL7GG/KAo=` |
+| LA wg0 | `<BHN_WG_LA_PUBKEY>` |
 | NJ wg0 | `ylnSJOqwkqrNZwt/saJdqoMG7j3l35hoUk+zejru1Sk=` |
 | Hillsboro wg0 | `EwBHwkT4iJXzhJZMvtlo70NOLx+wPv8IXmAGSa89zBg=` |
 | ~~FRA wg1~~ | ~~`zkfJNbdL9Ptdxv+fxwV2e1q0mbCR5Z/9T80QanSxKA8=`~~ — retired 2026-05-28 |
 | LA wg1 (alt-egress to Hillsboro) | `V3RenHJ/3UQTD1gl3bfqWnAC/iaqXGvVCzogVlDH8GQ=` |
-| Operator workstation #1 (10.8.0.4) | `y+ekkxKZsCn9LERiQ3unZxn2zDjsS1yqbz12limv1kA=` |
-| Operator workstation #2 (10.8.0.2) | `N9Tg0dOEE7GQgE7lG1FgfI+pGSQoIo9+EmSUucnEAVA=` |
+| Operator workstation #1 (<BHN_WG_OPC_IP>) | `<BHN_WG_OPC_PUBKEY>` |
+| Operator workstation #2 (<BHN_WG_PEER_IP>) | `<BHN_WG_PHONE_PUBKEY>` |

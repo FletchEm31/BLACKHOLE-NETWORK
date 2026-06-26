@@ -14,7 +14,7 @@ period_start) DO NOTHING) make the safety poll idempotent.
 Deploy via /etc/cron.d/bhn-eia-poller with CRON_TZ at top.
 
 Config /root/.bhn-eia.env (mode 0600):
-  BHN_EIA_PG_DSN='postgresql://log_shipper:<PW>@10.8.0.1/eventhorizon'
+  BHN_EIA_PG_DSN='postgresql://log_shipper:<PW>@<BHN_WG_LA_IP>/eventhorizon'
   # API key from Proton Pass entry: BHN-EIA-APIKey
   # Sign up: https://www.eia.gov/opendata/register.php
   BHN_EIA_API_KEY='<your-key-or-empty>'

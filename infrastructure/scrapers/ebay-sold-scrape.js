@@ -5,7 +5,7 @@
 //
 // ╔══════════════════════════════════════════════════════════════════════════════╗
 // ║  DEPLOYMENT RULES — NON-NEGOTIABLE                                          ║
-// ║  • This scraper MUST only run on LA (10.8.0.1).                             ║
+// ║  • This scraper MUST only run on LA (<BHN_WG_LA_IP>).                             ║
 // ║  • NEVER run from the operator's home IP — eBay will associate the IP       ║
 // ║    with any personal account activity on that machine.                      ║
 // ║  • NEVER authenticate to eBay from LA. Guest-only sessions. No cookies,    ║
@@ -35,7 +35,7 @@ function assertRunningOnLA() {
     console.error(
       '\n╔══════════════════════════════════════════════════════════════════════════════╗\n' +
       '║  BLOCKED: BHN_RUN_ON_LA=1 is not set.                                      ║\n' +
-      '║  This scraper must only run on the LA server (10.8.0.1).                   ║\n' +
+      '║  This scraper must only run on the LA server (<BHN_WG_LA_IP>).                   ║\n' +
       '║  Running it from your home IP risks associating your personal IP with       ║\n' +
       '║  automated eBay scraping. Deploy to LA and set BHN_RUN_ON_LA=1 there.      ║\n' +
       '╚══════════════════════════════════════════════════════════════════════════════╝\n'

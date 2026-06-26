@@ -194,7 +194,7 @@ Script lives in repo at `scripts/bhn-failover-activate.sh`. Trigger: **operator 
 5. Public endpoints (optional, per node-type pattern):
    - Shadowsocks
    - dnscrypt-proxy
-   - n8n VPN-only access on 10.8.0.1 (Sweden takes over the same WG subnet)
+   - n8n VPN-only access on <BHN_WG_LA_IP> (Sweden takes over the same WG subnet)
 
 6. Notify operator:
    - ntfy push (works without LA if Sweden has internet)

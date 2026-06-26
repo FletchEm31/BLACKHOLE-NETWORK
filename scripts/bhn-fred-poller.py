@@ -17,7 +17,7 @@ Deploy via /etc/cron.d/bhn-fred-poller — the CRON_TZ directive at the
 top of the file is honored by Debian/Ubuntu cron (vixie cron 3.0pl1+).
 
 Config /root/.bhn-fred.env (mode 0600):
-  BHN_FRED_PG_DSN='postgresql://log_shipper:<PW>@10.8.0.1/eventhorizon'
+  BHN_FRED_PG_DSN='postgresql://log_shipper:<PW>@<BHN_WG_LA_IP>/eventhorizon'
   # API key from Proton Pass entry: BHN-FRED-APIKey
   # Sign up: https://fred.stlouisfed.org/docs/api/api_key.html
   BHN_FRED_API_KEY='<your-key-or-empty>'

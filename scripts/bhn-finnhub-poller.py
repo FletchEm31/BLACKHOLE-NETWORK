@@ -5,7 +5,7 @@ bhn-finnhub-poller — poll Finnhub for analyst recommendations + earnings.
 Cron (NJ, daily): 30 6 * * * root /usr/local/sbin/bhn-finnhub-poller.py
 
 Config /root/.bhn-finnhub.env (mode 0600):
-  BHN_FINNHUB_PG_DSN='postgresql://log_shipper:<PW>@10.8.0.1/eventhorizon'
+  BHN_FINNHUB_PG_DSN='postgresql://log_shipper:<PW>@<BHN_WG_LA_IP>/eventhorizon'
   # API key from Proton Pass entry: BHN-Finnhub-APIKey
   # Sign up: https://finnhub.io/register
   BHN_FINNHUB_API_KEY='<your-key-or-empty>'

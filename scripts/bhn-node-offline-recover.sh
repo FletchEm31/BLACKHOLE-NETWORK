@@ -13,8 +13,8 @@
 #   - POST to webhook in $BHN_RECOVER_WEBHOOK_URL (n8n receives, fires SMS)
 #
 # Reads PG DSN + webhook from /root/.bhn-node-offline-recover.env:
-#   BHN_RECOVER_PG_DSN='postgresql://ehuser:<PW>@10.8.0.1/eventhorizon'
-#   BHN_RECOVER_WEBHOOK_URL='http://10.8.0.1:5678/webhook/<TOKEN>/node-offline'
+#   BHN_RECOVER_PG_DSN='postgresql://ehuser:<PW>@<BHN_WG_LA_IP>/eventhorizon'
+#   BHN_RECOVER_WEBHOOK_URL='http://<BHN_WG_LA_IP>:5678/webhook/<TOKEN>/node-offline'
 #
 # Cron (LA): */5 * * * * root /usr/local/sbin/bhn-node-offline-recover.sh
 

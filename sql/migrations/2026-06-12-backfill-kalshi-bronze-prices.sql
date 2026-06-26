@@ -10,7 +10,7 @@
 -- are plain contract-count integers.  last_price is integer cents.
 --
 -- Deploy:
---   scp sql/migrations/2026-06-12-backfill-kalshi-bronze-prices.sql root@10.8.0.1:/tmp/
+--   scp sql/migrations/2026-06-12-backfill-kalshi-bronze-prices.sql root@<BHN_WG_LA_IP>:/tmp/
 --   sudo -u postgres psql -d eventhorizon -f /tmp/2026-06-12-backfill-kalshi-bronze-prices.sql
 
 BEGIN;

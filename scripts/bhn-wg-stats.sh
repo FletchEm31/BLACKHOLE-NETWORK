@@ -7,7 +7,7 @@
 # registry — keep them in sync when peers are added/removed).
 #
 # Reads PG DSN from /root/.bhn-wg-stats.env (mode 0600):
-#   BHN_WG_STATS_PG_DSN='postgresql://n8n_user:<PW>@10.8.0.1/eventhorizon'
+#   BHN_WG_STATS_PG_DSN='postgresql://n8n_user:<PW>@<BHN_WG_LA_IP>/eventhorizon'
 #
 # Cron: every 5 minutes. Missing 3 consecutive runs → Grafana "stats
 # pipeline stalled" alert (no-data on wg_peer_stats).
@@ -27,14 +27,14 @@ WG_IF=wg0
 # Map tunnel IP → human label. Update when a peer is added.
 label_for_ip() {
     case "$1" in
-        10.8.0.2) echo "Phone" ;;
-        10.8.0.4) echo "PC" ;;
-        10.8.0.5) echo "NJ" ;;
-        10.8.0.7) echo "Fletch-Laptop-Split" ;;
-        10.8.0.6) echo "Hillsboro" ;;
-        10.9.0.2) echo "Frankfurt" ;;
-        10.8.0.8) echo "Fletch-Laptop-Full" ;;
-        10.8.0.9) echo "Fletch-Laptop-Full2" ;;
+        <BHN_WG_PEER_IP>) echo "Phone" ;;
+        <BHN_WG_OPC_IP>) echo "PC" ;;
+        <BHN_WG_NJ_IP>) echo "NJ" ;;
+        <BHN_WG_PEER_IP>) echo "Fletch-Laptop-Split" ;;
+        <BHN_WG_HIL_IP>) echo "Hillsboro" ;;
+        <BHN_WG_FRA_IP>) echo "Frankfurt" ;;
+        <BHN_WG_PEER_IP>) echo "Fletch-Laptop-Full" ;;
+        <BHN_WG_PEER_IP>) echo "Fletch-Laptop-Full2" ;;
         *)        echo "Unknown-$1" ;;
     esac
 }

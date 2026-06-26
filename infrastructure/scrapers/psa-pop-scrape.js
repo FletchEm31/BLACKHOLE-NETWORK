@@ -17,7 +17,7 @@
 //   PGPASSWORD=... node psa-pop-scrape.js --sets "Base Set,Fossil"  # subset of catalog sets
 //   node psa-pop-scrape.js --heading 57801 --name "Base Set" --no-filter   # offline test, no DB
 //
-// Env: PGHOST(10.8.0.1) PGPORT(5432) PGDATABASE(eventhorizon) PGUSER(ehuser) PGPASSWORD PGSSLMODE
+// Env: PGHOST(<BHN_WG_LA_IP>) PGPORT(5432) PGDATABASE(eventhorizon) PGUSER(ehuser) PGPASSWORD PGSSLMODE
 //      PSA_HEADLESS=true  -> headless 'new' (less reliable vs Cloudflare than headful)
 
 const fs = require('fs');
@@ -202,7 +202,7 @@ async function scrapeSet(page, { setName, mapping, keep, categoryID }) {
 async function loadCatalogFromDb(setFilter) {
   const { Client } = require('pg');
   const PG = {
-    host: process.env.PGHOST || '10.8.0.1',
+    host: process.env.PGHOST || '<BHN_WG_LA_IP>',
     port: parseInt(process.env.PGPORT || '5432', 10),
     database: process.env.PGDATABASE || 'eventhorizon',
     user: process.env.PGUSER || 'ehuser',
