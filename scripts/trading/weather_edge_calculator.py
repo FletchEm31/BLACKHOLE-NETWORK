@@ -80,6 +80,8 @@ SIGMA_DEFAULTS: dict[str, float] = {
 }
 
 EDGE_THRESHOLD_BET = 0.05   # minimum edge to recommend a YES or NO bet
+MIP_MIN = 0.05              # skip contracts where market YES price < 5¢ (fringe tail)
+MIP_MAX = 0.95              # skip contracts where market YES price > 95¢ (fringe tail)
 MIN_BIAS_ROWS = 7           # need at least this many error pairs to use bias
 MIN_SIGMA_ROWS = 30         # need at least this many to use computed sigma
 KELLY_CAP = 0.25            # cap Kelly fraction at 25% of bankroll
@@ -123,11 +125,10 @@ def _bucket_prob(bucket_type: str,
     """
     if bucket_type == "between" and bucket_floor is not None and bucket_cap is not None:
         return max(0.0, _norm_cdf(bucket_cap, mu, sigma) - _norm_cdf(bucket_floor, mu, sigma))
-    elif bucket_type == "above" and bucket_floor is not None:
+    elif bucket_type in ("above", "threshold") and bucket_floor is not None:
         return max(0.0, 1.0 - _norm_cdf(bucket_floor, mu, sigma))
     elif bucket_type == "below" and bucket_cap is not None:
         return max(0.0, _norm_cdf(bucket_cap, mu, sigma))
-    # threshold / unknown — fallback to uniform over +/-3 sigma
     return 1.0 / 10.0
 
 
@@ -268,7 +269,7 @@ def _ensemble_bucket_prob(member_highs: list,
     total = len(member_highs)
     if bucket_type == "between" and bucket_floor is not None and bucket_cap is not None:
         count = sum(1 for h in member_highs if bucket_floor <= h < bucket_cap)
-    elif bucket_type == "above" and bucket_floor is not None:
+    elif bucket_type in ("above", "threshold") and bucket_floor is not None:
         count = sum(1 for h in member_highs if h >= bucket_floor)
     elif bucket_type == "below" and bucket_cap is not None:
         count = sum(1 for h in member_highs if h < bucket_cap)
@@ -339,7 +340,7 @@ def _bucket_prob_from_percentiles(bucket_type: str,
 
     if bucket_type == "between" and bucket_floor is not None and bucket_cap is not None:
         return max(0.0, _cdf(bucket_cap) - _cdf(bucket_floor))
-    elif bucket_type == "above" and bucket_floor is not None:
+    elif bucket_type in ("above", "threshold") and bucket_floor is not None:
         return max(0.0, 1.0 - _cdf(bucket_floor))
     elif bucket_type == "below" and bucket_cap is not None:
         return max(0.0, _cdf(bucket_cap))
@@ -722,7 +723,11 @@ def run_edge_calc(stations: Optional[list[str]] = None,
                     calibrated_prob = raw_prob  # passthrough until calibration exists
 
                     # Trading decision (edge_yes = calibrated_prob_YES - market_prob_YES)
-                    if edge_yes >= EDGE_THRESHOLD_BET:
+                    if mip < MIP_MIN or mip > MIP_MAX:
+                        action = "SKIP"
+                        kelly = 0.0
+                        skip_reason = f"mip={mip:.3f} outside [{MIP_MIN},{MIP_MAX}] fringe"
+                    elif edge_yes >= EDGE_THRESHOLD_BET:
                         action = "BET_YES"
                         kelly = _half_kelly(edge_yes, mip)
                         skip_reason = None
