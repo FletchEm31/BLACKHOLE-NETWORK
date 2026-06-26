@@ -218,10 +218,7 @@ SECTION 6 — KNOWN BUGS / OPEN ISSUES
 ==================================================================
 
 CRITICAL:
-  1. bhn-kalshi-portfolio.timer DEAD (since Jun 13)
-     Fix: sudo systemctl enable --now bhn-kalshi-portfolio.timer
-
-  2. NBM returning 0 rows
+  1. NBM returning 0 rows
      nws_high_prob_pct column stays NULL — fetch_nbm() failing
      Fix: debug fetch_nbm() in weather_data_collector.py
 
@@ -256,23 +253,21 @@ IMMEDIATE:
      This fixes the model's cold bias by grounding predictions in 30-year
      observed climatology rather than annual means
 
-  3. Fix bhn-kalshi-portfolio.timer (dead since Jun 13)
-
 HIGH PRIORITY:
-  4. Data pipeline gaps (in order of importance):
+  3. Data pipeline gaps (in order of importance):
      a. NWS gridpoints two-step API (/points → /gridpoints) — scaffolded,
         not collecting. Most important since Kalshi settles on NWS CLI.
      b. HRRR 3km short-range model — needs: pip install herbie-data
      c. ECMWF 51-member ensemble — needs: pip install ecmwf-opendata cfgrib eccodes
 
-  5. Fix NBM fetch (nws_high_prob_pct NULL)
-  6. Fix yes_bid/yes_ask NULL on new bronze rows
-  7. Fix negative timestamps on calibrated_probabilities
+  4. Fix NBM fetch (nws_high_prob_pct NULL)
+  5. Fix yes_bid/yes_ask NULL on new bronze rows
+  6. Fix negative timestamps on calibrated_probabilities
 
 MEDIUM:
-  8. Train calibration once actuals accumulate — replace sigma fallbacks
-  9. Add HORIZON SMS alerts for dead collectors
-  10. Add kalshi_positions + kalshi_fills Grafana/Metabase queries
+  7. Train calibration once actuals accumulate — replace sigma fallbacks
+  8. Add HORIZON SMS alerts for dead collectors
+  9. Add kalshi_positions + kalshi_fills Grafana/Metabase queries
 
 ==================================================================
 SECTION 8 — KEY FILE LOCATIONS
