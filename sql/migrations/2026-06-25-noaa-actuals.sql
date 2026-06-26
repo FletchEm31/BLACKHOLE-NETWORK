@@ -138,13 +138,11 @@ CREATE INDEX IF NOT EXISTS noaa_hourly_normals_icao_idx
 -- ============================================================
 
 GRANT SELECT ON weather_bronze_noaa_daily_actuals TO grafana_reader;
-GRANT SELECT ON weather_bronze_noaa_daily_actuals TO horizon_agent_reader;
 GRANT SELECT ON weather_bronze_noaa_daily_actuals TO agent_reader;
 GRANT SELECT, INSERT, UPDATE, DELETE ON weather_bronze_noaa_daily_actuals TO ehuser;
 GRANT USAGE, SELECT ON SEQUENCE weather_bronze_noaa_daily_actuals_id_seq TO ehuser;
 
 GRANT SELECT ON weather_bronze_noaa_hourly_normals TO grafana_reader;
-GRANT SELECT ON weather_bronze_noaa_hourly_normals TO horizon_agent_reader;
 GRANT SELECT ON weather_bronze_noaa_hourly_normals TO agent_reader;
 GRANT SELECT, INSERT, UPDATE, DELETE ON weather_bronze_noaa_hourly_normals TO ehuser;
 GRANT USAGE, SELECT ON SEQUENCE weather_bronze_noaa_hourly_normals_id_seq TO ehuser;
