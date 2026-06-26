@@ -663,18 +663,44 @@ def run_edge_calc(stations: Optional[list[str]] = None,
                 # Hourly-derived features (once per station/date, shared across all contracts)
                 hourly_features = _compute_hourly_features(conn, station_code, target_date) or {}
 
-                # Compute raw probabilities for all contracts
-                contract_probs: list[tuple[dict, float]] = []
+                # Compute blended probability for each contract.
+                # Two independent source families:
+                #   NWS: NBM percentile piecewise-CDF (preferred, non-parametric) or
+                #        Gaussian approximation from point forecast (fallback).
+                #   GFS: direct ensemble member counting from Open-Meteo.
+                # Equal weights between the two available families; swap for Brier-score
+                # weights once sufficient settlement history exists.
+                _nws_src = "nbm" if nbm_pcts else "gauss"
+                _gfs_src = f"{len(member_highs)}mbrs" if member_highs else "none"
+                logger.debug(
+                    f"{station_code} {target_date}: prob sources → nws={_nws_src} gfs={_gfs_src}"
+                )
+
+                contract_probs: list[tuple[dict, float, float, Optional[float], Optional[float]]] = []
                 for c in contracts:
                     bucket_type = c["bucket_type"] or "between"
                     bucket_floor = float(c["bucket_floor"]) if c["bucket_floor"] is not None else None
                     bucket_cap = float(c["bucket_cap"]) if c["bucket_cap"] is not None else None
-                    raw_prob = _bucket_prob(bucket_type, bucket_floor, bucket_cap, mu, sigma)
-                    contract_probs.append((c, raw_prob))
+
+                    nws_gauss_prob = _bucket_prob(bucket_type, bucket_floor, bucket_cap, mu, sigma)
+                    nbm_prob = (
+                        _bucket_prob_from_percentiles(bucket_type, bucket_floor, bucket_cap, nbm_pcts)
+                        if nbm_pcts else None
+                    )
+                    gfs_prob = (
+                        _ensemble_bucket_prob(member_highs, bucket_type, bucket_floor, bucket_cap)
+                        if member_highs else None
+                    )
+                    # NBM supersedes Gaussian when available — same NWS source, better representation
+                    nws_prob = nbm_prob if nbm_prob is not None else nws_gauss_prob
+                    source_probs = [p for p in [nws_prob, gfs_prob] if p is not None]
+                    raw_prob = sum(source_probs) / len(source_probs)
+
+                    contract_probs.append((c, raw_prob, nws_gauss_prob, nbm_prob, gfs_prob))
 
                 # Rank contracts by edge magnitude (need market prices first)
-                edges: list[tuple[dict, float, float, float]] = []
-                for c, raw_prob in contract_probs:
+                edges: list[tuple[dict, float, float, float, float, Optional[float], Optional[float]]] = []
+                for c, raw_prob, nws_gauss_prob, nbm_prob, gfs_prob in contract_probs:
                     market = _get_latest_market_snapshot(conn, c["market_ticker"])
                     if market is None:
                         continue
@@ -682,12 +708,13 @@ def run_edge_calc(stations: Optional[list[str]] = None,
                     if mip is None:
                         continue
                     edge_yes = raw_prob - mip  # YES-perspective; used for trading decision
-                    edges.append((c, raw_prob, mip, edge_yes))
+                    edges.append((c, raw_prob, mip, edge_yes, nws_gauss_prob, nbm_prob, gfs_prob))
 
                 # Sort by abs(edge) descending for ranking
                 edges.sort(key=lambda x: abs(x[3]), reverse=True)
 
-                for rank, (c, raw_prob, mip, edge_yes) in enumerate(edges, start=1):
+                for rank, (c, raw_prob, mip, edge_yes,
+                           nws_gauss_prob, nbm_prob, gfs_prob) in enumerate(edges, start=1):
                     market = _get_latest_market_snapshot(conn, c["market_ticker"])
                     if market is None:
                         continue
@@ -718,27 +745,20 @@ def run_edge_calc(stations: Optional[list[str]] = None,
 
                     bucket_floor = float(c["bucket_floor"]) if c["bucket_floor"] is not None else None
                     bucket_cap = float(c["bucket_cap"]) if c["bucket_cap"] is not None else None
-                    bucket_type_str = c.get("bucket_type") or "between"
                     vol = float(market.get("volume", 0) or 0)
                     liquidity = "liquid" if vol > 1000 else ("thin" if vol > 100 else "illiquid")
 
-                    gfs_high_prob_pct: Optional[float] = None
-                    if member_highs:
-                        gfs_high_prob_pct = _ensemble_bucket_prob(
-                            member_highs, bucket_type_str, bucket_floor, bucket_cap
-                        )
+                    # Source probabilities pre-computed in blend loop above
+                    nws_high_prob_pct = nbm_prob if nbm_prob is not None else nws_gauss_prob
+                    gfs_high_prob_pct = gfs_prob
 
-                    nws_high_prob_pct: Optional[float] = None
-                    if nbm_pcts:
-                        nws_high_prob_pct = _bucket_prob_from_percentiles(
-                            bucket_type_str, bucket_floor, bucket_cap, nbm_pcts
-                        )
-
+                    _nws_tag = f"nbm={nbm_prob:.3f}" if nbm_prob is not None else f"gauss={nws_gauss_prob:.3f}"
+                    _gfs_tag = f" gfs={gfs_prob:.3f}" if gfs_prob is not None else ""
                     log_msg = (
                         f"{station_code} {target_date} {c['bucket_label'] or c['market_ticker']}: "
-                        f"model={calibrated_prob:.3f} market={mip:.3f} "
-                        f"edge={stored_edge:+.3f} ({action}) "
-                        + (f"kelly={kelly:.3f} stake=${stake_usd:.2f}" if action != "SKIP" else "")
+                        f"blend={calibrated_prob:.3f} [{_nws_tag}{_gfs_tag}] "
+                        f"market={mip:.3f} edge={stored_edge:+.3f} ({action})"
+                        + (f" kelly={kelly:.3f} stake=${stake_usd:.2f}" if action != "SKIP" else "")
                     )
                     logger.info(log_msg)
 
