@@ -45,6 +45,46 @@ GRAFANA: http://10.8.0.5:3000 (NJ) — datasource UID: eventhorizon
 SECTION 2 — SESSION 2026-06-25/26 — WHAT WAS DONE
 ==================================================================
 
+--- POSTGRESQL BOOT RACE FIX (Jun 26) ---
+
+  PostgreSQL was failing to start at boot because the LUKS2 NVMe
+  (/mnt/eh-nvme-hot) mounts after systemd starts PG at boot time.
+  Fix: added systemd drop-in on LA:
+    /etc/systemd/system/postgresql@14-main.service.d/nvme-mount.conf
+    [Unit]
+    After=mnt-eh\x2dnvme\x2dhot.mount
+    Requires=mnt-eh\x2dnvme\x2dhot.mount
+  Permanent fix — survives reboots.
+
+--- NBM FETCH FIX (Jun 26) ---
+
+  fetch_nbm() was returning 0 rows because it queried
+  `probabilisticQuantileForecast.temperature` from NWS /gridpoints API
+  — this field does NOT exist in the NWS API.
+  Fix: switched to Open-Meteo GFS ensemble API (ensemble-api.open-meteo.com).
+  Requests 28-30 member forecasts, computes daily max per member,
+  derives P10/P25/P50/P75/P90 via linear interpolation.
+  Stored under nws_office='open_meteo_gfs'. 56 rows inserted on first run.
+  Commit: f43a00a
+
+--- KALSHI FIELD RENAME FIX (Jun 26) ---
+
+  Kalshi API v2 renamed all price/volume fields:
+    yes_bid → yes_bid_dollars (fractional 0-1 string)
+    yes_ask → yes_ask_dollars, no_bid → no_bid_dollars, no_ask → no_ask_dollars
+    volume_24h → volume_24h_fp (float string)
+    volume → volume_fp, open_interest → open_interest_fp
+  Fix: updated weather_data_collector.py to read new _dollars/_fp fields
+  with fallback to old names for backwards compat.
+  _cents_to_frac() already handles both formats (detects >1 = integer cents,
+  ≤1 = already fractional).
+  Commit: 415a2d3
+
+--- MATRIXBHN HTTPS (Jun 26) ---
+
+  Added HTTPS on port 8448 (self-signed cert, WireGuard-only).
+  See MATRIXBHN section below. Commit: 1b85776
+
 --- NOAA HISTORICAL DATA ---
 
 Loaded NOAA GHCND historical actuals + 1981-2010 hourly normals into
@@ -116,6 +156,14 @@ calibration — free, no rate limits, goes back to 1928.
     Media:     /mnt/eh-nvme-hot/matrix-synapse/media/
     Old /var/lib/matrix-synapse data wiped.
 
+  HTTPS ADDED (Jun 26):
+    Port 8008: HTTP  — desktop Element (no cert warning)
+    Port 8448: HTTPS — mobile Element (accept self-signed cert once)
+    Both ports bind to 10.8.0.1 ONLY (WireGuard interface)
+    TLS cert: /etc/matrix-synapse/tls.crt (4096-bit RSA, SAN=IP:10.8.0.1, expires 2036-06-23)
+    UFW: allow 8448 on wg0, deny 8448 on enp1s0
+    Commit: 1b85776
+
   Accounts:
     @superiorlefthand88:BHN-LOSANGELES-US1.local  (admin)
     @fletchem88:BHN-LOSANGELES-US1.local          (admin)
@@ -125,7 +173,8 @@ calibration — free, no rate limits, goes back to 1928.
     "Blackhole Network Matrix Chat" — public, open to all WG peers
 
   Client: Element — https://element.io/download
-    Homeserver URL: http://10.8.0.1:8008
+    Desktop homeserver URL:  http://10.8.0.1:8008  (no cert prompt)
+    Mobile homeserver URL:   https://10.8.0.1:8448 (accept self-signed once)
 
   Config in repo: infrastructure/services/matrix-synapse/
   Guest onboarding: infrastructure/docs/bhn-guest-wireguard-onboarding.md
@@ -206,30 +255,22 @@ RUNNING ✅:
   bhn-market-data.timer               4:30pm ET
   bhn-macro-data.timer                5:00pm ET
   bhn-weather-position-monitor.timer  every 60 sec (DRY_RUN=true)
-  bhn-weather-settlement-recon.timer  10 AM ET daily ← now calls refresh_contract_ledger
+  bhn-weather-settlement-recon.timer  10 AM ET daily ← calls refresh_contract_ledger
   bhn-vc-backfill.timer               1 AM UTC (500 days/run, KDEN+KMIA)
-
-CHECK/FIX:
-  bhn-kalshi-portfolio.timer → was dead as of Jun 13
-    Fix: sudo systemctl enable --now bhn-kalshi-portfolio.timer
+  bhn-kalshi-portfolio.timer          confirmed running (PID 1125 since Jun 26 03:34 UTC)
 
 ==================================================================
 SECTION 6 — KNOWN BUGS / OPEN ISSUES
 ==================================================================
 
-CRITICAL:
-  1. NBM returning 0 rows
-     nws_high_prob_pct column stays NULL — fetch_nbm() failing
-     Fix: debug fetch_nbm() in weather_data_collector.py
+RESOLVED THIS SESSION ✅:
+  1. NBM returning 0 rows — FIXED (Open-Meteo GFS ensemble, commit f43a00a)
+  2. yes_bid/yes_ask/volume/open_interest NULL — FIXED (Kalshi _dollars/_fp fields, commit 415a2d3)
+  3. Negative timestamps on calibrated_probabilities — DIAGNOSED: not a code bug,
+     transient artifact from PG downtime. Data is clean; no fix needed.
+  4. PG fails to start at boot — FIXED (systemd drop-in nvme-mount.conf, permanent)
 
-  3. yes_bid/yes_ask/volume/open_interest NULL in bronze Kalshi table
-     Fix: verify deployed code on LA matches repo (scp may not have run)
-
-  4. Negative timestamps on weather_gold_calibrated_probabilities
-     Timezone bug on insert — future timestamps being written
-     Fix: find insert logic and correct timezone handling
-
-NON-CRITICAL:
+NON-CRITICAL (open):
   5. gfs_high_prob_pct still NULL (ensemble member_highs_json not populating)
   6. NWS actuals only go back to ~Jun 11 for KDEN/KMIA (~134 days total)
      Will fill via VC backfill cron over next few weeks
@@ -259,10 +300,6 @@ HIGH PRIORITY:
         not collecting. Most important since Kalshi settles on NWS CLI.
      b. HRRR 3km short-range model — needs: pip install herbie-data
      c. ECMWF 51-member ensemble — needs: pip install ecmwf-opendata cfgrib eccodes
-
-  4. Fix NBM fetch (nws_high_prob_pct NULL)
-  5. Fix yes_bid/yes_ask NULL on new bronze rows
-  6. Fix negative timestamps on calibrated_probabilities
 
 MEDIUM:
   7. Train calibration once actuals accumulate — replace sigma fallbacks
