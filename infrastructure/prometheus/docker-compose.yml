@@ -89,7 +89,10 @@ services:
     cap_add:
       - NET_ADMIN
     command:
-      - '-v'
+      - '--verbose'
+      - 'false'
+      - '--interfaces'
+      - 'wg0 wg1'
 
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:latest
