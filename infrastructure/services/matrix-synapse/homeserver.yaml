@@ -25,10 +25,10 @@ listeners:
 database:
   name: sqlite3
   args:
-    database: /var/lib/matrix-synapse/homeserver.db
+    database: /mnt/eh-nvme-hot/matrix-synapse/homeserver.db
 
 log_config: "/etc/matrix-synapse/log.yaml"
-media_store_path: /var/lib/matrix-synapse/media
+media_store_path: /mnt/eh-nvme-hot/matrix-synapse/media
 signing_key_path: "/etc/matrix-synapse/homeserver.signing.key"
 
 # Federation completely disabled
