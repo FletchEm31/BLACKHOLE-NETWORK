@@ -56,6 +56,7 @@ Artifact IDs:
   pg-eventhorizon      pg_dump -Fc | zstd  ->  out_path  (.dump.zst)
   n8n-workflows        n8n export:workflow -> tar.zst ->  out_path  (.tar.zst)
   bhn-repo-snapshot    git bundle --all    ->  out_path  (.bundle)
+  matrix-synapse       tar zstd of homeserver.db + media/ -> out_path (.tar.zst)
 
 Environment overrides:
   BHN_PG_DB              (default: eventhorizon)
@@ -133,6 +134,21 @@ case "$ARTIFACT" in
     echo "[bhn-backup-produce] producing bhn-repo-snapshot ($BHN_REPO_PATH) -> $OUT" >&2
     git -C "$BHN_REPO_PATH" bundle create "$OUT" --all >&2 \
       || err "git bundle failed" 1
+    ;;
+
+  matrix-synapse)
+    need tar
+    need zstd
+    MATRIX_DB="/mnt/eh-nvme-hot/matrix-synapse/homeserver.db"
+    MATRIX_MEDIA="/mnt/eh-nvme-hot/matrix-synapse/media"
+    [ -f "$MATRIX_DB" ]    || err "matrix-synapse DB not found: $MATRIX_DB" 6
+    [ -d "$MATRIX_MEDIA" ] || err "matrix-synapse media dir not found: $MATRIX_MEDIA" 6
+    echo "[bhn-backup-produce] producing matrix-synapse (db + media) -> $OUT" >&2
+    tar -C /mnt/eh-nvme-hot/matrix-synapse \
+        --exclude='./media/url_cache' \
+        -cf - homeserver.db media \
+      | zstd -T0 -19 -q > "$OUT" \
+      || err "tar | zstd failed for matrix-synapse" 1
     ;;
 
   *)

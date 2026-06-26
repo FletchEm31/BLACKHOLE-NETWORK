@@ -143,6 +143,11 @@ $SERVER_ARTIFACTS = @(
         Id       = 'pg-eventhorizon'
         Dest     = 'BLACKHOLE NETWORK-BACKUP'
         FileName = "eventhorizon-$TS.dump.zst"
+    },
+    @{
+        Id       = 'matrix-synapse'
+        Dest     = 'MatrixBHN\MATRIX-BACKUP'
+        FileName = "matrix-synapse-$TS.tar.zst"
     }
     # 'bhn-repo-snapshot' -- enable once /opt/bhn-repo is set up on LA as a server-side mirror clone
 )
