@@ -1008,26 +1008,32 @@ def fetch_kalshi_markets(dry_run: bool = False) -> int:
                       or (book or {}).get("orderbook") or {})
                 yes_side = ob.get("yes_dollars") or ob.get("yes") or []
                 no_side  = ob.get("no_dollars")  or ob.get("no")  or []
+                ob_yes_bid: Optional[float] = None
                 ob_yes_ask: Optional[float] = None
+                ob_no_bid:  Optional[float] = None
                 ob_no_ask:  Optional[float] = None
-                if yes_side and isinstance(yes_side[0], (list, tuple)):
-                    raw = float(yes_side[0][0])
-                    ob_yes_ask = raw if raw <= 1.0 else raw / 100.0
-                    yes_price = ob_yes_ask
-                if no_side and isinstance(no_side[0], (list, tuple)):
-                    raw = float(no_side[0][0])
-                    ob_no_ask = raw if raw <= 1.0 else raw / 100.0
-                    no_price = ob_no_ask
+                # yes_dollars = yes bids (buyers); best yes_bid = highest = last entry
+                # no_dollars  = no bids (buyers);  best no_bid  = highest = last entry
+                # yes_ask = 1 - best_no_bid;  no_ask = 1 - best_yes_bid
+                if yes_side and isinstance(yes_side[-1], (list, tuple)):
+                    raw = float(yes_side[-1][0])
+                    ob_yes_bid = raw if raw <= 1.0 else raw / 100.0
+                    ob_yes_ask = round(1.0 - float(no_side[-1][0]), 4) if no_side else None
+                    yes_price = round((ob_yes_bid + ob_yes_ask) / 2.0, 4) if ob_yes_ask else ob_yes_bid
+                if no_side and isinstance(no_side[-1], (list, tuple)):
+                    raw = float(no_side[-1][0])
+                    ob_no_bid = raw if raw <= 1.0 else raw / 100.0
+                    ob_no_ask = round(1.0 - float(yes_side[-1][0]), 4) if yes_side else None
+                    no_price = round((ob_no_bid + ob_no_ask) / 2.0, 4) if ob_no_ask else ob_no_bid
                 # Populate bid/ask from orderbook when market snapshot lacks them
                 if yes_ask_val is None and ob_yes_ask is not None:
                     yes_ask_val = ob_yes_ask
+                if yes_bid_val is None and ob_yes_bid is not None:
+                    yes_bid_val = ob_yes_bid
                 if no_ask_val is None and ob_no_ask is not None:
                     no_ask_val = ob_no_ask
-                # yes_bid ≈ 1 - best_no_ask (complementary side)
-                if yes_bid_val is None and ob_no_ask is not None:
-                    yes_bid_val = round(1.0 - ob_no_ask, 4)
-                if no_bid_val is None and ob_yes_ask is not None:
-                    no_bid_val = round(1.0 - ob_yes_ask, 4)
+                if no_bid_val is None and ob_no_bid is not None:
+                    no_bid_val = ob_no_bid
             except Exception as e:
                 logger.debug(f"kalshi_markets: orderbook fetch failed for {ticker}: {e}")
 
@@ -1876,94 +1882,96 @@ def _insert_bronze_nbm_snapshot(*, station_code: str, city: str, nws_office: str
 
 
 def fetch_nbm(dry_run: bool = False) -> int:
-    """Fetch NWS NBM (National Blend of Models) probabilistic temperature percentiles.
+    """Fetch NBM-equivalent probabilistic temperature percentiles via Open-Meteo ensemble.
 
-    Queries the NWS raw gridpoints endpoint for probabilisticQuantileForecast.temperature.
-    Takes daily max of hourly P10/P25/P50/P75/P90 values for each target date.
-    Converts from degC to °F. Stores in weather_bronze_nbm_snapshots.
-
-    Falls back gracefully (logs debug, returns 0) if the NWS office does not
-    provide probabilistic quantile data in the gridpoints response — not all
-    WFOs include this field.
+    The NWS /gridpoints API does not expose probabilisticQuantileForecast.temperature
+    (the field the original implementation looked for does not exist in the NWS API).
+    This implementation uses the Open-Meteo GFS ensemble (28+ members) to derive
+    P10/P25/P50/P75/P90 daily high-temperature percentiles and stores them in
+    weather_bronze_nbm_snapshots under nws_office='open_meteo_gfs'.
     """
+    ENSEMBLE_URL = "https://ensemble-api.open-meteo.com/v1/ensemble"
+    TIMEZONE_MAP = {
+        "KNYC": "America/New_York", "KORD": "America/Chicago",
+        "KMIA": "America/New_York", "KAUS": "America/Chicago",
+        "KPHX": "America/Phoenix",  "KDEN": "America/Denver",
+        "KLAX": "America/Los_Angeles", "KDFW": "America/Chicago",
+    }
+
     n = 0
     run_time = datetime.now(timezone.utc)
     today = run_time.date()
-    target_set = {today + timedelta(days=i) for i in range(3)}
-
-    # Percentile keys to look for in NWS response (various formats)
-    PCT_MAP = {"10": "10", "25": "25", "50": "50", "75": "75", "90": "90",
-               "0.1": "10", "0.25": "25", "0.5": "50", "0.75": "75", "0.9": "90"}
+    target_set = {today + timedelta(days=i) for i in range(7)}
 
     for city in CITIES:
-        gridpoint = _discover_nws_gridpoint(city)
-        if not gridpoint:
-            continue
-        _, office, grid_x, grid_y = gridpoint
-
-        raw_url = f"{NWS_API_BASE}/gridpoints/{office}/{grid_x},{grid_y}"
-        raw_data = _http_get_json(raw_url, timeout=30)
-        if not raw_data:
-            logger.warning(f"nbm {city.icao}: raw gridpoints fetch failed")
-            continue
-
-        props = raw_data.get("properties") or {}
-        pqf = props.get("probabilisticQuantileForecast") or {}
-        temp_data = pqf.get("temperature") or {}
-        values = temp_data.get("values") or []
-
-        if not values:
-            logger.debug(f"nbm {city.icao}: no probabilisticQuantileForecast.temperature — skipping")
+        tz = TIMEZONE_MAP.get(city.icao, "UTC")
+        params = {
+            "latitude": city.lat, "longitude": city.lon, "timezone": tz,
+            "models": "gfs_seamless",
+            "hourly": "temperature_2m",
+            "temperature_unit": "fahrenheit",
+            "forecast_days": 7,
+        }
+        data = _http_get_json(ENSEMBLE_URL, params=params, timeout=60)
+        if not data:
+            logger.warning(f"nbm {city.icao}: Open-Meteo ensemble fetch failed")
             continue
 
-        # Group hourly P{N} values by date; take daily max of each percentile
+        hourly = data.get("hourly") or {}
+        times = hourly.get("time") or []
+        member_keys = sorted(k for k in hourly if k.startswith("temperature_2m_member"))
+        if not member_keys:
+            logger.warning(f"nbm {city.icao}: no member columns in ensemble response")
+            continue
+
+        # Compute daily max per member, grouped by target date
         by_date: dict = {}
-        for item in values:
-            vt = item.get("validTime", "")
-            val = item.get("value")
-            if not val or not vt:
-                continue
-            dt_str = vt.split("/")[0]
+        for i, t_str in enumerate(times):
+            d_str = t_str[:10]
             try:
-                d = datetime.fromisoformat(dt_str).date()
+                d = date.fromisoformat(d_str)
             except ValueError:
                 continue
             if d not in target_set:
                 continue
-            entry = by_date.setdefault(d, {})
-            for raw_key, temp_c in val.items():
-                if temp_c is None:
-                    continue
-                pct_key = PCT_MAP.get(str(raw_key).strip("%"))
-                if pct_key is None:
-                    continue
-                temp_f = float(temp_c) * 9.0 / 5.0 + 32.0
-                entry.setdefault(pct_key, []).append(temp_f)
+            day_data = by_date.setdefault(d, {mk: [] for mk in member_keys})
+            for mk in member_keys:
+                vals = hourly.get(mk) or []
+                if i < len(vals) and vals[i] is not None:
+                    day_data[mk].append(float(vals[i]))
 
-        for d, pct_data in by_date.items():
-            if not pct_data.get("50"):
-                continue  # need at least P50
-            p10 = round(max(pct_data["10"]), 2) if pct_data.get("10") else None
-            p25 = round(max(pct_data["25"]), 2) if pct_data.get("25") else None
-            p50 = round(max(pct_data["50"]), 2)
-            p75 = round(max(pct_data["75"]), 2) if pct_data.get("75") else None
-            p90 = round(max(pct_data["90"]), 2) if pct_data.get("90") else None
-            n_members = len(pct_data.get("50", []))
+        for d, member_data in sorted(by_date.items()):
+            member_highs = sorted(
+                max(temps) for temps in member_data.values() if temps
+            )
+            if len(member_highs) < 5:
+                continue
+
+            def _pct(q: float, highs: list = member_highs) -> float:
+                idx = q * (len(highs) - 1)
+                lo = int(idx)
+                hi = min(lo + 1, len(highs) - 1)
+                return round(highs[lo] + (idx - lo) * (highs[hi] - highs[lo]), 2)
+
+            p10, p25, p50, p75, p90 = _pct(0.10), _pct(0.25), _pct(0.50), _pct(0.75), _pct(0.90)
 
             if dry_run:
                 logger.info(
                     f"nbm dry-run {city.icao}/{d}: "
-                    f"P10={p10} P25={p25} P50={p50} P75={p75} P90={p90}"
+                    f"P10={p10} P25={p25} P50={p50} P75={p75} P90={p90} "
+                    f"({len(member_highs)} members)"
                 )
                 n += 1
                 continue
 
             try:
                 _insert_bronze_nbm_snapshot(
-                    station_code=city.icao, city=city.name, nws_office=office,
+                    station_code=city.icao, city=city.name,
+                    nws_office="open_meteo_gfs",
                     forecast_run_time=run_time, target_date=d,
                     p10_tmax_f=p10, p25_tmax_f=p25, p50_tmax_f=p50,
-                    p75_tmax_f=p75, p90_tmax_f=p90, member_count=n_members,
+                    p75_tmax_f=p75, p90_tmax_f=p90,
+                    member_count=len(member_highs),
                 )
                 n += 1
             except Exception as e:
