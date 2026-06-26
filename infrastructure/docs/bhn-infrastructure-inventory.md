@@ -11,6 +11,29 @@ Refresh periodically as live state evolves.
 
 ---
 
+## Updates — 2026-06-26: MatrixBHN Internal Chat
+
+Matrix Synapse homeserver — WireGuard-mesh-only, federation disabled.  
+See full detail: `infrastructure/services/matrix-synapse/README.md`  
+Guest onboarding + split-tunnel WireGuard guide: `infrastructure/docs/bhn-guest-wireguard-onboarding.md`
+
+| Field | Value |
+|-------|-------|
+| Service name | **MatrixBHN** |
+| Node | LA (`10.8.0.1`) |
+| Address:Port | `10.8.0.1:8008` (HTTP, WireGuard only) |
+| DNS alias | `chat.bhn.local` → `10.8.0.1` (AdGuard rewrite) |
+| Client | Element — https://element.io/download |
+| Federation | Disabled |
+| Registration | Disabled (admin-created accounts only) |
+| Config | `/etc/matrix-synapse/homeserver.yaml` |
+| Secrets | Proton Pass → `BHN-Matrix-Synapse-LA` |
+
+Guest peers (`10.8.0.10+`) use split-tunnel WireGuard: DNS through AdGuard,
+all other traffic (streaming, browsing) via their own ISP.
+
+---
+
 ## Updates — 2026-06-25: Node Inventory & Management System
 
 See full detail: `infrastructure/docs/bhn-node-inventory-system.md`
