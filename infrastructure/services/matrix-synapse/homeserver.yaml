@@ -1,0 +1,39 @@
+# BHN Matrix Synapse — LA hub (10.8.0.1)
+# WireGuard-only, federation disabled, internal use only.
+# server_name is set in /etc/matrix-synapse/conf.d/server_name.yaml
+
+pid_file: "/var/run/matrix-synapse.pid"
+
+# Secrets stored in Proton Pass — do not commit real values
+# macaroon_secret_key: see Proton Pass → BHN-Matrix-Synapse-LA
+# registration_shared_secret: see Proton Pass → BHN-Matrix-Synapse-LA
+macaroon_secret_key: "REDACTED"
+registration_shared_secret: "REDACTED"
+
+# Bind to WireGuard interface only — never 0.0.0.0
+listeners:
+  - port: 8008
+    bind_addresses:
+      - "10.8.0.1"
+    type: http
+    tls: false
+    x_forwarded: false
+    resources:
+      - names: [client]
+        compress: false
+
+database:
+  name: sqlite3
+  args:
+    database: /var/lib/matrix-synapse/homeserver.db
+
+log_config: "/etc/matrix-synapse/log.yaml"
+media_store_path: /var/lib/matrix-synapse/media
+signing_key_path: "/etc/matrix-synapse/homeserver.signing.key"
+
+# Federation completely disabled
+federation_domain_whitelist: []
+trusted_key_servers: []
+suppress_key_server_warning: true
+
+enable_registration: false
