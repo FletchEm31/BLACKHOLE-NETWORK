@@ -3,8 +3,8 @@
 **Protocol:** Matrix (Synapse homeserver)  
 **Client:** Element (iOS / Android / Desktop / Web)  
 **Status:** Live on LA hub  
-**Access:** WireGuard mesh only — `http://10.8.0.1:8008`  
-**DNS alias:** `http://chat.bhn.local:8008` (resolves via AdGuard on 10.8.0.1)
+**Access:** WireGuard mesh only — HTTP `10.8.0.1:8008` / HTTPS `10.8.0.1:8448`  
+**DNS alias:** `chat.bhn.local` → `10.8.0.1` (AdGuard rewrite)
 
 ---
 
@@ -12,23 +12,38 @@
 
 | Field | Value |
 |-------|-------|
-| Homeserver URL | `http://10.8.0.1:8008` |
+| Homeserver URL (HTTPS) | `https://10.8.0.1:8448` (recommended — mobile Element) |
+| Homeserver URL (HTTP) | `http://10.8.0.1:8008` (desktop Element, no cert warning) |
 | Server name | `BHN-LOSANGELES-US1.local` |
-| Port | 8008 (HTTP, no TLS — mesh-internal only) |
+| TLS cert | Self-signed, SAN=IP:10.8.0.1, expires 2036-06-23 |
 | Federation | **Disabled** — no external Matrix servers |
 | Registration | **Disabled** — accounts created by admin only |
 
-**WireGuard must be active** before connecting. The homeserver binds to
-`10.8.0.1` only and is not reachable from the public internet.
+**WireGuard must be active** before connecting. Both ports bind to `10.8.0.1`
+only and are unreachable from the public internet.
+
+### TLS cert trust (one-time, per device)
+
+Element mobile will show a certificate warning on first connect — tap
+**Proceed anyway** / **Trust**. The cert is self-signed for `10.8.0.1`
+and stays valid until 2036. Desktop Element on HTTP 8008 avoids this entirely.
 
 ---
 
 ## Element client setup
 
+**Desktop (HTTP — no cert prompt):**
 1. Download Element: https://element.io/download
-2. Open Element → **Sign in** → tap **Edit** next to the homeserver URL
+2. Open Element → **Sign in** → **Edit** homeserver URL
 3. Enter: `http://10.8.0.1:8008`
 4. Sign in with your BHN credentials
+
+**Mobile (HTTPS — accept self-signed cert):**
+1. Install Element mobile (iOS / Android)
+2. Sign in → **Edit** homeserver URL
+3. Enter: `https://10.8.0.1:8448`
+4. Accept the self-signed certificate warning
+5. Sign in with your BHN credentials
 
 ---
 
@@ -74,7 +89,9 @@ the guest's own ISP directly.
 |------|----------|
 | Main config (secrets redacted) | `infrastructure/services/matrix-synapse/homeserver.yaml` |
 | Live config | `/etc/matrix-synapse/homeserver.yaml` on LA |
-| Database | `/var/lib/matrix-synapse/homeserver.db` (SQLite) |
+| Database | `/mnt/eh-nvme-hot/matrix-synapse/homeserver.db` (SQLite, LUKS2 encrypted) |
+| TLS cert | `/etc/matrix-synapse/tls.crt` |
+| TLS key | `/etc/matrix-synapse/tls.key` |
 | Signing key | `/etc/matrix-synapse/homeserver.signing.key` |
 | Logs | `journalctl -u matrix-synapse -f` |
 
@@ -95,9 +112,11 @@ sqlite3 /var/lib/matrix-synapse/homeserver.db \
 ## UFW rules
 
 ```bash
-# 8008 denied on public interface (already applied)
-ufw deny in on enp1s0 to any port 8008
+# HTTP 8008 — WireGuard mesh only
+ufw allow in on wg0 to any port 8008 proto tcp
+ufw deny in on enp1s0 to any port 8008 proto tcp
 
-# 8008 allowed on WireGuard mesh
-ufw allow in on wg0 to any port 8008
+# HTTPS 8448 — WireGuard mesh only
+ufw allow in on wg0 to any port 8448 proto tcp
+ufw deny in on enp1s0 to any port 8448 proto tcp
 ```

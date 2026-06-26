@@ -22,6 +22,22 @@ listeners:
       - names: [client]
         compress: false
 
+  - port: 8448
+    bind_addresses:
+      - "10.8.0.1"
+    type: http
+    tls: true
+    resources:
+      - names: [client]
+        compress: false
+
+# TLS cert generated: openssl req -newkey rsa:4096 -x509 -sha256 -days 3650 -nodes
+#   -out /etc/matrix-synapse/tls.crt -keyout /etc/matrix-synapse/tls.key
+#   -subj '/CN=10.8.0.1' -addext 'subjectAltName=IP:10.8.0.1'
+# Cert on LA: /etc/matrix-synapse/tls.crt  (expires 2036-06-23, SAN=IP:10.8.0.1)
+tls_certificate_path: "/etc/matrix-synapse/tls.crt"
+tls_private_key_path: "/etc/matrix-synapse/tls.key"
+
 database:
   name: sqlite3
   args:
