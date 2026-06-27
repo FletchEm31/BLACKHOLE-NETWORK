@@ -60,6 +60,7 @@ def _prime_env() -> None:
 _prime_env()
 
 import trading_core as tc  # noqa: E402
+from fee_calculator import maker_fee  # A3: Kalshi July-2025 formula (replaces flat FEE_BUFFER)
 
 logger = logging.getLogger("strat9_edge_calculator")
 if not logger.handlers:
@@ -381,6 +382,27 @@ def _get_latest_market_snapshot(conn, market_ticker: str) -> Optional[dict]:
             return None
         cols = [d[0] for d in cur.description]
         return dict(zip(cols, row))
+
+
+def _get_orderbook_asks(conn, market_ticker: str) -> Optional[dict]:
+    """Read yes_ask and no_ask directly from the bronze orderbook snapshot.
+
+    A1 Part 2: always read no_ask from the real orderbook; never derive as (1 - yes_ask).
+    """
+    with conn.cursor() as cur:
+        cur.execute("""
+            SELECT yes_ask, no_ask
+            FROM weather_bronze_kalshi_market_snapshots
+            WHERE market_ticker = %s
+              AND yes_ask IS NOT NULL
+              AND no_ask  IS NOT NULL
+            ORDER BY retrieved_at DESC
+            LIMIT 1
+        """, (market_ticker,))
+        row = cur.fetchone()
+        if not row:
+            return None
+        return {"yes_ask": float(row[0]), "no_ask": float(row[1])}
 
 
 def _get_bankroll() -> float:
@@ -722,29 +744,44 @@ def run_edge_calc(stations: Optional[list[str]] = None,
 
                     calibrated_prob = raw_prob  # passthrough until calibration exists
 
-                    # Trading decision (edge_yes = calibrated_prob_YES - market_prob_YES)
+                    # A1 Part 2 + A3: fetch real ask prices from orderbook
+                    # no_ask is NEVER derived as (1 - yes_ask) — that gives the wrong price
+                    asks    = _get_orderbook_asks(conn, c["market_ticker"])
+                    yes_ask = float(asks["yes_ask"]) if asks else mip
+                    no_ask  = float(asks["no_ask"])  if asks else None
+
+                    # A1 Part 1 + A3: fee-adjusted edge per side using real ask prices
+                    yes_fee      = maker_fee(yes_ask)
+                    adj_edge_yes = calibrated_prob       - yes_ask - yes_fee
+                    if no_ask is not None:
+                        no_fee      = maker_fee(no_ask)
+                        adj_edge_no = (1 - calibrated_prob) - no_ask - no_fee
+                    else:
+                        adj_edge_no = -1.0  # no real no_ask available — cannot evaluate NO side
+
+                    # Trading decision using fee-adjusted, side-specific edges
                     if mip < MIP_MIN or mip > MIP_MAX:
                         action = "SKIP"
                         kelly = 0.0
                         skip_reason = f"mip={mip:.3f} outside [{MIP_MIN},{MIP_MAX}] fringe"
-                    elif edge_yes >= EDGE_THRESHOLD_BET:
+                    elif adj_edge_yes >= EDGE_THRESHOLD_BET:
                         action = "BET_YES"
-                        kelly = _half_kelly(edge_yes, mip)
+                        kelly = _half_kelly(adj_edge_yes, yes_ask)
                         skip_reason = None
-                    elif edge_yes <= -EDGE_THRESHOLD_BET:
+                    elif adj_edge_no >= EDGE_THRESHOLD_BET:
                         action = "BET_NO"
-                        no_prob = 1.0 - calibrated_prob
-                        no_market = 1.0 - mip
-                        kelly = _half_kelly(no_prob - no_market, no_market)
+                        kelly = _half_kelly(adj_edge_no, no_ask)
                         skip_reason = None
                     else:
                         action = "SKIP"
                         kelly = 0.0
-                        skip_reason = f"edge={edge_yes:.3f} below threshold±{EDGE_THRESHOLD_BET}"
+                        skip_reason = (
+                            f"adj_yes={adj_edge_yes:.3f} adj_no={adj_edge_no:.3f} "
+                            f"both below threshold {EDGE_THRESHOLD_BET}"
+                        )
 
-                    # Side-aware edge for storage: always positive = BHN advantage in recommended direction
-                    # BET_NO edge = (1 - calibrated_prob) - (1 - mip) = mip - calibrated_prob
-                    stored_edge = (mip - raw_prob) if action == "BET_NO" else edge_yes
+                    # Stored edge: always positive = BHN advantage in the recommended direction
+                    stored_edge = adj_edge_no if action == "BET_NO" else adj_edge_yes
 
                     stake_usd = kelly * bankroll
 
@@ -757,12 +794,15 @@ def run_edge_calc(stations: Optional[list[str]] = None,
                     nws_high_prob_pct = nbm_prob if nbm_prob is not None else nws_gauss_prob
                     gfs_high_prob_pct = gfs_prob
 
-                    _nws_tag = f"nbm={nbm_prob:.3f}" if nbm_prob is not None else f"gauss={nws_gauss_prob:.3f}"
-                    _gfs_tag = f" gfs={gfs_prob:.3f}" if gfs_prob is not None else ""
+                    _nws_tag  = f"nbm={nbm_prob:.3f}" if nbm_prob is not None else f"gauss={nws_gauss_prob:.3f}"
+                    _gfs_tag  = f" gfs={gfs_prob:.3f}" if gfs_prob is not None else ""
+                    _ask_tag  = f"yes_ask={yes_ask:.2f}"
+                    if no_ask is not None:
+                        _ask_tag += f" no_ask={no_ask:.2f}"
                     log_msg = (
                         f"{station_code} {target_date} {c['bucket_label'] or c['market_ticker']}: "
                         f"blend={calibrated_prob:.3f} [{_nws_tag}{_gfs_tag}] "
-                        f"market={mip:.3f} edge={stored_edge:+.3f} ({action})"
+                        f"mid={mip:.3f} [{_ask_tag}] edge={stored_edge:+.3f} ({action})"
                         + (f" kelly={kelly:.3f} stake=${stake_usd:.2f}" if action != "SKIP" else "")
                     )
                     logger.info(log_msg)
