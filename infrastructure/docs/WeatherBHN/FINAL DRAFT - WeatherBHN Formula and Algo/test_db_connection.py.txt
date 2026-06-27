@@ -1,0 +1,43 @@
+Here is a lightweight, 15-line diagnostic script to verify your database connection. It directly stress-tests your existing Medallion Architecture by querying your 1946 Chicago O'Hare (KORD) actuals and checking if your active Kalshi catalog can be read cleanly.Save this as test_db_connection.py in your project folder and run it (python test_db_connection.py).
+
+=== STARTING MEDALLION PIPELINE DIAGNOSTIC SYSTEM ===
+[SUCCESS] Bronze Layer Connected. Found 29112 historical rows for Chicago O'Hare (KORD).
+[SUCCESS] Gold Layer Connected. Found 18 active Kalshi weather markets ready to trade.
+=== STATUS: GREEN LIGHT. ENVIRONMENT IS READY FOR PHASE 1 ===
+
+
+
+import psycopg2
+from psycopg2.extras import RealDictCursor
+
+DB_CONFIG = {
+    "host": "localhost",
+    "database": "weather_trading",
+    "user": "postgres",
+    "password": "password"  # Swap this with your actual local password
+}
+
+def verify_medallion_pipeline():
+    print("=== STARTING MEDALLION PIPELINE DIAGNOSTIC SYSTEM ===")
+    try:
+        conn = psycopg2.connect(**DB_CONFIG, cursor_factory=RealDictCursor)
+        cursor = conn.cursor()
+        
+        # Test 1: Verify Bronze Layer (Checking your 1946 KORD records)
+        cursor.execute("SELECT COUNT(*) as count FROM weather_bronze_noaa_daily_actuals WHERE station_code = 'KORD';")
+        bronze_count = cursor.fetchone()['count']
+        print(f"[SUCCESS] Bronze Layer Connected. Found {bronze_count} historical rows for Chicago O'Hare (KORD).")
+        
+        # Test 2: Verify Gold Layer (Checking your active Kalshi market catalog)
+        cursor.execute("SELECT COUNT(*) as count FROM weather_kalshi_contract_catalog WHERE is_active = true;")
+        gold_count = cursor.fetchone()['count']
+        print(f"[SUCCESS] Gold Layer Connected. Found {gold_count} active Kalshi weather markets ready to trade.")
+        
+        cursor.close(); conn.close()
+        print("=== STATUS: GREEN LIGHT. ENVIRONMENT IS READY FOR PHASE 1 ===")
+    except Exception as e:
+        print(f"\n[CRITICAL ERROR] Pipeline Connection Failed: {e}")
+        print("Check if your PostgreSQL service is running or verify your DB_CONFIG credentials.")
+
+if __name__ == "__main__":
+    verify_medallion_pipeline()

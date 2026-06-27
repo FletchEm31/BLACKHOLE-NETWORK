@@ -1,0 +1,77 @@
+Phase 2: Parallel Predictive ML Ensemble & Fallback ModeThis phase handles the Predictive Machine Learning Consensus Layer. It connects to your Gold feature tables, pulls down live parameters, executes your pretrained XGBoost and CatBoost models in parallel, and applies a weighted mathematical blend [1hfvnmj].
+
+import pandas as pd
+import xgboost as xgb
+from catboost import CatBoostRegressor
+import psycopg2
+from psycopg2.extras import RealDictCursor
+import logging
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+from phase1_ingestion_engine import DB_CONFIG
+
+def execute_parallel_ml_ensemble(spatial_features_df):
+    """
+    CHECKPOINT 3: Runs parallel predictions via XGBoost (grid errors) and CatBoost
+    (categorical sets), adding real-time NOAA LAMP physics to build a 3-way consensus.
+    """
+    logging.info("[PHASE 2] [CHECKPOINT 3] Initializing 3-Way Predictor line consensus...")
+    conn = psycopg2.connect(**DB_CONFIG)
+    
+    # Ingest baseline uncertainties (RMSE) from your Silver error history logs
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
+    cursor.execute("""
+        WITH daily_errors AS (
+            SELECT location, POWER(corrected_forecast_temp - actual_high_temp, 2) as se
+            FROM weather_silver_forecast_error WHERE forecast_date >= CURRENT_DATE - 30
+        )
+        SELECT location, SQRT(AVG(se)) as current_rmse FROM daily_errors GROUP BY location;
+    """)
+    sigmas = {row['location']: float(row['current_rmse']) for row in cursor.fetchall()}
+    cursor.close()
+    
+    # Pull current active features from Gold layer
+    feature_df = pd.read_sql("SELECT * FROM weather_gold_city_day_features;", conn)
+    conn.close()
+    
+    # Sync with Phase 1's spatial alignment parameters
+    feature_df = feature_df.merge(spatial_features_df, on='station_code', how='inner')
+    
+    if feature_df.empty:
+        logging.error("Inference aborted. Feature framework table is empty.")
+        return pd.DataFrame(), sigmas
+
+    try:
+        # Predictor Line A: Load XGBoost Regressor
+        bst_xgb = xgb.XGBRegressor()
+        bst_xgb.load_model("weather_silver_model_base.json")
+        
+        # Predictor Line B: Load CatBoost Regressor
+        bst_cat = CatBoostRegressor()
+        bst_cat.load_model("weather_silver_catboost_base.cbm")
+        
+        # Enforce dummy shaping compatibility for the matrix
+        encoded_df = pd.get_dummies(feature_df, columns=['station_code'], drop_first=False)
+        for col in ['station_code_KDEN', 'station_code_KMIA', 'station_code_KORD']:
+            if col not in encoded_df.columns:
+                encoded_df[col] = 0
+                
+        X_inference = encoded_df.drop(columns=['latest_nws_tmax_f'], errors='ignore')
+        
+        # Fire model runs side-by-side
+        pred_xgb = bst_xgb.predict(X_inference)
+        pred_cat = bst_cat.predict(feature_df)
+        
+        # Predictor Line C: Real-time NOAA LAMP supercomputer physics guidance
+        pred_lamp = feature_df['latest_lamp_guidance_f'].astype(float).values
+        
+        # Blended Consensual Target: 40% XGBoost + 40% CatBoost + 20% NOAA LAMP
+        feature_df['blended_forecast_mean'] = (pred_xgb * 0.40) + (pred_cat * 0.40) + (pred_lamp * 0.20)
+        logging.info("Checkpoint 3 Cleared. 3-Way weighted consensus mean compiled.")
+        
+    except Exception as e:
+        # EMERGENCY MODE RECOVERY LOOP
+        logging.error(f"ML runtime execution failure ({e}). Deploying Emergency Fallback Mode.")
+        feature_df['blended_forecast_mean'] = feature_df['latest_nws_tmax_f']
+        
+    return feature_df, sigmas

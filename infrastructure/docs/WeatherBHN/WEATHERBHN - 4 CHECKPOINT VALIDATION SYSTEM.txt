@@ -1,0 +1,35 @@
+To safely get the "green light" to wager real capital under this institutional framework, your pipeline requires authorization from exactly 4 distinct validation checkpoints (running across 3 standalone Python modules and 2 core algorithmic models).If a single checkpoint fails or returns a conflict, the execution engine issues an automatic SKIP command to protect your bankroll.Here is the exact structural breakdown of the checkpoints your code must clear before a trade is fired.The 4-Tier Green Light Breakdown       [ START CYCLE ]
+              │
+              ▼
+┌──────────────────────────────┐
+│  CHECKPOINT 1: Data Sanity   │ ──(FAIL)──► [ SKIP CONTRACT ]
+└──────────────┬───────────────┘
+               │ (PASS)
+               ▼
+┌──────────────────────────────┐
+│  CHECKPOINT 2: Risk-Free Arb │ ──(TRUE)──► [ INSTANT EXECUTE ARB ] (Bypass ML)
+└──────────────┬───────────────┘
+               │ (FALSE)
+               ▼
+┌──────────────────────────────┐
+│  CHECKPOINT 3: XGBoost ML    │ ──(FAIL)──► [ EMERGENCY MODE ] (Fallback to NWS Mean)
+└──────────────┬───────────────┘
+               │ (PASS)
+               ▼
+┌──────────────────────────────┐
+│  CHECKPOINT 4: Kelly Sizer   │ ──(EDGE < MIN)──► [ SKIP CONTRACT ]
+└──────────────┴───────────────┘
+               │ (EDGE >= MIN)
+               ▼
+       [ FIRE LIMIT ORDER ]
+
+Checkpoint 1: The Data Sanity and Formatting Check (Python Module 1)What it is: Your fetch_and_normalize_catalog and bulk NOAA data cleaning routines.The Guardrail: It screens for missing metadata flags (M values), checks if the NWS issued an AMENDED climatological statement, and standardizes threshold tickers (converting T68 ceilings into a clean -999.0 to 67.0 math interval).Green Light Condition: The contract must possess active market liquidity data, have valid numerical boundary limits, and not be flagged as a damaged or corrupted weather sensor day.
+
+Checkpoint 2: The Structural Parity Check (Python Module 2 / Algorithmic Model 1)What it is: The check_orderbook_structural_arbitrage subroutine. This acts as a mathematical identity model (Parity Pricing).The Guardrail: It scans the live order book to see if retail traders or market makers left a risk-free pricing loop open due to binary options complement logic (YES + NO = $1.00).Green Light Condition: If yes_bid + no_ask != 100, this component bypasses the predictive weather models entirely, takes over the pipeline, and triggers an instant risk-free execution to harvest the mispriced spread. If no arbitrage exists, it passes control to the predictive layer.
+
+Checkpoint 3: The Microclimate Predictive Adjuster (Python Module 3 / Algorithmic Model 2)What it is: Your pre-trained XGBoost Regressor (weather_silver_model_base.json) running over your weather_gold_city_day_features table.The Guardrail: It evaluates your specific meteorological feature arrays—such as Denver’s barometric pressure tendency, Miami's easterly sea-breeze vectors, and modern post-2000 runway heat retention baselines—to generate a bias-corrected expected high temperature (\(\^{T}_{max}\)).Green Light Condition: The data inputs must cleanly match the model's structural shape matrix. If this checkpoint fails (e.g., your local model file is missing or corrupted), the pipeline triggers Emergency Mode, defaulting to the official National Blend of Models (NBM) forecast as a fallback mean so you don't trade blind.
+
+Checkpoint 4: The Time-Decayed Probability and Liquidity Filter (Python Module 2 / Statistical Sizer)What it is: The run_sweeper_engine executing the scipy.stats.norm.cdf integration paired with the Fractional Kelly Criterion sizing loop.The Guardrail: It imports the trailing 30-day RMSE from your database, applies your Hour-Angle Volatility Decay function to compress uncertainty (σ) as the clock approaches 4:00 PM local time, and integrates the probability curve over Kalshi's strike brackets.Green Light Condition: To place a wager, the calculated mathematical probability must differ from Kalshi's real-time contract price by ≥ 5 cents in liquid markets, or ≥ 8 cents in illiquid books. If this target edge threshold is cleared, the Kelly Criterion calculates the exact number of contracts to buy relative to your current bankroll.
+
+Python File Structure Required on Your Server
+To turn this into a production environment, you only need to manage 3 script files inside your project directory:train_production_model.py: Runs offline once a week to train your XGBoost weights using historical post-2000 data and exports the weather_silver_model_base.json core file.core_trading_sweeper.py: Your live script (containing the code blocks we finalized). This is triggered by your bash orchestration script every hour during active market cycles to handle normalization, ingest features, run inference, calculate Kelly sizing, and fire limit orders.exit_audit_logger.py: Runs at midnight to cross-reference yesterday's trading sheets against the official NOAA ground-truth actuals, calculating your realized PnL and writing performance data into weather_position_exits.By checking data sanity, routing risk-free arbitrage opportunities, calculating localized adjustments via XGBoost, and executing trades through time-decayed Kelly parameters, your automation loop is protected against the volatility that causes typical prediction market algorithms to take heavy losses.
