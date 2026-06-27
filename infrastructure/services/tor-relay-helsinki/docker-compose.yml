@@ -1,0 +1,32 @@
+# BHN — Tor non-exit middle relay on Helsinki EU-NORTH exit node.
+#
+# ORPort 9001/tcp MUST be publicly reachable. Before first start, run on Helsinki:
+#   ufw allow 9001/tcp comment 'Tor relay ORPort'
+#
+# SocksPort 9050 is bound to Helsinki's WG tunnel IP (10.8.0.8 on LA's wg0).
+# Set BIND_IP=10.8.0.8 in .env (copy from .env.example).
+#
+# Deploy:
+#   cd /opt/bhn-tor-relay-helsinki
+#   docker compose up -d --build
+#
+# Get fingerprint after first start (needed for MyFamily update):
+#   docker exec bhn-tor-relay-helsinki cat /var/lib/tor/fingerprint
+
+services:
+  tor:
+    build: .
+    container_name: bhn-tor-relay-helsinki
+    restart: unless-stopped
+    ports:
+      # ORPort — PUBLIC, required for Tor consensus reachability
+      - "9001:9001/tcp"
+      # SocksPort — bound to WG tunnel IP (10.8.0.8 on LA's wg0)
+      - "${BIND_IP}:9050:9050/tcp"
+    volumes:
+      - tor-data:/var/lib/tor
+      - tor-logs:/var/log/tor
+
+volumes:
+  tor-data:
+  tor-logs:

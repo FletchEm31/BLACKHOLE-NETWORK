@@ -1,0 +1,27 @@
+# BHN egress load balancer — HAProxy on LA hub.
+#
+# Distributes outbound proxy traffic round-robin between:
+#   Hillsboro (BHN-US3-HILLSBORO-EXIT) at 10.8.0.6:8888  — US primary
+#   Helsinki  (BHN-EU1-HELSINKI-EXIT)  at 10.8.0.8:8888  — EU primary / US failover
+#
+# Health check: TCP every 60s. If a node fails 2 checks, all traffic
+# shifts to the surviving node automatically.
+#
+# Listens on 127.0.0.1:8888 — same address LA's /etc/environment http_proxy
+# points at after switching from direct Hillsboro ref.
+#
+# Stats page: http://10.8.0.1:8890/stats (WG tunnel only)
+#
+# Deploy:
+#   cd /opt/haproxy && docker compose up -d
+# Check status:
+#   curl --noproxy '*' http://10.8.0.1:8890/stats
+
+services:
+  haproxy:
+    image: haproxy:lts-alpine
+    container_name: bhn-haproxy
+    network_mode: host
+    restart: unless-stopped
+    volumes:
+      - /opt/haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro

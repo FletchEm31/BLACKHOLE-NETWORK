@@ -1,12 +1,13 @@
 # BHN — Tor non-exit middle relay configuration.
-# Hillsboro US-WEST exit/egress-proxy node (BHN-HILLSBORO-US3), 2026-05-12.
+# Helsinki EU-NORTH exit node (BHN-HELSINKI-EU1), 2026-06-27.
 #
-# Role: middle relay. Bandwidth halved vs Frankfurt's relay to leave
-# headroom for the tinyproxy egress workload (all LA outbound API calls)
-# and the Shadowsocks endpoint on the same host.
+# Role: middle relay ONLY. Never exit relay. Serves as the EU-side
+# privacy layer alongside Hillsboro (US-WEST). Full 10 MB/s allowed
+# since Helsinki is not sharing bandwidth with a proxy egress workload
+# at scale (tinyproxy runs alongside, but EU traffic volume is lower).
 
 ## ─── Identity ──────────────────────────────────────────────────────────
-Nickname BHNHeliosUS3
+Nickname BHNAuroraEU1
 ContactInfo admin@eventhorizonvpn.com
 
 ## ─── Ports ─────────────────────────────────────────────────────────────
@@ -19,16 +20,17 @@ ExitRelay 0
 ExitPolicy reject *:*       # belt + suspenders — refuse all exit traffic
 BridgeRelay 0               # middle relay, not bridge
 
-## ─── Bandwidth limits — REDUCED for egress-proxy + SS coexistence ──────
-# Hetzner Hillsboro allowance: 20 TB/month standard.
-# Frankfurt relay uses 1 MB/s + 1500 GB cap. Hillsboro is halved to leave
-# room for LA's full outbound HTTPS workload (Anthropic, Twilio outbound,
-# ElevenLabs TTS, all market-data polling, etc.) flowing through tinyproxy.
-# Adjust upward later if proxy bandwidth stays low.
-RelayBandwidthRate 512 KB
-RelayBandwidthBurst 1 MB
-AccountingMax 750 GB
+## ─── Bandwidth limits — CX23 Hetzner, 20TB/month included ─────────────
+# Cap at 10 MB/s rate / 20 MB/s burst with 1 TB monthly accounting.
+# CX23 has 20 TB/month; tinyproxy + Shadowsocks share this, so we
+# leave ample headroom. Raise if monitoring shows relay headroom.
+RelayBandwidthRate 10 MB
+RelayBandwidthBurst 20 MB
+AccountingMax 1 TB
 AccountingStart month 1 00:00
+
+## ─── Memory cap ────────────────────────────────────────────────────────
+MaxMemInQueues 512 MB
 
 ## ─── Data + logging ────────────────────────────────────────────────────
 DataDirectory /var/lib/tor
@@ -37,18 +39,17 @@ Log notice stdout
 
 ## ─── Hardening ─────────────────────────────────────────────────────────
 AssumeReachable 0
-MaxMemInQueues 256 MB
-
-# ControlSocket for the BHN monitoring collector (bhn-tor-control-stats.py).
-ControlSocket /var/lib/tor/control
-ControlSocketsGroupWritable 1
-CookieAuthentication 1
-CookieAuthFileGroupReadable 1
+ControlSocket 0
 
 ## ─── MyFamily ──────────────────────────────────────────────────────────
-# Both deployed BHN relays declared so Tor consensus never routes a circuit
-# through Hillsboro and Helsinki simultaneously.
+# Both BHN relays declared in MyFamily so Tor consensus never routes a
+# circuit through Hillsboro and Helsinki simultaneously.
 #
-# BHNHeliosUS3  (Hillsboro): CEBFF0886A263D4EA1D6D08A7ED86138F98D10AA
-# BHNAuroraEU1  (Helsinki):  6AA0F8D730220D992914DB599E6A305DB5384913
+# Hillsboro (BHNHeliosUS3) fingerprint — verified 2026-06-27:
+#   CEBFF0886A263D4EA1D6D08A7ED86138F98D10AA
+#
+# Helsinki (BHNAuroraEU1) fingerprint — add after first relay start:
+#   docker exec bhn-tor-relay-helsinki cat /var/lib/tor/fingerprint
+#   Then update this line AND Hillsboro's torrc identically.
+#
 MyFamily $CEBFF0886A263D4EA1D6D08A7ED86138F98D10AA,$6AA0F8D730220D992914DB599E6A305DB5384913
