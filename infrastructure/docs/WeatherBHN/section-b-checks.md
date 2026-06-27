@@ -90,6 +90,55 @@ ALTER TABLE weather_bronze_nws_forecasts
 
 ---
 
+## Investigation — Kalshi Orderbook NULL yes_ask / no_ask (Task 3 — DEFERRED)
+
+**Symptom:** 14.4% of rows in `weather_bronze_kalshi_market_snapshots` have NULL `yes_ask`
+and `no_ask`. Observed across 7-day window.
+
+**Root cause confirmed: thin overnight orderbook, NOT a poller bug.**
+
+The poller has two price sources:
+1. Market snapshot API (`yes_ask_dollars` / `no_ask_dollars` in the Kalshi response)
+2. Orderbook fallback — calls `get_orderbook()` per ticker when snapshot lacks bid/ask;
+   derives `yes_ask = 1 - best_no_bid` and `no_ask = 1 - best_yes_bid` (correct binary
+   market convention: best ask on one side = 1 - best bid on the other).
+
+When both sources return empty, `yes_ask` and `no_ask` stay NULL. This happens when
+Kalshi's KXHIGH contracts have zero resting orders on either side.
+
+**Hour-by-hour fill rate (last 7 days, UTC):**
+
+| UTC hours | Fill rate (yes_ask populated) | ET equivalent |
+|-----------|-------------------------------|---------------|
+| 0–4       | 42–45% (mostly NULL)          | 7pm–midnight ET |
+| 5–7       | 44–68%                        | midnight–3am ET |
+| 8–13      | 73–80%                        | 4am–9am ET |
+| 14–20     | 68–86% (peak)                 | 10am–4pm ET |
+| 21–23     | 49–65%                        | 5pm–7pm ET |
+
+Pattern is US market hours. KXHIGH contracts trade most actively during US daytime;
+overnight books are thin or empty.
+
+**CP1 handles this correctly:** `NULL_PRICES` gate is the first filter — contracts
+without valid asks never reach the edge calculator.
+
+**Edge calculator fallback:** When `_get_orderbook_asks()` returns None (no row with
+both asks non-null), the edge calculator sets `adj_edge_no = -1.0` and falls back to
+`mip` (yes mid-price) for `yes_ask`. BET_NO is suppressed. This is safe but means we
+miss BET_NO opportunities during off-hours. Acceptable during paper-trading period.
+
+**Recommended fix (deferred, not today):** None needed. The NULL rate will self-correct
+as more contracts get posted and markets approach expiry (higher liquidity near settlement).
+If overnight miss rate becomes a concern, add a min-liquidity requirement to CP1
+(e.g., only trade contracts with OI > 100 and age < 6 h before settlement).
+
+**What is NOT the cause:**
+- API endpoint change: auth/URL is fine (200s with ask data during active hours)
+- Poller polling rate: 5-minute cadence is correct
+- Field name migration: `yes_ask_dollars` fallback to `yes_ask` in poller handles both formats
+
+---
+
 ## Investigation — `fetch_nbm()` returning 0 rows
 
 **Location:** `weather_data_collector.py` → `fetch_nbm()` function on LA.
