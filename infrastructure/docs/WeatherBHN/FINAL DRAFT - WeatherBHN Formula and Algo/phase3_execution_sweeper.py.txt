@@ -1,0 +1,170 @@
+Phase 3: Risk Evaluation, Sizing, and Arbitrage SweeperThis phase handles the Trading Risk and Sizing Suite. It intercepts risk-free arbitrage loops, applies hour-angle time decay to standard deviations, runs parallel Gaussian and fat-tailed integrations, and executes wagers through standard Fractional Kelly boundaries [2026-001].
+
+
+import numpy as np
+import pandas as pd
+import scipy.stats as stats
+import psycopg2
+from psycopg2.extras import RealDictCursor
+import datetime
+import pytz
+import logging
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+from phase1_ingestion_engine import DB_CONFIG
+from phase2_predictive_ensemble import execute_parallel_ml_ensemble
+
+TOTAL_BANKROLL = 10000.00 # Target baseline bankroll sizer capital
+
+def evaluate_structural_arbitrage(contracts_df):
+    """
+    CHECKPOINT 2: Non-predictive pre-flight market parity shield.
+    Triggers risk-free buy orders instantly if YES + NO = 100 on the exchange book.
+    """
+    arbitrage_orders = []
+    if contracts_df.empty: return pd.DataFrame()
+        
+    for idx, row in contracts_df.iterrows():
+        if row['yes_bid'] > 0 and row['no_ask'] > 0 and (row['yes_bid'] + row['no_ask'] == 100):
+            allocated_cash = TOTAL_BANKROLL * 0.10
+            contract_count = int(allocated_cash / (row['no_ask'] / 100.0))
+            
+            if contract_count > 0:
+                arbitrage_orders.append({
+                    'ticker': row['ticker'], 'station': row['station_code'],
+                    'action': 'BUY_NO_ARBITRAGE', 'limit_price_cents': int(row['no_ask']),
+                    'size': contract_count, 'edge_cents': 100
+                })
+    return pd.DataFrame(arbitrage_orders)
+
+def calculate_hour_angle_decay(base_sigma, station_code):
+    """
+    ALGORITHM: HOUR-ANGLE VARIANCE COMPRESSION
+    Collapses uncertainty exponentially as trading limits move toward market close.
+    """
+    tz_mapping = {"KDEN": "America/Denver", "KMIA": "America/New_York", "KORD": "America/Chicago"}
+    local_tz = pytz.timezone(tz_mapping.get(station_code, "America/New_York"))
+    now_local = datetime.datetime.now(local_tz)
+    
+    start_h, close_h = 7.0, 16.0
+    current_h = now_local.hour + (now_local.minute / 60.0)
+    
+    if current_h <= start_h: return base_sigma
+    if current_h >= close_h: return 0.30
+        
+    decay = np.sqrt(1.0 - ((current_h - start_h) / (close_h - start_h)))
+    if station_code == "KDEN": return max(base_sigma * decay, 1.20) # Mountain gap padding
+    return max(base_sigma * decay, 0.35)
+
+def fetch_empirical_analog_probability(station_code, blended_mean, strike_low, strike_high):
+    """
+    INTEGRATION LINE C: HISTORICAL ANALOGS SCAN
+    Queries 1946+ base observations to identify real-world empirical hit patterns.
+    """
+    conn = psycopg2.connect(**DB_CONFIG)
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
+    query = """
+        SELECT COUNT(*) as total, COUNT(CASE WHEN latest_nws_tmax_f BETWEEN %s AND %s THEN 1 END) as hits
+        FROM weather_bronze_noaa_daily_actuals
+        WHERE station_code = %s
+          AND EXTRACT(DOY FROM target_date) BETWEEN EXTRACT(DOY FROM CURRENT_DATE) - 25 AND EXTRACT(DOY FROM CURRENT_DATE) + 25
+          AND latest_nws_tmax_f BETWEEN %s - 1.0 AND %s + 1.0;
+    """
+    cursor.execute(query, (strike_low, strike_high, station_code, blended_mean, blended_mean))
+    res = cursor.fetchone()
+    cursor.close(); conn.close()
+    
+    if not res or res['total'] == 0: return None
+    return float(res['hits']) / float(res['total'])
+
+def run_sweeper_risk_engine(contracts_df, feature_df, sigmas):
+    """
+    CHECKPOINT 4: Integrates multi-distribution probabilities (Gaussian + Student's t + Analogs)
+    and passes win odds directly into Quarter-Kelly optimization bounds.
+    """
+    logging.info("[PHASE 3] [CHECKPOINT 4] Running risk engine distributions and Kelly loops...")
+    merged = contracts_df.merge(feature_df, on='station_code', how='inner')
+    trading_signals = []
+    
+    for idx, row in merged.iterrows():
+        station = row['station_code']
+        pred_mean = row['blended_forecast_mean']
+        
+        sigma = calculate_hour_angle_decay(sigmas.get(station, 1.45), station)
+        strike_l, strike_h = row['strike_low'], row['strike_high']
+        
+        # Distribution Line A: Gaussian Normal
+        p_gauss = stats.norm.cdf(strike_h, loc=pred_mean, scale=sigma) - stats.norm.cdf(strike_l, loc=pred_mean, scale=sigma)
+        
+        # Distribution Line B: Student's t-Distribution (df=5)
+        p_t = stats.t.cdf(strike_h, df=5, loc=pred_mean, scale=sigma) - stats.t.cdf(strike_l, df=5, loc=pred_mean, scale=sigma)
+        
+        # Distribution Line C: Empirical Analogs (Raw Climo Scan)
+        p_emp = fetch_empirical_analog_probability(station, pred_mean, strike_l, strike_h)
+        if p_emp is None: p_emp = p_gauss
+            
+        # Convergence Integration Logic
+        is_tail = abs(pred_mean - ((strike_h + strike_l)/2.0)) > (2.0 * sigma)
+        final_prob = (p_t + p_emp) / 2.0 if is_tail else (p_gauss + p_emp) / 2.0
+        fair_cents = int(final_prob * 100)
+        
+        # Check boundary edge limits
+        min_edge = 8 if row['is_illiquid'] else 5
+        yes_ask, yes_bid = row['yes_ask'], row['yes_bid']
+        action, target_price, market_odds, edge_cents = "SKIP", 0, 0.0, 0
+        
+        if yes_ask > 0 and (fair_cents - yes_ask >= min_edge):
+            action, edge_cents, target_price = "BUY_YES", fair_cents - yes_ask, yes_ask
+            market_odds = yes_ask / 100.0
+        elif yes_bid > 0 and (yes_bid - fair_cents >= min_edge):
+            action, edge_cents, target_price = "BUY_NO", yes_bid - fair_cents, 100 - yes_bid
+            market_odds = target_price / 100.0
+            
+        # QUARTER-KELLY ALLOCATION POSITION SIZER
+        if action != "SKIP" and market_odds > 0:
+            b = (1.0 - market_odds) / market_odds
+            kelly_f = (final_prob * b - (1.0 - final_prob)) / b
+            contract_count = int(((TOTAL_BANKROLL * max(0, kelly_f * 0.25))) / (target_price / 100.0)) if target_price > 0 else 0
+            
+            if contract_count > 0:
+                trading_signals.append({
+                    'ticker': row['ticker'], 'station': station, 'action': action,
+                    'limit_price_cents': int(target_price), 'size': contract_count, 'edge_cents': edge_cents
+                })
+                
+    return pd.DataFrame(trading_signals)
+
+# =====================================================================
+# SYSTEM CORE MASTER CONTROL ORCHESTRATOR EXECUTION
+# =====================================================================
+
+def main():
+    from phase1_ingestion_engine import fetch_and_normalize_catalog, execute_spatial_alignment_bridge
+    
+    # Executing Phase 1
+    contracts_catalog_df = fetch_and_normalize_catalog()
+    spatial_features_df = execute_spatial_alignment_bridge()
+    if contracts_catalog_df.empty or spatial_features_df.empty: return
+    
+    # Executing Phase 3 Pre-Flight Arbitrage Intercept
+    arbitrage_df = evaluate_structural_arbitrage(contracts_catalog_df)
+    if not arbitrage_df.empty:
+        print("\n[ARBITRAGE EXECUTOR] Risk-free spread matched! Sweeping book positions instantly:")
+        print(arbitrage_df.to_string(index=False))
+        
+    # Executing Phase 2 Machine Learning Consensus
+    feature_predictions_df, database_sigmas = execute_parallel_ml_ensemble(spatial_features_df)
+    if feature_predictions_df.empty: return
+    
+    # Executing Phase 3 Risk Integration & Kelly Sizer
+    final_trading_matrix = run_sweeper_risk_engine(contracts_catalog_df, feature_predictions_df, database_sigmas)
+    
+    print("\n" + "="*80 + "\nFINAL ORDERS ROUTING ACCOUNTING LAYER (POST-ONLY RESTING LIMIT ORDERS)\n" + "="*80)
+    if not final_trading_matrix.empty:
+        print(final_trading_matrix.to_string(index=False))
+    else:
+        print("[INFO] Order book sweep finished. Book spreads sit in absolute parity.")
+    print("="*80 + "\n")
+
+if __name__ == "__main__":
+    main()

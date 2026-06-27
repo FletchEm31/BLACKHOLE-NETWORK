@@ -1,0 +1,60 @@
+Phase A
+
+Checkpoint 1: Data Sanity and Formatting
+What "mastered" means: every contract that reaches the downstream pipeline has clean, validated, normalized data, and every contract that doesn't is logged with a reason. Zero garbage-in to the model. Zero silent passes.
+Concretely, the module needs to:
+Pull active Kalshi contracts from your Bronze layer (you already have this in weather_bronze_kalshi_market_snapshots).
+Parse the ticker structure to extract station code, target date, bucket type (T for ceiling, B for bracket), and numerical bounds. Convert KXHIGHMIA-26JUN13-T86 into (KMIA, 2026-06-13, ceiling, -inf, 85.99) and KXHIGHMIA-26JUN13-B90.5 into (KMIA, 2026-06-13, bracket, 90.0, 91.99) cleanly and deterministically. Edge cases: missing dates, unrecognized stations, malformed bucket strings — all logged, none crashing.
+Validate the orderbook data is present and sensible: yes_bid, yes_ask, no_bid, no_ask all non-null and in (0, 1) range. Spread reasonable (not negative, not >0.99). Volume and open interest non-null. This is where you catch the "yes_bid/yes_ask NULL" bug we hit earlier — the sanity check shouldn't let a row with NULL bids pass through to a trading decision.
+Check the NWS settlement source for any AMENDED flags on recent CLI reports for the station. If a station's recent settlements have been amended (rare but happens), flag the city as "settlement uncertainty" for the day and skip.
+Output a clean DataFrame of validated contracts with a sanity_passed boolean and, for failures, a failure_reason enum. Downstream consumers filter on sanity_passed = true.
+Validation that you've mastered it: run it against a week of historical Bronze data, audit by hand that every flagged contract should have been flagged and every passed contract should have been passed. Look specifically at edge cases — tail buckets, very illiquid contracts, contracts near settlement. If you find a single contract that should have failed and didn't (or vice versa), CP1 isn't done.
+Most of this is partially built already in your existing code; this is the cleanup and hardening step, not a from-scratch build. Probably a few days of work.
+
+Checkpoint 2: Structural Parity / Arbitrage Scanner
+What "mastered" means: the scanner reliably identifies post-fee arbitrage opportunities when they exist, never falsely identifies one when it doesn't, and is integrated as a pre-flight check that bypasses the rest of the pipeline when it fires.
+Concretely:
+The math the doc gives — yes_bid + no_ask != 100 — is wrong as stated. That's a parity check, not an arbitrage check. The actual arbitrage condition is yes_ask + no_ask < 100 - combined_fees. If you can buy YES at its ask AND NO at its ask for less than $1.00 net of both sides' fees, you've locked in a risk-free profit. The doc's check would fire on every market because YES bid + NO ask basically never equals 100 exactly. The mechanism is right; the inequality direction is wrong.
+The correct fee model is Kalshi's actual formula: fee = ceil(0.07 * p * (1-p) * num_contracts * 100) / 100 per side. Combined fees on both sides of a 50/50 contract are about 7¢ — meaning a market must show YES ask + NO ask < 93¢ for arb to exist. That's a much rarer condition than the doc implies.
+The scanner needs to evaluate every active contract every cycle, and when it finds genuine post-fee arb, log the opportunity with size availability from the orderbook (you can only arb as much as the thinner side allows).
+In paper-trading mode first: log fires for two weeks, audit them by hand, confirm they're real. The CESifo paper specifically warns that this looks like free money but Makers competing to capture it is what shrinks the bid-ask spread — meaning genuine arb that survives long enough to capture as a Taker is rarer than the formula suggests. You'll probably find your scanner fires on transient opportunities that close before you could execute.
+Only when you have evidence the scanner is identifying real, capturable opportunities do you wire it into live execution as a pre-flight bypass.
+Validation that you've mastered it: the scanner has run for at least two weeks in paper mode, every fire has been hand-audited, and you have empirical data on how many fires would have actually filled if executed (because they were still open by the time you'd have placed the order).
+This is small — maybe a week of work plus the paper-trading observation period.
+
+Checkpoint 3: Microclimate Predictive Adjuster (the single-model version)
+What "mastered" means: one calibrated model that beats the naive baseline out-of-sample on Brier score and produces probabilities that pass a Mincer-Zarnowitz unbiasedness test.
+This is the biggest of the four and it's where the actual edge lives or doesn't. Note that we're explicitly not doing XGBoost+CatBoost ensemble at this stage — that's the parallel architecture phase that comes after. At this stage, one model.
+Build order:
+Populate weather_silver_forecast_error from your forecasts + settled actuals (the actuals come from the VC backfill landing tomorrow). This is the data foundation.
+Fit per-grain bias and sigma into model_calibration. Per-(station, season, lead_time) mean error and residual std. This replaces the hardcoded sigma fallbacks (Miami 2.5, Denver 3.5) with empirically-fitted values.
+Build the bias-corrected baseline: mu = nws_forecast + recent_bias, sigma = learned_residual_std. Bucket probabilities via normal CDF over the ladder, normalized to sum to 1.
+Fit isotonic calibration on a temporal holdout (earlier window) and evaluate on a later window. Replace v0_passthrough with the fitted calibrator.
+Build the backtest harness with point-in-time replay. Run the Mincer-Zarnowitz test (the regression from the CESifo paper) to check whether your probabilities are unbiased predictors of outcomes. Run reliability curves. Compute Brier vs the naive-NWS baseline.
+The model isn't mastered until the calibrated Brier beats the naive-NWS Brier on the holdout and the Mincer-Zarnowitz F-test fails to reject unbiasedness (you want it to fail to reject — that means your probabilities can't be shown to be biased).
+Only when those pass do you consider CP3 done. If the simple bias-corrected baseline doesn't beat naive NWS, no amount of XGBoost or CatBoost will fix the underlying problem and you need to revisit your features and assumptions before adding model complexity.
+Validation that you've mastered it: the backtest report shows calibrated Brier < baseline Brier on out-of-sample data, the reliability curve sits close to the 45° line, and the M-Z test fails to reject. Reproduce these results on a different temporal split to confirm they're not artifacts of one window.
+This is the multi-week piece. Probably 3-4 weeks once the backfill data lands.
+
+Checkpoint 4: Time-Decayed Probability and Liquidity Filter
+What "mastered" means: given CP3's calibrated probabilities, the sizer produces correctly-priced, correctly-sized orders with honest fees and time-decay applied, and the edge threshold filters out trades that don't clear after costs.
+Concretely:
+Implement the real Kalshi fee model as a function, not a flat buffer. fee(p, n) = ceil(0.07 * p * (1-p) * n) / 1.0 cents.
+Implement edge calculation that uses the correct side-specific real ask (the NO pricing fix). For each bucket: edge_yes = p_calibrated - yes_ask_real, edge_no = (1 - p_calibrated) - no_ask_real. Pick the side with the larger fee-adjusted edge.
+Implement the hour-angle sigma decay: as the day progresses, sigma compresses because more of the day's weather is already realized. The decay shape needs to be empirically validated — start with the doc's linear decay as a first cut, but plan to refit it once you have enough data to see whether sigma actually decays that way in your error history.
+Implement the gating logic: edge must clear minimum (5¢ liquid, 8¢ illiquid per the doc — though you should refit these thresholds against your backtest to see what edge magnitude actually predicts profitability), spread must be ≤20¢, position size capped by 10% of OI and 5% of daily volume.
+Implement quarter-Kelly (the CESifo evidence and the public reference bot's lessons both suggest quarter is safer than half until calibration is rock-solid).
+Output a clean orders frame: ticker, side, size, limit price, expected edge, expected fee, expected post-fee EV.
+Validation that you've mastered it: run the full pipeline (CP1 → CP3 → CP4) against historical decision timestamps and reconstruct what trades you would have placed. Compare against actual market outcomes. Net post-fee P&L should match what the backtest predicted within reasonable bounds. If they diverge, the sizing or fee model has a bug.
+This is 1-2 weeks once CP3 is producing reliable probabilities.
+
+Sequencing recommendation:
+Build order, taking advantage of the fact that the dependency graph isn't strictly linear:
+Week 1: CP1 (data sanity hardening) + CP2 (arbitrage scanner, paper mode). These are independent and can go in parallel.
+Weeks 2-4: CP3 (single calibrated model + backtest harness). Largest piece, needs the VC backfill to land first.
+Week 4-5: CP4 (sizer with real fees, time decay, gating). Built on top of CP3's output.
+Week 5-6: End-to-end paper trading of CP1→CP2→CP3→CP4 against live markets. Compare to backtest predictions daily.
+Week 6+: Acceptance gate decision — does the integrated single-line system actually have validated edge net of all real costs? If yes, small live deployment under tight caps. If no, debug what's missing before adding parallel-architecture complexity.
+Only after the single-line system is live and tracking the backtest do you start the parallel work: XGBoost + CatBoost as a predictor ensemble (replacing the bias-corrected baseline), Student's t for tail brackets (added alongside Gaussian), then LAMP and empirical resampling as third predictors/distributions.
+The discipline here is that each checkpoint has a concrete "mastered" definition that's measurable, and you don't move forward until it's met. The temptation will be to declare CP3 done because the model "looks like it works" — resist that. The Mincer-Zarnowitz test and the out-of-sample Brier comparison are the actual gates.
+Does this framing work for you? If so, do you want to start with CP1 hardening and CP2 scanner this week, or do you want me to write the actual specs for the first one or two so you have something concrete to hand to Claude Code?

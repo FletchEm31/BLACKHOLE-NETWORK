@@ -1,0 +1,86 @@
+WE NEED TO SPECIFICALLY IDENTIFY OUR RAW DATA SOURCES, HOW OFTEN ITS COLLECTED/PROCURED, AND WHAT DATA POINTS ARE PROCURED FOR EACH.  I WANT THE BROZE TABLE NAMES LAID OUT, WHAT COLUMNS ARE IN THE TABLE, WHERE AND HOW OFTEN IS THAT DATA REQUESTED.
+
+BASED ON MY UNDERSTANDING...  Project is working with 3 raw data sets, NWS (main data and what Kalshi uses), GFS/openmeteo, and Visual Crossing (VC) Historical which is all the historical data
+
+TABLE: weather_bronze_NWS_forecast snapshots (UPDATES EVERY 30 MIN) - source data nws_gridpoints | nws_hourly
+- city - COLLECTED
+- station - COLLECTED
+- forecast_run_time - COLLECTED
+- target_date - COLLECTED
+- lead_hours - COLLECTED
+- tmax_f - COLLECTED
+- tmin_f - COLLECTED
+- dewpoint_f - NULL, hasnt collected since 6/11/2026
+- rh_pct
+- wind_speed - NULL, hasnt collected since 6/11/2026
+- wind_gust - NULL, hasnt collected since 6/11/2026
+- cloud_cover - NULL, hasnt collected since 6/11/2026
+- pop - NULL, hasnt collected since 6/11/2026
+- qpf - NULL (maybe N/A)
+- snowfall - NULL (maybe N/A)
+- weather - NULL, hasnt collected since 6/11/2026
+- hazards
+- source_payload_json
+- retrieved_at - COLLECTED
+
+THIS TABLE INCLUDES nws_gridpoints and nws_hourly... should they be two seperate tables?  Especially if they fundementally record different inforamtion and collect data at different times?
+
+TABLE: weather_bronze_openmeteo_forecast_snapshots (UPDATES EVERY MIN???)
+- city - COLLECTED
+- station - COLLECTED
+- lat - COLLECTED
+- lon - COLLECTED
+- forecast_run_time - COLLECTED
+- target_date - COLLECTED
+- hour - only shoes with open_meteo_ensenure and only shows -1
+- temperature_2m - COLLECTED but only for gfs_seamless
+- tmax_f - COLLECTED but only for open_meteo_ensure
+- tmin_f - COLLECTED but only for open_meteo_ensure
+- dewpoint_2m - NULL
+- relative_humidity_2m - NULL
+- cloud_cover - NULL
+- precipitation - NULL
+- rain - NULL
+- snowfall - NULL
+- wind_speed_10m - NULL
+- wind_gusts_10m - NULL
+- surface_pressure - NULL
+- weather_code - NULL
+- source_payload_json - NULL
+- retrieved_at- COLLECTED
+
+THIS TABLE INCLUDES gfs_seamless and open_meteo_ensure
+
+
+Confirmed missing/incomplete:
+1. Visual Crossing historical actuals — in progress (backfill cron running)
+
+This is the biggest gap. Without 2-3 years of historical tmax for Denver and Miami, the calibration has no baseline to compare against. The cron is running nightly pulling 500 days at a time.
+2. ECMWF 51-member ensemble — scaffolded, not collecting
+
+This would give you the best probabilistic uncertainty data — 51 model runs showing the spread of possible outcomes. Currently Open-Meteo is approximating this but it's not the same. Requires pip install ecmwf-opendata cfgrib eccodes and GRIB2 parsing logic.
+3. HRRR (High-Resolution Rapid Refresh) — scaffolded, not collecting
+
+The 3km resolution short-range model. Most valuable in the 0-48 hour window right before contract settlement. Requires pip install herbie-data.
+4. NWS gridpoints two-step API — scaffolded, not collecting
+
+The actual NWS gridpoint forecast is scaffolded but the two-step discovery (/points → /gridpoints) isn't implemented. This is the most important one since Kalshi settles on NWS CLI reports — using the same NWS office's forecast is the most direct signal.
+5. Outcome data — incomplete
+
+The ledger can only compute outcomes for past contracts where weather_bronze_nws_actuals has the settled temperature. You only have 1,075 actuals rows — that's roughly 134 days of data for 8 cities. Denver and Miami go back to June 11 so you have ~2 weeks of outcomes to backfill.
+
+What you have that's sufficient for basic calibration:
+
+NWS actuals (settlement source) ✅ — limited but growing
+Open-Meteo forecasts ✅ — good enough for ensemble spread approximation
+Kalshi market prices ✅ — complete
+Edge sheet recommendations ✅ — complete back to June 11
+Visual Crossing backfill — in progress, Denver/Miami only
+
+
+Priority order to complete the calibration:
+
+Visual Crossing backfill — already running, just wait
+NWS gridpoints two-step API — highest impact, same source Kalshi uses to settle
+HRRR — add once NWS gridpoints is working
+ECMWF — most complex, add last

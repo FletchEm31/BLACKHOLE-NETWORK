@@ -1,0 +1,113 @@
+Phase 1: Ingestion, Spatial Grid Alignment, and NormalizationThis phase handles the Bronze-to-Gold Data Pipeline. It connects to your database, streams continental GRIB2 atmospheric grids, eliminates topographical height errors via a hypsometric lapse rate, and cleans up nested Kalshi threshold contract bounds.
+
+import numpy as np
+import pandas as pd
+import psycopg2
+from psycopg2.extras import RealDictCursor
+from herbie import Herbie
+import xarray as xr
+import logging
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+DB_CONFIG = {
+    "host": "localhost",
+    "database": "weather_trading",
+    "user": "postgres",
+    "password": "password"
+}
+
+STATION_METADATA = {
+    "KDEN": {"lat": 39.856, "lon": -104.673, "actual_elev_m": 1647.0},
+    "KMIA": {"lat": 25.793, "lon": -80.290, "actual_elev_m": 2.0},
+    "KORD": {"lat": 41.974, "lon": -87.907, "actual_elev_m": 202.0}
+}
+
+def fetch_and_sanitize_catalog():
+    """
+    CHECKPOINT 1: Queries active contracts, parses nested JSON logs,
+    and normalizes ceiling (T) and floor (B) thresholds into clear numerical intervals.
+    """
+    logging.info("[PHASE 1] [CHECKPOINT 1] Initializing data sanity catalog filter...")
+    conn = psycopg2.connect(**DB_CONFIG, cursor_factory=RealDictCursor)
+    cursor = conn.cursor()
+    
+    query = """
+        SELECT ticker, station_code, strike_type, numeric_strike_low, numeric_strike_high, raw_json
+        FROM weather_kalshi_contract_catalog 
+        WHERE is_active = true;
+    """
+    cursor.execute(query)
+    raw_rows = cursor.fetchall()
+    
+    sanitized_contracts = []
+    for row in raw_rows:
+        ticker = row['ticker']
+        s_type = row['strike_type']
+        raw_json = row['raw_json']
+        
+        if not raw_json or 'status' not in raw_json:
+            continue
+            
+        low_val = float(row['numeric_strike_low'])
+        high_val = float(row['numeric_strike_high'])
+        
+        if s_type == "threshold" or raw_json.get('strike_type') == "less":
+            if "-T" in ticker:
+                strike_low_clean = -999.0
+                strike_high_clean = high_val - 1.0  # T68 = 67.0°F or below
+            else:
+                strike_low_clean = low_val          # B88 = 88.0°F or above
+                strike_high_clean = 999.0
+        else:
+            strike_low_clean = low_val
+            strike_high_clean = high_val
+            
+        sanitized_contracts.append({
+            'ticker': ticker,
+            'station_code': row['station_code'],
+            'strike_low': strike_low_clean,
+            'strike_high': strike_high_clean,
+            'yes_bid': float(raw_json.get('yes_bid_dollars', 0.0)) * 100,
+            'yes_ask': float(raw_json.get('yes_ask_dollars', 1.0)) * 100,
+            'no_bid': float(raw_json.get('no_bid_dollars', 0.0)) * 100,
+            'no_ask': float(raw_json.get('no_ask_dollars', 1.0)) * 100,
+            'is_illiquid': raw_json.get('status') == 'illiquid' or float(raw_json.get('liquidity_dollars', 0)) < 500
+        })
+        
+    cursor.close()
+    conn.close()
+    return pd.DataFrame(sanitized_contracts)
+
+def execute_spatial_alignment_bridge(forecast_hour=6):
+    """
+    GEOSPATIAL ALIGNMENT BRIDGE: Downloads continental grids from AWS via Herbie,
+    indexes runway cells, and runs a hydrostatic lapse-rate elevation correction.
+    """
+    logging.info("[PHASE 1] Executing geospatial grid coordinate mapping...")
+    try:
+        herb = Herbie(model="hrrr", product="sfc", priority=["aws", "google"])
+        ds_temp = herb.xarray("TMP:2 m above ground", fxx=forecast_hour)
+        ds_topo = herb.xarray("HGT:surface", fxx=forecast_hour)
+    except Exception as e:
+        logging.error(f"GRIB2 data stream interrupted: {e}")
+        return pd.DataFrame()
+
+    aligned_features = []
+    for station_code, meta in STATION_METADATA.items():
+        grid_temp = ds_temp.herbie.nearest_points(points=(meta["lon"], meta["lat"]))
+        grid_topo = ds_topo.herbie.nearest_points(points=(meta["lon"], meta["lat"]))
+        
+        raw_temp_f = (float(grid_temp["t2m"].values) - 273.15) * 9/5 + 32.0
+        model_elev_m = float(grid_topo["orog"].values)
+        
+        # Hypsometric Adjustment: subtract 0.0117°F per meter of height error
+        elev_delta_m = meta["actual_elev_m"] - model_elev_m
+        corrected_temp_f = raw_temp_f + (elev_delta_m * -0.0117)
+        
+        aligned_features.append({
+            'station_code': station_code,
+            'latest_hrrr_tmax_f': round(corrected_temp_f, 2)
+        })
+        
+    return pd.DataFrame(aligned_features)
