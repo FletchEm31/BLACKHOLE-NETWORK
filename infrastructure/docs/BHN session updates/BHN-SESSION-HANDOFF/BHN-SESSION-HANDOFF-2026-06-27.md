@@ -34,30 +34,33 @@ Both relays declared: `$CEBFF0886A263D4EA1D6D08A7ED86138F98D10AA,$6AA0F8D730220D
 
 | Service | Container | Port | Status |
 |---|---|---|---|
-| SearXNG | bhn-searxng | 10.8.0.1:8095 | Up — hmac_key warning (non-fatal), retest curl |
+| SearXNG | bhn-searxng | 10.8.0.1:8095 | Up ✓ (minor: update settings.yml secret_key + redis→valkey, restart) |
 | Redlib | bhn-redlib | 10.8.0.1:8091 | **Healthy** ✓ |
-| Invidious | bhn-invidious | 10.8.0.1:8088 | **Crash-restarting** — needs fix (see below) |
-| Piped frontend | bhn-piped-frontend | 10.8.0.1:8089 | Up but unusable (backend down) |
-| Piped backend | bhn-piped-backend | 10.8.0.1:8092 | **Crash-restarting** — needs fix (see below) |
+| Invidious | bhn-invidious | 10.8.0.1:8088 | **Fixed + working** ✓ (added hmac_key via openssl rand -hex 32) |
+| Piped frontend | bhn-piped-frontend | 10.8.0.1:8089 | Up ✓ (200 OK) |
+| Piped backend | bhn-piped-backend | 10.8.0.1:8092 | **Fix in progress** — see below |
 | Piped proxy | bhn-piped-proxy | 10.8.0.1:8093 | Up ✓ |
 | Piped DB | bhn-piped-db | internal | Healthy ✓ |
-| Homarr | bhn-homarr | 10.8.0.1:7575 | **Never created** — compose file fix given (see below) |
+| Homarr | bhn-homarr | 10.8.0.1:7575 | **Not deployed** — compose fix below, not yet run |
 
 ### Pending Fixes at Session End
 
-**Invidious (bhn-invidious) — crash-restarting**
-- Root cause unknown — logs not yet retrieved
-- Likely: config file not mounted correctly, or YouTube connectivity issue
-- Get logs: `docker logs bhn-invidious --tail 40`
-- Config should be at `/opt/bhn-invidious/config/config.yml` (check it exists)
-- Compose: `/opt/bhn-invidious/docker-compose.yml`
-
-**Piped backend (bhn-piped-backend) — crash-restarting**
-- Root cause unknown — logs not yet retrieved
-- Likely: config.properties key names wrong (may need `db.url` not `DB_URL`)
-- Get logs: `docker logs bhn-piped-backend --tail 40`
-- Config at `/opt/bhn-piped/config.properties`
-- Compose: `/opt/bhn-piped/docker-compose.yml`
+**Piped backend (bhn-piped-backend) — config fix applied, verify next session**
+- Root cause: config.properties used wrong key names (`DB_URL` instead of Hibernate/Liquibase format)
+- Heredoc paste was also mangled in terminal (terminator on same line as last value)
+- Fix written via printf (single line, no heredoc) at session end — may not have been confirmed yet
+- Correct config at `/opt/bhn-piped/config.properties` must contain:
+  ```
+  hibernate.connection.url=jdbc:postgresql://bhn-piped-db:5432/piped
+  hibernate.connection.username=piped
+  hibernate.connection.password=Pp9mXwR3kNsQ7tLv
+  hibernate.connection.driver_class=org.postgresql.Driver
+  liquibase.datasource.url=jdbc:postgresql://bhn-piped-db:5432/piped
+  liquibase.datasource.username=piped
+  liquibase.datasource.password=Pp9mXwR3kNsQ7tLv
+  ```
+- Verify: `cat /opt/bhn-piped/config.properties` then `docker compose -f /opt/bhn-piped/docker-compose.yml restart bhn-piped-backend`
+- If still failing: `docker logs bhn-piped-backend --tail 10`
 
 **Homarr (bhn-homarr) — no container**
 - Compose file never landed at /opt/bhn-homarr/ during SCP deploy
