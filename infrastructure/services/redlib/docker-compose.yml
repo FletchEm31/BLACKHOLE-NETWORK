@@ -1,0 +1,26 @@
+# BHN — Redlib private Reddit frontend on LA hub.
+# Mesh-only: bound to 10.8.0.1:8091 (browse.eventhorizonvpn.com via AdGuard DNS).
+#
+# If quay.io/redlib/redlib is gated (403/auth-required), switch image to:
+#   ghcr.io/redlib-org/redlib:latest
+#
+# Deploy:
+#   cd /opt/bhn-redlib && docker compose up -d
+# Verify:
+#   curl --noproxy '*' http://10.8.0.1:8091/ | head -5
+
+services:
+  redlib:
+    image: quay.io/redlib/redlib:latest
+    container_name: bhn-redlib
+    restart: unless-stopped
+    environment:
+      - REDLIB_DEFAULT_THEME=black
+      - REDLIB_DEFAULT_FRONT_PAGE=default
+      - REDLIB_DEFAULT_SHOW_NSFW=false
+      - REDLIB_DEFAULT_WIDE=false
+      - REDLIB_DEFAULT_COMMENT_SORT=confidence
+      - REDLIB_ROBOTS_DISABLE_INDEXING=true
+      - REDLIB_DEFAULT_LAYOUT=card
+    ports:
+      - "10.8.0.1:8091:8080"

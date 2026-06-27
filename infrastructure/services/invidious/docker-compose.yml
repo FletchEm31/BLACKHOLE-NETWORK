@@ -1,0 +1,47 @@
+# BHN — Invidious private YouTube frontend on LA hub.
+# Mesh-only: bound to 10.8.0.1:8088 (watch.eventhorizonvpn.com via AdGuard DNS).
+# Dedicated PostgreSQL — isolated from eventhorizon DB.
+#
+# Deploy:
+#   mkdir -p /opt/bhn-invidious/{db,config}
+#   cp infrastructure/services/invidious/config.yml /opt/bhn-invidious/config/config.yml
+#   cd /opt/bhn-invidious && docker compose up -d
+# Verify:
+#   curl --noproxy '*' http://10.8.0.1:8088/ | head -5
+
+services:
+  invidious-db:
+    image: postgres:16-alpine
+    container_name: bhn-invidious-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: invidious
+      POSTGRES_USER: invidious
+      POSTGRES_PASSWORD: Bh8xKQ4mNzpY3vTd
+    volumes:
+      - /opt/bhn-invidious/db:/var/lib/postgresql/data
+    networks:
+      - bhn-invidious-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U invidious"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  invidious:
+    image: quay.io/invidious/invidious:latest
+    container_name: bhn-invidious
+    restart: unless-stopped
+    depends_on:
+      invidious-db:
+        condition: service_healthy
+    ports:
+      - "10.8.0.1:8088:3000"
+    volumes:
+      - /opt/bhn-invidious/config/config.yml:/invidious/config/config.yml:ro
+    networks:
+      - bhn-invidious-net
+
+networks:
+  bhn-invidious-net:
+    driver: bridge

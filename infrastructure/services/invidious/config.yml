@@ -1,0 +1,28 @@
+# Invidious configuration — BHN LA hub deployment.
+# DB password matches docker-compose.yml POSTGRES_PASSWORD.
+
+db:
+  dbname: invidious
+  user: invidious
+  password: Bh8xKQ4mNzpY3vTd
+  host: bhn-invidious-db
+  port: 5432
+
+check_tables: true
+
+# Mesh-only — domain resolves internally via AdGuard to 10.8.0.1.
+domain: watch.eventhorizonvpn.com
+https_only: false
+port: 3000
+host_binding: 0.0.0.0   # container-internal; host binding enforced by port mapping
+
+registration_enabled: false
+login_enabled: false
+captcha_enabled: false
+
+admins: []
+
+# Routes YouTube requests through Hillsboro/Helsinki HAProxy egress.
+# /etc/environment http_proxy is inherited by Docker daemon.
+external_port: 8088
+statistics_enabled: false

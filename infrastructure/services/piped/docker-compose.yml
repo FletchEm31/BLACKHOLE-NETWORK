@@ -1,0 +1,76 @@
+# BHN — Piped private YouTube frontend on LA hub (Invidious backup).
+# Three components: frontend (8089), backend API (8092), proxy (8093).
+# All mesh-only — bound to 10.8.0.1.
+#
+# AdGuard DNS rewrites needed (add if not already present):
+#   pipe.eventhorizonvpn.com      → 10.8.0.1  (frontend, port 8089)
+#   pipe-api.eventhorizonvpn.com  → 10.8.0.1  (backend, port 8092)
+#   pipe-proxy.eventhorizonvpn.com → 10.8.0.1 (proxy, port 8093)
+#
+# Deploy:
+#   mkdir -p /opt/bhn-piped
+#   cp infrastructure/services/piped/config.properties /opt/bhn-piped/config.properties
+#   cd /opt/bhn-piped && docker compose up -d
+# Verify:
+#   curl --noproxy '*' http://10.8.0.1:8089/ | head -5
+
+services:
+  piped-db:
+    image: postgres:16-alpine
+    container_name: bhn-piped-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: piped
+      POSTGRES_USER: piped
+      POSTGRES_PASSWORD: Pp9mXwR3kNsQ7tLv
+    volumes:
+      - /opt/bhn-piped/db:/var/lib/postgresql/data
+    networks:
+      - bhn-piped-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U piped"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  piped-backend:
+    image: 1337kavin/piped:latest
+    container_name: bhn-piped-backend
+    restart: unless-stopped
+    depends_on:
+      piped-db:
+        condition: service_healthy
+    ports:
+      - "10.8.0.1:8092:8080"
+    volumes:
+      - /opt/bhn-piped/config.properties:/app/config.properties:ro
+    networks:
+      - bhn-piped-net
+
+  piped-proxy:
+    image: 1337kavin/piped-proxy:latest
+    container_name: bhn-piped-proxy
+    restart: unless-stopped
+    ports:
+      - "10.8.0.1:8093:8080"
+    environment:
+      - UDS=0
+    networks:
+      - bhn-piped-net
+
+  piped-frontend:
+    image: 1337kavin/piped-frontend:latest
+    container_name: bhn-piped-frontend
+    restart: unless-stopped
+    ports:
+      - "10.8.0.1:8089:80"
+    environment:
+      - BACKEND_HOSTNAME=pipe-api.eventhorizonvpn.com:8092
+    depends_on:
+      - piped-backend
+    networks:
+      - bhn-piped-net
+
+networks:
+  bhn-piped-net:
+    driver: bridge

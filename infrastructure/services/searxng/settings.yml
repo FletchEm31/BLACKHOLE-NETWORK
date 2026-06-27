@@ -1,52 +1,56 @@
-# BHN SearXNG settings.
-# `use_default_settings: true` inherits everything else from the image's
-# bundled defaults — only override what we explicitly want different.
-#
-# secret_key: gets replaced at container startup by the entrypoint script
-# using the SEARXNG_SECRET env var. Leave the literal "ultrasecretkey"
-# placeholder here — the image's docker-entrypoint.sh does the substitution.
+# BHN SearXNG settings — LA hub deployment.
+# Engines: Google, Bing, DuckDuckGo, Wikipedia only.
+# All upstream requests route through Hillsboro or Helsinki Tor SocksPorts.
+# Private instance — no telemetry, no public indexing, no rate limiting.
 
-use_default_settings: true
+use_default_settings:
+  engines:
+    keep_only:
+      - google
+      - bing
+      - duckduckgo
+      - wikipedia
 
 general:
   instance_name: "BHN SearXNG"
   contact_url: false
-  enable_metrics: false       # private instance — no public metrics
+  enable_metrics: false
 
 search:
-  safe_search: 0              # operator-only instance; no children's filter needed
+  safe_search: 0
   autocomplete: "duckduckgo"
   default_lang: "auto"
   formats:
     - html
-    - json                    # enable JSON so HORIZON can use SearXNG as a tool later
+    - json
 
 server:
-  secret_key: "ultrasecretkey"    # replaced at startup from SEARXNG_SECRET env
-  limiter: false                  # no rate limiting on a private instance
-  image_proxy: false              # don't proxy result images
-  bind_address: "0.0.0.0"         # inside container; host port mapping does the VPN-only bind
+  secret_key: "ultrasecretkey"    # replaced at startup from SEARXNG_SECRET env var
+  limiter: false
+  image_proxy: false
+  bind_address: "0.0.0.0"         # container-internal; host port mapping enforces mesh-only bind
   port: 8080
 
 redis:
-  url: "redis://redis:6379/0"
+  url: "redis://bhn-searxng-redis:6379/0"
 
 ui:
   static_use_hash: true
   default_locale: "en"
   query_in_title: true
+  default_theme: "simple"
+  theme_args:
+    simple_style: "dark"
 
-# ──────────────────────────────────────────────────────────────────────────
-# Tor upstream — phase 2.
-# Uncomment after Tor relay is running on Frankfurt. SearXNG will route
-# search-engine requests through the local Tor SOCKS proxy, unlinking
-# this instance from upstream engines' fingerprinting.
-# ──────────────────────────────────────────────────────────────────────────
-# outgoing:
-#   request_timeout: 10.0
-#   pool_connections: 100
-#   pool_maxsize: 20
-#   enable_http2: true
-#   proxies:
-#     all://:
-#       - socks5h://<BHN_WG_FRA_IP>:9050   # Frankfurt's Tor relay SocksPort
+# Tor upstream — routes search engine queries through BHN relay SocksPorts.
+# Primary: Hillsboro (US, 10.8.0.6:9050). Fallback: Helsinki (EU, 10.8.0.8:9050).
+# This unlinkens SearXNG from upstream fingerprinting.
+outgoing:
+  request_timeout: 10.0
+  pool_connections: 100
+  pool_maxsize: 20
+  enable_http2: true
+  proxies:
+    all://:
+      - socks5h://10.8.0.6:9050
+      - socks5h://10.8.0.8:9050

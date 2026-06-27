@@ -1,19 +1,18 @@
-# BHN — SearXNG private meta-search.
-# Frankfurt-only. Pairs with Tor relay for unlinkable upstream (Tor wire-up
-# is phase-2 — see commented section in settings.yml).
+# BHN — SearXNG private meta-search on LA hub.
+# VPN-mesh-only. All upstream search requests route through Hillsboro/Helsinki
+# Tor relay SocksPorts for unlinkable upstream queries.
 #
 # Deploy:
-#   cd /opt/bhn-searxng
-#   cp .env.example .env
-#   # Set BIND_IP=<BHN_WG_FRA_IP> and generate SEARXNG_SECRET (instructions in README)
-#   docker compose up -d
+#   mkdir -p /opt/bhn-searxng
+#   cp infrastructure/services/searxng/settings.yml /opt/bhn-searxng/settings.yml
+#   cd /opt/bhn-searxng && docker compose up -d
 #
 # Verify:
-#   curl -fsS http://${BIND_IP}:8089/ | head -10
+#   curl http://10.8.0.1:8095/ | head -5
 #   docker logs bhn-searxng --tail 20
 
 services:
-  redis:
+  searxng-redis:
     image: redis:alpine
     container_name: bhn-searxng-redis
     restart: unless-stopped
@@ -26,18 +25,17 @@ services:
     container_name: bhn-searxng
     restart: unless-stopped
     environment:
-      - SEARXNG_BASE_URL=http://${BIND_IP}:8089/
-      - SEARXNG_SECRET=${SEARXNG_SECRET}
+      - SEARXNG_BASE_URL=http://search.eventhorizonvpn.com
+      - SEARXNG_SECRET=858f952a9107372ba4ea7ba820039246af4bfa54ce0caefee4f11bd2db5afd12
       - INSTANCE_NAME=BHN SearXNG
     ports:
-      # VPN-only; bound to Frankfurt's WG tunnel
-      - "${BIND_IP}:8089:8080"
+      - "10.8.0.1:8095:8080"
     volumes:
-      - ./settings.yml:/etc/searxng/settings.yml:rw
+      - /opt/bhn-searxng/settings.yml:/etc/searxng/settings.yml:rw
     networks:
       - bhn-searxng-net
     depends_on:
-      - redis
+      - searxng-redis
 
 networks:
   bhn-searxng-net:
