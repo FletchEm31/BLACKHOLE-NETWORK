@@ -52,14 +52,28 @@ all:
           bhn_has_docker: true
           bhn_tinyproxy_port: 8888
 
+    # ---- EU exit node ----
+    bhn_exit:
+      hosts:
+        helsinki:
+          ansible_host: 10.8.0.8
+          ansible_port: 22
+          bhn_node_name: BHN-HELSINKI-EU1
+          bhn_role: exit
+          bhn_public_ip: 46.62.162.87
+          bhn_has_docker: true
+          bhn_region: EU-NORTH
+
     # ---- Convenience groups ----
     bhn_all:
       children:
         bhn_hub:
         bhn_trading:
         bhn_egress:
+        bhn_exit:
 
     bhn_docker_hosts:
       hosts:
         la:
         hillsboro:
+        helsinki:
