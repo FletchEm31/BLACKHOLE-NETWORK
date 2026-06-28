@@ -210,6 +210,10 @@ CREATE TABLE IF NOT EXISTS weather_bronze_visual_crossing_actuals (
     final_tmin_f        NUMERIC,
     precip_in           NUMERIC,        -- daily precipitation total (inches)
     humidity_pct        NUMERIC,        -- mean relative humidity (%)
+    windspeed_mph       NUMERIC,        -- daily mean wind speed (mph)
+    winddir_deg         NUMERIC,        -- daily mean wind direction (degrees, 0=N)
+    cloudcover_pct      NUMERIC,        -- daily mean cloud cover (%)
+    dewpoint_f          NUMERIC,        -- daily mean dew point (°F)
     source_payload_json JSONB,          -- raw VC day object
     retrieved_at        TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
 
