@@ -244,4 +244,12 @@ BEGIN
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'n8n_user') THEN
         GRANT SELECT ON weather_bronze_visual_crossing_actuals TO n8n_user;
     END IF;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'bhn_trader') THEN
+        GRANT SELECT, INSERT, UPDATE ON weather_bronze_visual_crossing_actuals TO bhn_trader;
+        GRANT USAGE ON SEQUENCE weather_bronze_visual_crossing_actuals_id_seq TO bhn_trader;
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ehuser') THEN
+        GRANT SELECT, INSERT, UPDATE ON weather_bronze_visual_crossing_actuals TO ehuser;
+        GRANT USAGE ON SEQUENCE weather_bronze_visual_crossing_actuals_id_seq TO ehuser;
+    END IF;
 END $$;
