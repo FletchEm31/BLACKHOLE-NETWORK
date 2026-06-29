@@ -1,0 +1,113 @@
+KALSHI IS CURRENTLY AND EXCLUSIVELY BEING USED FOR WEATHER RELATED PREDICTIVE TRADING.  ALL KALSHI DATA IS ORGANIZED AND STORED IN THE WEATHERBHN DOMAIN
+
+
+Folder 1: weather_bhn (Meteorological Core)
+This schema isolates all multi-source weather ingestion, conformed grids, and predictive trading feature matrices.degree_daysenso_indexgfs_window_statsmodel_calibrationweather_betsweather_bronze_kalshi_market_snapshotsweather_bronze_nbm_snapshotsweather_bronze_noaa_daily_actualsweather_bronze_noaa_hourly_normalsweather_bronze_nws_actualsweather_bronze_nws_forecast_snapshotsweather_bronze_openmeteo_forecast_snapshotsweather_bronze_visual_crossing_actualsweather_commodity_signalsweather_contract_pricesweather_forecastsweather_gold_calibrated_probabilitiesweather_gold_city_day_featuresweather_gold_contract_ledgerweather_gold_daily_edge_sheetweather_kalshi_contract_catalogweather_model_accuracyweather_observationsweather_position_exitsweather_silver_actuals_conformedweather_silver_calibration_training_setweather_silver_forecast_conformedweather_silver_forecast_errorweather_silver_market_conformedweather_silver_model_baseweather_snapshots
+
+
+Folder 2: financial_bhn (Macro & Traditional Quant)
+This schema houses your multi-account Alpaca asset feeds, predictive signaling models, and options data chains.agriculture_pricesalpaca_newsanalyst_dataarbitrage_positionscircuit_breaker_logcorporate_actionscrypto_market_dataearnings_dataenergy_pricesinvestment_signalskalshi_fillskalshi_positionsmacro_dailymacro_indicatorsmarket_barsmarket_dailymarket_eventsmarket_regimesmarket_sentimentmarket_signalsmarket_ticksoptions_chain_snapshotsorder_eventsorder_price_historypaper_tradesprediction_contractsprediction_market_datasignals_logstrategy_performancetokenized_arbitrage_signalstrading_rulestrading_strategies
+
+
+Folder 3: pokemon_bhn (Collectibles Market Intelligence)
+This schema isolates your WOTC-era reference catalogs and high-volume e-commerce scraping streams from your financial assets.courtyard_askscourtyard_bidscourtyard_transactionsebay_asksebay_bidsebay_transactionsebay_watchlistmaster_card_catalogmaster_grade_catalogmaster_grading_criteria_catalogmaster_set_catalogpop_reportsseller_profilessilver_ebay_transactionstcgtracking_magic_pricingtcgtracking_magic_productstcgtracking_magic_skustcgtracking_onepiece_pricingtcgtracking_onepiece_productstcgtracking_onepiece_skustcgtracking_pokemon_japan_pricingtcgtracking_pokemon_japan_productstcgtracking_pokemon_japan_skustcgtracking_pokemon_pricingtcgtracking_pokemon_productstcgtracking_pokemon_skustcgtracking_yugioh_pricingtcgtracking_yugioh_productstcgtracking_yugioh_skus
+
+
+Folder 4: security_bhn (Network Telemetry & Operations)
+This section routes to your 399 GB Cold HDD tablespace to keep continuous infrastructure logs from exhausting hot NVMe space.anomaliesconnection_snapshotscontainer_statscrowdsec_decisionsdns_query_logfail2ban_eventsfilter_rejectionsiptables_statsnode_bandwidth_statsnode_disk_statsnode_logsnode_logs_summarynode_patch_statusnode_resource_statsnodespg_activity_snapshotspg_query_statspg_table_statsproxy_request_logspulse_reportssdr_aircraft_positionssdr_aprs_packetssdr_sensor_readingssecurity_eventsssh_commandsssh_sessionstor_relay_statswg_peer_statswg_sessions
+
+
+Folder 5: horizon_core (AI Agent & Base Utilities)
+Shared platform assets that belong to no individual domain, but require sweeping read/write access over session states.agent_token_logcall_transcriptscollector_configcollector_crypt_askscollector_crypt_bidscollector_crypt_transactionsconversation_sessionscrop_conditionsdb_size_logfee_schedulefreshness_alertsgrade_reject_logmemories (pgvector space)n8n_chat_historiesn8n_execution_statsnews_articlesoperator_configpattern_librarypurge_logqa_cachereconciliation_heartbeatrules_change_logsessionstable_freshness_targets
+
+The Simplified "Linear Pipeline" Rule                  [ LIVE MARKET HOURS ]                           [ OVERNIGHT MAINTENANCE ]
+All Raw Streams  ──────► [ NJ NODE ] ─────────────────────────► [ LA HUB SERVER ]
+(Kalshi, NWS,     (In-Memory Edge + Fast Local Logs)   (Nightly rsync/pg_dump via WireGuard)
+ OpenMeteo, etc.)
+
+NJ is the Door (100% Ingestion): Every single cron script, systemd service, and WebSocket poller for both your financial and weather feeds runs only on the NJ Node [1.2].LA is the Vault (100% Storage): The LA Hub runs no live external API ingestors. It sits quietly during the day, waiting for the nightly transfer [1.2].How Your Data Moves (Step-by-Step)☀️ Step 1: Live Market Hours (NJ Memory and Local Storage)The Workflow: All weather forecasts, Kalshi order books, and price movements hit the NJ Node [1.2].The Execution: Your trading loop processes the incoming variables directly in system RAM to execute trades instantly [1.2, 4.1].The Logging: A background thread on NJ writes all raw data directly into local, append-only files or a lightweight, flat PostgreSQL schema right on the NJ disk [1.2].🌙 Step 2: Midnight Transfer (NJ ➔ LA)At a scheduled time (e.g., 02:00 UTC), a single master script runs on the LA Hub.It establishes your WireGuard VPN connection to NJ and runs a compressed database dump or directory synchronization (rsync) [1.2].It safely pulls everything collected by NJ over the past 24 hours across the country to Los Angeles in one clean file package [1.2].🧠 Step 3: Nighttime Deep Think (LA Hub)Once the data lands, the LA Hub processes the entire package. This is where your organized database schemas (weather_bhn, financial_bhn) sort the data into their respective folders [1.2].LA calculates your historical forecast errors, fits your Isotonic Regressions, and updates your Metabase dashboards [1.2, 3.3, 3.4].LA then ships tomorrow's small, pre-calculated probability file back to NJ, completely resetting the execution loops for the morning [1.2].Why This Design is Superior for a Single OperatorSingle Point of Maintenance: If an API changes or an ingestion script breaks, you only have to patch the code on your NJ server. You don't have to guess which node's script is failing.Zero Latency Overhead: Because the ingestors run on the exact same server as your trading loop, your algorithm reads live weather updates and market tickers locally without any cross-country network lag [1.2].Bulletproof Fail-Safe: If the cross-country network link between NJ and LA goes down during the day, nothing breaks. NJ keeps collecting data and placing trades. The data simply sits safely on the NJ disk until the network connection restores and LA pulls it.
+
+
+==================================================================================================
+                 BLACKHOLE-NETWORK: EXTENDED FEDERATED DATABASE ARCHITECTURE.  #EVENTHORIZON
+==================================================================================================
+
+[ LAYER 0: CENTRALIZED INGESTION BUFFER ]
+ └── public.EventHorizon  <-- Shared, high-throughput landing zone. Transformed into a 
+                              pure staging buffer. Ingestors dump raw tracking here.
+           │
+           ▼ (PostgreSQL BEFORE INSERT Router Trigger Layer via PL/pgSQL)
+           │
+ ┌─────────┴──────────────┬─────────────────────────┬─────────────────────────┐
+ │                        │                         │                         │
+ ▼                        ▼                         ▼                         ▼
+[ LAYER 1: DOMAIN-ISOLATED BRONZE SCHEMAS ] (High-Performance Encrypted NVMe Storage Tier)
+ ├── financial_bhn        ├── weather_bhn           ├── collectibles_bhn      ├── security_bhn
+ │    (Alpaca/Kalshi)     │    (NOAA/NWS/Meteo)     │    (TCG/eBay/Courtyard) │    (Telemetry/Logs)
+ │                        │                         │                         │
+ │  • alpaca_news         │  • weather_bronze_      │  • ebay_asks            │  • agent_token_log
+ │  • options_chain_       │    kalshi_market_       │  • ebay_bids            │  • crowdsec_decisions
+ │    snapshots           │    snapshots            │  • ebay_watchlist       │  • fail2ban_events
+ │  • prediction_         │  • weather_bronze_      │  • courtyard_asks       │  • filter_rejections
+ │    market_data         │    nbm_snapshots        │  • courtyard_bids       │  • node_resource_stats
+ │  • market_bars         │  • weather_bronze_      │  • courtyard_           │  • proxy_request_logs
+ │  • market_ticks        │    noaa_daily_actuals   │    transactions         │  • ssh_commands
+ │  • kalshi_positions    │  • weather_bronze_      │  • master_card_catalog  │  • dns_query_log
+ │  • kalshi_fills        │    nws_hourly           │  • seller_profiles      │  • pg_activity_
+ │  • arbitrage_positions │  • weather_bronze_      │                         │    snapshots
+ │  • corporate_actions   │    visual_crossing_     │                         │  • sdr_aircraft_
+ │  • market_sentiment    │    actuals              │                         │    positions
+ │                        │                         │                         │  • sdr_sensor_readings
+ └─────────┬──────────────┴─────────┬───────────────┴─────────┬───────────────┴─────────┬──────── stream
+           │                        │                         │                         │
+           ▼                        ▼                         ▼                         ▼
+[ LAYER 2: SYSTEMATIC SILVER SCHEMAS ] (Cleaned, Formatted, and Time-Partitioned Views/Tables)
+ ├── financial_bhn        ├── weather_bhn           ├── collectibles_bhn      └── (Logs bypass Silver)
+ │                        │                         │                             Routed straight 
+ │  • market_daily         │  • weather_silver_      │  • silver_ebay_             to Tablespace
+ │  • market_regimes      │    actuals_conformed    │    transactions             storage pools
+ │  • order_price_history │  • weather_silver_      │  • master_grade_catalog
+ │                        │    forecast_conformed   │  • master_set_catalog
+ │                        │  • weather_silver_      │  • master_grading_
+ │                        │    forecast_error       │    criteria_catalog
+ └─────────┬──────────────┴─────────┬───────────────┴─────────┬─────────────────────────┘
+           │                        │                         │
+           ▼                        ▼                         ▼
+[ LAYER 3: EXECUTIVE PRODUCTION GOLD SCHEMAS ] (Analytical Feature Space & Strategy Execution Layer)
+ ├── financial_bhn        ├── weather_bhn           └── collectibles_bhn
+ │                        │                             
+ │  • trading_strategies  │  • weather_gold_        │  • pop_reports (Scarcity Metrics)
+ │  • trading_rules       │    daily_edge_sheet     │  • sold_listings (Valuation Engine)
+ │  • investment_signals  │  • weather_gold_        │
+ │  • strategy_           │    calibrated_          │      [ CONSUMER FRONT-END SOURCING ]
+ │    performance         │    probabilities        │       └── Reads directly via API to run
+ │  • tokenized_arbitrage_│  • weather_gold_city_   │           GBA-style battle cutscenes
+ │    signals             │    day_features         │           in TEAM-ROCKET-BHN
+ └────────────────────────┴─────────────────────────┘
+                                    │
+                                    ▼
+                     [ AUTOMATED QUANT ALGO CORES ]
+           • Strat 9 (Boundary Split + Tail-No Execution Loop)
+           • Strat 13 (BHN-RSI-INTRADAY Paper Trading Instance)
+==================================================================================================
+
+==================================================================================================
+              PHYSICAL SYSTEM STORAGE STRUCTURING (BACKEND TIERS)
+==================================================================================================
+
+┌────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ /mnt/eh-nvme-hot/ (101 GB LUKS2 Encrypted Hot Flash Pool)                                      │
+│  └── Hot Database Clusters (`financial_bhn`, `weather_bhn`, `collectibles_bhn` Gold/Silver)    │
+│  └── pgvector Semantic Engine (`memories` 384-dim array space, `conversation_sessions`)       │
+│  └── Sub-5ms Query Pipelines for Live Executions & Active Order Book Snapshots                 │
+└────────────────────────────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ├── (Volumetric Time-Series Logging / Storage Offloading)
+                                    ▼
+┌────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ /mnt/eh-hdd-cold/ (399 GB LUKS2 Encrypted Cold Magnetic Array)                                 │
+│  └── Dedicated PostgreSQL Tablespace Pool: `security_hdd_pool` (Isolates `security_bhn`)       │
+│  └── Storage Target for Volumetric I/O Data: `dns_query_log`, `proxy_request_logs`, Node Stats  │
+│  └── Analytics Parquet Deep Lakehouse: Compresses multi-decade historical weather archives     │
+│      and backfill sequences (NOAA/NWS/VC) to prevent active transactional NVMe saturation     │
+└────────────────────────────────────────────────────────────────────────────────────────────────┘

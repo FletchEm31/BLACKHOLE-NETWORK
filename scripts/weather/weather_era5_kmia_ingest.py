@@ -23,7 +23,6 @@ import numpy as np
 import pandas as pd
 import psycopg2
 import psycopg2.extras
-import xarray as xr
 
 # ERA5 cfgrib short names that map directly to table column names
 EXPECTED_VARS = ["u10", "v10", "d2m", "t2m", "msl", "sp", "tp", "tcc", "cbh",
@@ -58,12 +57,12 @@ def extract_grib(path: Path) -> Path:
 
 def load_grib(grib_path: Path) -> pd.DataFrame:
     """
-    Open all datasets from GRIB, merge on (valid_time, latitude, longitude),
-    return flat DataFrame.
+    Load all cfgrib datasets, convert each to a pandas DataFrame individually,
+    then outer-merge on (valid_time, latitude, longitude).
 
-    cfgrib returns one Dataset per typeOfLevel (e.g. heightAboveGround,
-    meanSea, surface). We merge with join='outer' so ocean variables
-    (mwd, mwp, sst, swh) appear as NaN over land cells.
+    xr.merge() cross-products level dimensions (meanSea vs surface) creating
+    phantom rows. The pandas approach keeps each dataset's rows clean and only
+    joins on the three key columns.
     """
     print(f"Opening GRIB: {grib_path}")
     datasets = cfgrib.open_datasets(str(grib_path))
@@ -72,31 +71,47 @@ def load_grib(grib_path: Path) -> pd.DataFrame:
     if not datasets:
         sys.exit("ERROR: cfgrib returned no datasets")
 
-    merged = xr.merge(datasets, join="outer", compat="override")
-    df = merged.to_dataframe().reset_index()
+    dfs = []
+    for ds in datasets:
+        df = ds.to_dataframe().reset_index()
 
-    # Normalize column names — cfgrib may use 'time' or 'valid_time'
-    if "time" in df.columns and "valid_time" not in df.columns:
-        df = df.rename(columns={"time": "valid_time"})
+        # Normalize time column name
+        if "time" in df.columns and "valid_time" not in df.columns:
+            df = df.rename(columns={"time": "valid_time"})
 
-    # Ensure valid_time is timezone-aware UTC
-    if "valid_time" in df.columns:
-        df["valid_time"] = pd.to_datetime(df["valid_time"], utc=True)
+        # valid_time to UTC
+        if "valid_time" in df.columns:
+            df["valid_time"] = pd.to_datetime(df["valid_time"], utc=True)
 
-    # Spatial filter sanity check
-    before = len(df)
-    df = df[
-        (df["latitude"] >= LAT_MIN) & (df["latitude"] <= LAT_MAX) &
-        (df["longitude"] >= LON_MIN) & (df["longitude"] <= LON_MAX)
+        # Drop rows with null valid_time
+        df = df.dropna(subset=["valid_time"])
+
+        # Keep only key columns + any ERA5 vars this dataset provides
+        var_cols = [c for c in EXPECTED_VARS if c in df.columns]
+        df = df[["valid_time", "latitude", "longitude"] + var_cols]
+
+        # Collapse any duplicate (valid_time, lat, lon) rows from level dimensions
+        df = df.groupby(["valid_time", "latitude", "longitude"], as_index=False).first()
+        dfs.append(df)
+
+    # Outer merge all datasets on the three key columns
+    result = dfs[0]
+    for df in dfs[1:]:
+        result = result.merge(df, on=["valid_time", "latitude", "longitude"], how="outer")
+
+    # Spatial filter
+    before = len(result)
+    result = result[
+        (result["latitude"] >= LAT_MIN) & (result["latitude"] <= LAT_MAX) &
+        (result["longitude"] >= LON_MIN) & (result["longitude"] <= LON_MAX)
     ]
-    if len(df) < before:
-        print(f"  Spatial filter: {before} -> {len(df)} rows")
+    if len(result) < before:
+        print(f"  Spatial filter: {before} -> {len(result)} rows")
 
-    # Round lat/lon to 4 dp to avoid float drift
-    df["latitude"] = df["latitude"].round(4)
-    df["longitude"] = df["longitude"].round(4)
+    result["latitude"] = result["latitude"].round(4)
+    result["longitude"] = result["longitude"].round(4)
 
-    return df
+    return result
 
 
 def build_insert_rows(df: pd.DataFrame) -> list:
@@ -195,6 +210,10 @@ def main():
         dry_run_report(df, rows)
     else:
         live_run(rows)
+
+    sys.stdout.flush()
+    # eccodes C library segfaults on Python GC cleanup — bypass with os._exit
+    os._exit(0)
 
 
 if __name__ == "__main__":
