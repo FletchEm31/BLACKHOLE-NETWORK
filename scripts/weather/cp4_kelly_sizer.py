@@ -36,6 +36,7 @@ SIGMA_FLOOR_RATIO   = 0.20   # never compress below 20% of base_sigma
 BANKROLL_CAP_PCT    = 0.10   # never stake more than 10% of bankroll on one contract
 EDGE_THRESHOLD_LIQ  = 5.0    # cents — liquid (volume > 100)
 EDGE_THRESHOLD_ILL  = 8.0    # cents — illiquid (volume <= 100 or unknown)
+MIN_NO_ASK_CENTS    = 3.0    # skip buckets with no_ask below this — effectively dead market
 
 CITY_MAP = {'KDEN': 'Denver', 'KLAX': 'Los Angeles', 'KMIA': 'Miami'}
 STATION_TO_MARKET = {'KDEN': 'KXHIGHDEN', 'KLAX': 'KXHIGHLAX', 'KMIA': 'KXHIGHMIA'}
@@ -61,18 +62,20 @@ def _get_conn():
 # Helpers — settlement filter, ticker builder, label functions
 # ---------------------------------------------------------------------------
 
+def _settlement_dt(station_code: str, target_date: date) -> datetime:
+    """UTC settlement datetime for a given station/target_date."""
+    settle_hour = SETTLEMENT_UTC_HOUR.get(station_code, 20)
+    if settle_hour == 0:
+        # KLAX: 4PM PDT = midnight UTC start of (target_date + 1 day)
+        return (datetime(target_date.year, target_date.month, target_date.day,
+                         0, 0, 0, tzinfo=timezone.utc) + timedelta(days=1))
+    return datetime(target_date.year, target_date.month, target_date.day,
+                    settle_hour, 0, 0, tzinfo=timezone.utc)
+
+
 def _is_settled(station_code: str, target_date: date) -> bool:
     """True if the contract's settlement time has already passed."""
-    settle_hour = SETTLEMENT_UTC_HOUR.get(station_code, 20)
-    now = datetime.now(timezone.utc)
-    if settle_hour == 0:
-        # KLAX: midnight UTC = start of the day AFTER target_date
-        settlement = datetime(target_date.year, target_date.month, target_date.day,
-                              0, 0, 0, tzinfo=timezone.utc) + timedelta(days=1)
-    else:
-        settlement = datetime(target_date.year, target_date.month, target_date.day,
-                              settle_hour, 0, 0, tzinfo=timezone.utc)
-    return now >= settlement
+    return datetime.now(timezone.utc) >= _settlement_dt(station_code, target_date)
 
 
 def _build_ticker(station_code: str, target_date: date, bucket_label: str) -> str:
@@ -113,25 +116,16 @@ def calculate_time_decayed_sigma(base_sigma: float, station_code: str,
     Without target_date falls back to the old "next settlement from now"
     logic — only correct for same-day contracts.
     """
-    settle_hour = SETTLEMENT_UTC_HOUR.get(station_code, 20)
-
     if evaluation_time_utc.tzinfo is None:
         now = evaluation_time_utc.replace(tzinfo=timezone.utc)
     else:
         now = evaluation_time_utc.astimezone(timezone.utc)
 
     if target_date is not None:
-        # Anchor settlement to the specific contract's target_date.
-        # Mirrors the logic in _is_settled() to stay consistent.
-        if settle_hour == 0:
-            # KLAX: settles at midnight UTC start of (target_date + 1 day)
-            settle_dt = datetime(target_date.year, target_date.month, target_date.day,
-                                 0, 0, 0, tzinfo=timezone.utc) + timedelta(days=1)
-        else:
-            settle_dt = datetime(target_date.year, target_date.month, target_date.day,
-                                 settle_hour, 0, 0, tzinfo=timezone.utc)
+        settle_dt = _settlement_dt(station_code, target_date)
     else:
         # Legacy path: "next settlement from now" — only correct for same-day contracts.
+        settle_hour = SETTLEMENT_UTC_HOUR.get(station_code, 20)
         settle_dt = datetime(now.year, now.month, now.day,
                              settle_hour, 0, 0, tzinfo=timezone.utc)
         if settle_dt <= now:
@@ -225,6 +219,8 @@ def run_cp4_kelly(station_code: str, target_date: date,
 
     now_utc = datetime.now(timezone.utc)
     sigma = calculate_time_decayed_sigma(model_rmse, station_code, now_utc, target_date)
+    settle_dt = _settlement_dt(station_code, target_date)
+    hours_to_settle = round(max((settle_dt - now_utc).total_seconds() / 3600.0, 0.0), 2)
 
     # Determine threshold bucket directions.
     # Kalshi stores both T66 (≤66) and T73 (≥73) with floor=cap=threshold_value.
@@ -280,8 +276,9 @@ def run_cp4_kelly(station_code: str, target_date: date,
         # Volume data not in snapshot table — conservative illiquid threshold
         edge_threshold = EDGE_THRESHOLD_ILL
 
-        valid_price = 0 < no_ask_cents < 100
-        qualifies = bool(valid_price and edge_cents >= edge_threshold)
+        no_ask_thin = no_ask_cents < MIN_NO_ASK_CENTS
+        valid_price  = 0 < no_ask_cents < 100
+        qualifies    = bool(valid_price and not no_ask_thin and edge_cents >= edge_threshold)
 
         contracts = 0
         stake_usd = 0.0
@@ -311,6 +308,8 @@ def run_cp4_kelly(station_code: str, target_date: date,
             'stake_usd':         stake_usd,
             'sigma_used':        round(sigma, 4),
             'distribution_used': dist,
+            'hours_to_settle':   hours_to_settle,
+            'no_ask_thin':       no_ask_thin,
         })
 
     return results
@@ -431,8 +430,12 @@ def write_to_ledger(conn, station_code: str, target_date: date,
                 stake_fraction = round(min(kelly * 0.5, BANKROLL_CAP_PCT), 6)
 
         if not qualifies:
-            skip_reason = ('INVALID_PRICE' if not (0 < no_ask_cents < 100)
-                           else 'EDGE_TOO_LOW')
+            if not (0 < no_ask_cents < 100):
+                skip_reason = 'INVALID_PRICE'
+            elif b.get('no_ask_thin'):
+                skip_reason = 'NO_ASK_TOO_THIN'
+            else:
+                skip_reason = 'EDGE_TOO_LOW'
         else:
             skip_reason = None
 
@@ -484,8 +487,12 @@ def write_to_ledger(conn, station_code: str, target_date: date,
         })
 
     if dry_run:
-        print(f"[DRY RUN] {station_code} {target_date}: {len(rows)} buckets — "
+        hrs = buckets[0].get('hours_to_settle', '?') if buckets else '?'
+        sigma_used = buckets[0].get('sigma_used', '?') if buckets else '?'
+        print(f"[DRY RUN] {station_code} {target_date}: {hrs}h to settle  "
+              f"sigma={sigma_used}°F  {len(rows)} buckets — "
               f"{sum(1 for r in rows if r['recommended_action'] == 'BET_NO')} BET_NO, "
+              f"{sum(1 for r in rows if r['skip_reason'] == 'NO_ASK_TOO_THIN')} THIN, "
               f"{sum(1 for r in rows if r['recommended_action'] == 'SKIP')} SKIP")
         for r in rows:
             if r['recommended_action'] == 'BET_NO':
