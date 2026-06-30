@@ -1,0 +1,14 @@
+# BHN WeatherBHN orchestrator timer — fires every 5 minutes, 24/7.
+# The orchestrator script enforces active market hours (06:00–midnight local)
+# internally, so no-op cycles during overnight hours are fast and harmless.
+
+[Unit]
+Description=BHN WeatherBHN orchestrator (5-minute cycle)
+
+[Timer]
+OnActiveSec=30s
+OnUnitActiveSec=5min
+Persistent=false
+
+[Install]
+WantedBy=timers.target
