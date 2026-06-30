@@ -1,0 +1,12 @@
+# BHN WeatherBHN exit audit timer — fires daily at 00:30 UTC.
+# 30 minutes after the VC backfill completes, giving NWS CLI actuals time to post.
+
+[Unit]
+Description=BHN exit audit daily scorer
+
+[Timer]
+OnCalendar=*-*-* 00:30:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

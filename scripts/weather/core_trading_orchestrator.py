@@ -31,7 +31,8 @@ sys.path.insert(0, '/opt/bhn/trading')
 from cp1_data_sanity import check_data_sanity
 from cp2_arb_check import check_structural_arb
 from cp3_inference import run_cp3_inference
-from cp4_kelly_sizer import write_to_ledger, _is_settled
+from cp4_kelly_sizer import write_to_ledger, _is_settled, run_cp4_kelly
+from exit_audit_logger import record_paper_trade
 
 logger = logging.getLogger('bhn.trading.weather_orchestrator')
 
@@ -175,7 +176,19 @@ def _process_station_date(conn, station_code: str, target_date: date,
     mode_tag    = 'xgb' if cp3['mode'] == 'xgboost' else 'fallback'
     cp3_label   = f'{predicted_f:.1f}F({mode_tag})'
 
-    # --- CP4: Kelly sizing + ledger write ---
+    # --- CP4: Kelly sizing + paper trade capture + ledger write ---
+    # Run Kelly once; pass pre-computed buckets to both functions to avoid
+    # a second DB round-trip inside write_to_ledger.
+    buckets = run_cp4_kelly(station_code, target_date, predicted_f,
+                            cp3['model_rmse'], BANKROLL_USD)
+
+    # Record qualifying signals as paper trades (always, even in DRY_RUN).
+    # is_paper_trade=True when DRY_RUN=True so paper vs live stays distinct.
+    paper_n = record_paper_trade(conn, station_code, target_date, predicted_f,
+                                 buckets, is_paper_trade=DRY_RUN)
+    if paper_n:
+        conn.commit()
+
     result = write_to_ledger(
         conn=conn,
         station_code=station_code,
@@ -186,11 +199,13 @@ def _process_station_date(conn, station_code: str, target_date: date,
         model_rmse=cp3['model_rmse'],
         bankroll_usd=BANKROLL_USD,
         dry_run=DRY_RUN,
+        _precomputed_buckets=buckets,
     )
 
     dry_tag   = '(dry)' if DRY_RUN else ''
+    paper_tag = f' paper={paper_n}' if paper_n else ''
     cp4_label = (f"{result['bet_no']}_BET_NO/"
-                 f"{result.get('skipped', 0)}_SKIP{dry_tag}")
+                 f"{result.get('skipped', 0)}_SKIP{paper_tag}{dry_tag}")
 
     return (f'{station_code} {target_date}: '
             f'CP1=PASS CP2={cp2_label} CP3={cp3_label} CP4={cp4_label}')

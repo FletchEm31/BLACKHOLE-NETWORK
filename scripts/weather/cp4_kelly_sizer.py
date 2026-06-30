@@ -385,7 +385,8 @@ def write_to_ledger(conn, station_code: str, target_date: date,
                     om_tmax_f: Optional[float],
                     model_rmse: float,
                     bankroll_usd: float = 1000.0,
-                    dry_run: bool = False) -> dict:
+                    dry_run: bool = False,
+                    _precomputed_buckets: Optional[list] = None) -> dict:
     """
     Run CP4 sizing for station/target_date and upsert into weather_gold_contract_ledger.
 
@@ -398,8 +399,9 @@ def write_to_ledger(conn, station_code: str, target_date: date,
     if _is_settled(station_code, target_date):
         return {'settled': True, 'written': 0, 'bet_no': 0, 'skipped': 0}
 
-    buckets = run_cp4_kelly(station_code, target_date, predicted_tmax_f,
-                            model_rmse, bankroll_usd)
+    buckets = (_precomputed_buckets if _precomputed_buckets is not None
+               else run_cp4_kelly(station_code, target_date, predicted_tmax_f,
+                                  model_rmse, bankroll_usd))
     if not buckets:
         return {'settled': False, 'written': 0, 'bet_no': 0, 'skipped': 0}
 

@@ -1,0 +1,20 @@
+# BHN WeatherBHN exit audit scorer — daily paper trade scorer.
+# Activated by bhn-exit-audit.timer at 00:30 UTC.
+
+[Unit]
+Description=BHN WeatherBHN exit audit logger
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/bhn/trading
+
+EnvironmentFile=/etc/bhn-trading/env
+EnvironmentFile=-/etc/bhn-trading/strat9.env
+
+ExecStart=/usr/bin/python3 /opt/bhn/trading/exit_audit_logger.py
+
+StandardOutput=append:/var/log/bhn-trading/exit-audit.log
+StandardError=append:/var/log/bhn-trading/exit-audit.log
+
+TimeoutStartSec=120
