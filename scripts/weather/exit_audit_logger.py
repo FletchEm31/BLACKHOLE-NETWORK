@@ -25,6 +25,8 @@ from typing import Optional
 import psycopg2
 import psycopg2.extras
 
+from cp4_kelly_sizer import _is_settled
+
 logger = logging.getLogger('bhn.trading.exit_audit')
 
 STATION_TO_MARKET = {'KDEN': 'KXHIGHDEN', 'KLAX': 'KXHIGHLAX', 'KMIA': 'KXHIGHMIA'}
@@ -186,11 +188,16 @@ def score_settled_positions(dry_run: bool = False,
                            bucket_label, bucket_floor, bucket_cap,
                            no_ask_cents, contracts_recommended
                     FROM weather_position_exits
-                    WHERE target_date < CURRENT_DATE
-                      AND scored_at IS NULL
+                    WHERE scored_at IS NULL
                     ORDER BY target_date, station_code
                 """)
-            rows = cur.fetchall()
+            # Filter in Python using _is_settled() so KDEN/KMIA same-day settlements
+            # (e.g. KMIA settles 20:00 UTC, KDEN 22:00 UTC) are scored the same evening
+            # rather than waiting until the date rolls over.
+            all_rows = cur.fetchall()
+
+        rows = [r for r in all_rows
+                if target_date_override or _is_settled(r['station_code'], r['target_date'])]
 
         if not rows:
             logger.info('No unscored positions to process')
