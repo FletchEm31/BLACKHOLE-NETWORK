@@ -1,77 +1,68 @@
 # Blackhole Network (BHN)
 
-A privacy-focused personal infrastructure platform built on WireGuard with deep defense-in-depth security, AI-powered operations, and algorithmic trading. **Single-operator network — no customers, no public service offering. Personal infrastructure only.**
+A privacy-focused personal infrastructure platform built on WireGuard with defense-in-depth security and algorithmic trading. **Single-operator network — no customers, no public service offering. Personal infrastructure only.**
 
-> **Note:** Repo renamed 2026-05-11 from EventHorizon VPN to Blackhole Network. Vultr-side server display names updated to `BHN|VPS-LOSANGELES-US1` and `BHN|VPS-NEWJERSEY-US2`. LA-deployed script paths (`/usr/local/sbin/eh-*`, `/opt/eh-diagnostics/*`), PostgreSQL database name `eventhorizon`, email domain `eventhorizonvpn.com`, and n8n credential names (`Postgres EventHorizon`, `EventHorizonVPN-Claude`) are intentionally preserved as live-system identifiers until a coordinated migration session. The "EventHorizon VPN" name is reserved for the future separate commercial product. Frankfurt (EU1) was decommissioned May 2026; configs archived in [`infrastructure/archive/frankfurt/`](infrastructure/archive/frankfurt/).
+> **Note:** Repo renamed 2026-05-11 from EventHorizon VPN to Blackhole Network. The PostgreSQL database name `eventhorizon` is preserved as a live-system identifier and will be migrated in a future coordinated session. Frankfurt (EU1) was decommissioned May 2026; configs archived in [`infrastructure/archive/frankfurt/`](infrastructure/archive/frankfurt/).
 
 ## Overview
 
-Blackhole Network is a self-hosted private intelligence and trading infrastructure platform operated by a single operator. Built on battle-tested open-source tools with custom automation and AI-driven monitoring.
+Blackhole Network is a self-hosted private intelligence and trading infrastructure platform operated by a single operator. Built on battle-tested open-source tools with custom automation and systematic trading pipelines.
 
-**Domain model:** BLACKHOLE-NETWORK (BHN) is the infrastructure platform. Four data domains run on it — **FinancialBHN**, **WeatherBHN**, **PokemonBHN**, and **SecurityBHN** — over shared infrastructure (HORIZON, WireGuard, PostgreSQL, n8n). The naming pattern is `{Domain}BHN`; a thing earns a domain label only if it has its own distinct tables, scripts, and services. A companion game front-end, *Pokemon Blackhole*, lives in a separate repo (`TEAM-ROCKET-BHN`) and consumes PokemonBHN data.
+**Domain model:** BLACKHOLE-NETWORK (BHN) is the infrastructure platform. Four data domains run on it — **FinancialBHN**, **WeatherBHN**, **SecurityBHN**, and **PokemonBHN** — over shared infrastructure (WireGuard, PostgreSQL, Grafana, n8n). The naming pattern is `{Domain}BHN`; a thing earns a domain label only if it has its own distinct tables, scripts, and services.
 
 ### Shared infrastructure
 
-WireGuard mesh VPN (3 nodes across US-West and US-East), PostgreSQL, Grafana, n8n, Tor relay network, dnscrypt-proxy, CrowdSec, Suricata, Shadowsocks. Serves all domains, belongs to none.
+WireGuard mesh VPN (4 nodes across US-West, US-East, and EU), PostgreSQL, Grafana, n8n, Tor relay network, dnscrypt-proxy, CrowdSec, Suricata. Serves all domains, belongs to none.
 
 ---
 
-### FinancialBHN — trading & financial intelligence
+### FinancialBHN — trading & financial intelligence `[20%]`
 
-Algorithmic paper trading via Alpaca on the NJ trading node, across 3 accounts / $150k total capital. As of 2026-05-21, only **Strat 13 (`BHN-RSI-INTRADAY`)** is active as an operational test to validate execution and protocol; the remaining strategies are sidelined pending that validation. Financial intelligence is surfaced through 6 Grafana dashboards covering market regime, ETF prices, macro indicators, sentiment, commodities, energy, agriculture, prediction markets, and options flow.
-
----
-
-### WeatherBHN — Kalshi temperature prediction market trading
-
-A systematic, model-driven strategy trading daily high/low temperature contracts on [Kalshi](https://kalshi.com), the U.S.-regulated prediction market exchange. The core thesis: NWS probabilistic forecast data, processed through an ensemble modeling layer and calibrated against historical actuals, produces probability estimates that diverge measurably from Kalshi's market-implied probabilities. That divergence is the tradeable signal.
-
-The pipeline is end-to-end and fully automated: four independent forecast sources (NWS Gridpoint API, Open-Meteo GFS ensemble, Visual Crossing, NOAA GHCND actuals) are ingested every 30 minutes into bronze tables, conformed to a standard schema in silver, and synthesized into a gold edge sheet that refreshes every 5 minutes. Contracts where calibrated model probability diverges from market-implied probability beyond a threshold are sized using quarter-Kelly and tracked for paper P&L.
-
-**Phase 1 cities:** Denver (KDEN) and Miami (KMIA). Chosen for contrasting forecast regimes — Denver has high temperature volatility and low humidity (cleaner thermodynamic signal); Miami has strong diurnal patterns with afternoon convective suppression and a dominant sea breeze signal.
-
-**Currently:** live signal generation in DRY_RUN mode (paper P&L only). 30-day calibration accumulation in progress; Platt scaling calibration parameters pending.
-
-→ See [`docs/kalshi-weather-trading.md`](docs/kalshi-weather-trading.md) for the full technical write-up: ensemble weighting, Platt calibration, Kelly sizing, risk controls, and roadmap.
+Algorithmic paper trading via Alpaca, across 3 accounts with multiple strategies. Currently only **Strat 13 (`BHN-RSI-INTRADAY`)** is active as an operational test to validate execution and protocol; the remaining strategies are sidelined pending that validation. Financial intelligence is surfaced through 6 Grafana dashboards covering market regime, ETF prices, macro indicators, sentiment, commodities, energy, agriculture, prediction markets, and options flow.
 
 ---
 
-### PokemonBHN — graded-card market
+### WeatherBHN — Kalshi temperature prediction market trading `[80%]`
+
+A systematic, model-driven strategy trading daily high temperature contracts on [Kalshi](https://kalshi.com), the U.S.-regulated prediction market exchange. The core thesis: NWS probabilistic forecast data, processed through an ensemble modeling layer and calibrated against historical actuals, produces probability estimates that diverge measurably from Kalshi's market-implied probabilities. That divergence is the tradeable signal.
+
+The pipeline is end-to-end and fully automated: four independent forecast sources (NWS Gridpoint API, Open-Meteo GFS, Visual Crossing, NOAA GHCND actuals) are ingested continuously into bronze tables, conformed to a standard schema in silver, and synthesized into a gold feature set refreshed daily. Contracts where model probability diverges from market-implied probability beyond a threshold are sized using half-Kelly and tracked in a contract ledger.
+
+**Active cities:** Denver (KDEN), Los Angeles (KLAX), Miami (KMIA) — Kalshi KXHIGHDEN / KXHIGHLAX / KXHIGHMIA tmax markets.
+
+**Pipeline (all live on LA hub):**
+- **CP1** — data sanity gate (NWS forecast + Kalshi snapshot existence/validity)
+- **CP2** — structural arb scan across all buckets (logged, non-blocking)
+- **CP3** — XGBoost tmax inference; test RMSE 2.13°F vs 2.42°F calibrated NWS baseline (+0.29°F edge). Emergency fallback to calibrated NWS if model unavailable.
+- **CP4** — half-Kelly position sizer; NO-side only strategy ("Tail-No"); 10% bankroll cap per contract
+
+**Currently:** live signal generation in DRY_RUN mode. Model trained on 7,056 historical + 51 live rows. YES-side extension deferred until ≥60 live ledger entries validate NO-side calibration.
+
+→ See [`docs/kalshi-weather-trading.md`](docs/kalshi-weather-trading.md) for the full technical write-up.
+
+---
+
+### SecurityBHN — security telemetry & audit `[100%]`
+
+Defense-in-depth signals across the mesh: `security_events`, `anomalies`, `fail2ban_events`, `crowdsec_decisions`, plus per-node resource, bandwidth, WireGuard, and Tor stats. Live Grafana dashboard covering node health, security events, and pulse reports.
+
+**Audit layer:** **BTEH** — *Beyond The EventHorizon* (repo `BTEH-Beyond-The-EventHorizon`) is the audit framework for the whole platform. 10-section protocol covering Infrastructure, Security, Database, Workflow & Data Pipeline, Code Quality, Financial & Trading, Legal & Compliance, Consumer Applications, and Future Architecture. v1.0 scaffolded May 2026.
+
+---
+
+### PokemonBHN — graded-card market `[50%]`
 
 WOTC-era graded-card data pipeline. `master_card_catalog` (637 cards / 1,354 variant rows, 8 sets) feeds three streams — sold comps (`sold_listings`), active eBay listings (`ebay_listings`), and graded population reports (`pop_reports`) — with CGC/PSA/BGS/SGC grade normalization via `master_grade_catalog`.
+
+This data will be used to research and identify personal investment/collection opportunities, and will serve as the backend data for **Pokemon Blackhole** — a GBA-style FireRed/LeafGreen battle interface built on top of real card market intelligence.
+
 → See [Pokémon Graded Card Data Pipeline](#pokémon-graded-card-data-pipeline) and [Data standards & authority](#data-standards--authority).
-
-This data will be used to reserach and buy my own investment/collection opportunities.  It will also be collected at scale, refined, and possbily sold B2B or B2C as inventory and valuation software (similar to ChartPricing).  FInally, this will operate as the backend hard data to Pokemon: Blackhole.  Pokemon: Blackhole is a GBA-style Pokemon FireRed/LeafGreen battle interface built on top of real Pokemon card market intelligence.  Part of the Team Rocket BHN — Pokemon Market — Blackhole Network operation.
-
-### SecurityBHN — security telemetry & audit
-
-Defense-in-depth signals across the mesh: `security_events`, `anomalies`, `fail2ban_events`, `crowdsec_decisions`, plus per-node resource, bandwidth, WireGuard, and Tor stats.
-
-**Governance + audit layer:** **BTEH** — *Beyond The EventHorizon* (repo `BTEH-Beyond-The-EventHorizon`) is the audit framework for the whole platform. 10-section protocol covering Infrastructure / Security / Database / Workflow & Data Pipeline / AI Agent / Code Quality / Financial & Trading / Legal & Compliance / Consumer Applications / Future Architecture, plus 4 appendices (scoring rubrics, multi-instance execution guide, recurring cadence, glossary). **v1.0 scaffolded May 2026, actively under development.** BTEH is the audit layer for SecurityBHN — same domain, one project, two name forms.
-
----
-
-### HORIZON — AI agent (shared infrastructure)
-
-The autonomous intelligence layer — an n8n-based AI agent powered by Claude with full read access to all PostgreSQL tables. Shared infrastructure, not a domain: it serves every domain but belongs to none. It acts as both personal assistant and autonomous infrastructure manager:
-
-- **Operations** — real-time monitoring of all 4 nodes (health, security events, anomalies, pulse). SMS/voice alerts (Twilio + ElevenLabs) for P1/P2 events, outages, and storage pressure. Executes restricted actions on operator command: restart services, fail2ban bans, smoke tests, trading killswitch.
-- **Querying & control** — full read access across every domain's tables. Conversational over SMS, voice, and VPN-only web chat: *"How are my strategies performing?"*, *"Any threats in the last 24 hours?"*, *"HALT trading"*, *"Restart n8n"*.
-- **Memory** — pgvector semantic memory (384-dim) for long-term context, Redis for short-term session state; a persistent model of operator preferences, infra state, and history.
-
-**Goal:** one conversational interface to the entire BHN stack — infrastructure, security, trading, financial intelligence — 24/7 via SMS from anywhere.
 
 ---
 
 ### Companion repo — Pokemon Blackhole (the game)
 
-**Pokemon Blackhole** (repo `TEAM-ROCKET-BHN`) is a separate front-end — not part of this repository — and an independent *consumer* of PokemonBHN data.
-
-**The primary experience is alert-driven.** When HORIZON detects a deal in the card market (listing well below sold-comp value), it triggers a full GBA-style FireRed/LeafGreen battle cutscene: the seller becomes your rival trainer, the card is the Pokémon, the HP bar is deal quality (listed vs. market value — greener/fuller = better deal), the level is the grade, the badge is the grading company, and rarity tiers map to population scarcity. The player can BUY (open the listing), WATCH, ANALYZE (open in Claude), or RUN.
-
-**Browse mode is the secondary entry point** — the operator can open the game manually and walk active listings the same way, encountering each as a wild Pokémon without waiting for HORIZON to flag one.
-
-Either way the data connection is the same: the game reads `master_card_catalog`, `pop_reports`, and `sold_listings` that PokemonBHN populates. The game is **not built or orchestrated by HORIZON**; it's an independent app. HORIZON's deal recommendations surface as in-game advice (e.g. *"in the RED — 68% below market, recommend BUY"*), but the game stands on its own. **BLACKHOLE-NETWORK produces the card-market data; Pokemon Blackhole renders it as a battle.**
+**Pokemon Blackhole** (repo `TEAM-ROCKET-BHN`) is a separate front-end — not part of this repository — and an independent consumer of PokemonBHN data. It reads `master_card_catalog`, `pop_reports`, and `sold_listings` that PokemonBHN populates and renders card market data as a GBA-style Pokémon battle interface. **BLACKHOLE-NETWORK produces the card-market data; Pokemon Blackhole renders it.**
 
 ---
 
@@ -82,175 +73,125 @@ Either way the data connection is the same: the game reads `master_card_catalog`
 ### Five-phase build plan
 
 ```
-Phase 1: NETWORK                        [✅ ~90% complete]
-├─ LA hub (BHN|VPS-LOSANGELES-US1) — hub, PostgreSQL, n8n, HORIZON, Grafana
-├─ NJ trading node (BHN|VPS-NEWJERSEY-US2) — Alpaca paper trading, Strat 13 active (operational test), others sidelined
-├─ Hillsboro proxy node (BHN-HILLSBORO-US3) — LA egress proxy via tinyproxy, Tor relay
-├─ Frankfurt (EU1) — decommissioned May 2026. Configs archived in infrastructure/archive/frankfurt/.
-├─ WireGuard hub-and-spoke mesh — all nodes + operator devices connected, PSK on most peers
-├─ Bootstrap script v4 (declarative node types + modular install)
-└─ Future nodes: Sweden (Bahnhof), Iceland via snapshot deployment
+Phase 1: FOUNDATION                      [✅ complete]
+├─ LA hub — PostgreSQL, Grafana, n8n, full security stack
+├─ NJ trading node — Alpaca paper trading
+├─ Hillsboro proxy — LA egress via tinyproxy, Tor relay (BHNHeliosUS3)
+├─ Helsinki EU exit node — commissioned 2026-06-27, Tor relay (BHNAuroraEU1)
+├─ WireGuard hub-and-spoke mesh — all nodes + operator devices, PSK on all peers
+└─ Bootstrap script v4 — declarative node types + modular install
 
-Phase 2: DASHBOARD                      [✅ ~85% complete]
-├─ PostgreSQL on encrypted NVMe — 78 tables, live financial + security data
-├─ 6 Grafana dashboards (VPN-only access):
-│   ├─ BHN Market Intelligence — regime, ETFs, macro, sentiment, earnings, analyst ratings
-│   ├─ BHN Trade Execution & Operations — signals, PnL, paper trades, reconciliation
-│   ├─ BHN Derivatives & Options Markets — IV, Greeks, open interest, options chain
-│   ├─ BHN Prediction & Alternative Markets — weather, Kalshi/Polymarket, corporate actions
-│   ├─ BHN Commodities & Tangible Asset Markets — energy, agriculture, precious metals
-│   └─ BHN Infrastructure & Security Operations — nodes, security events, anomalies, pulse
-├─ n8n for action automation and AI orchestration
-├─ Financial intelligence layer — 32 ETF tickers, FRED macro, USDA agriculture, EIA energy
-└─ Grafana alerting — not yet wired
+Phase 2: DATA PLATFORM                   [✅ complete]
+├─ PostgreSQL eventhorizon — 150+ tables, medallion bronze/silver/gold architecture
+├─ 6 Grafana dashboards (VPN-only):
+│   ├─ BHN Market Intelligence — regime, ETFs, macro, sentiment, earnings
+│   ├─ BHN Trade Execution & Operations — signals, P&L, paper trades
+│   ├─ BHN Derivatives & Options Markets — IV, Greeks, open interest
+│   ├─ BHN Prediction & Alternative Markets — weather, Kalshi/Polymarket
+│   ├─ BHN Commodities & Tangible Asset Markets — energy, agriculture, metals
+│   └─ BHN Infrastructure & Security Operations — nodes, security events, pulse
+├─ n8n — workflow automation and pipeline orchestration
+└─ Financial intelligence — FRED macro, Alpaca market data, sector/sentiment feeds
 
-Phase 3: AI INTEGRATION                 [in progress, ~60% complete]
-├─ pgvector memory layer (operational — 19 entries)
-├─ Redis short-term session memory (operational)
-├─ HORIZON workflow (operational — stale workflow, re-import pending)
-├─ Voice ops interface (Twilio + ElevenLabs — staged, A2P 10DLC in review)
-├─ HORIZON financial table access — pending workflow re-import
-├─ HORIZON restricted action executor — not yet built
-└─ Proactive alerting + auto-response — not yet built
+Phase 3: TRADING                         [🔄 in progress]
+├─ WeatherBHN — Kalshi tmax contract trading pipeline [80%]
+│   ├─ CP1–CP4 orchestrator live, every 5 min
+│   ├─ XGBoost model trained and deployed (test RMSE 2.13°F)
+│   ├─ DRY_RUN mode active — paper P&L only, no live Kalshi orders
+│   └─ Next: flip DRY_RUN=false after NO-side calibration passes (≥60 entries)
+└─ FinancialBHN — Alpaca paper trading [20%]
+    ├─ Strat 13 (BHN-RSI-INTRADAY) — operational test, live
+    └─ Remaining strategies sidelined pending Strat 13 validation
 
-Phase 4: PER-NODE SERVICES              [~80% complete]
-├─ Trading stack live on NJ — Strat 13 operational test (others sidelined), 3 Alpaca accounts
-├─ Wallos (LA) — subscription / cost tracking [✅] http://<BHN_WG_LA_IP>:8090
-├─ tinyproxy (Hillsboro) — LA egress proxy [✅] verified, lockdown pending
-├─ Tor relays: BHNHeliosUS3 (Hillsboro, bootstrapping),
-│              BHNNebulaUS2 (NJ, deployed not live)
-├─ SearXNG / LibreSpeed — were Frankfurt-hosted; offline post-decommission, relocation TBD
-└─ MyFamily fingerprint exchange — pending (after all relays 24h+)
+Phase 4: COLLECTIBLES                    [🔄 in progress — 50%]
+├─ master_card_catalog — 637 cards / 1,354 variants, 8 WOTC sets
+├─ CGC pop scraper — weekly cron on LA
+├─ PSA pop scraper — residential fetch model (runs off-LA)
+├─ eBay sold comps — 15,497 rows loaded; card_id recovery at 82.9%
+└─ eBay live listings scraper — TLS fingerprint solution deployed, parser update pending
 
-Phase 5: RESILIENCE                     [designed, not built]
-├─ Sweden cold standby + dark replication node (Bahnhof hosting, outside Vultr)
-├─ Tor hidden-service replication LA to Sweden (no Vultr cross-region correlation)
+Phase 5: RESILIENCE                      [designed, not built]
+├─ Sweden cold standby + dark replication node (Bahnhof hosting)
+├─ Tor hidden-service replication LA → Sweden
 ├─ Single-command failover (bhn-failover-activate.sh)
-├─ Sweden Tor middle relay (joins MyFamily with FRA + NJ)
-└─ Iceland exit node EU3
+└─ Additional EU exit coverage
 ```
 
 ### Storage tiering (LA hub)
 
 ```
 NVMe (101 GB encrypted, hot tier)       [✅ operational]
-  ├─ /mnt/eh-nvme-hot/postgres          PostgreSQL data (live writes)
-  ├─ /mnt/eh-nvme-hot/pcap              Active packet captures
-  ├─ /mnt/eh-nvme-hot/logs              Active logs
-  └─ /mnt/eh-nvme-hot/grafana           Grafana state
+  PostgreSQL data (live writes), active packet captures, active logs, Grafana state
 
 HDD (399 GB encrypted, cold tier)       [✅ operational]
-  ├─ /mnt/eh-hdd-cold/archives/         Compressed daily archives
-  ├─ /mnt/eh-hdd-cold/snapshots         Hourly stats snapshots (kept forever)
-  └─ /mnt/eh-hdd-cold/reports           Weekly analysis reports
+  Compressed daily archives, hourly stats snapshots, weekly analysis reports
 ```
 
-Both volumes use LUKS2 with auto-unlock keyfiles, XFS filesystem, and persistent mounts via `/etc/crypttab` and `/etc/fstab`.
+Both volumes use LUKS2 with auto-unlock keyfiles, XFS filesystem, and persistent mounts.
 
 ### PostgreSQL schema
 
-78 tables in the `eventhorizon` database, grouped into nine functional categories:
+150+ tables in the `eventhorizon` database, grouped into functional categories:
 
 - **Market data** — daily/bars/ticks, regimes, sentiment, events, signals
 - **Macro** — daily macro + indicator series
 - **Trading** — paper trades, signals log, order events, circuit breaker, strategy performance + rules, reconciliation heartbeat
 - **Financial intelligence** — earnings, analyst data, options chain snapshots, prediction markets, crypto, investment signals, news
-- **Alternative data** — agriculture, energy, weather, corporate actions
+- **Alternative data** — agriculture, energy, corporate actions
+- **Weather (WeatherBHN)** — bronze/silver/gold weather pipeline tables; Kalshi market snapshots; contract ledger
 - **Security** — security events, anomalies, pulse reports, node logs, fail2ban, crowdsec decisions
 - **Infrastructure** — node metadata, resource/bandwidth/disk/patch stats, WireGuard peer + session stats, Tor relay stats
-- **AI** — `memories` (pgvector 384-dim), agent token log, call transcripts, conversation sessions, QA cache
-- **Collectibles (PokemonBHN)** — `master_card_catalog`, `pop_reports`, `sold_listings`, `master_grade_catalog`, `master_grading_criteria_catalog`, `master_set_catalog` (see [Pokémon Graded Card Data Pipeline](#pokémon-graded-card-data-pipeline))
+- **Collectibles (PokemonBHN)** — `master_card_catalog`, `pop_reports`, `sold_listings`, `master_grade_catalog`, `master_grading_criteria_catalog`, `master_set_catalog`
 
-**Authority:** the live DB is ground truth; canonical DDL lives in [`sql/`](sql/). The exhaustive table-by-table reference is in the data flow blueprint at [`infrastructure/docs/bhn-network-data-flow.md`](infrastructure/docs/bhn-network-data-flow.md#schema-reference).
-
-## Software stack
-
-Services running across BHN nodes (all access restricted to WireGuard tunnel unless noted):
-
-| Service | Node | Address | Purpose |
-|---|---|---|---|
-| WireGuard | LA (hub) | `51820/udp` (public) | Encrypted mesh VPN |
-| AdGuard Home | LA | `<BHN_WG_LA_IP>:3001` | Network-wide ad/tracker blocking + DNS filtering |
-| dnscrypt-proxy | LA | `127.0.0.1:5353` | Encrypted DoH transport (Cloudflare + Mullvad fallback) |
-| Unbound | LA | `127.0.0.1:5354` | Fully recursive DNS resolver (queries root servers directly) |
-| PostgreSQL 14 | LA | `<BHN_WG_LA_IP>:5432` | Primary database (`eventhorizon`, 146 tables) |
-| n8n | LA | `<BHN_WG_LA_IP>:5678` | Workflow automation + HORIZON AI orchestration |
-| Redis | LA | `<BHN_WG_LA_IP>:6379` | HORIZON short-term session cache |
-| Grafana | LA | `<BHN_WG_LA_IP>:3000` | Data dashboards (Docker, host network) |
-| Netdata | All nodes | `10.8.0.x:19999` | Real-time system monitoring |
-| Wallos | LA | `<BHN_WG_LA_IP>:8090` | Subscription / cost tracking |
-| tinyproxy | Hillsboro | `<BHN_WG_HIL_IP>:8888` | LA outbound API egress proxy (hides LA IP) |
-| Tor relay (BHNHeliosUS3) | Hillsboro | `<BHN_HIL_PUBLIC_IP>:9001` (public) | Non-exit middle relay |
-| Shadowsocks | Hillsboro | public | DPI-resistant traffic obfuscation |
-| fail2ban | All nodes | — | Brute force / intrusion blocking |
-| CrowdSec | LA, Hillsboro | — | Collaborative threat intelligence |
-| Suricata | LA | — | IDS/IPS deep packet inspection |
-| LUKS2 | LA | — | Storage encryption (NVMe hot + HDD cold) |
+**Authority:** the live DB is ground truth; canonical DDL lives in [`sql/`](sql/). The exhaustive table reference is in [`infrastructure/docs/bhn-network-data-flow.md`](infrastructure/docs/bhn-network-data-flow.md).
 
 ## Security stack
 
 Each node runs:
 
 - **WireGuard** — encrypted mesh tunnel, hub-and-spoke topology, PSK on all peers
-- **Shadowsocks** — DPI-resistant traffic obfuscation (exit nodes)
-- **Unbound** — fully recursive resolver on LA (127.0.0.1:5354); queries root servers directly, DNSSEC auto-managed, no third-party DNS provider in the chain (LA only as of 2026-06-24)
-- **dnscrypt-proxy** — encrypted DoH transport; forwards all queries to Unbound first; Cloudflare + Mullvad-base-doh as fallback only; lb_strategy p2
+- **Unbound** — fully recursive resolver on LA; queries root servers directly, DNSSEC auto-managed
+- **dnscrypt-proxy** — encrypted DoH transport; Cloudflare + Mullvad-base-doh as fallback
 - **Fail2ban** — automated intrusion blocking with VPN-tunnel whitelist
 - **CrowdSec** — collaborative threat intelligence, shared ban list
 - **Suricata** — IDS/IPS deep packet inspection, logs to PostgreSQL
 - **UFW** — host firewall, default deny in/out, explicit whitelist only
 - **LUKS2** — full-disk encryption for storage volumes (LA hub, NVMe + HDD)
-- **SSH hardening** — key-only root login, passwords disabled, non-standard port on NJ (2222)
-- **tinyproxy** — LA API egress via Hillsboro IP (Anthropic, Twilio, ElevenLabs never see LA IP)
+- **SSH hardening** — key-only root login, passwords disabled
+- **tinyproxy** — LA API egress via Hillsboro; LA IP never exposed to external APIs
+- **Shadowsocks** — DPI-resistant traffic obfuscation (exit nodes)
 
-LA hub additional layers:
-- LUKS2 encrypted NVMe (hot) + HDD (cold) storage
-- PostgreSQL role-based access control (7 roles, least privilege)
-- WireGuard PSK on all peers (quantum-resistant key exchange)
+LA hub additional layers: PostgreSQL role-based access control (7 roles, least privilege), WireGuard PSK (quantum-resistant key exchange).
 
 ## FinancialBHN — trading stack
 
-Runs on NJ trading node (BHN|VPS-NEWJERSEY-US2). Paper trading via Alpaca.
+Runs on NJ trading node. Paper trading via Alpaca across 3 accounts.
 
-> **Status (2026-05-21):** only **Strat 13 (`BHN-RSI-INTRADAY`)** is active, as an operational test;
-> all other strategies are **sidelined** pending validation. The matrix below is the *configured*
-> strategy set (capital/schedule), not the current live set.
+> **Status:** only **Strat 13 (`BHN-RSI-INTRADAY`)** is active as an operational test. All other strategies are sidelined pending validation.
+
+Configured strategy set (not all active):
 
 ```
-Account 1 — BHN-STRAT-PRIMARY (<ALPACA_PAPER_ACCOUNT_ID>)    $100,000
-  Strat 6  — BHN-NASDAQ-LONG      enabled    $40,000   Mon 9:40am ET
-  Strat 7  — BHN-NASDAQ-SHORT     disabled   $40,000   pending Strat 6 validation
-  Strat 8  — BHN-SECTOR-ROTATION  enabled    $20,000   daily 3:55pm ET
+Account 1 — BHN-STRAT-PRIMARY            $100,000
+  Strat 6  — BHN-NASDAQ-LONG      sidelined  $40,000
+  Strat 7  — BHN-NASDAQ-SHORT     sidelined  $40,000   pending Strat 6
+  Strat 8  — BHN-SECTOR-ROTATION  sidelined  $20,000
 
-Account 2 — BHN-STRAT-FUNDAMENTAL (PA3AZX0UE3JC) $25,000
-  Strat 3  — BHN-MEAN-REVERSION   enabled    $20,000   daily
+Account 2 — BHN-STRAT-FUNDAMENTAL        $25,000
+  Strat 3  — BHN-MEAN-REVERSION   sidelined  $20,000
 
-Account 3 — BHN-STRAT-SIGNALS (PA37PRN150AG)     $25,000
-  Strat 4  — BHN-MOMENTUM         enabled    $12,500   daily
-  Strat 13 — BHN-RSI-INTRADAY     enabled    $12,500   every 30min market hours
-
-Parked (pending API keys):
-  Strat 1  — Congress Trading      (Quiver Quantitative API — $25/mo)
-  Strat 5  — Weather Arbitrage     (Kalshi API key)
+Account 3 — BHN-STRAT-SIGNALS            $25,000
+  Strat 4  — BHN-MOMENTUM         sidelined  $12,500
+  Strat 13 — BHN-RSI-INTRADAY     ACTIVE     $12,500   every 30min market hours
 ```
 
 ## Pokémon Graded Card Data Pipeline
 
-A self-contained collectibles-intelligence subsystem feeding HORIZON. It tracks two market signals
-for WOTC-era Pokémon cards — **scarcity** (graded population counts) and **price** (eBay sold comps) —
-both keyed off a single watchlist of cards worth following.
+A self-contained collectibles-intelligence subsystem. Tracks two market signals for WOTC-era Pokémon cards — **scarcity** (graded population counts) and **price** (eBay sold comps) — both keyed off a single watchlist of cards worth following.
 
 ### Source of truth — `master_card_catalog`
 
-`master_card_catalog` (in `eventhorizon`) is the shared search queue. Every scraper reads
-`WHERE active = true` and pulls `set_name, card_number` (plus `card_name, variant`), so adding a card
-to the watchlist is a single `INSERT … active = true` and it auto-enrolls across all collectors.
-Covers 8 sets (Base Set, Fossil, Jungle, Team Rocket, Gym Heroes, Gym Challenge, Wizards Black Star
-Promos, Best of Game) with PriceCharting reference prices. As of 2026-05-21 the six main WOTC sets are
-audited to **full canonical completeness** against Bulbapedia + pkmncards — every card carries its
-standard editions (1st Edition + Unlimited; Base Set also Shadowless) — for **637 distinct cards /
-1,354 variant rows** total. Error/alternate-print variants (errors, no-symbol, jumbo, staff stamps)
-are tracked opportunistically, not exhaustively.
+`master_card_catalog` is the shared search queue. Every scraper reads `WHERE active = true` and pulls `set_name, card_number`, so adding a card to the watchlist is a single `INSERT … active = true` and it auto-enrolls across all collectors. Covers 8 sets (Base Set, Fossil, Jungle, Team Rocket, Gym Heroes, Gym Challenge, Wizards Black Star Promos, Best of Game) with PriceCharting reference prices. The six main WOTC sets are audited to **full canonical completeness** — every card carries its standard editions (1st Edition + Unlimited; Base Set also Shadowless) — for **637 distinct cards / 1,354 variant rows** total.
 
 ### Data flow
 
@@ -259,196 +200,82 @@ master_card_catalog  (active = true → set_name, card_number)
    │
    ├─ CGC pop scraper ── native fetch, ccg-ops JSON API ─────────────┐
    │   infrastructure/scrapers/cgc-pop-scrape.js                      │
-   │   LA weekly cron: bhn-cgc-pop-refresh.timer (Sun 03:00 UTC)      ├─ cgc-pop-load.js ─→ pop_reports
-   │                                                                  │   (grader-agnostic upsert)
+   │   LA weekly cron: bhn-cgc-pop-refresh.timer (Sun 03:00 UTC)      ├─ cgc-pop-load.js → pop_reports
+   │                                                                   │   (grader-agnostic upsert)
    ├─ PSA pop scraper ── stealth browser, runs OFF-LA (residential) ──┘
    │   infrastructure/scrapers/psa-pop-scrape.js
-   │   clears Cloudflare → POST /Pop/GetSetItems → emits JSON → shipped to LA for load
+   │   clears Cloudflare → POST /Pop/GetSetItems → ships JSON to LA for load
    │
-   └─ n8n sold-data workflow ── eBay sold comps ─────────────────────→ sold_listings
+   └─ eBay sold comps pipeline ────────────────────────────────────→ sold_listings / ebay_transactions
 ```
 
 ### Scrapers (`infrastructure/scrapers/`)
 
-- **CGC** (`cgc-pop-scrape.js`) — CGC exposes a clean public population JSON API (no auth, no
-  browser). The driver scrapes every tracked set, asserts completeness against the API's
-  `TotalCount`, and loads via `cgc-pop-load.js`. Deployed on LA as the
-  `bhn-cgc-pop-refresh.{service,timer}` weekly job.
-- **PSA** (`psa-pop-scrape.js`) — PSA has **no** population API and its pages sit behind a Cloudflare
-  managed challenge, so this uses a **decoupled residential fetch model**: a stealth browser
-  (`puppeteer-extra` + stealth) clears Cloudflare once, then calls the page's own
-  `POST /Pop/GetSetItems` endpoint in-page so `cf_clearance` rides along. It **never runs on LA**
-  (datacenter IPs get challenged hardest) — it runs on a residential box, emits CGC-shaped JSON, and
-  LA only ingests it via `cgc-pop-load.js`. Catalog `set_name` → PSA heading is curated in
-  `psa-sets.json` (PSA slugs aren't derivable: "Base Set" → `pokemon-game`, "Team Rocket" →
-  `pokemon-rocket`). **7 of 8 catalog sets are mapped**; Wizards Black Star Promos is the lone
-  exception — PSA fragments it across multiple year-headings, so it's flagged for multi-heading
-  support and skipped until then.
+- **CGC** (`cgc-pop-scrape.js`) — CGC exposes a clean public population JSON API (no auth, no browser). The driver scrapes every tracked set, asserts completeness against the API's `TotalCount`, and loads via `cgc-pop-load.js`. Deployed on LA as the `bhn-cgc-pop-refresh.{service,timer}` weekly job.
+- **PSA** (`psa-pop-scrape.js`) — PSA has no population API and its pages sit behind a Cloudflare managed challenge. Uses a **decoupled residential fetch model**: a stealth browser (`puppeteer-extra` + stealth) clears Cloudflare once, then calls the page's own `POST /Pop/GetSetItems` endpoint. **Never runs on LA** — runs on a residential box, emits CGC-shaped JSON, LA ingests via `cgc-pop-load.js`. Catalog `set_name` → PSA heading is curated in `psa-sets.json`.
 
 ### Tables
 
-> **Renamed 2026-05-21** (added `master_` prefix to the three reference catalogs):
-> `card_catalog → master_card_catalog`, `grade_catalog → master_grade_catalog`,
-> `grading_criteria_catalog → master_grading_criteria_catalog`. FK constraints auto-followed; an
-> auto-updatable view `card_catalog` is kept as a back-compat alias for live n8n consumers.
-
-- **`master_card_catalog`** — watchlist / scraper queue (637 distinct cards / 1,354 variant rows, 8 sets, `active` flag, PriceCharting prices). A compatibility view **`card_catalog`** aliases it (auto-updatable) for legacy/n8n consumers not yet migrated to the `master_` name.
-- **`pop_reports`** — graded-card population counts per `(grader, set, card, grade)`. Grader-agnostic;
-  CGC live, PSA built, SGC/BGS planned. `grade` is verbatim ("Gem Mint 10", "9.5", "Authentic") and
-  **FK-constrained to `master_grade_catalog(grader, raw_label)`** — an unknown grade is rejected at insert.
-- **`sold_listings`** — eBay sold comps (price, grade, grader, sale type, seller, raw title);
-  `item_id` unique for idempotent ingest. `grade` is `text` (verbatim raw_label) and
-  **FK-constrained to `master_grade_catalog`**; raw/ungraded sales must set `grade = NULL`. Bootstrapped with
-  651 rows (Base Set, Team Rocket, Fossil, Gym Heroes/Challenge) across CGC/PSA, dates through 2026-05-21.
-- **`master_grade_catalog`** — canonical grade scale per grader (CGC/PSA/BGS/SGC), keyed by the verbatim
-  `raw_label` scrapers emit (both full labels like `Gem Mint 10` and bare numerics like `10`). Carries
-  `numeric_grade`, `tier_label`, `market_equiv_10`, `is_authentic`. It is the validation source for the
-  `pop_reports`/`sold_listings` grade FKs, so every emitted grade string must exist here.
-- **`master_grading_criteria_catalog`** — the four condition factors (Centering / Corners / Edges / Surface)
-  broken out per grader with `subgrades_published` (BGS publishes subgrades; PSA/CGC/SGC grade overall),
-  plus PSA qualifiers (OC/MC/ST/MK/PD/OF).
+- **`master_card_catalog`** — watchlist / scraper queue (637 distinct cards / 1,354 variant rows, 8 sets, `active` flag). A compatibility view **`card_catalog`** aliases it for legacy consumers.
+- **`pop_reports`** — graded-card population counts per `(grader, set, card, grade)`. Grader-agnostic; CGC live, PSA built, SGC/BGS planned. `grade` FK-constrained to `master_grade_catalog(grader, raw_label)`.
+- **`sold_listings`** — eBay sold comps (price, grade, grader, sale type, seller, raw title); `item_id` unique for idempotent ingest. `grade` FK-constrained to `master_grade_catalog`; raw/ungraded sales set `grade = NULL`.
+- **`master_grade_catalog`** — canonical grade scale per grader (CGC/PSA/BGS/SGC), keyed by verbatim `raw_label`. Carries `numeric_grade`, `tier_label`, `market_equiv_10`, `is_authentic`.
+- **`master_grading_criteria_catalog`** — the four condition factors (Centering / Corners / Edges / Surface) per grader, `subgrades_published`, PSA qualifiers.
 
 ## Data standards & authority
 
-The PokemonBHN data domain is governed by a single authoritative standard plus a set of canonical
-catalog tables. This section maps *what is binding* and *where it lives*. Precedence: **the live
-database is ground truth; the standard doc is the binding rulebook; the chat-derived design docs are
-source material only.**
+The PokemonBHN data domain is governed by a single authoritative standard plus a set of canonical catalog tables.
 
 ### The authority (binding)
 
 | Artifact | Location | Role |
 |----------|----------|------|
-| **`collectibles-data-standard.md`** | `infrastructure/docs/pokemonbhn/` | **THE single source of truth** for the PokemonBHN data domain — table/column naming, canonical value vocabularies, the verbatim-`raw_label` grade model, identity model, and enforcement rules. Written and maintained by Claude Code from the live DB. Where this file disagrees with the live DB, the DB wins and this file is corrected. |
-| Schema DDL | `sql/` | Schema files define tables and constraints; the schema *enforces* the standard (FKs, CHECKs, NOT NULL). `master_set_catalog` DDL is captured (`sql/pokemonbhn-master-set-catalog-schema.sql`). **Gap (2026-05-21):** the rest of the PokemonBHN catalog DDL (`master_card_catalog`, `master_grade_catalog`, `master_grading_criteria_catalog`, their FKs, the variant split) was applied directly to the live DB this session and is **not yet captured in `sql/`** — the live DB is still ahead of committed DDL for those; capturing them is an open task. |
-
-### Canonical catalog tables (live data, in `eventhorizon`)
-
-These are PostgreSQL tables, not documents — changed via SQL, defined by the schema in `sql/`.
-
-| Table | What it is |
-|-------|------------|
-| `master_card_catalog` | Source-of-truth card roster / scraper queue. 637 distinct cards / 1,354 variant rows across 8 sets. `active` flag enrolls a card across all collectors. (`card_catalog` view = back-compat alias.) |
-| `master_grade_catalog` | Canonical grade scale per grader (CGC/PSA/BGS/SGC), keyed by verbatim `raw_label`. Carries `numeric_grade`, `tier_label`, `market_equiv_10`, `is_authentic`. FK validation source for all grades. |
-| `master_grading_criteria_catalog` | The four condition factors (Centering/Corners/Edges/Surface) per grader, `subgrades_published`, PSA qualifiers. |
-| `master_set_catalog` | One row per set: canonical name, year/era, legal editions, card count, PSA heading mapping (absorbs `psa-sets.json`). 8 sets; `master_card_catalog.set_name` is FK-bound to it. |
+| **`collectibles-data-standard.md`** | `infrastructure/docs/pokemonbhn/` | **THE single source of truth** for the PokemonBHN data domain — table/column naming, canonical value vocabularies, the verbatim-`raw_label` grade model, identity model, and enforcement rules. Where this file disagrees with the live DB, the DB wins and this file is corrected. |
+| Schema DDL | `sql/` | Schema files define tables and constraints; the schema *enforces* the standard (FKs, CHECKs, NOT NULL). |
 
 ### Core rules (defined in full in the standard doc)
 
-- **Naming:** `master_` prefix = reference/source-of-truth tables; plural nouns = observation data
-  (`pop_reports`, `sold_listings`, `ebay_listings`); views alias legacy names; `snake_case` throughout;
-  same concept = same column name everywhere. American spelling `catalog` (not `catalogue`).
-- **Identity:** a surrogate `card_id` is the join key — *not* a smart key, *not* the cert number.
-  `card_number` is a bare integer field (not a key; repeats per set). `cert_number` lives only on
-  observation rows. Unique card identity = the `(set_name, card_number, edition, print_variant)` composite.
-- **Variant model:** the legacy grab-bag `variant` is split into two orthogonal columns —
-  `edition` (`1st Edition` / `Unlimited` / `Shadowless` / `N/A`) and `print_variant`
-  (`Standard` / `Holo` / `Winner` / `Jumbo` / `No Symbol` / `Error` / stamps / etc.), `print_variant`
-  NOT NULL DEFAULT `'Standard'`. Migrated via a non-breaking trigger that keeps the old column live
-  until a row-parity check passes.
-- **Grades:** stored as the verbatim `raw_label` (text), FK-constrained to `master_grade_catalog` —
-  an unknown label is rejected at insert. Numeric/tier values are derived by JOIN, never re-stored.
-  Raw/ungraded sales set `grade = NULL`. Legacy designations (e.g. CGC Perfect 10, retired 2023) are
-  kept as valid rows for historical backfill.
-- **Grade enforcement is tiered by table role:** hard FK on controlled tables (`sold_listings`,
-  `pop_reports`); soft validate-and-log on the live feed (`ebay_listings`) so one bad grade string
-  can't roll back a whole batch. Rejected rows are logged, never silently dropped.
-- **Prices:** `listed_price` (asking) and `sold_price` (actual sale) are distinct columns, never
-  mixed; valuation uses sold only. Money/shipping is NULL when absent (0 means free/zero, not missing).
-- **Card number format:** bare integer everywhere; the `#`/denominator is display only, derivable
-  from `master_set_catalog`, never a join key.
-
-### Design source material (non-binding)
-
-The decisions above were worked out in a set of design docs (decision rationale, identity/variant
-spec, target-data spec, collector spec). These capture the *why* and are kept for reference, but they
-are **not authoritative** — they fed the standard doc, which supersedes them. If a design doc and the
-standard doc disagree, the standard doc wins.
-
-## BLACKHOLE-NETWORK roadmap
-
-The combined BHN + HORIZON buildout proceeds in phases — network and data/storage foundations first,
-with HORIZON (the shared AI layer) layered on top. Each phase enables the next.
-
-```
-Phase 1 — Foundation
-  [✅] n8n workflow operational
-  [✅] Claude API integration
-  [✅] SMS/voice via Twilio + ElevenLabs
-  [✅] pgvector semantic memory
-  [✅] Redis short-term session memory
-  [✅] PostgreSQL read access (agent_reader role)
-  [✅] Security + infrastructure table access
-
-Phase 2 — Financial Intelligence
-  [ ] Re-import bhn-horizon.json — unlock financial table access
-  [ ] Market regime + ETF data queries
-  [ ] Trading performance queries
-  [ ] Daily PnL summary via SMS
-  [ ] Morning market briefing (8am PT)
-  [ ] Finance news category added to n8n poller
-
-Phase 3 — Active Monitoring
-  [ ] Per-node health checks every 5 minutes
-  [ ] Auto-alert if any node goes offline
-  [ ] Auto-alert if NVMe > 80% full
-  [ ] P1/P2 security event SMS within minutes
-  [ ] WireGuard peer stats monitoring
-  [ ] Tor relay bandwidth monitoring
-
-Phase 4 — Restricted Action Executor
-  [ ] Restart services via SMS command
-  [ ] Trigger fail2ban ban on attacker IP
-  [ ] Run smoke tests on demand
-  [ ] Trading killswitch on "HALT" SMS
-  [ ] Push rules.json to NJ trading node
-  [ ] Confirm all actions before executing
-
-Phase 5 — Autonomous Management
-  [ ] Pattern detection across all 78 tables
-  [ ] Proactive threat intelligence (CVE feeds, CrowdSec)
-  [ ] Weekly threat + performance digest
-  [ ] Trading strategy optimization suggestions
-  [ ] Infrastructure cost analysis
-  [ ] Anomaly correlation across security + trading + market data
-```
+- **Naming:** `master_` prefix = reference/source-of-truth tables; plural nouns = observation data (`pop_reports`, `sold_listings`, `ebay_listings`); `snake_case` throughout; same concept = same column name everywhere. American spelling `catalog`.
+- **Identity:** a surrogate `card_id` is the join key. Unique card identity = the `(set_name, card_number, edition, print_variant)` composite.
+- **Variant model:** `edition` (`1st Edition` / `Unlimited` / `Shadowless` / `N/A`) and `print_variant` (`Standard` / `Holo` / `Winner` / `Jumbo` / `No Symbol` / `Error` / stamps), `print_variant` NOT NULL DEFAULT `'Standard'`.
+- **Grades:** stored as the verbatim `raw_label` (text), FK-constrained to `master_grade_catalog`. Numeric/tier values are derived by JOIN, never re-stored. Raw/ungraded sales set `grade = NULL`.
+- **Grade enforcement is tiered:** hard FK on controlled tables (`sold_listings`, `pop_reports`); soft validate-and-log on live feed (`ebay_listings`).
+- **Prices:** `listed_price` (asking) and `sold_price` (actual sale) are distinct columns; valuation uses sold only.
 
 ## Repository layout
 
 ```
 .
-├── README.md                        Project overview (this file)
-├── docs/                            Public technical documentation
-│   ├── kalshi-weather-trading.md    WeatherBHN — prediction market trading strategy
-│   └── matrixbhn.md                 MatrixBHN — private communications network
+├── README.md                          Project overview (this file)
+├── docs/                              Public technical documentation
+│   ├── kalshi-weather-trading.md      WeatherBHN — prediction market trading strategy
+│   └── matrixbhn.md                   MatrixBHN — private communications network
 ├── infrastructure/
-│   ├── bootstrap/                   v4 modular bootstrap
-│   │   ├── bhn-node-bootstrap.sh    Master script (open → install → lockdown)
-│   │   ├── node-types/              hub.sh, exit.sh, scan.sh, proxy.sh
-│   │   ├── modules/                 wireguard, crowdsec, suricata, shadowsocks,
-│   │   │                            dnscrypt, firewall, ssh-hardening, storage,
-│   │   │                            network-policy, backup
-│   │   └── policies/                Declarative network policies per node type
-│   ├── docs/                        Architecture docs and audit findings
-│   ├── grafana/dashboards/          All 6 Grafana dashboard JSONs
-│   ├── services/                    tor-relay, tinyproxy, searxng, librespeed, wallos
-│   └── scrapers/                    Graded-card pop scrapers (CGC cron + PSA stealth) + psa-sets.json
-├── scripts/                         Production scripts (deployed to LA)
-│   ├── trading/                     FinancialBHN + WeatherBHN trading framework (Python)
-│   │   ├── trading_core.py          Core Alpaca + PostgreSQL integration
-│   │   ├── strategy_*.py            Individual strategy implementations
-│   │   ├── master_killswitch.py     Emergency halt + flatten all positions
-│   │   ├── daily_summary.py         Daily PnL summary via HORIZON/SMS
-│   │   ├── weather_*.py             WeatherBHN collectors, edge calculator, settlement recon
-│   │   └── reconciliation_daemon.py Position reconciliation
-│   └── horizon/                     Financial data collectors
-│       ├── macro_collector.py       FRED macro data (daily)
-│       ├── market_collector.py      Alpaca ETF price data (daily)
-│       └── sentiment_collector.py   Fear/greed, AAII sentiment (daily)
-├── n8n-workflows/                   Exported n8n workflow JSONs
-│   ├── bhn-horizon.json             HORIZON AI agent workflow
-│   └── bhn-pulse-2h.json            2-hour pulse report workflow
-└── sql/                             PostgreSQL schemas
+│   ├── bootstrap/                     v4 modular bootstrap
+│   │   ├── bhn-node-bootstrap.sh      Master script (open → install → lockdown)
+│   │   ├── node-types/                hub.sh, exit.sh, scan.sh, proxy.sh
+│   │   ├── modules/                   wireguard, crowdsec, suricata, shadowsocks,
+│   │   │                              dnscrypt, firewall, ssh-hardening, storage,
+│   │   │                              network-policy, backup
+│   │   └── policies/                  Declarative network policies per node type
+│   ├── docs/                          Architecture docs and audit findings
+│   ├── grafana/dashboards/            All 6 Grafana dashboard JSONs
+│   ├── services/                      tor-relay, tinyproxy, searxng, librespeed, wallos
+│   └── scrapers/                      Graded-card pop scrapers (CGC cron + PSA stealth)
+├── scripts/                           Production scripts (deployed to LA)
+│   ├── trading/                       FinancialBHN + WeatherBHN trading framework (Python)
+│   │   ├── trading_core.py            Core Alpaca + PostgreSQL integration
+│   │   ├── strategy_*.py              Individual strategy implementations
+│   │   ├── master_killswitch.py       Emergency halt + flatten all positions
+│   │   ├── weather_*.py               WeatherBHN collectors, orchestrator, settlement recon
+│   │   └── reconciliation_daemon.py   Position reconciliation
+│   └── collectors/                    Financial data collectors
+│       ├── macro_collector.py         FRED macro data (daily)
+│       ├── market_collector.py        Alpaca ETF price data (daily)
+│       └── sentiment_collector.py     Fear/greed, AAII sentiment (daily)
+├── n8n-workflows/                     Exported n8n workflow JSONs
+│   └── bhn-pulse-2h.json              2-hour pulse report workflow
+└── sql/                               PostgreSQL schemas
 ```
 
 ## Naming conventions
@@ -456,7 +283,7 @@ Phase 5 — Autonomous Management
 ```
 Standalone resources (VPS):
   BHN|VPS-LOCATION-COUNTRY+SEQINDEX
-  Examples: BHN|VPS-LOSANGELES-US1, BHN|VPS-FRANKFURT-EU1, BHN|VPS-NEWJERSEY-US2
+  Examples: BHN|VPS-LOSANGELES-US1, BHN|VPS-NEWJERSEY-US2, BHN|VPS-FRANKFURT-EU1
 
 Attachments (block storage):
   DEVICE-LOCATION-COUNTRY+SEQINDEX
@@ -464,52 +291,18 @@ Attachments (block storage):
 
 Tor relay nicknames:
   BHN + [AstroName] + [RegionCode] + [SeqNum] — alphanumeric only, no hyphens
-  Examples: BHNFornaxEU1, BHNHeliosUS3, BHNNebulaUS2
-```
-
-## Console terminology
-
-| Term | Definition |
-|------|------------|
-| **REMOTE BROWSER WINDOW** | noVNC web console (Vultr/Hetzner) — emergency fallback only |
-| **PC LA CONSOLE** | SSH from operator PC to LA hub (`ssh root@<BHN_LA_PUBLIC_IP>`) |
-| **PC NJ CONSOLE** | SSH from operator PC to NJ (`ssh -p 2222 root@<BHN_NJ_PUBLIC_IP>`) — port 2222 |
-| **PC Hillsboro** | SSH from operator PC to Hillsboro (`ssh root@<BHN_HIL_PUBLIC_IP>`) |
-| **LA→NJ** | `ssh nj` (alias from LA, via WireGuard tunnel) |
-| **LA→Hillsboro** | `ssh hillsboro` (alias from LA, via WireGuard tunnel) |
-
-## Services map (VPN required)
-
-```
-n8n:              http://<BHN_WG_LA_IP>:5678
-HORIZON chat:     http://<BHN_WG_LA_IP>:5678/webhook/ec1592c6-8715-4b0f-8ee8-5bc02f551a27/chat
-Grafana:          http://<BHN_WG_LA_IP>:3000
-Wallos:           http://<BHN_WG_LA_IP>:8090
-PostgreSQL:       psql -h <BHN_WG_LA_IP> -U <role> -d eventhorizon
-tinyproxy:        http://<BHN_WG_HIL_IP>:8888 (LA egress proxy, WireGuard only)
+  Examples: BHNHeliosUS3, BHNNebulaUS2, BHNAuroraEU1
 ```
 
 ## Bootstrap (new node)
 
 ```bash
-# Option A — clone the repo directly on the new node
+# Clone repo on new node
 git clone https://github.com/FletchEm31/BLACKHOLE-NETWORK /opt/bhn
 
-# Option B — copy from operator workstation if the node has no outbound git access
-scp -r "D:\GITHUB REPOSITORY\BLACKHOLE-NETWORK\infrastructure" root@<IP>:/opt/bhn/
-
-# On new node:
-export TUNNEL_IP_OVERRIDE=<TUNNEL_IP>
-export EH_BOOTSTRAP_PG_DSN='postgresql://bootstrap_writer:BHN-Bootstrap-2026@<BHN_WG_LA_IP>/eventhorizon'
-export ADMIN_PUBKEYS_FILE=/root/admin_pubkeys
-export INSTALL_SURICATA=1
+# Run bootstrap (see infrastructure/bootstrap/ for full parameter reference)
 bash /opt/bhn/infrastructure/bootstrap/bhn-node-bootstrap.sh NAME IP wg0 TYPE REGION
 # Types: hub, exit, scan, proxy
-
-# After bootstrap — run on LA immediately:
-ufw allow out to <PUBLIC_IP> port 51821 proto udp
-ufw allow out to <TUNNEL_IP>
-ping -c 3 <TUNNEL_IP>
 ```
 
 ## License
