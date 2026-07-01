@@ -53,6 +53,18 @@ This file is intentionally a stub: methods are defined with full type
 signatures + SQL templates in docstrings, but execute() is a no-op until
 Phase 2 ships. Importable now so the systemd / cron layer can wire it.
 
+Note on o.source = 'asos' (forward-looking, not a current limitation — nothing
+live consumes weather_observations yet): the 'asos' rows come from IEM's
+daily.py summary endpoint, which returns one pre-computed max/min per
+station-day, not a sub-daily time series. That makes it the same effective
+granularity as source='nws_cli' (both are post-fact daily aggregates) — fine
+for this file's weekly bias-correction rebuild, which only needs one
+observed_value per target_date. If a future phase ever needs live intraday
+confidence-tracking (e.g. "are we tracking above/below forecast right now,
+mid-day"), don't try to extract sub-daily resolution out of IEM's daily
+endpoint — pull weather.gov/wrh/timeseries instead, which exposes a true
+5-minute rolling average.
+
 CLI (all current commands no-op; reserved for Phase 2):
   python3 weather_calibration.py --rebuild
   python3 weather_calibration.py --station KNYC --variable tmax_f
