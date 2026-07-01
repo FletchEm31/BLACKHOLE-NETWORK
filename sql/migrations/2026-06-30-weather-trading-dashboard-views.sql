@@ -167,14 +167,7 @@ SELECT
     s.decision_timestamp          AS first_captured_at,
     s.scored_at                   AS last_updated_at
 FROM weather_position_exits s
-WHERE s.scored_at IS NOT NULL
-
-ORDER BY
-    CASE position_status WHEN 'OPEN' THEN 0 ELSE 1 END,
-    hours_to_settle ASC NULLS LAST,
-    scored_at DESC NULLS LAST,
-    target_date,
-    station_code;
+WHERE s.scored_at IS NOT NULL;
 
 
 -- ─────────────────────────────────────────────────────────────────────────────

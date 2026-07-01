@@ -24,9 +24,9 @@ WHERE id NOT IN (
              decision_timestamp DESC     -- then most recent signal
 );
 
--- 2. Drop the old per-cycle constraint (auto-generated name; adjust if different).
+-- 2. Drop the old per-cycle constraint.
 ALTER TABLE weather_position_exits
-    DROP CONSTRAINT IF EXISTS weather_position_exits_contract_ticker_decision_timestamp_key;
+    DROP CONSTRAINT IF EXISTS uq_exit_ticker_decision;
 
 -- 3. Enforce one row per contract ticker.
 ALTER TABLE weather_position_exits
