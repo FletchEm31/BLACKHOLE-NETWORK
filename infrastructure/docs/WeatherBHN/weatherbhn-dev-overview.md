@@ -1,6 +1,6 @@
 # WeatherBHN System Overview
 ## Branch: weatherbhn-dev
-## Last updated: 2026-06-27
+## Last updated: 2026-07-01
 
 ---
 
@@ -35,6 +35,49 @@ VC Historical ────┘
 | weather_bronze_kalshi_market_snapshots | Kalshi orderbook | every 5 min |
 | weather_bronze_nws_actuals | NWS CLI report | daily ~03:00 UTC |
 | weather_bronze_nbm_snapshots | NWS NBM percentiles | every 30 min |
+
+### Data collection topology (as of 2026-07-01)
+
+Bronze ingestion is split across three nodes over the BHN WireGuard mesh. LA
+is the hub — PostgreSQL, silver/gold builds, calibration, and the trading
+orchestrator all stay on LA. Only raw source polling moved out:
+
+| Node | WG IP | Sources | Cadence | Script |
+|------|-------|---------|---------|--------|
+| LA (hub) | 10.8.0.1 | `kalshi_markets`, `kalshi_portfolio` (auth-sensitive — Kalshi API keys never leave LA) | every 30 min | `scripts/trading/weather_data_collector.py` |
+| Helsinki | 10.8.0.8 | `open_meteo`, `open_meteo_ensemble` (EU aggregator) | every 30 min | `scripts/weather-collectors/weather_data_collector.py` |
+| Hillsboro | 10.8.0.6 | `asos`, `nws`, `nws_hourly`, `nws_actuals`, `nbm`, `nomads`, `usda_crops` (US-gov sources) | every 30 min | `scripts/weather-collectors/weather_data_collector.py` |
+
+All three run the same `weather_data_collector.py` (identical file, dispatched
+via `--source <name>` per node — no code fork). Helsinki/Hillsboro import
+`weather_core.py` instead of `trading_core.py`: a minimal PG-connection +
+logging module with no Alpaca client and no `rules.json` dependency, so
+trading credentials never exist on those two hosts.
+
+**PG access:** Helsinki/Hillsboro authenticate as a dedicated `bhn_weather_collector`
+role (password in Proton Pass as `BHN-WeatherCollector-PG`), scoped via
+`pg_hba.conf` to their two WireGuard IPs only. Grants are `INSERT`+`SELECT`
+(the latter required for `ON CONFLICT` dedup checks) on exactly 6 tables:
+`weather_bronze_openmeteo_forecast_snapshots`, `weather_forecasts`,
+`weather_bronze_nws_forecast_snapshots`, `weather_bronze_nws_actuals`,
+`weather_bronze_nbm_snapshots`, `weather_observations` — no access to any
+silver/gold/ledger table. `bhn_trader` (LA's full-privilege role) was never
+exposed to these nodes.
+
+**Known gap:** each source's optional silver-populate call
+(`_populate_silver_openmeteo_forecast`, the NWS equivalent) fails on
+Helsinki/Hillsboro with `permission denied for table weather_silver_forecast_conformed`
+— logged as a warning, non-fatal, bronze write still succeeds. Silver
+population from these nodes was out of scope for the migration; if it's
+wanted later, either grant `bhn_weather_collector` scoped access to that one
+silver table, or keep bronze→silver promotion as an LA-side job.
+
+**Known pre-existing bug (unrelated to this migration):** the `nws_hourly`
+source throws `AttributeError: 'str' object has no attribute 'get'` at
+`weather_data_collector.py:2060` on every run — confirmed already failing on
+LA before the migration (not something the collector split introduced).
+`main()` catches per-source exceptions and continues, so it doesn't block
+other sources; row count for `nws_hourly` is 0 until fixed.
 
 ### Silver (conformed)
 

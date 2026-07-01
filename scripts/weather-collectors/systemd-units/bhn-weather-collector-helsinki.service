@@ -1,0 +1,26 @@
+# BHN WeatherBHN — Helsinki collector (EU sources: Open-Meteo).
+# Mirrors LA's bhn-weather-collector.service cadence, scoped to the
+# sources assigned to this node. Writes to LA PostgreSQL over WireGuard
+# using the dedicated bhn_weather_collector role (bronze/legacy tables
+# only — no trading/ledger access, no Alpaca credentials on this host).
+
+[Unit]
+Description=BHN WeatherBHN collector — Helsinki (open_meteo, open_meteo_ensemble)
+After=network-online.target wg-quick@wg0.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/bhn-weather
+EnvironmentFile=/etc/bhn-weather-collector.env
+
+ExecStart=/bin/bash -c 'for s in open_meteo open_meteo_ensemble; do /usr/bin/python3 /opt/bhn-weather/weather_data_collector.py --source "$s" || exit 1; done'
+
+StandardOutput=append:/var/log/bhn-weather/collector.log
+StandardError=append:/var/log/bhn-weather/collector.log
+
+TimeoutStartSec=300
+TimeoutStopSec=30
+
+[Install]

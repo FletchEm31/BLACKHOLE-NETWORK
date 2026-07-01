@@ -1,0 +1,14 @@
+# BHN WeatherBHN — Hillsboro collector cadence. Matches LA's original
+# bhn-weather-collector.timer (every 30 minutes).
+
+[Unit]
+Description=BHN WeatherBHN collector — Hillsboro (every 30 minutes)
+
+[Timer]
+OnCalendar=*-*-* *:00,30:00
+Unit=bhn-weather-collector-hillsboro.service
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,27 @@
+# BHN WeatherBHN — Hillsboro collector (US-gov sources: NWS, NOAA/NBM,
+# NOMADS, ASOS, USDA crops).
+# Mirrors LA's bhn-weather-collector.service cadence, scoped to the
+# sources assigned to this node. Writes to LA PostgreSQL over WireGuard
+# using the dedicated bhn_weather_collector role (bronze/legacy tables
+# only — no trading/ledger access, no Alpaca credentials on this host).
+
+[Unit]
+Description=BHN WeatherBHN collector — Hillsboro (asos, nws, nws_hourly, nws_actuals, nbm, nomads, usda_crops)
+After=network-online.target wg-quick@wg0.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/bhn-weather
+EnvironmentFile=/etc/bhn-weather-collector.env
+
+ExecStart=/bin/bash -c 'for s in asos nws nws_hourly nws_actuals nbm nomads usda_crops; do /usr/bin/python3 /opt/bhn-weather/weather_data_collector.py --source "$s" || exit 1; done'
+
+StandardOutput=append:/var/log/bhn-weather/collector.log
+StandardError=append:/var/log/bhn-weather/collector.log
+
+TimeoutStartSec=300
+TimeoutStopSec=30
+
+[Install]
