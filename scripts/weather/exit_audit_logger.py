@@ -73,7 +73,17 @@ _RECORD_SQL = """
         %(edge_cents)s, %(contracts_recommended)s, %(stake_usd_recommended)s,
         %(hours_to_settle)s, %(sigma_used)s, %(is_paper_trade)s
     )
-    ON CONFLICT (contract_ticker, decision_timestamp) DO NOTHING
+    ON CONFLICT (contract_ticker) DO UPDATE SET
+        decision_timestamp    = EXCLUDED.decision_timestamp,
+        predicted_tmax_f      = EXCLUDED.predicted_tmax_f,
+        model_prob_no_cents   = EXCLUDED.model_prob_no_cents,
+        no_ask_cents          = EXCLUDED.no_ask_cents,
+        edge_cents            = EXCLUDED.edge_cents,
+        contracts_recommended = EXCLUDED.contracts_recommended,
+        stake_usd_recommended = EXCLUDED.stake_usd_recommended,
+        hours_to_settle       = EXCLUDED.hours_to_settle,
+        sigma_used            = EXCLUDED.sigma_used
+    WHERE weather_position_exits.scored_at IS NULL
 """
 
 
@@ -81,13 +91,14 @@ def record_paper_trade(conn, station_code: str, target_date: date,
                        predicted_tmax_f: float, buckets: list[dict],
                        is_paper_trade: bool = True) -> int:
     """
-    Insert one row per qualifying BET_NO bucket into weather_position_exits.
+    Upsert one row per qualifying BET_NO bucket into weather_position_exits.
 
     Uses the caller's open connection — does not commit or close it.
-    ON CONFLICT (contract_ticker, decision_timestamp) DO NOTHING prevents
-    double-insertion within the same 5-minute cycle.
+    ON CONFLICT (contract_ticker) DO UPDATE refreshes signal cols each cycle
+    so the row reflects the latest model view. The WHERE scored_at IS NULL
+    guard prevents overwriting rows the exit scorer has already settled.
 
-    Returns number of rows actually inserted.
+    Returns number of rows inserted or updated.
     """
     now_utc    = datetime.now(timezone.utc)
     qualifying = [b for b in buckets if b.get('qualifies')]
