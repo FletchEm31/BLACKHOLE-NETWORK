@@ -166,3 +166,93 @@ BEGIN
         GRANT SELECT ON weather_gold_daily_edge_sheet TO horizon_agent_reader;
     END IF;
 END $$;
+
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 4) weather_gold_contract_ledger
+--    CP4 Kelly-sizer signals — one row per Kalshi contract ticker.
+--    Signal cols upserted every ~5 min by core_trading_orchestrator.py.
+--    Settlement cols written by bhn-weather-settlement-recon (15:00 UTC daily);
+--    ON CONFLICT DO UPDATE never touches settlement cols.
+--    Currently DRY_RUN=true — no Kalshi orders placed.
+-- ─────────────────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS weather_gold_contract_ledger (
+    id                      BIGSERIAL       PRIMARY KEY,
+
+    -- Identity
+    city                    TEXT            NOT NULL,           -- 'Denver' | 'Los Angeles' | 'Miami'
+    station_code            TEXT            NOT NULL,           -- KDEN | KLAX | KMIA
+    target_date             DATE            NOT NULL,
+    contract_side           TEXT            NOT NULL DEFAULT 'high',  -- tmax only; NO-side strategy
+    contract_ticker         TEXT            NOT NULL,           -- e.g. KXHIGHLAX-26JUN29-69-70
+
+    -- Bucket geometry
+    bucket_floor            NUMERIC,                            -- NULL for open-ended tail buckets
+    bucket_cap              NUMERIC,
+    bucket_label            TEXT,                               -- e.g. '69-70', 'T66', 'T73'
+
+    -- Forecast inputs captured at signal time
+    nws_forecast_f          NUMERIC,                            -- raw NWS tmax (°F)
+    gfs_forecast_f          NUMERIC,                            -- raw Open-Meteo GFS tmax (°F)
+
+    -- Model probabilities (P(NO) in decimal 0–1)
+    calibrated_prob         NUMERIC,
+    raw_model_prob          NUMERIC,
+
+    -- Model vs NWS divergence
+    model_delta_f           NUMERIC,                            -- predicted_tmax_f − nws_forecast_f
+    model_confidence        TEXT,                               -- 'HIGH' | 'MEDIUM' | 'LOW'
+    model_delta_flag        TEXT,                               -- 'DIVERGE' (≥1.5°F) | 'CONVERGE'
+    ensemble_spread         NUMERIC,                            -- abs(nws − gfs); NULL if one missing
+
+    -- Market prices — ALWAYS read from DB, never derived (no_ask ≠ 1 − yes_ask)
+    market_implied_prob     NUMERIC,                            -- no_ask (market's P(NO))
+    market_yes_mid          NUMERIC,                            -- midpoint(yes_bid, 1 − no_ask)
+    yes_bid                 NUMERIC,
+    yes_ask                 NUMERIC,
+    no_bid                  NUMERIC,
+    no_ask                  NUMERIC,
+    market_liquidity        TEXT,                               -- 'ILLIQUID' (default until volume available)
+
+    -- Edge
+    edge                    NUMERIC,                            -- model_prob_no − no_ask (decimal)
+    edge_pct                NUMERIC,                            -- edge / no_ask
+    edge_rank               INTEGER,                            -- 1 = best qualifying bucket by edge
+
+    -- Decision
+    recommended_action      TEXT,                               -- 'BET_NO' | 'SKIP'
+    signal_strength         TEXT,                               -- 'STRONG' (≥15¢) | 'MODERATE' (≥10¢) | 'WEAK'
+    stake_fraction          NUMERIC,                            -- half-Kelly, capped at BANKROLL_CAP_PCT (10%)
+    stake_usd               NUMERIC,
+    skip_reason             TEXT,                               -- 'INVALID_PRICE' | 'EDGE_TOO_LOW' | NULL
+    is_active               BOOLEAN         NOT NULL DEFAULT TRUE,
+    signal_generated_at     TIMESTAMPTZ,
+    ledger_updated_at       TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+
+    -- ── Settlement actuals ──────────────────────────────────────────────────
+    -- Written by bhn-weather-settlement-recon only.
+    -- The ON CONFLICT DO UPDATE in core_trading_orchestrator.py deliberately
+    -- excludes these columns so signal refreshes never clobber settled data.
+    actual_tmax_f           NUMERIC,                            -- NULL until contract settles
+    settled_at              TIMESTAMPTZ,                        -- UTC timestamp of Kalshi settlement
+    contract_resolved_yes   BOOLEAN,                            -- TRUE if YES side won
+    paper_pnl               NUMERIC,                            -- DRY_RUN P&L in USD (NULL until settled)
+
+    CONSTRAINT weather_gold_contract_ledger_ticker_uq UNIQUE (contract_ticker)
+);
+
+CREATE INDEX IF NOT EXISTS ledger_station_date_idx
+    ON weather_gold_contract_ledger (station_code, target_date DESC);
+
+CREATE INDEX IF NOT EXISTS ledger_action_date_idx
+    ON weather_gold_contract_ledger (recommended_action, target_date)
+    WHERE recommended_action = 'BET_NO';
+
+CREATE INDEX IF NOT EXISTS ledger_unsettled_idx
+    ON weather_gold_contract_ledger (target_date)
+    WHERE settled_at IS NULL AND is_active = TRUE;
+
+GRANT SELECT ON weather_gold_contract_ledger TO grafana_reader;
+GRANT SELECT, INSERT, UPDATE ON weather_gold_contract_ledger TO bhn_trader;
+GRANT SELECT, INSERT, UPDATE ON weather_gold_contract_ledger TO ehuser;
+GRANT USAGE, SELECT ON SEQUENCE weather_gold_contract_ledger_id_seq TO bhn_trader, ehuser;
