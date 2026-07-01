@@ -29,9 +29,6 @@ from cp4_kelly_sizer import _is_settled
 
 logger = logging.getLogger('bhn.trading.exit_audit')
 
-STATION_TO_MARKET = {'KDEN': 'KXHIGHDEN', 'KLAX': 'KXHIGHLAX', 'KMIA': 'KXHIGHMIA'}
-
-
 def _get_conn():
     db_url = os.environ.get('DATABASE_URL')
     if not db_url:
@@ -49,32 +46,29 @@ def _get_conn():
     return psycopg2.connect(db_url, cursor_factory=psycopg2.extras.RealDictCursor)
 
 
-def _build_ticker(station_code: str, target_date: date, bucket_label: str) -> str:
-    market   = STATION_TO_MARKET[station_code]
-    date_str = target_date.strftime('%y%b%d').upper()
-    return f'{market}-{date_str}-{bucket_label}'
-
-
 # ---------------------------------------------------------------------------
 # Part 1 — Signal capture (called by orchestrator at decision time)
 # ---------------------------------------------------------------------------
 
 _RECORD_SQL = """
     INSERT INTO weather_position_exits (
-        station_code, target_date, contract_ticker, bucket_label,
-        bucket_floor, bucket_cap, decision_timestamp,
+        station_code, target_date, contract_ticker, real_market_ticker,
+        bucket_label, bucket_floor, bucket_cap, decision_timestamp,
         predicted_tmax_f, model_prob_no_cents, no_ask_cents,
         edge_cents, contracts_recommended, stake_usd_recommended,
-        hours_to_settle, sigma_used, is_paper_trade
+        hours_to_settle, sigma_used, is_paper_trade,
+        entry_no_ask_cents, entry_captured_at
     ) VALUES (
-        %(station_code)s, %(target_date)s, %(contract_ticker)s, %(bucket_label)s,
-        %(bucket_floor)s, %(bucket_cap)s, %(decision_timestamp)s,
+        %(station_code)s, %(target_date)s, %(contract_ticker)s, %(real_market_ticker)s,
+        %(bucket_label)s, %(bucket_floor)s, %(bucket_cap)s, %(decision_timestamp)s,
         %(predicted_tmax_f)s, %(model_prob_no_cents)s, %(no_ask_cents)s,
         %(edge_cents)s, %(contracts_recommended)s, %(stake_usd_recommended)s,
-        %(hours_to_settle)s, %(sigma_used)s, %(is_paper_trade)s
+        %(hours_to_settle)s, %(sigma_used)s, %(is_paper_trade)s,
+        %(no_ask_cents)s, %(decision_timestamp)s
     )
     ON CONFLICT (contract_ticker) DO UPDATE SET
         decision_timestamp    = EXCLUDED.decision_timestamp,
+        real_market_ticker    = EXCLUDED.real_market_ticker,
         predicted_tmax_f      = EXCLUDED.predicted_tmax_f,
         model_prob_no_cents   = EXCLUDED.model_prob_no_cents,
         no_ask_cents          = EXCLUDED.no_ask_cents,
@@ -108,11 +102,15 @@ def record_paper_trade(conn, station_code: str, target_date: date,
     inserted = 0
     with conn.cursor() as cur:
         for b in qualifying:
+            # market_ticker is the real Kalshi ticker looked up in CP4 from the
+            # snapshot table — never constructed synthetically. See TICKET-W1 /
+            # WEATHERBHN-TICKER-ARCHITECTURE.md.
+            real_ticker = b['market_ticker']
             cur.execute(_RECORD_SQL, {
                 'station_code':          station_code,
                 'target_date':           target_date,
-                'contract_ticker':       _build_ticker(station_code, target_date,
-                                                       b['bucket_label']),
+                'contract_ticker':       real_ticker,
+                'real_market_ticker':    real_ticker,
                 'bucket_label':          b['bucket_label'],
                 'bucket_floor':          b.get('bucket_floor'),
                 'bucket_cap':            b.get('bucket_cap'),

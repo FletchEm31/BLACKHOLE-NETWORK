@@ -39,7 +39,6 @@ EDGE_THRESHOLD_ILL  = 8.0    # cents — illiquid (volume <= 100 or unknown)
 MIN_NO_ASK_CENTS    = 3.0    # skip buckets with no_ask below this — effectively dead market
 
 CITY_MAP = {'KDEN': 'Denver', 'KLAX': 'Los Angeles', 'KMIA': 'Miami'}
-STATION_TO_MARKET = {'KDEN': 'KXHIGHDEN', 'KLAX': 'KXHIGHLAX', 'KMIA': 'KXHIGHMIA'}
 
 
 def _get_conn():
@@ -76,12 +75,6 @@ def _settlement_dt(station_code: str, target_date: date) -> datetime:
 def _is_settled(station_code: str, target_date: date) -> bool:
     """True if the contract's settlement time has already passed."""
     return datetime.now(timezone.utc) >= _settlement_dt(station_code, target_date)
-
-
-def _build_ticker(station_code: str, target_date: date, bucket_label: str) -> str:
-    market = STATION_TO_MARKET[station_code]
-    date_str = target_date.strftime('%y%b%d').upper()  # e.g. 26JUN29
-    return f"{market}-{date_str}-{bucket_label}"
 
 
 def _model_confidence(delta_f: float) -> str:
@@ -197,7 +190,8 @@ def run_cp4_kelly(station_code: str, target_date: date,
         with conn.cursor() as cur:
             cur.execute("""
                 SELECT bucket_label, bucket_type, bucket_floor, bucket_cap,
-                       yes_bid, yes_ask, no_bid, no_ask
+                       yes_bid, yes_ask, no_bid, no_ask,
+                       market_ticker, volume, market_status, retrieved_at AS snap_retrieved_at
                 FROM weather_bronze_kalshi_market_snapshots
                 WHERE station_code = %s
                   AND target_date = %s
@@ -206,6 +200,9 @@ def run_cp4_kelly(station_code: str, target_date: date,
                       FROM weather_bronze_kalshi_market_snapshots
                       WHERE station_code = %s AND target_date = %s
                   )
+                  -- Staleness guard: collector runs ~33 min; 45 min gives one full
+                  -- cycle of headroom before declaring data stale.
+                  AND retrieved_at >= NOW() - INTERVAL '45 minutes'
                   AND yes_bid  IS NOT NULL
                   AND no_ask   IS NOT NULL
                 ORDER BY bucket_floor NULLS LAST
@@ -276,9 +273,18 @@ def run_cp4_kelly(station_code: str, target_date: date,
         # Volume data not in snapshot table — conservative illiquid threshold
         edge_threshold = EDGE_THRESHOLD_ILL
 
+        # Pre-open guard — three conditions must all pass:
+        #   1. volume > 100:  meaningful liquidity (> 0 catches brand-new markets,
+        #                     > 100 filters single-trade opens and pre-seed fills)
+        #   2. market_status != 'unopened': Kalshi has confirmed the market is live
+        #   3. snapshot freshness: enforced at query level (retrieved_at >= NOW() - 45 min)
+        volume     = float(b['volume']) if b['volume'] is not None else 0.0
+        pre_open   = volume <= 100.0 or b.get('market_status') == 'unopened'
+
         no_ask_thin = no_ask_cents < MIN_NO_ASK_CENTS
         valid_price  = 0 < no_ask_cents < 100
-        qualifies    = bool(valid_price and not no_ask_thin and edge_cents >= edge_threshold)
+        qualifies    = bool(not pre_open and valid_price and not no_ask_thin
+                            and edge_cents >= edge_threshold)
 
         contracts = 0
         stake_usd = 0.0
@@ -310,6 +316,9 @@ def run_cp4_kelly(station_code: str, target_date: date,
             'distribution_used': dist,
             'hours_to_settle':   hours_to_settle,
             'no_ask_thin':       no_ask_thin,
+            'pre_open':          pre_open,
+            'market_ticker':     b['market_ticker'],
+            'volume':            volume,
         })
 
     return results
@@ -432,7 +441,9 @@ def write_to_ledger(conn, station_code: str, target_date: date,
                 stake_fraction = round(min(kelly * 0.5, BANKROLL_CAP_PCT), 6)
 
         if not qualifies:
-            if not (0 < no_ask_cents < 100):
+            if b.get('pre_open'):
+                skip_reason = 'PRE_OPEN'
+            elif not (0 < no_ask_cents < 100):
                 skip_reason = 'INVALID_PRICE'
             elif b.get('no_ask_thin'):
                 skip_reason = 'NO_ASK_TOO_THIN'
@@ -457,7 +468,7 @@ def write_to_ledger(conn, station_code: str, target_date: date,
             'station_code':       station_code,
             'target_date':        target_date,
             'contract_side':      'high',
-            'contract_ticker':    _build_ticker(station_code, target_date, b['bucket_label']),
+            'contract_ticker':    b['market_ticker'],
             'bucket_floor':       b['bucket_floor'],
             'bucket_cap':         b['bucket_cap'],
             'bucket_label':       b['bucket_label'],
@@ -494,6 +505,7 @@ def write_to_ledger(conn, station_code: str, target_date: date,
         print(f"[DRY RUN] {station_code} {target_date}: {hrs}h to settle  "
               f"sigma={sigma_used}°F  {len(rows)} buckets — "
               f"{sum(1 for r in rows if r['recommended_action'] == 'BET_NO')} BET_NO, "
+              f"{sum(1 for r in rows if r['skip_reason'] == 'PRE_OPEN')} PRE_OPEN, "
               f"{sum(1 for r in rows if r['skip_reason'] == 'NO_ASK_TOO_THIN')} THIN, "
               f"{sum(1 for r in rows if r['recommended_action'] == 'SKIP')} SKIP")
         for r in rows:

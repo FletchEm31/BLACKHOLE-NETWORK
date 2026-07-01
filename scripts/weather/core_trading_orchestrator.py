@@ -204,8 +204,18 @@ def _process_station_date(conn, station_code: str, target_date: date,
 
     dry_tag   = '(dry)' if DRY_RUN else ''
     paper_tag = f' paper={paper_n}' if paper_n else ''
-    cp4_label = (f"{result['bet_no']}_BET_NO/"
-                 f"{result.get('skipped', 0)}_SKIP{paper_tag}{dry_tag}")
+
+    pre_open_n = sum(1 for b in buckets if b.get('pre_open'))
+    cp4_label  = (f"{result['bet_no']}_BET_NO/"
+                  f"{result.get('skipped', 0)}_SKIP{paper_tag}{dry_tag}")
+    if pre_open_n:
+        cp4_label += f' [{pre_open_n}_PRE_OPEN]'
+
+    # Log real Kalshi tickers for each qualifying signal
+    for b in buckets:
+        if b.get('qualifies'):
+            logger.info('  BET_NO %s  edge=%.1f¢  stake=$%.2f',
+                        b['market_ticker'], b['edge_cents'], b['stake_usd'])
 
     return (f'{station_code} {target_date}: '
             f'CP1=PASS CP2={cp2_label} CP3={cp3_label} CP4={cp4_label}')
