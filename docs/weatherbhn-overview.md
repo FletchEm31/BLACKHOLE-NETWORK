@@ -105,9 +105,29 @@ Live rows weighted 3.0× in training. Test set = most recent 20% of live rows on
 
 ---
 
+## Architectural Rule — Kalshi Ticker Usage
+
+**All code must use the real `market_ticker` from `weather_bronze_kalshi_market_snapshots`. Never construct a synthetic ticker internally.** See [`infrastructure/docs/WeatherBHN/WEATHERBHN-TICKER-ARCHITECTURE.md`](../infrastructure/docs/WeatherBHN/WEATHERBHN-TICKER-ARCHITECTURE.md) for the full rule, lookup pattern, and migration path.
+
+BHN synthetic format (`KXHIGHDEN-26JUL02-86-87`) ≠ Kalshi native (`KXHIGHDEN-26JUL01-B86.5`). The 9 existing paper-trade rows store synthetic tickers; they settle correctly because the scorer joins on `(station_code, target_date, bucket_label)`, not `contract_ticker`. New positions must store real tickers once CP4 is fixed.
+
+## Pre-Live Blockers (must resolve before flipping DRY_RUN=false)
+
+### TICKET-W1 — Fix CP4 to store real `market_ticker` in `contract_ticker`
+
+**Severity:** Blocker for live order placement and ticker integrity. Paper trading settles correctly regardless.
+
+**Files to change (in order):**
+1. `scripts/weather/cp4_kelly_sizer.py` — look up `market_ticker` from snapshot table before writing to `weather_position_exits`, store it as `contract_ticker`
+2. `scripts/trading/weather_position_monitor.py` — `_place_exit_order()` passes `p.contract_ticker` to `client.place_order()`; this is correct once step 1 is done (no separate fix needed if CP4 writes real tickers)
+3. `core_trading_orchestrator.py` — entry order placement (not yet written) must use the snapshot lookup pattern from day one
+4. `sql/migrations/2026-07-01-weather-open-positions-live-prices.sql` — once exits stores real tickers, the `kalshi_market_ticker` lateral join column becomes redundant (cleanup, not urgent)
+
+---
+
 ## Roadmap
 
-**Near term (~Oct 2026, ~150 live rows):** Flip `DRY_RUN=false` when NO-side calibration passes. Multi-season data arrives. Add CatBoost as second model; blend by recent 30-day RMSE.
+**Near term (~Oct 2026, ~150 live rows):** Flip `DRY_RUN=false` when NO-side calibration passes and TICKET-W1 is resolved. Multi-season data arrives. Add CatBoost as second model; blend by recent 30-day RMSE.
 
 **Medium term (~Jan 2027, ~300 rows):** Per-station models. Add volume data to Kalshi snapshot table; activate liquid edge threshold (5¢).
 
