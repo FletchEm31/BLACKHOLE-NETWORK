@@ -105,17 +105,23 @@ def _get_active_targets(conn) -> list[tuple[str, date]]:
 
 
 def _first_bucket(conn, station_code: str, target_date: date) -> str | None:
-    """First available bucket_label for the most recent snapshot — used as CP1 gate."""
+    """First available bucket_label for the most recent HIGH snapshot — used
+    as CP1 gate. CP2/CP3/CP4 downstream all operate on HIGH/tmax_f only, so
+    this must gate on HIGH data specifically — without the contract_side
+    filter, a LOW-only snapshot (KXLOWT* tickers, also collected now) could
+    make CP1 report "pass" while the HIGH data CP4 actually needs is stale
+    or missing."""
     with conn.cursor() as cur:
         cur.execute("""
             SELECT bucket_label
             FROM weather_bronze_kalshi_market_snapshots
             WHERE station_code = %s
               AND target_date   = %s
+              AND contract_side = 'high'
               AND retrieved_at  = (
                   SELECT MAX(retrieved_at)
                   FROM weather_bronze_kalshi_market_snapshots
-                  WHERE station_code = %s AND target_date = %s
+                  WHERE station_code = %s AND target_date = %s AND contract_side = 'high'
               )
               AND yes_bid > 0
               AND no_ask  > 0

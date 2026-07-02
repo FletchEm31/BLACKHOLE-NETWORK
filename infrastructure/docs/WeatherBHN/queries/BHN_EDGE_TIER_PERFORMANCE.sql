@@ -4,7 +4,51 @@
 -- If strong edge isn't winning at 70%+, something is wrong with calibration.
 -- Source: WeatherBHN_Performance_Queries.txt (June 12, 2026) — Query 20
 -- Tab: FORMULA/MODELS
+--
+-- UPDATED 2026-07-02: weather_model_accuracy -> weather_gold_contract_ledger
+-- (same compat CTE as BHN_OVERALL_SCORECARD.sql). ALSO fixes a pre-existing
+-- bug (present even against the old table): `ORDER BY CASE edge_tier WHEN
+-- ...` referenced a SELECT-list alias inside a simple-CASE input position,
+-- which Postgres does not resolve — moved the sort rank into a subquery
+-- computed directly off the real `edge` column instead.
+--
+-- FIXED 2026-07-02: the "Strong Edge >20%" tier's apparently-legitimate
+-- 73.9% win rate is 42 of the same flat-stake ($125, zero variance) legacy
+-- BET_NO rows described in the Scorecard's note (91% of that tier), not
+-- evidence the strategy thesis holds. The tiers that looked concerning
+-- (Good 10-20%, Marginal 5-10%) are entirely clean Kelly-sized BET_YES
+-- rows — the opposite of contaminated. EXCLUDED below pending Fletch's
+-- separate backfill-vs-exclude decision — underlying ledger rows
+-- untouched. CARD LABEL: title/description should say "excludes 42
+-- legacy flat-stake rows pending pipeline decision." Do NOT use this
+-- card's Strong Edge tier to justify tightening the edge threshold until
+-- the legacy-row decision is made and the tier is re-evaluated on clean
+-- data only.
 
+WITH weather_model_accuracy AS (
+    SELECT
+        contract_ticker                                        AS contract_id,
+        contract_ticker                                        AS contract_title,
+        city                                                   AS region,
+        contract_side                                          AS variable,
+        calibrated_prob                                        AS bhn_predicted_probability,
+        market_implied_prob                                    AS market_implied_probability,
+        edge,
+        (recommended_action IN ('BET_YES', 'BET_NO'))          AS bhn_position_taken,
+        stake_usd                                              AS bhn_position_value,
+        CASE
+            WHEN recommended_action = 'BET_YES' THEN 'yes'
+            WHEN recommended_action = 'BET_NO'  THEN 'no'
+        END                                                    AS bhn_position_side,
+        contract_resolved_yes                                  AS actual_outcome,
+        bhn_correct                                            AS bhn_was_correct,
+        (market_implied_prob >= 0.5) = contract_resolved_yes   AS market_was_correct,
+        paper_pnl                                              AS pnl_dollar,
+        outcome_edge_realized                                  AS accuracy_score,
+        settled_at                                             AS resolved_at,
+        signal_generated_at                                    AS created_at
+    FROM weather_gold_contract_ledger
+)
 SELECT
     -- Edge tier classification
     CASE
@@ -56,15 +100,19 @@ SELECT
         ELSE                                    '🔴 Model Underperforming'
     END                                                AS model_verdict
 
-FROM weather_model_accuracy
-WHERE actual_outcome IS NOT NULL
-GROUP BY edge_tier
-ORDER BY
-    CASE edge_tier
-        WHEN '🔥 Strong Edge >20%'       THEN 1
-        WHEN '🟢 Good Edge 10-20%'       THEN 2
-        WHEN '🟡 Marginal Edge 5-10%'    THEN 3
-        WHEN '⚪ No Edge 0-5%'           THEN 4
-        WHEN '🔴 Negative Edge -10-0%'   THEN 5
-        ELSE                                  6
-    END;
+FROM (
+    SELECT *,
+        CASE
+            WHEN edge >= 0.20  THEN 1
+            WHEN edge >= 0.10  THEN 2
+            WHEN edge >= 0.05  THEN 3
+            WHEN edge >= 0.00  THEN 4
+            WHEN edge >= -0.10 THEN 5
+            ELSE 6
+        END AS edge_tier_sort
+    FROM weather_model_accuracy
+    WHERE actual_outcome IS NOT NULL
+      AND NOT (bhn_position_side = 'no' AND bhn_position_value = 125.0)
+) tiered
+GROUP BY edge_tier, edge_tier_sort
+ORDER BY edge_tier_sort;

@@ -103,6 +103,26 @@ MAX_RETRIES = 5
 BACKOFF_BASE = 1.5               # exponential backoff base for 429s
 
 
+def _parse_retry_after(value: Optional[str]) -> Optional[float]:
+    """Parse an HTTP Retry-After header: either an integer seconds count
+    or an HTTP-date. Returns None if absent/unparseable (caller falls back
+    to fixed exponential backoff)."""
+    if not value:
+        return None
+    value = value.strip()
+    if value.isdigit():
+        return float(value)
+    try:
+        from email.utils import parsedate_to_datetime
+        retry_dt = parsedate_to_datetime(value)
+        if retry_dt.tzinfo is None:
+            retry_dt = retry_dt.replace(tzinfo=timezone.utc)
+        delta = (retry_dt - datetime.now(timezone.utc)).total_seconds()
+        return max(delta, 0.0)
+    except (TypeError, ValueError):
+        return None
+
+
 # ─────────────────────────────────────────────────────────────────────────
 # Errors
 # ─────────────────────────────────────────────────────────────────────────
@@ -249,7 +269,11 @@ class KalshiClient:
                 )
             self._base = PROD_HOST
         else:
-            self._base = DEMO_HOST
+            # DEMO_HOST left as-is (legacy demo-api.kalshi.co, still valid).
+            # KALSHI_DEMO_HOST lets callers opt into Kalshi's currently-
+            # recommended demo endpoint (external-api.demo.kalshi.co)
+            # without changing the shared default for existing callers.
+            self._base = os.environ.get("KALSHI_DEMO_HOST", DEMO_HOST)
 
         # Lazy-load key — defer until first signed request so /exchange/status
         # (which is unauthenticated) works without a key configured
@@ -333,10 +357,20 @@ class KalshiClient:
                     headers=headers, data=body_str,
                     timeout=self._timeout,
                 )
-                # 429 → backoff
+                # 429 → backoff. Prefer Kalshi's own Retry-After header (may
+                # be an integer seconds count or an HTTP-date) over our
+                # fixed exponential guess — it tells us exactly how long
+                # the rate-limit window actually is. Clamp to 30s so a
+                # malformed/extreme header can't stall a run indefinitely.
                 if resp.status_code == 429:
-                    wait = 2 ** attempt + 1
-                    logger.warning(f"Kalshi 429 on {method} {url}; sleeping {wait}s")
+                    wait = _parse_retry_after(resp.headers.get("Retry-After"))
+                    if wait is None:
+                        wait = 2 ** attempt + 1
+                    wait = min(wait, 30.0)
+                    logger.warning(
+                        f"Kalshi 429 on {method} {url}; sleeping {wait}s "
+                        f"({'Retry-After' if resp.headers.get('Retry-After') else 'backoff'})"
+                    )
                     time.sleep(wait)
                     continue
                 # Non-2xx → raise with parsed body
@@ -500,77 +534,134 @@ class KalshiClient:
                      side: str,                  # 'yes' | 'no'
                      count: int,
                      price: Optional[int] = None,  # cents 1..99 for limit; None for market
-                     order_type: str = "limit",  # 'limit' | 'market'
+                     order_type: str = "limit",  # 'limit' | 'market' (market: NotImplementedError, see below)
                      action: str = "buy",         # 'buy' | 'sell'
                      client_order_id: Optional[str] = None,
-                     time_in_force: str = "GTC") -> dict:
-        """POST /portfolio/orders. Place a single order.
+                     time_in_force: str = "GTC",  # 'GTC' | 'IOC' | 'FOK'
+                     self_trade_prevention_type: str = "taker_at_cross"
+                     ) -> dict:
+        """POST /portfolio/events/orders (Kalshi's V2 order API). Place a
+        single limit order.
 
-        Kalshi prices are integer cents 1..99. `price` is applied to whichever
-        leg is being traded (yes_price if side='yes'; no_price if side='no').
-        Market orders omit price entirely.
+        Kalshi prices are integer cents 1..99, applied to whichever leg is
+        being traded (side='yes' or side='no') — this external interface
+        is unchanged from before the V2 migration; translation to V2's
+        YES-leg-only bid/ask model happens internally.
+
+        self_trade_prevention_type defaults to 'taker_at_cross' (cancels
+        the incoming order rather than disturbing a resting one) — the
+        more conservative of Kalshi's two options for a strategy that
+        isn't running multiple simultaneous strats against the same book.
 
         Caller is responsible for ALL Phase 3+ pre-checks before invoking:
           - paper_only env consistency (constructor enforces demo URL)
           - rules.json strat_9 enabled + edge ≥ 8% per contract
           - confidence ≥ 0.65 ensemble threshold
           - Kelly-sized count within strat_9 daily_loss_limit budget
-        This client is a thin auth + HTTP wrapper; it does NOT enforce risk."""
+        This client is a thin auth + HTTP wrapper; it does NOT enforce risk.
+
+        Internally translated to Kalshi's V2 order API (POST
+        /portfolio/events/orders) — the V1 endpoint this used to call
+        (POST /portfolio/orders) returns HTTP 410 as of 2026 (Kalshi's
+        stated sunset was 2026-05-06). V2 uses a single-book bid/ask model
+        quoted from the YES leg only, plus string fixed-point count/price
+        instead of ints. This method's external signature (side='yes'/'no',
+        action='buy'/'sell', price in cents) is unchanged — the translation
+        happens here so no caller needed to change. Verified against
+        Kalshi's docs 2026-07-02; see demo_execution_test.py for a live
+        confirmation this round-trips correctly."""
         if side not in ("yes", "no"):
             raise ValueError(f"side must be 'yes'|'no', got {side!r}")
         if action not in ("buy", "sell"):
             raise ValueError(f"action must be 'buy'|'sell', got {action!r}")
         if order_type not in ("limit", "market"):
             raise ValueError(f"order_type must be 'limit'|'market', got {order_type!r}")
+        if order_type == "market":
+            raise NotImplementedError(
+                "market orders are not used anywhere in this codebase and "
+                "Kalshi's V2 create-order schema has no documented 'type' "
+                "field distinguishing limit/market — the V2 market-order "
+                "mechanism (if any) has not been verified. Use order_type="
+                "'limit' or confirm the V2 spec before adding market support."
+            )
         if count <= 0:
             raise ValueError(f"count must be > 0, got {count}")
-        if order_type == "limit":
-            if price is None:
-                raise ValueError("limit orders require a price (cents 1..99)")
-            if not (1 <= price <= 99):
-                raise ValueError(f"price must be in cents [1, 99], got {price}")
+        if price is None:
+            raise ValueError("limit orders require a price (cents 1..99)")
+        if not (1 <= price <= 99):
+            raise ValueError(f"price must be in cents [1, 99], got {price}")
+        tif_map = {"GTC": "good_till_canceled", "IOC": "immediate_or_cancel",
+                   "FOK": "fill_or_kill"}
+        v2_tif = tif_map.get(time_in_force, time_in_force)
+        if v2_tif not in tif_map.values():
+            raise ValueError(f"unrecognized time_in_force {time_in_force!r}")
+
+        # V2 quotes everything from the YES leg. side='no' has no direct
+        # V2 equivalent — selling YES at (1-price) is economically identical
+        # to buying NO at price (and vice versa), per Kalshi's own docs.
+        if side == "yes":
+            v2_side = "bid" if action == "buy" else "ask"
+            v2_price_dollars = price / 100.0
+        else:  # side == "no"
+            v2_side = "ask" if action == "buy" else "bid"
+            v2_price_dollars = (100 - price) / 100.0
 
         body: dict = {
-            "ticker": ticker, "side": side, "action": action,
-            "count": count, "type": order_type, "time_in_force": time_in_force,
+            "ticker": ticker,
+            "side": v2_side,
+            "count": f"{count:.2f}",
+            "price": f"{v2_price_dollars:.2f}",
+            "time_in_force": v2_tif,
+            "self_trade_prevention_type": self_trade_prevention_type,
         }
-        if order_type == "limit":
-            if side == "yes":
-                body["yes_price"] = price
-            else:
-                body["no_price"] = price
         if client_order_id:
             body["client_order_id"] = client_order_id
 
         logger.info(f"place_order ticker={ticker} side={side} count={count} "
-                    f"price={price} type={order_type} action={action}")
-        return self.post("/portfolio/orders", json_body=body)
+                    f"price={price} type={order_type} action={action} "
+                    f"(v2: side={v2_side} price=${v2_price_dollars:.2f})")
+        return self.post("/portfolio/events/orders", json_body=body)
 
     def cancel_order(self, order_id: str) -> dict:
-        """DELETE /portfolio/orders/{order_id}."""
+        """DELETE /portfolio/events/orders/{order_id} (V2 — the V1 path
+        /portfolio/orders/{order_id} returns HTTP 410 as of 2026)."""
         logger.info(f"cancel_order id={order_id}")
-        return self.delete(f"/portfolio/orders/{order_id}")
+        return self.delete(f"/portfolio/events/orders/{order_id}")
 
     # ─────────────────────────────────────────────────────────────────────
     # Weather-specific helpers
     # ─────────────────────────────────────────────────────────────────────
 
-    # Kalshi weather series tickers — Phase 3 scope: Miami, Phoenix, Denver
-    # (High + Low). If actual API tickers differ from these assumed names,
-    # update here and in prediction_signal.SERIES_TO_STATION_VAR to match.
+    # Kalshi weather series tickers — all 8 BHN cities, High + Low.
+    # LOW series use a "KXLOWT" prefix (extra "T"), NOT "KXLOW" — confirmed
+    # live 2026-07-02 with real active markets/volume on all 8. Dallas's LOW
+    # series uses city code "DAL", not "DFW" like its HIGH series.
+    # Keep in sync with prediction_signal.SERIES_TO_STATION_VAR.
     WEATHER_SERIES = (
-        "KXHIGHMIA", "KXLOWMIA",
-        "KXHIGHPHX", "KXLOWPHX",
-        "KXHIGHDEN", "KXLOWDEN",
-        "KXHIGHLAX", "KXLOWLAX",
-        "KXHIGHDFW", "KXLOWDFW",
+        "KXHIGHMIA", "KXLOWTMIA",
+        "KXHIGHPHX", "KXLOWTPHX",
+        "KXHIGHDEN", "KXLOWTDEN",
+        "KXHIGHLAX", "KXLOWTLAX",
+        "KXHIGHDFW", "KXLOWTDAL",
+        "KXHIGHNY",  "KXLOWTNYC",
+        "KXHIGHCHI", "KXLOWTCHI",
+        "KXHIGHAUS", "KXLOWTAUS",
     )
 
     def get_weather_markets(self, *, status: str = "open") -> list:
-        """Concatenate get_markets() across the 4 Kalshi weather series.
-        Each call auto-UPSERTs discovered contracts into prediction_contracts."""
+        """Concatenate get_markets() across the 16 Kalshi weather series
+        (8 cities x High/Low). Each call auto-UPSERTs discovered contracts
+        into prediction_contracts.
+
+        Paced with BURST_POLL_INTERVAL between calls — firing all 16 back
+        to back with no delay was observed triggering Kalshi 429s mid-burst
+        (e.g. KXLOWDFW), degrading a run from all-16-succeed down to 1-3
+        series before recovering next cycle. This is preventive pacing,
+        not a replacement for the per-request 429 retry in _request()."""
         all_markets: list = []
-        for series in self.WEATHER_SERIES:
+        for i, series in enumerate(self.WEATHER_SERIES):
+            if i > 0:
+                time.sleep(BURST_POLL_INTERVAL)
             try:
                 body = self.get_markets(series=series, status=status,
                                          limit=200, log_to_pg=True)
@@ -1131,9 +1222,11 @@ _KALSHI_TITLE_STATION_MAP = (
 # Ticker series prefix → ICAO station code
 # Parsed directly from ticker (e.g. KXHIGHDEN → DEN → KDEN).
 # More reliable than title text matching — use as primary source.
+# Note: HIGH series use "DFW" for Dallas, but LOW series (KXLOWT*) use "DAL"
+# instead — both map to the same station. Confirmed live 2026-07-02.
 _TICKER_CITY_TO_STATION: dict[str, str] = {
     "DEN": "KDEN", "MIA": "KMIA", "PHX": "KPHX",
-    "LAX": "KLAX", "DFW": "KDFW", "NYC": "KNYC",
+    "LAX": "KLAX", "DFW": "KDFW", "DAL": "KDFW", "NYC": "KNYC",
     "CHI": "KORD", "AUS": "KAUS", "NY":  "KNYC",
 }
 
@@ -1142,11 +1235,16 @@ def _parse_ticker_metadata(ticker: str) -> dict:
     """Extract station_code, variable, resolution_date, threshold_value
     from a Kalshi weather ticker string.
 
-    Format: KXHIGH{CITY}-{YYMONDD}-{B|T}{value}
+    Format: KXHIGH{CITY}-{YYMONDD}-{B|T}{value}    (HIGH series)
+            KXLOWT{CITY}-{YYMONDD}-{B|T}{value}    (LOW series — note the
+                                                     extra "T", confirmed
+                                                     live 2026-07-02; it is
+                                                     NOT the same prefix
+                                                     length as KXHIGH)
     Examples:
       KXHIGHDEN-26JUN11-B78.5  → KDEN, tmax_f, 2026-06-11, between, 78.5
       KXHIGHMIA-26JUN10-T92    → KMIA, tmax_f, 2026-06-10, >, 92.0
-      KXLOWMIA-26JUN10-T85     → KMIA, tmin_f, 2026-06-10, <, 85.0
+      KXLOWTMIA-26JUL02-T73    → KMIA, tmin_f, 2026-07-02, <, 73.0
     """
     result: dict = {
         "station_code": None, "variable": None,
@@ -1157,15 +1255,15 @@ def _parse_ticker_metadata(ticker: str) -> dict:
     if len(parts) < 2:
         return result
 
-    series = parts[0]  # e.g. "KXHIGHDEN"
+    series = parts[0]  # e.g. "KXHIGHDEN" or "KXLOWTDEN"
 
     # Variable + city code
     if series.startswith("KXHIGH"):
         result["variable"] = "tmax_f"
         city_code = series[6:]  # strip "KXHIGH"
-    elif series.startswith("KXLOW"):
+    elif series.startswith("KXLOWT"):
         result["variable"] = "tmin_f"
-        city_code = series[5:]  # strip "KXLOW"
+        city_code = series[6:]  # strip "KXLOWT" (LOW series has an extra "T")
     else:
         city_code = ""
 

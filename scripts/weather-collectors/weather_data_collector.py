@@ -915,14 +915,17 @@ def compute_degree_days_from_observations(dry_run: bool = False) -> int:
 _STATION_CITY_NAME: dict[str, str] = {c.icao: c.name for c in CITIES}
 
 # Ticker prefix → ICAO station code
+# LOW series use a "KXLOWT" prefix (extra "T" vs HIGH's "KXHIGH") — confirmed
+# live 2026-07-02 with real active markets on all 8 cities. Dallas's LOW
+# ticker uses city code "DAL", not "DFW" like its HIGH series.
 _KALSHI_TICKER_STATION: dict[str, str] = {
-    "KXHIGHMIA": "KMIA", "KXLOWMIA":  "KMIA",
-    "KXHIGHDEN": "KDEN", "KXLOWDEN":  "KDEN",
-    "KXHIGHPHX": "KPHX", "KXLOWPHX":  "KPHX",
-    "KXHIGHNY":  "KNYC", "KXLOWNY":   "KNYC",
-    "KXHIGHCHI": "KORD", "KXLOWCHI":  "KORD",
-    "KXHIGHLAX": "KLAX", "KXLOWLAX":  "KLAX",
-    "KXHIGHDFW": "KDFW", "KXLOWDFW":  "KDFW",
+    "KXHIGHMIA": "KMIA", "KXLOWTMIA": "KMIA",
+    "KXHIGHDEN": "KDEN", "KXLOWTDEN": "KDEN",
+    "KXHIGHPHX": "KPHX", "KXLOWTPHX": "KPHX",
+    "KXHIGHNY":  "KNYC", "KXLOWTNYC": "KNYC",
+    "KXHIGHCHI": "KORD", "KXLOWTCHI": "KORD",
+    "KXHIGHLAX": "KLAX", "KXLOWTLAX": "KLAX",
+    "KXHIGHDFW": "KDFW", "KXLOWTDAL": "KDFW",
 }
 
 

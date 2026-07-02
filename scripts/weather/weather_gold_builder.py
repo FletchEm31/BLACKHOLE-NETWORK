@@ -121,6 +121,12 @@ def fetch_calibration(conn) -> dict:
 
 
 def fetch_kalshi_snapshots(conn, start: date, end: date) -> dict:
+    # HIGH-only: find_closest_bucket() below matches against ref_tmax (a
+    # HIGH-side value). Must filter contract_side explicitly now that
+    # LOW-series tickers (KXLOWT*) are also being collected for these
+    # stations — without this, a LOW snapshot could be picked as "latest"
+    # and its buckets (overnight-low ranges) matched against a daytime-high
+    # calibrated value.
     with conn.cursor() as cur:
         cur.execute("""
             SELECT DISTINCT ON (station_code, target_date)
@@ -128,6 +134,7 @@ def fetch_kalshi_snapshots(conn, start: date, end: date) -> dict:
             FROM weather_bronze_kalshi_market_snapshots
             WHERE station_code = ANY(%s)
               AND target_date BETWEEN %s AND %s
+              AND contract_side = 'high'
               AND retrieved_at <= (
                   (target_date - 1)::timestamp + make_interval(hours => %s)
               ) AT TIME ZONE 'UTC'
@@ -145,6 +152,7 @@ def fetch_kalshi_buckets(conn, station: str, target_date: date, snap_time) -> li
             WHERE station_code = %s
               AND target_date = %s
               AND retrieved_at = %s
+              AND contract_side = 'high'
             ORDER BY bucket_floor NULLS LAST
         """, (station, target_date, snap_time))
         return cur.fetchall()

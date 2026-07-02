@@ -118,4 +118,10 @@ LEFT JOIN open_positions op
     ON op.ticker = m.market_ticker
 WHERE g.is_active = true
   AND g.target_date >= CURRENT_DATE
-ORDER BY edge_pts DESC;
+  -- Every Low-side row currently has NULL edge_pts (no calibrated model yet,
+  -- storage-only scope as of 2026-07-02) — exclude placeholder rows entirely
+  -- rather than let them float to the top of a DESC sort (Postgres sorts
+  -- NULL first on DESC by default). Mirrors the edge_pts expression exactly
+  -- (can't reference a SELECT-list alias in WHERE).
+  AND ABS(g.calibrated_prob - g.market_implied_prob) IS NOT NULL
+ORDER BY edge_pts DESC NULLS LAST;

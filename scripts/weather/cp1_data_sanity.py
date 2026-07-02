@@ -103,6 +103,10 @@ def check_data_sanity(station_code: str, target_date: date, bucket_label: str,
                         "checks": checks}
 
             # --- Check 3: Kalshi snapshot exists for station/date/bucket ---
+            # contract_side='high' guards against a same-label collision with a
+            # LOW bucket (KXLOWT* tickers, also collected now) — bucket_label is
+            # just a dollar-range string and can coincidentally match across
+            # sides; this check is HIGH-only per the rest of the CP1-CP4 pipeline.
             cur.execute("""
                 SELECT bucket_label, bucket_type, bucket_floor, bucket_cap,
                        yes_bid, no_ask, retrieved_at
@@ -110,6 +114,7 @@ def check_data_sanity(station_code: str, target_date: date, bucket_label: str,
                 WHERE station_code = %s
                   AND target_date = %s
                   AND bucket_label = %s
+                  AND contract_side = 'high'
                 ORDER BY retrieved_at DESC
                 LIMIT 1
             """, (station_code, target_date, bucket_label))

@@ -195,10 +195,16 @@ def run_cp4_kelly(station_code: str, target_date: date,
                 FROM weather_bronze_kalshi_market_snapshots
                 WHERE station_code = %s
                   AND target_date = %s
+                  -- This function is HIGH/tmax_f-only (predicted_tmax_f param, no
+                  -- tmin_f path exists). Must filter contract_side explicitly now
+                  -- that LOW-series tickers (KXLOWT*) are also being collected for
+                  -- these stations — without this, LOW buckets would silently mix
+                  -- into HIGH Kelly sizing for the same station/date.
+                  AND contract_side = 'high'
                   AND retrieved_at = (
                       SELECT MAX(retrieved_at)
                       FROM weather_bronze_kalshi_market_snapshots
-                      WHERE station_code = %s AND target_date = %s
+                      WHERE station_code = %s AND target_date = %s AND contract_side = 'high'
                   )
                   -- Staleness guard: collector runs ~33 min; 45 min gives one full
                   -- cycle of headroom before declaring data stale.
@@ -500,6 +506,17 @@ def write_to_ledger(conn, station_code: str, target_date: date,
         })
 
     if dry_run:
+        # dry_run means "never place a real Kalshi order" (this function never
+        # does that anyway — order placement lives in prediction_signal.py /
+        # kalshi_client.py). It must NOT mean "don't write the ledger": the
+        # ledger write is what makes signals visible on the Metabase dashboards
+        # during the calibration phase, exactly like paper trades already do
+        # via record_paper_trade(). Previously this branch returned early
+        # (skipping execute_batch/commit entirely) and hardcoded bet_no=0,
+        # so the pipeline computed real qualifying signals every 5 minutes,
+        # printed them, and then discarded them — the ledger was frozen on
+        # a one-time backfill from 2026-06-26 while cycles ran clean and
+        # silent. Fixed 2026-07-02, approved by Fletch.
         hrs = buckets[0].get('hours_to_settle', '?') if buckets else '?'
         sigma_used = buckets[0].get('sigma_used', '?') if buckets else '?'
         print(f"[DRY RUN] {station_code} {target_date}: {hrs}h to settle  "
@@ -513,8 +530,6 @@ def write_to_ledger(conn, station_code: str, target_date: date,
                 print(f"  BET_NO  {r['contract_ticker']:40} "
                       f"edge={r['edge']*100:.1f}¢  stake=${r['stake_usd']:.2f}  "
                       f"rank={r['edge_rank']}  strength={r['signal_strength']}")
-        return {'settled': False, 'written': 0, 'bet_no': 0,
-                'skipped': len(rows), 'dry_run': True}
 
     with conn.cursor() as cur:
         psycopg2.extras.execute_batch(cur, _LEDGER_UPSERT, rows, page_size=50)
@@ -522,7 +537,7 @@ def write_to_ledger(conn, station_code: str, target_date: date,
 
     bet_no = sum(1 for r in rows if r['recommended_action'] == 'BET_NO')
     return {'settled': False, 'written': len(rows),
-            'bet_no': bet_no, 'skipped': len(rows) - bet_no}
+            'bet_no': bet_no, 'skipped': len(rows) - bet_no, 'dry_run': dry_run}
 
 
 if __name__ == "__main__":

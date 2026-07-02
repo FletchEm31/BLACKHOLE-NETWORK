@@ -7,6 +7,26 @@
 -- ============================================================
 -- QUERY 1: Daily Edge Sheet (MAIN TRADING VIEW)
 -- Shows what to trade today and tomorrow.
+--
+-- UPDATED 2026-07-02: weather_gold_daily_edge_sheet was retired
+-- 2026-06-30 in favor of weather_gold_contract_ledger (new CP1-CP4
+-- orchestrator, see project memory weather-gold-edge-sheet-retired).
+-- Renames from the old schema: raw_forecast_f -> nws_forecast_f,
+-- market_volume -> volume, last_updated -> ledger_updated_at.
+--
+-- FIXED 2026-07-02: same NULLS-FIRST bug as card 54 (Odds/Edge Dashboard),
+-- never applied here until now. Every Low-side row has NULL edge (no
+-- calibrated model yet, storage-only pass) and was floating to the top of
+-- ORDER BY edge DESC, completely burying real HIGH-side signals. This was
+-- masked until now because write_to_ledger()'s dry_run early-return bug
+-- (see cp4_kelly_sizer.py) meant no fresh HIGH rows existed at all — now
+-- that that's fixed, real BET_NO/SKIP rows with genuine edge_pct/stake_usd
+-- flow in every cycle and were being hidden by this sort bug. Added
+-- NULLS LAST plus a WHERE filter excluding NULL-edge rows entirely,
+-- matching card 54's fix. CARD LABEL: title/description should say
+-- "excludes Low-side placeholder rows (no calibration model yet)" — count
+-- varies daily (unlike card 54/Q19/Q20's fixed 42 legacy rows), so it's
+-- surfaced as a live column below instead of a hardcoded label number.
 -- ============================================================
 SELECT
     city,
@@ -14,7 +34,7 @@ SELECT
     contract_side,
     bucket_label,
     contract_ticker,
-    raw_forecast_f                              AS nws_forecast,
+    nws_forecast_f                              AS nws_forecast,
     gfs_forecast_f                              AS gfs_forecast,
     model_delta_f                               AS model_delta,
     model_confidence,
@@ -23,18 +43,23 @@ SELECT
     ROUND(edge_pct, 1)                          AS edge_pct,
     ROUND(nws_high_prob_pct * 100, 1)           AS nws_prob_pct,
     ROUND(gfs_high_prob_pct * 100, 1)           AS gfs_ens_prob_pct,
-    market_volume,
+    volume                                       AS market_volume,
     market_liquidity,
     recommended_action,
     stake_usd,
     skip_reason,
-    last_updated                                                           AS calculated_time_utc,
-    last_updated AT TIME ZONE 'UTC' AT TIME ZONE 'America/Los_Angeles'    AS calculated_time_pt,
-    ROUND(EXTRACT(EPOCH FROM (NOW() - last_updated)) / 60)                AS mins_ago
-FROM weather_gold_daily_edge_sheet
+    ledger_updated_at                                                      AS calculated_time_utc,
+    ledger_updated_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Los_Angeles' AS calculated_time_pt,
+    ROUND(EXTRACT(EPOCH FROM (NOW() - ledger_updated_at)) / 60)            AS mins_ago,
+    (SELECT COUNT(*) FROM weather_gold_contract_ledger x
+       WHERE x.target_date BETWEEN CURRENT_DATE AND CURRENT_DATE + 1
+         AND x.is_active = TRUE
+         AND x.edge_pct IS NULL)                                          AS low_side_rows_excluded
+FROM weather_gold_contract_ledger
 WHERE target_date BETWEEN CURRENT_DATE AND CURRENT_DATE + 1
   AND is_active = TRUE
-ORDER BY target_date, edge DESC;
+  AND edge_pct IS NOT NULL
+ORDER BY target_date, edge DESC NULLS LAST;
 
 
 -- ============================================================
@@ -107,30 +132,49 @@ ORDER BY station_code, feature_name, source_name;
 
 -- ============================================================
 -- QUERY 5: Calibration Progress (30-day window tracker)
+--
+-- UPDATED 2026-07-02: added Low (tmin_f) tracking alongside High (tmax_f),
+-- per city — part of the Low-Temperature Data Pipeline Setup task. Low
+-- calibration has been running in lockstep with High all along (same
+-- error_pairs counts per city); this just makes it visible. No trading/
+-- Kelly-sizing logic involved — presentation only.
 -- ============================================================
 SELECT
     sfc.station_code,
     sfc.city,
-    COUNT(DISTINCT sfc.target_date)                     AS forecast_days,
-    COUNT(DISTINCT sa.target_date)                      AS settled_days,
-    COUNT(DISTINCT sfe.target_date)                     AS error_pairs,
+    COUNT(DISTINCT sfc.target_date)                          AS forecast_days,
+    COUNT(DISTINCT sa.target_date)                           AS settled_days,
+
+    -- High (tmax_f) calibration progress
+    COUNT(DISTINCT sfe_high.target_date)                     AS high_error_pairs,
     CASE
-        WHEN COUNT(DISTINCT sfe.target_date) >= 30
+        WHEN COUNT(DISTINCT sfe_high.target_date) >= 30
         THEN 'READY TO CALIBRATE'
-        ELSE CONCAT(
-            CAST(30 - COUNT(DISTINCT sfe.target_date) AS TEXT),
-            ' days remaining'
-        )
-    END                                                  AS calibration_status,
-    MIN(sfc.target_date)                                 AS earliest_forecast,
-    MAX(sa.target_date)                                  AS latest_settlement
+        ELSE CONCAT(CAST(30 - COUNT(DISTINCT sfe_high.target_date) AS TEXT), ' days remaining')
+    END                                                       AS high_calibration_status,
+
+    -- Low (tmin_f) calibration progress
+    COUNT(DISTINCT sfe_low.target_date)                      AS low_error_pairs,
+    CASE
+        WHEN COUNT(DISTINCT sfe_low.target_date) >= 30
+        THEN 'READY TO CALIBRATE'
+        ELSE CONCAT(CAST(30 - COUNT(DISTINCT sfe_low.target_date) AS TEXT), ' days remaining')
+    END                                                       AS low_calibration_status,
+
+    MIN(sfc.target_date)                                     AS earliest_forecast,
+    MAX(sa.target_date)                                      AS latest_settlement
 FROM weather_silver_forecast_conformed sfc
 LEFT JOIN weather_silver_actuals_conformed sa
     ON  sa.station_code = sfc.station_code
     AND sa.target_date  = sfc.target_date
-LEFT JOIN weather_silver_forecast_error sfe
-    ON  sfe.station_code = sfc.station_code
-    AND sfe.target_date  = sfc.target_date
+LEFT JOIN weather_silver_forecast_error sfe_high
+    ON  sfe_high.station_code = sfc.station_code
+    AND sfe_high.target_date  = sfc.target_date
+    AND sfe_high.feature_name = 'tmax_f'
+LEFT JOIN weather_silver_forecast_error sfe_low
+    ON  sfe_low.station_code = sfc.station_code
+    AND sfe_low.target_date  = sfc.target_date
+    AND sfe_low.feature_name = 'tmin_f'
 WHERE sfc.is_latest_run = TRUE
   AND sfc.source_name   = 'nws'
 GROUP BY sfc.station_code, sfc.city
@@ -205,6 +249,10 @@ ORDER BY captured_at DESC;
 -- Pure Kelly sizing from market-implied prob. Works now.
 -- trade_signal = go/no-go. Use during manual trading phase.
 -- Full query: infrastructure/docs/WeatherBHN/queries/KELLY_MARKET_ONLY.sql
+--
+-- UPDATED 2026-07-02: weather_gold_daily_edge_sheet -> weather_gold_contract_ledger
+-- (retired 2026-06-30, see project memory weather-gold-edge-sheet-retired).
+-- last_updated -> ledger_updated_at.
 -- ============================================================
 WITH market_latest AS (
     SELECT DISTINCT ON (market_ticker)
@@ -230,8 +278,8 @@ edge_data AS (
         g.city, g.station_code, g.target_date, g.contract_side,
         g.bucket_floor, g.bucket_cap, g.market_implied_prob,
         g.market_yes_mid, g.calibrated_prob, g.edge,
-        g.recommended_action, g.last_updated
-    FROM weather_gold_daily_edge_sheet g
+        g.recommended_action, g.ledger_updated_at AS last_updated
+    FROM weather_gold_contract_ledger g
     WHERE g.target_date >= CURRENT_DATE AND g.is_active = true
 )
 SELECT
@@ -303,6 +351,10 @@ ORDER BY
 -- PRIMARY automated trading signal. kelly_signal = BET = place order.
 -- Requires calibrated_prob — shows PENDING until VC backfill completes.
 -- Full query: infrastructure/docs/WeatherBHN/queries/KELLY_BHN_EDGE.sql
+--
+-- UPDATED 2026-07-02: weather_gold_daily_edge_sheet -> weather_gold_contract_ledger
+-- (retired 2026-06-30, see project memory weather-gold-edge-sheet-retired).
+-- last_updated -> ledger_updated_at.
 -- ============================================================
 WITH market_latest AS (
     SELECT DISTINCT ON (market_ticker)
@@ -386,9 +438,9 @@ SELECT
     m.retrieved_at                                                           AS snapshot_time_utc,
     m.retrieved_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Los_Angeles'    AS snapshot_time_pt,
     ROUND(EXTRACT(EPOCH FROM (NOW() - m.retrieved_at)) / 60)                AS mins_ago,
-    g.last_updated                                                           AS calculated_time_utc,
-    g.last_updated AT TIME ZONE 'UTC' AT TIME ZONE 'America/Los_Angeles'    AS calculated_time_pt
-FROM weather_gold_daily_edge_sheet g
+    g.ledger_updated_at                                                      AS calculated_time_utc,
+    g.ledger_updated_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Los_Angeles' AS calculated_time_pt
+FROM weather_gold_contract_ledger g
 LEFT JOIN market_latest m
     ON g.city = m.city AND g.contract_side = m.contract_side
     AND g.bucket_floor = m.bucket_floor AND g.bucket_cap = m.bucket_cap
@@ -484,7 +536,51 @@ ORDER BY liquidity_score DESC, city, contract_side, bucket_floor;
 -- Populates after settlement reconciler runs nightly at 15:00 UTC.
 -- Tab: FORMULA/MODELS — PIN at top
 -- Full query: infrastructure/docs/WeatherBHN/queries/BHN_OVERALL_SCORECARD.sql
+--
+-- UPDATED 2026-07-02: weather_model_accuracy retired, replaced by
+-- weather_gold_contract_ledger (see project memory
+-- weather-gold-edge-sheet-retired). Compat CTE below aliases every old
+-- column; market_was_correct, bhn_position_taken, bhn_position_side, and
+-- accuracy_score have no direct equivalent and are derived.
+--
+-- FIXED 2026-07-02: found (not a dashboard bug — a data-provenance issue).
+-- 42 BET_NO rows in the settled data all carry an identical flat
+-- stake_usd=125.0 (zero variance) instead of genuine Kelly sizing —
+-- cp4_kelly_sizer.py (the only current signal generator) never writes
+-- BET_YES and always Kelly-sizes, so these 42 rows are legacy/pre-CP4
+-- data backfilled into the new ledger schema. Combined with several of
+-- them also having market_implied_prob clamped at the 0.99 tick-size
+-- boundary, they generate $271,191.73 of a total $343,894.13 reported
+-- PnL (79%) via a legitimate-but-flat-staked 99x payout multiplier.
+-- EXCLUDED below pending Fletch's separate backfill-vs-exclude decision —
+-- underlying weather_gold_contract_ledger rows are untouched, this is a
+-- presentation-layer filter only. CARD LABEL: title/description should
+-- say "excludes 42 legacy flat-stake rows pending pipeline decision."
 -- ============================================================
+WITH weather_model_accuracy AS (
+    SELECT
+        contract_ticker                                        AS contract_id,
+        contract_ticker                                        AS contract_title,
+        city                                                   AS region,
+        contract_side                                          AS variable,
+        calibrated_prob                                        AS bhn_predicted_probability,
+        market_implied_prob                                    AS market_implied_probability,
+        edge,
+        (recommended_action IN ('BET_YES', 'BET_NO'))          AS bhn_position_taken,
+        stake_usd                                              AS bhn_position_value,
+        CASE
+            WHEN recommended_action = 'BET_YES' THEN 'yes'
+            WHEN recommended_action = 'BET_NO'  THEN 'no'
+        END                                                    AS bhn_position_side,
+        contract_resolved_yes                                  AS actual_outcome,
+        bhn_correct                                            AS bhn_was_correct,
+        (market_implied_prob >= 0.5) = contract_resolved_yes   AS market_was_correct,
+        paper_pnl                                              AS pnl_dollar,
+        outcome_edge_realized                                  AS accuracy_score,
+        settled_at                                             AS resolved_at,
+        signal_generated_at                                    AS created_at
+    FROM weather_gold_contract_ledger
+)
 SELECT
     -- Volume
     COUNT(*)                                           AS total_recommendations,
@@ -532,10 +628,14 @@ SELECT
                                                        AS first_reconciled_time_pt,
     MAX(resolved_at) AT TIME ZONE 'UTC' AT TIME ZONE 'America/Los_Angeles'
                                                        AS latest_reconciled_time_pt,
-    COUNT(DISTINCT DATE(resolved_at))                  AS trading_days
+    COUNT(DISTINCT DATE(resolved_at))                  AS trading_days,
+
+    -- Transparency count for the card label — see FIXED note above
+    42                                                 AS legacy_rows_excluded
 
 FROM weather_model_accuracy
-WHERE actual_outcome IS NOT NULL;
+WHERE actual_outcome IS NOT NULL
+  AND NOT (bhn_position_side = 'no' AND bhn_position_value = 125.0);
 
 
 -- ============================================================
@@ -544,7 +644,51 @@ WHERE actual_outcome IS NOT NULL;
 -- should win 70%+. If not, calibration model needs review.
 -- Tab: FORMULA/MODELS
 -- Full query: infrastructure/docs/WeatherBHN/queries/BHN_EDGE_TIER_PERFORMANCE.sql
+--
+-- UPDATED 2026-07-02: weather_model_accuracy -> weather_gold_contract_ledger
+-- (same compat CTE as Query 19). ALSO fixes a pre-existing bug (present
+-- even against the old table): `ORDER BY CASE edge_tier WHEN ...` referenced
+-- a SELECT-list alias inside a simple-CASE input position, which Postgres
+-- does not resolve (alias substitution only applies to a bare identifier
+-- in ORDER BY, not one nested in an expression) — moved the sort rank into
+-- a subquery computed directly off the real `edge` column instead.
+--
+-- FIXED 2026-07-02: the "Strong Edge >20%" tier's apparently-legitimate
+-- 73.9% win rate is 42 of the same flat-stake ($125, zero variance) legacy
+-- BET_NO rows described in Query 19's note (91% of that tier), not evidence
+-- the strategy thesis holds. The tiers that looked concerning (Good 10-20%,
+-- Marginal 5-10%) are entirely clean Kelly-sized BET_YES rows — the
+-- opposite of contaminated. EXCLUDED below pending Fletch's separate
+-- backfill-vs-exclude decision — underlying ledger rows untouched. CARD
+-- LABEL: title/description should say "excludes 42 legacy flat-stake rows
+-- pending pipeline decision." Do NOT use this card's Strong Edge tier to
+-- justify tightening the edge threshold until the legacy-row decision
+-- is made and the tier is re-evaluated on clean data only.
 -- ============================================================
+WITH weather_model_accuracy AS (
+    SELECT
+        contract_ticker                                        AS contract_id,
+        contract_ticker                                        AS contract_title,
+        city                                                   AS region,
+        contract_side                                          AS variable,
+        calibrated_prob                                        AS bhn_predicted_probability,
+        market_implied_prob                                    AS market_implied_probability,
+        edge,
+        (recommended_action IN ('BET_YES', 'BET_NO'))          AS bhn_position_taken,
+        stake_usd                                              AS bhn_position_value,
+        CASE
+            WHEN recommended_action = 'BET_YES' THEN 'yes'
+            WHEN recommended_action = 'BET_NO'  THEN 'no'
+        END                                                    AS bhn_position_side,
+        contract_resolved_yes                                  AS actual_outcome,
+        bhn_correct                                            AS bhn_was_correct,
+        (market_implied_prob >= 0.5) = contract_resolved_yes   AS market_was_correct,
+        paper_pnl                                              AS pnl_dollar,
+        outcome_edge_realized                                  AS accuracy_score,
+        settled_at                                             AS resolved_at,
+        signal_generated_at                                    AS created_at
+    FROM weather_gold_contract_ledger
+)
 SELECT
     -- Edge tier classification
     CASE
@@ -596,18 +740,22 @@ SELECT
         ELSE                                    '🔴 Model Underperforming'
     END                                                AS model_verdict
 
-FROM weather_model_accuracy
-WHERE actual_outcome IS NOT NULL
-GROUP BY edge_tier
-ORDER BY
-    CASE edge_tier
-        WHEN '🔥 Strong Edge >20%'       THEN 1
-        WHEN '🟢 Good Edge 10-20%'       THEN 2
-        WHEN '🟡 Marginal Edge 5-10%'    THEN 3
-        WHEN '⚪ No Edge 0-5%'           THEN 4
-        WHEN '🔴 Negative Edge -10-0%'   THEN 5
-        ELSE                                  6
-    END;
+FROM (
+    SELECT *,
+        CASE
+            WHEN edge >= 0.20  THEN 1
+            WHEN edge >= 0.10  THEN 2
+            WHEN edge >= 0.05  THEN 3
+            WHEN edge >= 0.00  THEN 4
+            WHEN edge >= -0.10 THEN 5
+            ELSE 6
+        END AS edge_tier_sort
+    FROM weather_model_accuracy
+    WHERE actual_outcome IS NOT NULL
+      AND NOT (bhn_position_side = 'no' AND bhn_position_value = 125.0)
+) tiered
+GROUP BY edge_tier, edge_tier_sort
+ORDER BY edge_tier_sort;
 
 
 -- ============================================================
@@ -616,7 +764,34 @@ ORDER BY
 -- Raw trade log — use to spot patterns and debug model errors.
 -- Tab: FORMULA/MODELS
 -- Full query: infrastructure/docs/WeatherBHN/queries/BHN_RECENT_RESULTS.sql
+--
+-- UPDATED 2026-07-02: weather_model_accuracy -> weather_gold_contract_ledger
+-- (same compat CTE as Query 19).
 -- ============================================================
+WITH weather_model_accuracy AS (
+    SELECT
+        contract_ticker                                        AS contract_id,
+        contract_ticker                                        AS contract_title,
+        city                                                   AS region,
+        contract_side                                          AS variable,
+        calibrated_prob                                        AS bhn_predicted_probability,
+        market_implied_prob                                    AS market_implied_probability,
+        edge,
+        (recommended_action IN ('BET_YES', 'BET_NO'))          AS bhn_position_taken,
+        stake_usd                                              AS bhn_position_value,
+        CASE
+            WHEN recommended_action = 'BET_YES' THEN 'yes'
+            WHEN recommended_action = 'BET_NO'  THEN 'no'
+        END                                                    AS bhn_position_side,
+        contract_resolved_yes                                  AS actual_outcome,
+        bhn_correct                                            AS bhn_was_correct,
+        (market_implied_prob >= 0.5) = contract_resolved_yes   AS market_was_correct,
+        paper_pnl                                              AS pnl_dollar,
+        outcome_edge_realized                                  AS accuracy_score,
+        settled_at                                             AS resolved_at,
+        signal_generated_at                                    AS created_at
+    FROM weather_gold_contract_ledger
+)
 SELECT
     -- Contract identification
     contract_id                                        AS contract_ticker,
@@ -683,7 +858,34 @@ LIMIT 100;
 -- calibration. Low win rate = needs more data or adjustment.
 -- Tab: FORMULA/MODELS
 -- Full query: infrastructure/docs/WeatherBHN/queries/BHN_CITY_PERFORMANCE.sql
+--
+-- UPDATED 2026-07-02: weather_model_accuracy -> weather_gold_contract_ledger
+-- (same compat CTE as Query 19).
 -- ============================================================
+WITH weather_model_accuracy AS (
+    SELECT
+        contract_ticker                                        AS contract_id,
+        contract_ticker                                        AS contract_title,
+        city                                                   AS region,
+        contract_side                                          AS variable,
+        calibrated_prob                                        AS bhn_predicted_probability,
+        market_implied_prob                                    AS market_implied_probability,
+        edge,
+        (recommended_action IN ('BET_YES', 'BET_NO'))          AS bhn_position_taken,
+        stake_usd                                              AS bhn_position_value,
+        CASE
+            WHEN recommended_action = 'BET_YES' THEN 'yes'
+            WHEN recommended_action = 'BET_NO'  THEN 'no'
+        END                                                    AS bhn_position_side,
+        contract_resolved_yes                                  AS actual_outcome,
+        bhn_correct                                            AS bhn_was_correct,
+        (market_implied_prob >= 0.5) = contract_resolved_yes   AS market_was_correct,
+        paper_pnl                                              AS pnl_dollar,
+        outcome_edge_realized                                  AS accuracy_score,
+        settled_at                                             AS resolved_at,
+        signal_generated_at                                    AS created_at
+    FROM weather_gold_contract_ledger
+)
 SELECT
     region                                             AS city,
     variable,
@@ -742,3 +944,103 @@ FROM weather_model_accuracy
 WHERE actual_outcome IS NOT NULL
 GROUP BY region, variable
 ORDER BY bhn_win_rate_pct DESC NULLS LAST, total_signals DESC;
+
+-- ============================================================
+-- QUERY 23: WeatherBHN - Odds/Edge Dashboard (card 54, PROVISIONAL thresholds)
+-- Presentation layer over weather_gold_contract_ledger + live Kalshi pricing.
+-- Full query: infrastructure/docs/metabase/WEATHERBHN_ODDS_EDGE_DASHBOARD.sql
+--
+-- FIXED 2026-07-02: ORDER BY edge_pts DESC put NULLs first (Postgres DESC
+-- default), and every Low-side row has NULL edge_pts (no calibrated model
+-- yet, storage-only scope) — Low placeholders were floating to the top,
+-- pushing real High-side rows off the visible page. Added NULLS LAST plus a
+-- WHERE filter excluding NULL-edge rows entirely (mirrors the edge_pts
+-- expression directly since a SELECT-list alias can't be referenced in
+-- WHERE). Verified live: top rows now show real High-side data with
+-- populated model_prob_pct/edge_pts.
+-- ============================================================
+
+WITH market_latest AS (
+    SELECT DISTINCT ON (market_ticker)
+        market_ticker,
+        city,
+        contract_side,
+        bucket_floor,
+        bucket_cap,
+        bucket_label,
+        target_date,
+        yes_bid,
+        yes_ask,
+        no_bid,
+        no_ask,
+        yes_mid,
+        volume,
+        open_interest,
+        market_status,
+        retrieved_at
+    FROM weather_bronze_kalshi_market_snapshots
+    WHERE market_status = 'active'
+    ORDER BY market_ticker, retrieved_at DESC
+),
+open_positions AS (
+    -- "Hold" = a position already open (not yet settled) on this ticker
+    SELECT DISTINCT COALESCE(real_market_ticker, contract_ticker) AS ticker
+    FROM weather_position_exits
+    WHERE scored_at IS NULL
+)
+SELECT
+    m.market_ticker                                                        AS ticker,
+    g.target_date                                                          AS bet_date,
+    g.city,
+    g.contract_side,
+    g.bucket_label,
+    ROUND(m.yes_ask * 100, 1)                                              AS kalshi_yes_ask_cents,
+    ROUND(m.no_ask * 100, 1)                                               AS kalshi_no_ask_cents,
+    ROUND(g.calibrated_prob * 100, 1)                                      AS model_prob_pct,
+    ROUND(ABS(g.calibrated_prob - g.market_implied_prob) * 100, 1)         AS edge_pts,
+    ROUND((m.yes_ask - m.yes_bid) * 100, 1)                                AS spread_cents,
+    ROUND(m.open_interest, 0)                                              AS open_interest_contracts,
+    ROUND(m.volume, 0)                                                     AS daily_volume_contracts,
+    ROUND(LEAST(m.open_interest * m.yes_mid * 0.10, m.volume * m.yes_mid * 0.05), 2)
+                                                                            AS liquidity_cap_dollars,
+    ROUND(LEAST(ABS(g.nws_forecast_f - g.bucket_floor), ABS(g.nws_forecast_f - g.bucket_cap)), 1)
+                                                                            AS boundary_distance_f,
+    (op.ticker IS NOT NULL)                                                AS position_already_open,
+    CASE
+        WHEN (m.yes_ask - m.yes_bid) * 100 > 20
+            OR LEAST(m.open_interest * m.yes_mid * 0.10, m.volume * m.yes_mid * 0.05) <= 0
+            THEN 'Skip'
+        WHEN op.ticker IS NOT NULL
+            THEN 'Hold'
+        WHEN LEAST(ABS(g.nws_forecast_f - g.bucket_floor), ABS(g.nws_forecast_f - g.bucket_cap)) <= 1.0
+            THEN 'Boundary risk'
+        WHEN ABS(g.calibrated_prob - g.market_implied_prob) * 100 < 5.0
+            THEN 'No edge'
+        ELSE 'Clear'
+    END                                                                     AS flag,
+    CASE
+        WHEN (m.yes_ask - m.yes_bid) * 100 > 20
+            OR LEAST(m.open_interest * m.yes_mid * 0.10, m.volume * m.yes_mid * 0.05) <= 0
+            THEN 'Skip'
+        WHEN op.ticker IS NOT NULL
+            THEN 'Hold'
+        WHEN LEAST(ABS(g.nws_forecast_f - g.bucket_floor), ABS(g.nws_forecast_f - g.bucket_cap)) <= 1.0
+            THEN 'Caution'
+        WHEN ABS(g.calibrated_prob - g.market_implied_prob) * 100 < 5.0
+            THEN 'No edge'
+        ELSE 'Buy No'
+    END                                                                     AS recommendation,
+    g.ledger_updated_at                                                    AS calculated_time_utc,
+    g.ledger_updated_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Los_Angeles'
+                                                                            AS calculated_time_pt,
+    m.retrieved_at                                                         AS snapshot_time_utc,
+    m.retrieved_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Los_Angeles'  AS snapshot_time_pt
+FROM weather_gold_contract_ledger g
+JOIN market_latest m
+    ON m.market_ticker = g.contract_ticker
+LEFT JOIN open_positions op
+    ON op.ticker = m.market_ticker
+WHERE g.is_active = true
+  AND g.target_date >= CURRENT_DATE
+  AND ABS(g.calibrated_prob - g.market_implied_prob) IS NOT NULL
+ORDER BY edge_pts DESC NULLS LAST;

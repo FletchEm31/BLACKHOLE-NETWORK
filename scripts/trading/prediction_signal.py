@@ -75,18 +75,29 @@ DEFAULT_FALLBACK_SIGMA_PRECIP = 0.5   # 0.5 inch for precipitation
 
 
 # Kalshi weather series → (BHN station, variable)
-# Phase 3 scope: Miami, Phoenix, Denver — High (tmax_f) and Low (tmin_f).
+# High (tmax_f) and Low (tmin_f) for all 8 BHN cities. LOW series use a
+# "KXLOWT" prefix (extra "T" vs the HIGH series' "KXHIGH") — an initial pass
+# assumed plain "KXLOW" and wrongly concluded LOW markets didn't exist;
+# corrected + confirmed live 2026-07-02 with real active markets/volume on
+# all 8. Dallas's LOW ticker uses city code "DAL", not "DFW" like its HIGH
+# series — real Kalshi naming inconsistency, not a typo here.
 SERIES_TO_STATION_VAR: dict[str, tuple[str, str]] = {
-    "KXHIGHMIA": ("KMIA", "tmax_f"),
-    "KXLOWMIA":  ("KMIA", "tmin_f"),
-    "KXHIGHPHX": ("KPHX", "tmax_f"),
-    "KXLOWPHX":  ("KPHX", "tmin_f"),
-    "KXHIGHDEN": ("KDEN", "tmax_f"),
-    "KXLOWDEN":  ("KDEN", "tmin_f"),
-    "KXHIGHLAX": ("KLAX", "tmax_f"),
-    "KXLOWLAX":  ("KLAX", "tmin_f"),
-    "KXHIGHDFW": ("KDFW", "tmax_f"),
-    "KXLOWDFW":  ("KDFW", "tmin_f"),
+    "KXHIGHMIA":  ("KMIA", "tmax_f"),
+    "KXLOWTMIA":  ("KMIA", "tmin_f"),
+    "KXHIGHPHX":  ("KPHX", "tmax_f"),
+    "KXLOWTPHX":  ("KPHX", "tmin_f"),
+    "KXHIGHDEN":  ("KDEN", "tmax_f"),
+    "KXLOWTDEN":  ("KDEN", "tmin_f"),
+    "KXHIGHLAX":  ("KLAX", "tmax_f"),
+    "KXLOWTLAX":  ("KLAX", "tmin_f"),
+    "KXHIGHDFW":  ("KDFW", "tmax_f"),
+    "KXLOWTDAL":  ("KDFW", "tmin_f"),
+    "KXHIGHNY":   ("KNYC", "tmax_f"),
+    "KXLOWTNYC":  ("KNYC", "tmin_f"),
+    "KXHIGHCHI":  ("KORD", "tmax_f"),
+    "KXLOWTCHI":  ("KORD", "tmin_f"),
+    "KXHIGHAUS":  ("KAUS", "tmax_f"),
+    "KXLOWTAUS":  ("KAUS", "tmin_f"),
 }
 
 

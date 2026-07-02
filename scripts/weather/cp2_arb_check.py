@@ -68,7 +68,11 @@ def check_structural_arb(station_code: str, target_date: date,
 
     try:
         with conn.cursor() as cur:
-            # Use the most recent snapshot for this station/date
+            # Use the most recent HIGH snapshot for this station/date.
+            # contract_side filter required now that LOW-series tickers
+            # (KXLOWT*) are also collected for these stations — the rest of
+            # the CP1-CP4 pipeline (this check feeds core_trading_orchestrator
+            # alongside CP1/CP4, both HIGH-only) assumes one side per run.
             cur.execute("""
                 SELECT bucket_label, bucket_type, bucket_floor, bucket_cap,
                        yes_bid, yes_ask, no_bid, no_ask,
@@ -78,10 +82,11 @@ def check_structural_arb(station_code: str, target_date: date,
                 FROM weather_bronze_kalshi_market_snapshots
                 WHERE station_code = %s
                   AND target_date = %s
+                  AND contract_side = 'high'
                   AND retrieved_at = (
                       SELECT MAX(retrieved_at)
                       FROM weather_bronze_kalshi_market_snapshots
-                      WHERE station_code = %s AND target_date = %s
+                      WHERE station_code = %s AND target_date = %s AND contract_side = 'high'
                   )
                   AND yes_bid IS NOT NULL
                   AND no_ask IS NOT NULL
