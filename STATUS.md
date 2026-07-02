@@ -275,8 +275,7 @@ The "BHN Network Overview" Grafana dashboard currently includes:
 
 In rough order:
 
-1. **Frankfurt exit routing — finish MASQUERADE fix** (next session) — FRA-side `iptables -t nat -A POSTROUTING -s 10.8.0.0/24 -o enp1s0 -j MASQUERADE` + persist via `iptables-save > /etc/iptables/rules.v4`, then re-run `bhn-frankfurt-exit.sh apply` on LA, then verify `curl https://api.ipify.org` from full-tunnel profile returns 192.248.187.208.
-2. **BHN trading framework — remaining support work** — rules JSON schema + validator (`rules_schema.py`, `validate_rules.py`), `config-templates/rules.example.json`, systemd units (per-strategy timers + reconciliation service + daily_summary timer), three runbook docs (`bhn-trading-strategies.md`, `bhn-rules-propagation.md`, `bhn-reconciliation.md`), then NJ deployment.
+1. **BHN trading framework — remaining support work** — rules JSON schema + validator (`rules_schema.py`, `validate_rules.py`), `config-templates/rules.example.json`, systemd units (per-strategy timers + reconciliation service + daily_summary timer), three runbook docs (`bhn-trading-strategies.md`, `bhn-rules-propagation.md`, `bhn-reconciliation.md`), then NJ deployment.
 3. Tokyo or other 3rd region node
 2. tmpfs migration for ephemeral content per external-observer principle (Suricata payload audit, /var/log/suricata logrotate tuning)
 3. **HORIZON Phase 3 modules** — see `infrastructure/docs/horizon-roadmap.md` for the full 10-module spec, build phasing, voice stack architecture, jurisdictional posture, and decisions log. Operator pre-session-1 actions: provision Twilio + ElevenLabs Creator + Google `horizon@gmail.com` + OpenWeatherMap + NewsAPI + Alpaca paper, plus record a 30s voice sample for operator-voice cloning. Session 1 build target: M1 Voice Pipeline + start on M2 Morning Briefing.

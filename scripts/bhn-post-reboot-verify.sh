@@ -28,7 +28,11 @@ for svc in postgresql wg-quick@wg0 wg-quick@wg1 docker eh-embed dnscrypt-proxy f
   STATE=$(systemctl is-active "$svc" 2>/dev/null)
   printf '%-32s %s\n' "$svc" "$STATE"
   if [ "$STATE" != 'active' ] && [ "$svc" != 'wg-quick@wg1' ]; then
-    # wg1 is Frankfurt — currently expected to be unreachable, don't fail on it
+    # wg-quick@wg1 legitimately shows inactive/exited even when the tunnel is fine —
+    # it's a oneshot unit (Hillsboro full-tunnel egress, set up via wg0 PostUp) that
+    # exits after bringing the interface up. Check `wg show wg1` for actual tunnel
+    # health, not this service's state. (Formerly exempted because wg1 was Frankfurt's
+    # dead tunnel; Frankfurt is decommissioned, wg1 is now live Hillsboro egress.)
     ALL_OK='no'
   fi
 done

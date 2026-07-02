@@ -2,7 +2,7 @@
 
 **Snapshot:** May 11, 2026. Migrated 2026-05-22 from the legacy `EVENT HORIZON VPN/BHN-INFRASTRUCTURE.txt` reference doc. Content preserved verbatim inside the code block below; **some items will be stale**. Known stale-as-of 2026-05-28:
 
-- **Frankfurt is decommissioned** (server destroyed 2026-05-28). All FRA references in the body — node, WG keys, costs, security posture, phase progress — are historical only. Current egress map: `bhn-network-data-flow.md`. Archived design: `infrastructure/archive/frankfurt/`.
+- **Frankfurt is decommissioned** (server destroyed 2026-05-28) and fully purged — WireGuard peer removed, Netdata node record removed, dedicated scripts/docs deleted. All FRA references in the body — node, WG keys, costs, security posture, phase progress — are historical only. Current egress map: `bhn-network-data-flow.md`.
 - **Grafana moved to NJ** (`http://<BHN_WG_NJ_IP>:3000`); LA package purged 2026-05-28.
 - Hillsboro node was set up after the snapshot date — see `bhn-network-data-flow.md` for the current egress map.
 - The phone-number parameterization plan in `bhn-horizon-phone-parameterization.md` supersedes the literal `+1 310 929 6201` reference here.

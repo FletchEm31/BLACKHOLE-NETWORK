@@ -21,8 +21,9 @@ BHN<AstroName><RegionCode><Sequence>
 | LA (hub) | `BHN-VPS-LA-US1` | *(no relay — hub stays dark)* | — |
 | New Jersey | `BHN-VPS-NEWJERSEY-US2` | `BHNNebulaUS2` | Nebula = cosmic cloud; N matches New Jersey |
 | Hillsboro | `BHN-HILLSBORO-US3` | `BHNHeliosUS3` | Helios = Greek sun god / star; H matches Hillsboro |
-| Frankfurt | `BHN-VPS-FRANKFURT-EU1` | `BHNFornaxEU1` | Fornax = real galaxy constellation; F matches Frankfurt |
-| Sweden (future) | `BHN-VPS-SWEDEN-EU2` | `BHNAuroraEU2` | Aurora = Northern Lights; thematic fit for Nordic location |
+| ~~Frankfurt~~ *(decommissioned 2026-05-28)* | ~~`BHN-VPS-FRANKFURT-EU1`~~ | ~~`BHNFornaxEU1`~~ | Fornax = real galaxy constellation; F matches Frankfurt. EU1 slot was later reassigned. |
+| Helsinki | `BHN-HELSINKI-EU1` | `BHNAuroraEU1` | Aurora = Northern Lights; thematic fit for Nordic location. ⚠️ **Naming conflict:** this doc's original plan reserved "Aurora"/EU2 for a future Sweden node — Helsinki took EU1 (Frankfurt's vacated slot) using the Aurora name instead. Sweden's future relay will need a different astro name; flag for operator decision, not resolved here. |
+| Sweden (future) | `BHN-VPS-SWEDEN-EU2` | *(name TBD — see conflict note above)* | — |
 | Iceland (future) | `BHN-VPS-ICELAND-EU3` | `BHNEridanusEU3` | Eridanus = river constellation; E matches Europe/Iceland |
 
 ## ContactInfo

@@ -4,7 +4,7 @@ How traffic moves across the BHN mesh — by traffic *class*, not just by node. 
 
 **Status:** architecture/intent doc. Each flow below is tagged **[LIVE]**, **[DESIGNED]** (built, not yet deployed), or **[BROKEN]** (attempted, not working). Do not read this as "all of this is running" — check the tags.
 
-> **Why this doc exists:** post-Frankfurt-decommission (2026-05-28) BHN is a simplified single-egress topology — LA-originated operational/API traffic exits through Hillsboro, NJ trading egresses directly, intra-mesh stays on WG. This doc ties the pieces together so "which IP does X exit from" has one answer. Frankfurt-specific design history is archived under `infrastructure/archive/frankfurt/`.
+> **Why this doc exists:** post-Frankfurt-decommission (2026-05-28) BHN is a simplified single-egress topology — LA-originated operational/API traffic exits through Hillsboro, NJ trading egresses directly, intra-mesh stays on WG. This doc ties the pieces together so "which IP does X exit from" has one answer. Frankfurt-specific design docs were deleted along with the rest of its footprint (2026-07-01).
 
 ---
 
@@ -16,7 +16,7 @@ How traffic moves across the BHN mesh — by traffic *class*, not just by node. 
 | **NJ** (`BHN\|VPS-NEWJERSEY-US2`) | Trading (Alpaca), Grafana, Metabase | `<BHN_WG_NJ_IP>` (wg0) | — | (US) |
 | **Hillsboro** (`BHN-HILLSBORO-US3`) | Operational egress proxy | `<BHN_WG_HIL_IP>` (wg0) | `<BHN_HIL_PUBLIC_IP>` | Hetzner (US) |
 
-Frankfurt (`BHN|VPS-FRANKFURT-EU1`, `192.248.187.208`, `<BHN_WG_FRA_IP>/wg1`) was decommissioned 2026-05-28 — see `infrastructure/archive/frankfurt/README.md`.
+Frankfurt (`BHN|VPS-FRANKFURT-EU1`, `192.248.187.208`, `<BHN_WG_FRA_IP>/wg1`) was decommissioned 2026-05-28 — WireGuard peer, Netdata record, and design docs fully removed 2026-07-01.
 
 ---
 
@@ -62,7 +62,7 @@ NJ's trading API calls (Alpaca) go out **NJ's own interface directly**, never th
 | NJ trading direct egress | **[LIVE]** |
 | Mesh-internal + underlay + DNS + NTP | **[LIVE]** |
 
-**Related docs:** `la-egress-lockdown/README.md` · `bhn-hillsboro-ssh-diagnosis.md` · Frankfurt-era design + backlog: `infrastructure/archive/frankfurt/`.
+**Related docs:** `la-egress-lockdown/README.md` · `bhn-hillsboro-ssh-diagnosis.md`.
 
 ---
 

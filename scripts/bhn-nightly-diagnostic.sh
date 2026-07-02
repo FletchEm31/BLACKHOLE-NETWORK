@@ -1,7 +1,7 @@
 #!/bin/bash
 # BHN (Blackhole Network) — Nightly Diagnostic orchestrator
 #
-# Runs on LA hub. Collects local + Frankfurt status via the per-node
+# Runs on LA hub. Collects local status via the per-node
 # bhn-status-check.sh collector (deployed to LA at /opt/eh-diagnostics/eh-status-check.sh
 # until coordinated migration), combines into one structured log on the
 # cold tier, generates a summary, embeds it via the local embedding service,
@@ -29,13 +29,6 @@ REPORT_FILE="$LOG_DIR/eh-status-${DATE_STR}.log"
 EMBED_URL='http://127.0.0.1:8001/embed'
 PG_DB=eventhorizon
 
-# Frankfurt — reachable via wg1 tunnel only (Vultr blocks cross-region public TCP)
-FRA_HOST=<BHN_WG_FRA_IP>          # Frankfurt's wg1 interface IP
-FRA_PORT=2222              # sshd port on Frankfurt (moved off 22 for hygiene)
-FRA_USER=root
-FRA_KEY=/root/.ssh/eh_frankfurt
-FRA_TIMEOUT=15  # seconds for SSH connect+exec
-
 # NJ trading node — reachable via wg0 hub (NJ joined as a peer on LA's existing
 # wg0 at <BHN_WG_NJ_IP>/32; NOT on a separate wg2). Tunnel operational since 2026-05-12
 # after egress UFW allowlist on LA was patched (both <BHN_NJ_PUBLIC_IP>:51820/udp underlay
@@ -43,13 +36,12 @@ FRA_TIMEOUT=15  # seconds for SSH connect+exec
 NJ_HOST=<BHN_WG_NJ_IP>           # NJ's wg0 peer IP (on LA's hub)
 NJ_PORT=2222               # sshd port on NJ
 NJ_USER=root
-NJ_KEY=/root/.ssh/eh_frankfurt   # same orchestrator key as Frankfurt — key in NJ's authorized_keys
+NJ_KEY=/root/.ssh/eh_frankfurt   # orchestrator key, filename predates Frankfurt's decommission (2026-05-28) — still valid, in NJ's authorized_keys
 NJ_TIMEOUT=15
 
 # Future-proofing — additional remote nodes can be added to this array
 # as they're provisioned. Each entry: "name|host|user|ssh_key|timeout|port"
 declare -a REMOTE_NODES=(
-  "frankfurt|${FRA_HOST}|${FRA_USER}|${FRA_KEY}|${FRA_TIMEOUT}|${FRA_PORT}"
   "nj|${NJ_HOST}|${NJ_USER}|${NJ_KEY}|${NJ_TIMEOUT}|${NJ_PORT}"
 )
 
@@ -142,7 +134,6 @@ for entry in "${REMOTE_NODES[@]}"; do
       echo "***   - ssh exit 255 → connection refused / DNS / hostkey / network unreachable"
       echo "***   - 'Permission denied' in probe output → key not in remote authorized_keys, or PasswordAuth required"
       echo "***   - 'Connection refused' → sshd not listening on port $PORT"
-      echo "***   - For Frankfurt specifically: first check 'wg show wg1' — public-IP path is blocked by Vultr, tunnel must be up"
     } >> "$REPORT_FILE"
     continue
   fi
@@ -252,12 +243,6 @@ NVME_PCT=$(df --output=pcent /mnt/eh-nvme-hot 2>/dev/null | tail -1 | tr -d ' %'
 HDD_PCT=$(df --output=pcent /mnt/eh-hdd-cold 2>/dev/null | tail -1 | tr -d ' %')
 [ -z "$HDD_PCT" ] && HDD_PCT=0
 
-# Frankfurt reachability
-FRA_OK='no'
-if printf '%s\n' "${NODES_COVERED[@]}" | grep -qx 'frankfurt'; then
-  FRA_OK='yes'
-fi
-
 # Status verdict — green/yellow/red
 STATUS_VERDICT='green'
 IMPORTANCE=3
@@ -275,11 +260,6 @@ if [ "$SEC_CRIT" -gt 0 ]; then
   STATUS_VERDICT='red'; IMPORTANCE=$(( IMPORTANCE > 8 ? IMPORTANCE : 8 ))
   NOTABLE+=("$SEC_CRIT critical security events")
 fi
-if [ "$FRA_OK" = 'no' ]; then
-  [ "$STATUS_VERDICT" = 'green' ] && STATUS_VERDICT='yellow'
-  IMPORTANCE=$(( IMPORTANCE > 6 ? IMPORTANCE : 6 ))
-  NOTABLE+=("Frankfurt unreachable")
-fi
 if [ "$NVME_PCT" -gt 80 ] || [ "$HDD_PCT" -gt 80 ]; then
   [ "$STATUS_VERDICT" = 'green' ] && STATUS_VERDICT='yellow'
   IMPORTANCE=$(( IMPORTANCE > 5 ? IMPORTANCE : 5 ))
@@ -293,7 +273,7 @@ fi
 
 # Build the natural-language summary HORIZON will embed and recall
 SUMMARY=$(cat <<EOF
-EH nightly diagnostic ${DATE_STR}. Status: ${STATUS_VERDICT}. LA hub kernel ${LA_KERNEL}, ${LA_UPTIME}, load ${LA_LOAD}. n8n container: ${N8N_STATE}. ${SERVICES_DOWN} services down. WireGuard peers: ${WG_PEERS} configured. Frankfurt reachable: ${FRA_OK}. Last 24h: ${SEC_TOTAL} security events (${SEC_HIGH} high, ${SEC_CRIT} critical), ${USERS_24H} distinct users connected, ${SESS_OPEN} sessions currently open. Top hostile sources: ${TOP_IPS}. Open anomalies: ${ANOM_OPEN}. Disk: NVMe ${NVME_PCT}%, HDD ${HDD_PCT}%. Notable: ${NOTABLE_STR}. Nodes covered: ${NODES_COVERED[*]}.
+EH nightly diagnostic ${DATE_STR}. Status: ${STATUS_VERDICT}. LA hub kernel ${LA_KERNEL}, ${LA_UPTIME}, load ${LA_LOAD}. n8n container: ${N8N_STATE}. ${SERVICES_DOWN} services down. WireGuard peers: ${WG_PEERS} configured. Last 24h: ${SEC_TOTAL} security events (${SEC_HIGH} high, ${SEC_CRIT} critical), ${USERS_24H} distinct users connected, ${SESS_OPEN} sessions currently open. Top hostile sources: ${TOP_IPS}. Open anomalies: ${ANOM_OPEN}. Disk: NVMe ${NVME_PCT}%, HDD ${HDD_PCT}%. Notable: ${NOTABLE_STR}. Nodes covered: ${NODES_COVERED[*]}.
 EOF
 )
 
@@ -338,7 +318,6 @@ METADATA=$(jq -c -n \
   --argjson services_down "${SERVICES_DOWN:-0}" \
   --argjson nvme_pct "${NVME_PCT:-0}" \
   --argjson hdd_pct "${HDD_PCT:-0}" \
-  --arg fra_ok "$FRA_OK" \
   --arg n8n_state "$N8N_STATE" \
   --arg log_path "$REPORT_FILE" \
   '{
@@ -352,7 +331,6 @@ METADATA=$(jq -c -n \
     services_down:$services_down,
     disk_nvme_pct:$nvme_pct,
     disk_hdd_pct:$hdd_pct,
-    frankfurt_reachable:$fra_ok,
     n8n_state:$n8n_state,
     log_path:$log_path
   }')

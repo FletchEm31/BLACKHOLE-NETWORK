@@ -18,17 +18,15 @@
 #   --nodes A,B,C        only operate on the listed nodes
 #   --skip-nodes A,B     operate on every node EXCEPT the listed ones
 # Examples:
-#   ./bhn-deploy-all-collectors.sh deploy --nodes LA,Frankfurt,NJ
+#   ./bhn-deploy-all-collectors.sh deploy --nodes LA,Hillsboro,NJ
 #   ./bhn-deploy-all-collectors.sh deploy --skip-nodes Hillsboro
 #   ./bhn-deploy-all-collectors.sh status
-# Valid node names: LA Frankfurt Hillsboro NJ (case-sensitive).
+# Valid node names: LA Hillsboro NJ (case-sensitive). Frankfurt decommissioned 2026-05-28.
 #
 # Topology (set by operator, kept in sync with infrastructure/docs/):
 #   LA          local            vnstat iptables docker-stats pg-stats
 #                                n8n-stats fail2ban dns-log wg-stats
 #                                conntrack resource-stats
-#   Frankfurt   ssh frankfurt    vnstat iptables fail2ban dns-log
-#                                conntrack resource-stats tor-stats
 #   Hillsboro   ssh hillsboro    vnstat iptables fail2ban dns-log
 #                                conntrack resource-stats tor-stats proxy-log
 #   NJ          ssh -p 2222 root@<BHN_WG_NJ_IP>  vnstat iptables fail2ban dns-log
@@ -46,7 +44,7 @@ set -uo pipefail
 
 usage() {
     echo "Usage: $0 {deploy|test|status} [--nodes A,B,C | --skip-nodes A,B]" >&2
-    echo "  Valid node names: LA Frankfurt Hillsboro NJ" >&2
+    echo "  Valid node names: LA Hillsboro NJ" >&2
 }
 
 MODE="${1:-}"
@@ -79,7 +77,6 @@ LA_PG_DSN="postgresql://log_shipper:BHN-LogShipper-2026@<BHN_WG_LA_IP>/eventhori
 # ----- node + collector topology --------------------------------------------
 declare -A NODE_SSH=(
     [LA]=""                  # empty target = run locally
-    [Frankfurt]="frankfurt"  # SSH config alias on LA (~/.ssh/config)
     [Hillsboro]="hillsboro"  # SSH config alias on LA
     [NJ]="root@<BHN_WG_NJ_IP>"     # explicit user@tunnel-IP — port set in NODE_SSH_PORT
 )
@@ -89,7 +86,7 @@ declare -A NODE_SSH=(
 declare -A NODE_SSH_PORT=(
     [NJ]="2222"
 )
-NODE_ORDER=(LA Frankfurt Hillsboro NJ)
+NODE_ORDER=(LA Hillsboro NJ)
 
 # Apply --nodes / --skip-nodes filtering. CSV input, case-sensitive,
 # unknown names abort before any work begins.
@@ -133,7 +130,6 @@ fi
 
 declare -A NODE_COLLECTORS=(
     [LA]="vnstat iptables docker-stats pg-stats n8n-stats fail2ban dns-log wg-stats conntrack resource-stats"
-    [Frankfurt]="vnstat iptables fail2ban dns-log conntrack resource-stats tor-stats"
     [Hillsboro]="vnstat iptables fail2ban dns-log conntrack resource-stats tor-stats proxy-log"
     [NJ]="vnstat iptables fail2ban dns-log conntrack resource-stats"
 )

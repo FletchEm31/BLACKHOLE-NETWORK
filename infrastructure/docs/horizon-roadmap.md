@@ -238,11 +238,11 @@ Frankfurt's formal role broadens from pure WG exit to **exit + privacy routing**
 These services slot into `bhn-node-bootstrap.sh` v4's module/node-type structure:
 - `modules/librespeed.sh` — baseline, sourced on every node-type
 - `modules/wallos.sh` — sourced only on hub.sh
-- `modules/searxng.sh` + `modules/tor-relay.sh` — sourced on `exit.sh` (Frankfurt's dual exit+privacy role) and on `trading.sh` (NJ, when the trading node-type lands — Tor relay only, not SearXNG)
+- `modules/searxng.sh` + `modules/tor-relay.sh` — sourced on `exit.sh` (dual exit+privacy role, now Hillsboro/Helsinki) and on `trading.sh` (NJ, when the trading node-type lands — Tor relay only, not SearXNG)
 
-**MyFamily — post-deploy bookkeeping:** once Frankfurt + NJ relays are both bootstrapped, the operator must update BOTH torrc files with the joint MyFamily fingerprint declaration so Tor consensus never builds a circuit passing through both. Documented in `infrastructure/services/tor-relay/README.md` under "MyFamily — REQUIRED post-deploy step".
+**MyFamily — post-deploy bookkeeping:** Frankfurt is decommissioned; Hillsboro + Helsinki are the current MyFamily relay pair. The operator must keep both torrc files updated with the joint MyFamily fingerprint declaration so Tor consensus never builds a circuit passing through both. Documented in `infrastructure/services/tor-relay-hillsboro/README.md` under "MyFamily — REQUIRED post-deploy step".
 
-Build order: LibreSpeed baseline first (gives latency telemetry on day one), then Wallos (closes the cost-monitoring gap before HORIZON's morning briefing comes online), then SearXNG + Tor on Frankfurt (privacy stack — biggest scope, lowest urgency).
+Build order: LibreSpeed baseline first (gives latency telemetry on day one), then Wallos (closes the cost-monitoring gap before HORIZON's morning briefing comes online), then SearXNG + Tor (privacy stack — biggest scope, lowest urgency).
 
 ---
 

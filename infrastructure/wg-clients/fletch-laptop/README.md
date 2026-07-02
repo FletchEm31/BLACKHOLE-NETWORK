@@ -45,7 +45,7 @@ sudo cat /etc/wireguard/fletch-laptop.pubkey
 This whole block runs on LA over the existing SSH alias.
 
 ```bash
-ssh la   # or: ssh -J root@frankfurt root@<BHN_WG_LA_IP>
+ssh la   # or: ssh -J root@hillsboro root@<BHN_WG_LA_IP>
 
 # === On LA, as root ===
 LAPTOP_PUBKEY='paste-the-pubkey-from-Step-1-here'

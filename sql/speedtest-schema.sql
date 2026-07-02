@@ -10,7 +10,7 @@
 CREATE TABLE IF NOT EXISTS speedtest_results (
     id              BIGSERIAL PRIMARY KEY,
     measured_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    source_node     TEXT NOT NULL,             -- which node ran the test (e.g. 'la', 'frankfurt', 'nj')
+    source_node     TEXT NOT NULL,             -- which node ran the test (e.g. 'la', 'hillsboro', 'nj')
     target_node     TEXT NOT NULL,             -- which node's endpoint was tested
     ping_ms         NUMERIC(7,2),
     jitter_ms       NUMERIC(7,2),

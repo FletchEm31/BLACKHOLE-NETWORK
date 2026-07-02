@@ -1,14 +1,11 @@
 #!/bin/bash
-# BHN (Blackhole Network) — security sweep, focused threat-indicator check across LA + Frankfurt.
-# Run on LA. Probes Frankfurt remotely (WG handshake + reachability only,
-# since FRA SSH is currently broken).
+# BHN (Blackhole Network) — security sweep, focused threat-indicator check on LA.
 #
 # Output: structured report with GREEN/YELLOW/RED verdict at the end.
 # Pipe to a log file for clean paste-back.
 
 set -uo pipefail
 
-FRA_HOST=192.248.187.208
 ALERTS=()  # accumulator for anything noteworthy
 
 echo '======================================================================'
@@ -147,35 +144,9 @@ SELECT id, type, description, detected_at
 FROM anomalies WHERE resolved=FALSE ORDER BY detected_at DESC LIMIT 5;" 2>/dev/null
 fi
 
-# ---------- 10. Frankfurt reachability ----------
+# ---------- 10. Disk pressure ----------
 echo
-echo '----- 10. FRANKFURT REMOTE PROBES -----'
-echo '--- WireGuard wg1 ---'
-wg show wg1 2>/dev/null || echo '(wg1 interface not present)'
-
-WG_HANDSHAKE=$(wg show wg1 2>/dev/null | grep -E 'latest handshake' | head -1)
-echo "WG handshake: ${WG_HANDSHAKE:-(none)}"
-
-echo
-echo '--- ICMP ---'
-if timeout 6 ping -c 3 -W 2 "$FRA_HOST" >/dev/null 2>&1; then
-  echo "ping: OK"
-else
-  echo "ping: FAIL"
-  ALERTS+=("WARN: Frankfurt unreachable via ICMP")
-fi
-
-echo
-echo '--- SSH port (22) ---'
-if timeout 5 nc -zv "$FRA_HOST" 22 2>&1 | grep -qE 'succeeded|open'; then
-  echo "ssh port: OPEN"
-else
-  echo "ssh port: CLOSED or filtered (FRA SSH still down)"
-fi
-
-# ---------- 11. Disk pressure ----------
-echo
-echo '----- 11. DISK -----'
+echo '----- 10. DISK -----'
 df -h / 2>/dev/null
 df -h /mnt/eh-nvme-hot 2>/dev/null
 df -h /mnt/eh-cold 2>/dev/null

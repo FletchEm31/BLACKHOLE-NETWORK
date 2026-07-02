@@ -59,38 +59,32 @@ What to look for in the log over the first ~30 minutes — same as Frankfurt's r
 
 If `Your server has not managed to confirm reachability for its ORPort(s)` shows after 30+ min, the UFW rule on NJ is missing or NJ's Vultr firewall (separate from UFW) is blocking 9001.
 
-## MyFamily — required follow-up after both relays are bootstrapped
+## MyFamily — required follow-up after NJ is bootstrapped
 
-After both Frankfurt and NJ relays have completed bootstrapping (24-48h for each to be fully consensus-published):
+Frankfurt is decommissioned (2026-05-28) — the 3-way MyFamily plan this section originally described (Frankfurt + NJ + Hillsboro) is stale. The currently-deployed MyFamily pair is Hillsboro (`BHNHeliosUS3`) + Helsinki (`BHNAuroraEU1`), per `infrastructure/docs/nodes/BHN-HILLSBORO-US3.md` and `BHN-HELSINKI-EU1.md`. **Unconfirmed: whether NJ's relay (if still running) needs to join that family too** — verify NJ's current `torrc` MyFamily line live before assuming it's still 3-way or needs updating.
+
+After NJ's relay has completed bootstrapping (24-48h to be fully consensus-published):
 
 ```bash
-# Get Frankfurt's fingerprint
-ssh frankfurt 'docker exec bhn-tor-relay cat /var/lib/tor/fingerprint'
-# Returns something like: BHNFornaxEU1 ABCDEF1234567890...
-
 # Get NJ's fingerprint (SSH to NJ public IP)
 ssh root@<nj-public-ip> 'docker exec bhn-tor-relay cat /var/lib/tor/fingerprint'
 # Returns something like: BHNNebulaUS2 9876543210FEDCBA...
 ```
 
-Then update BOTH torrc files with the same MyFamily line:
+Then update the torrc's MyFamily line to include NJ's fingerprint alongside whichever relays it should be grouped with (confirm the current live set first — see note above):
 
 ```
-# In /opt/bhn-tor-relay/torrc on BOTH nodes:
-MyFamily $ABCDEF1234567890...,$9876543210FEDCBA...
+# In /opt/bhn-tor-relay/torrc:
+MyFamily $NJ_FP,...
 ```
 
-Restart both containers:
+Restart the container:
 
 ```bash
-# On Frankfurt:
-cd /opt/bhn-tor-relay && docker compose restart
-
-# On NJ:
 cd /opt/bhn-tor-relay && docker compose restart
 ```
 
-Verify on `metrics.torproject.org` — both relays should show "Family" field populated with the other's fingerprint within a few hours.
+Verify on `metrics.torproject.org` — relays should show the "Family" field populated with each other's fingerprints within a few hours.
 
 **Why this matters:** without MyFamily set, Tor's consensus might build a 3-hop circuit that passes through both BHN relays — defeating the privacy benefit (your two relays would see both the entry and the middle of the same circuit). MyFamily declares the relationship so the consensus refuses such circuits.
 

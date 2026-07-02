@@ -312,4 +312,4 @@ See `bhn-node-candidates.md` for the full candidate list. Top alternatives:
 - `horizon-roadmap.md` — Phase 5: Resilience section references this doc
 - `project_node_expansion_plans` memory — Sweden's role specified
 - `project_blackhole_network_rename` memory — BHN vs EventHorizon VPN naming separation (relevant to what gets surfaced publicly on Sweden's Tor relay descriptor)
-- `infrastructure/services/tor-relay/README.md` — MyFamily setup process (extends to Sweden's relay when it joins)
+- `infrastructure/services/tor-relay-hillsboro/README.md` — MyFamily setup process (extends to Sweden's relay when it joins); Frankfurt's original relay is decommissioned, Hillsboro + Helsinki are the current MyFamily pair

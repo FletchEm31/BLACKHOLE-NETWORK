@@ -1,5 +1,15 @@
 # BHN SearXNG settings — LA hub deployment.
-# Engines: Google, Bing, DuckDuckGo, Wikipedia only.
+#
+# Engine set (tuned 2026-07-01): Google and DuckDuckGo are kept enabled as
+# supplementary only — both actively block queries from this instance
+# (DuckDuckGo: "access denied", Google: CAPTCHA challenge), which is
+# standard, expected friction for self-hosted metasearch traffic exiting
+# via Tor, not a one-time-fixable bug. Bing/Brave/Startpage/Mojeek are
+# primary since they're markedly more tolerant of this traffic pattern.
+# None of the five additions need an API key. Expect this balance to shift
+# again over time as engines adjust their own anti-scraping heuristics —
+# this is an ongoing posture, not a permanent fix.
+#
 # All upstream requests route through Hillsboro or Helsinki Tor SocksPorts.
 # Private instance — no telemetry, no public indexing, no rate limiting.
 
@@ -10,6 +20,9 @@ use_default_settings:
       - bing
       - duckduckgo
       - wikipedia
+      - brave
+      - startpage
+      - mojeek
 
 general:
   instance_name: "BHN SearXNG"

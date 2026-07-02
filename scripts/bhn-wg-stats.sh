@@ -32,7 +32,6 @@ label_for_ip() {
         <BHN_WG_NJ_IP>) echo "NJ" ;;
         <BHN_WG_PEER_IP>) echo "Fletch-Laptop-Split" ;;
         <BHN_WG_HIL_IP>) echo "Hillsboro" ;;
-        <BHN_WG_FRA_IP>) echo "Frankfurt" ;;
         <BHN_WG_PEER_IP>) echo "Fletch-Laptop-Full" ;;
         <BHN_WG_PEER_IP>) echo "Fletch-Laptop-Full2" ;;
         *)        echo "Unknown-$1" ;;
