@@ -544,18 +544,23 @@ ORDER BY liquidity_score DESC, city, contract_side, bucket_floor;
 -- accuracy_score have no direct equivalent and are derived.
 --
 -- FIXED 2026-07-02: found (not a dashboard bug — a data-provenance issue).
--- 42 BET_NO rows in the settled data all carry an identical flat
--- stake_usd=125.0 (zero variance) instead of genuine Kelly sizing —
--- cp4_kelly_sizer.py (the only current signal generator) never writes
--- BET_YES and always Kelly-sizes, so these 42 rows are legacy/pre-CP4
--- data backfilled into the new ledger schema. Combined with several of
--- them also having market_implied_prob clamped at the 0.99 tick-size
--- boundary, they generate $271,191.73 of a total $343,894.13 reported
--- PnL (79%) via a legitimate-but-flat-staked 99x payout multiplier.
--- EXCLUDED below pending Fletch's separate backfill-vs-exclude decision —
--- underlying weather_gold_contract_ledger rows are untouched, this is a
--- presentation-layer filter only. CARD LABEL: title/description should
--- say "excludes 42 legacy flat-stake rows pending pipeline decision."
+-- 48 BET_NO rows carry an identical flat stake_usd=125.0 (zero variance)
+-- instead of genuine Kelly sizing, and 90 BET_YES rows predate the current
+-- pipeline's action space entirely (cp4_kelly_sizer.py never writes
+-- BET_YES, only BET_NO/SKIP). Both are legacy/pre-CP4 data. Several of the
+-- flat-stake rows also had market_implied_prob clamped at the 0.99
+-- tick-size boundary, generating $271,191.73 of a then-$343,894.13
+-- reported PnL (79%) via a legitimate-but-flat-staked 99x payout
+-- multiplier.
+--
+-- PERMANENT FIX 2026-07-02: Fletch decided to exclude both legacy
+-- populations permanently rather than backfill/reconstruct them. Rather
+-- than re-deriving the exclusion condition per-query, migration
+-- sql/migrations/2026-07-02-ledger-exclude-legacy-rows.sql added an
+-- is_legacy_row column to weather_gold_contract_ledger and created
+-- weather_gold_contract_ledger_performance, a view with legacy rows
+-- already filtered out. This CTE now reads from that view — no ad-hoc
+-- WHERE filter needed here or in any future dashboard on this table.
 -- ============================================================
 WITH weather_model_accuracy AS (
     SELECT
@@ -579,7 +584,7 @@ WITH weather_model_accuracy AS (
         outcome_edge_realized                                  AS accuracy_score,
         settled_at                                             AS resolved_at,
         signal_generated_at                                    AS created_at
-    FROM weather_gold_contract_ledger
+    FROM weather_gold_contract_ledger_performance
 )
 SELECT
     -- Volume
@@ -630,12 +635,14 @@ SELECT
                                                        AS latest_reconciled_time_pt,
     COUNT(DISTINCT DATE(resolved_at))                  AS trading_days,
 
-    -- Transparency count for the card label — see FIXED note above
-    42                                                 AS legacy_rows_excluded
+    -- Transparency count for the card label — permanently excluded via
+    -- weather_gold_contract_ledger_performance, see FIXED note above
+    (SELECT COUNT(*) FROM weather_gold_contract_ledger
+       WHERE is_legacy_row AND contract_resolved_yes IS NOT NULL)
+                                                       AS legacy_rows_excluded
 
 FROM weather_model_accuracy
-WHERE actual_outcome IS NOT NULL
-  AND NOT (bhn_position_side = 'no' AND bhn_position_value = 125.0);
+WHERE actual_outcome IS NOT NULL;
 
 
 -- ============================================================
@@ -654,16 +661,18 @@ WHERE actual_outcome IS NOT NULL
 -- a subquery computed directly off the real `edge` column instead.
 --
 -- FIXED 2026-07-02: the "Strong Edge >20%" tier's apparently-legitimate
--- 73.9% win rate is 42 of the same flat-stake ($125, zero variance) legacy
+-- 73.9% win rate was 42 of the same flat-stake ($125, zero variance) legacy
 -- BET_NO rows described in Query 19's note (91% of that tier), not evidence
 -- the strategy thesis holds. The tiers that looked concerning (Good 10-20%,
--- Marginal 5-10%) are entirely clean Kelly-sized BET_YES rows — the
--- opposite of contaminated. EXCLUDED below pending Fletch's separate
--- backfill-vs-exclude decision — underlying ledger rows untouched. CARD
--- LABEL: title/description should say "excludes 42 legacy flat-stake rows
--- pending pipeline decision." Do NOT use this card's Strong Edge tier to
--- justify tightening the edge threshold until the legacy-row decision
--- is made and the tier is re-evaluated on clean data only.
+-- Marginal 5-10%) were entirely clean Kelly-sized BET_YES rows — the
+-- opposite of contaminated.
+--
+-- PERMANENT FIX 2026-07-02: same structural fix as Query 19 — reads from
+-- weather_gold_contract_ledger_performance (legacy rows already excluded
+-- via is_legacy_row, see sql/migrations/2026-07-02-ledger-exclude-legacy-rows.sql)
+-- instead of an ad-hoc WHERE filter. Do NOT use this card's Strong Edge
+-- tier to justify tightening the edge threshold without separately
+-- re-validating the current-pipeline-only pattern holds up over time.
 -- ============================================================
 WITH weather_model_accuracy AS (
     SELECT
@@ -687,7 +696,7 @@ WITH weather_model_accuracy AS (
         outcome_edge_realized                                  AS accuracy_score,
         settled_at                                             AS resolved_at,
         signal_generated_at                                    AS created_at
-    FROM weather_gold_contract_ledger
+    FROM weather_gold_contract_ledger_performance
 )
 SELECT
     -- Edge tier classification
@@ -752,7 +761,6 @@ FROM (
         END AS edge_tier_sort
     FROM weather_model_accuracy
     WHERE actual_outcome IS NOT NULL
-      AND NOT (bhn_position_side = 'no' AND bhn_position_value = 125.0)
 ) tiered
 GROUP BY edge_tier, edge_tier_sort
 ORDER BY edge_tier_sort;
@@ -767,6 +775,14 @@ ORDER BY edge_tier_sort;
 --
 -- UPDATED 2026-07-02: weather_model_accuracy -> weather_gold_contract_ledger
 -- (same compat CTE as Query 19).
+--
+-- PERMANENT FIX 2026-07-02: reads from
+-- weather_gold_contract_ledger_performance — legacy pre-CP4-pipeline rows
+-- (BET_YES rows; flat-$125-stake BET_NO rows) permanently excluded via
+-- is_legacy_row, see sql/migrations/2026-07-02-ledger-exclude-legacy-rows.sql
+-- and Query 19's note for full context. This is a raw trade log, so
+-- showing legacy rows here would be actively misleading for "spot patterns
+-- and debug model errors" against the current pipeline.
 -- ============================================================
 WITH weather_model_accuracy AS (
     SELECT
@@ -790,7 +806,7 @@ WITH weather_model_accuracy AS (
         outcome_edge_realized                                  AS accuracy_score,
         settled_at                                             AS resolved_at,
         signal_generated_at                                    AS created_at
-    FROM weather_gold_contract_ledger
+    FROM weather_gold_contract_ledger_performance
 )
 SELECT
     -- Contract identification
@@ -861,6 +877,12 @@ LIMIT 100;
 --
 -- UPDATED 2026-07-02: weather_model_accuracy -> weather_gold_contract_ledger
 -- (same compat CTE as Query 19).
+--
+-- PERMANENT FIX 2026-07-02: reads from
+-- weather_gold_contract_ledger_performance — legacy pre-CP4-pipeline rows
+-- permanently excluded via is_legacy_row, see
+-- sql/migrations/2026-07-02-ledger-exclude-legacy-rows.sql and Query 19's
+-- note for full context.
 -- ============================================================
 WITH weather_model_accuracy AS (
     SELECT
@@ -884,7 +906,7 @@ WITH weather_model_accuracy AS (
         outcome_edge_realized                                  AS accuracy_score,
         settled_at                                             AS resolved_at,
         signal_generated_at                                    AS created_at
-    FROM weather_gold_contract_ledger
+    FROM weather_gold_contract_ledger_performance
 )
 SELECT
     region                                             AS city,

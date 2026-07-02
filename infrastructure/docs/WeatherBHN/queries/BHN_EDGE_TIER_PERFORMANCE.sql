@@ -13,17 +13,19 @@
 -- computed directly off the real `edge` column instead.
 --
 -- FIXED 2026-07-02: the "Strong Edge >20%" tier's apparently-legitimate
--- 73.9% win rate is 42 of the same flat-stake ($125, zero variance) legacy
+-- 73.9% win rate was 42 of the same flat-stake ($125, zero variance) legacy
 -- BET_NO rows described in the Scorecard's note (91% of that tier), not
 -- evidence the strategy thesis holds. The tiers that looked concerning
--- (Good 10-20%, Marginal 5-10%) are entirely clean Kelly-sized BET_YES
--- rows — the opposite of contaminated. EXCLUDED below pending Fletch's
--- separate backfill-vs-exclude decision — underlying ledger rows
--- untouched. CARD LABEL: title/description should say "excludes 42
--- legacy flat-stake rows pending pipeline decision." Do NOT use this
--- card's Strong Edge tier to justify tightening the edge threshold until
--- the legacy-row decision is made and the tier is re-evaluated on clean
--- data only.
+-- (Good 10-20%, Marginal 5-10%) were entirely clean Kelly-sized BET_YES
+-- rows — the opposite of contaminated.
+--
+-- PERMANENT FIX 2026-07-02: same structural fix as the Scorecard — reads
+-- from weather_gold_contract_ledger_performance (legacy rows already
+-- excluded via is_legacy_row, see
+-- sql/migrations/2026-07-02-ledger-exclude-legacy-rows.sql) instead of an
+-- ad-hoc WHERE filter. Do NOT use this card's Strong Edge tier to justify
+-- tightening the edge threshold without separately re-validating the
+-- current-pipeline-only pattern holds up over time.
 
 WITH weather_model_accuracy AS (
     SELECT
@@ -47,7 +49,7 @@ WITH weather_model_accuracy AS (
         outcome_edge_realized                                  AS accuracy_score,
         settled_at                                             AS resolved_at,
         signal_generated_at                                    AS created_at
-    FROM weather_gold_contract_ledger
+    FROM weather_gold_contract_ledger_performance
 )
 SELECT
     -- Edge tier classification
@@ -112,7 +114,6 @@ FROM (
         END AS edge_tier_sort
     FROM weather_model_accuracy
     WHERE actual_outcome IS NOT NULL
-      AND NOT (bhn_position_side = 'no' AND bhn_position_value = 125.0)
 ) tiered
 GROUP BY edge_tier, edge_tier_sort
 ORDER BY edge_tier_sort;

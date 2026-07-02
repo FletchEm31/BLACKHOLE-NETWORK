@@ -256,3 +256,24 @@ GRANT SELECT ON weather_gold_contract_ledger TO grafana_reader;
 GRANT SELECT, INSERT, UPDATE ON weather_gold_contract_ledger TO bhn_trader;
 GRANT SELECT, INSERT, UPDATE ON weather_gold_contract_ledger TO ehuser;
 GRANT USAGE, SELECT ON SEQUENCE weather_gold_contract_ledger_id_seq TO bhn_trader, ehuser;
+
+-- ── is_legacy_row + performance view ────────────────────────────────────
+-- Added by sql/migrations/2026-07-02-ledger-exclude-legacy-rows.sql.
+-- Permanently flags/excludes two pre-CP4-pipeline populations that
+-- distorted the Metabase Scorecard/Edge Tier dashboards: BET_YES rows
+-- (the current pipeline architecturally never produces BET_YES, only
+-- BET_NO/SKIP) and BET_NO rows carrying the flat $125 pre-Kelly stake
+-- from the 2026-06-25/26 migration backfill. Decision: exclude
+-- permanently, do not backfill/reconstruct. New rows default to FALSE and
+-- should stay FALSE under the current pipeline. All performance/scorecard
+-- dashboards should read from weather_gold_contract_ledger_performance,
+-- not this base table directly.
+--
+-- ALTER TABLE weather_gold_contract_ledger
+--     ADD COLUMN IF NOT EXISTS is_legacy_row BOOLEAN NOT NULL DEFAULT FALSE;
+--
+-- CREATE OR REPLACE VIEW weather_gold_contract_ledger_performance AS
+-- SELECT * FROM weather_gold_contract_ledger WHERE is_legacy_row = FALSE;
+--
+-- (Kept here as documentation only — the migration file is the source of
+-- truth for actually applying this. Already applied live on LA 2026-07-02.)
