@@ -16,6 +16,11 @@
 -- permanently excluded via is_legacy_row, see
 -- sql/migrations/2026-07-02-ledger-exclude-legacy-rows.sql and
 -- BHN_OVERALL_SCORECARD.sql's note for full context.
+--
+-- FIXED 2026-07-02: win-rate denominator was COUNT(*) over ALL rows
+-- including SKIP (bhn_correct always NULL for skips) — now COUNT(*)
+-- FILTER (WHERE bhn_position_taken = true) throughout, the true
+-- trade-only win rate per city.
 
 WITH weather_model_accuracy AS (
     SELECT
@@ -53,21 +58,21 @@ SELECT
     COUNT(*) FILTER (WHERE bhn_was_correct = true)    AS bhn_correct,
     ROUND(
         COUNT(*) FILTER (WHERE bhn_was_correct = true)::numeric
-        / NULLIF(COUNT(*), 0) * 100, 1
+        / NULLIF(COUNT(*) FILTER (WHERE bhn_position_taken = true), 0) * 100, 1
     )                                                  AS bhn_win_rate_pct,
     ROUND(
         COUNT(*) FILTER (WHERE market_was_correct = true)::numeric
-        / NULLIF(COUNT(*), 0) * 100, 1
+        / NULLIF(COUNT(*) FILTER (WHERE bhn_position_taken = true), 0) * 100, 1
     )                                                  AS market_win_rate_pct,
 
     -- BHN advantage per city
     ROUND(
         (
             COUNT(*) FILTER (WHERE bhn_was_correct = true)::numeric
-            / NULLIF(COUNT(*), 0)
+            / NULLIF(COUNT(*) FILTER (WHERE bhn_position_taken = true), 0)
             -
             COUNT(*) FILTER (WHERE market_was_correct = true)::numeric
-            / NULLIF(COUNT(*), 0)
+            / NULLIF(COUNT(*) FILTER (WHERE bhn_position_taken = true), 0)
         ) * 100, 1
     )                                                  AS bhn_advantage_pct,
 
@@ -81,11 +86,11 @@ SELECT
 
     -- City verdict
     CASE
-        WHEN COUNT(*) < 5 THEN '⏳ Insufficient Data'
+        WHEN COUNT(*) FILTER (WHERE bhn_position_taken = true) < 5 THEN '⏳ Insufficient Data'
         WHEN COUNT(*) FILTER (WHERE bhn_was_correct = true)::numeric
-             / NULLIF(COUNT(*), 0) >= 0.65 THEN '✅ Strong Edge City'
+             / NULLIF(COUNT(*) FILTER (WHERE bhn_position_taken = true), 0) >= 0.65 THEN '✅ Strong Edge City'
         WHEN COUNT(*) FILTER (WHERE bhn_was_correct = true)::numeric
-             / NULLIF(COUNT(*), 0) >= 0.50 THEN '🟡 Developing Edge'
+             / NULLIF(COUNT(*) FILTER (WHERE bhn_position_taken = true), 0) >= 0.50 THEN '🟡 Developing Edge'
         ELSE '🔴 Weak Edge — Review Calibration'
     END                                                AS city_verdict,
 

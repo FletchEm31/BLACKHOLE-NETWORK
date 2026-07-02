@@ -593,28 +593,36 @@ SELECT
     COUNT(*) FILTER (WHERE bhn_position_taken = false) AS signals_skipped,
 
     -- BHN accuracy
+    -- FIXED 2026-07-02: denominator was COUNT(*) over ALL rows including
+    -- SKIP, which always has bhn_was_correct=NULL — silently counting
+    -- skipped signals (never actual bets) as if they diluted the win rate.
+    -- Denominator is now COUNT(*) FILTER (WHERE bhn_position_taken = true)
+    -- — the true trade-only win rate, matching what total_recommendations
+    -- above already separates into trades_placed vs signals_skipped.
     COUNT(*) FILTER (WHERE bhn_was_correct = true)    AS bhn_correct,
     COUNT(*) FILTER (WHERE bhn_was_correct = false)   AS bhn_wrong,
     ROUND(
         COUNT(*) FILTER (WHERE bhn_was_correct = true)::numeric
-        / NULLIF(COUNT(*), 0) * 100, 1
+        / NULLIF(COUNT(*) FILTER (WHERE bhn_position_taken = true), 0) * 100, 1
     )                                                  AS bhn_win_rate_pct,
 
-    -- Market accuracy
+    -- Market accuracy (same fix — market_was_correct is meaningful only
+    -- for contracts BHN actually took a position on, for apples-to-apples
+    -- comparison against bhn_win_rate_pct above)
     COUNT(*) FILTER (WHERE market_was_correct = true)  AS market_correct,
     ROUND(
         COUNT(*) FILTER (WHERE market_was_correct = true)::numeric
-        / NULLIF(COUNT(*), 0) * 100, 1
+        / NULLIF(COUNT(*) FILTER (WHERE bhn_position_taken = true), 0) * 100, 1
     )                                                  AS market_win_rate_pct,
 
     -- BHN vs Market edge
     ROUND(
         (
             COUNT(*) FILTER (WHERE bhn_was_correct = true)::numeric
-            / NULLIF(COUNT(*), 0)
+            / NULLIF(COUNT(*) FILTER (WHERE bhn_position_taken = true), 0)
             -
             COUNT(*) FILTER (WHERE market_was_correct = true)::numeric
-            / NULLIF(COUNT(*), 0)
+            / NULLIF(COUNT(*) FILTER (WHERE bhn_position_taken = true), 0)
         ) * 100, 1
     )                                                  AS bhn_vs_market_edge_pct,
 
@@ -710,27 +718,33 @@ SELECT
     END                                                AS edge_tier,
 
     COUNT(*)                                           AS total_signals,
+    COUNT(*) FILTER (WHERE bhn_position_taken = true) AS trades_placed,
     COUNT(*) FILTER (WHERE bhn_was_correct = true)    AS bhn_correct,
     COUNT(*) FILTER (WHERE market_was_correct = true)  AS market_correct,
 
     -- Win rates
+    -- FIXED 2026-07-02: denominator was COUNT(*) over ALL rows including
+    -- SKIP (always bhn_was_correct=NULL) — now COUNT(*) FILTER (WHERE
+    -- bhn_position_taken = true), the true trade-only win rate. This is
+    -- exactly the number used to judge whether an edge tier justifies
+    -- tightening the trading threshold, so the dilution wasn't cosmetic.
     ROUND(
         COUNT(*) FILTER (WHERE bhn_was_correct = true)::numeric
-        / NULLIF(COUNT(*), 0) * 100, 1
+        / NULLIF(COUNT(*) FILTER (WHERE bhn_position_taken = true), 0) * 100, 1
     )                                                  AS bhn_win_rate_pct,
     ROUND(
         COUNT(*) FILTER (WHERE market_was_correct = true)::numeric
-        / NULLIF(COUNT(*), 0) * 100, 1
+        / NULLIF(COUNT(*) FILTER (WHERE bhn_position_taken = true), 0) * 100, 1
     )                                                  AS market_win_rate_pct,
 
     -- BHN advantage per tier
     ROUND(
         (
             COUNT(*) FILTER (WHERE bhn_was_correct = true)::numeric
-            / NULLIF(COUNT(*), 0)
+            / NULLIF(COUNT(*) FILTER (WHERE bhn_position_taken = true), 0)
             -
             COUNT(*) FILTER (WHERE market_was_correct = true)::numeric
-            / NULLIF(COUNT(*), 0)
+            / NULLIF(COUNT(*) FILTER (WHERE bhn_position_taken = true), 0)
         ) * 100, 1
     )                                                  AS bhn_advantage_pct,
 
@@ -739,13 +753,13 @@ SELECT
     ROUND(AVG(pnl_dollar), 2)                          AS avg_pnl,
     ROUND(AVG(edge * 100), 1)                          AS avg_edge_pct,
 
-    -- Verdict
+    -- Verdict (same fix — judge model quality on trades actually placed)
     CASE
         WHEN COUNT(*) FILTER (WHERE bhn_was_correct = true)::numeric
-             / NULLIF(COUNT(*), 0) >= 0.70 THEN '✅ Model Working'
+             / NULLIF(COUNT(*) FILTER (WHERE bhn_position_taken = true), 0) >= 0.70 THEN '✅ Model Working'
         WHEN COUNT(*) FILTER (WHERE bhn_was_correct = true)::numeric
-             / NULLIF(COUNT(*), 0) >= 0.55 THEN '🟡 Model Marginal'
-        WHEN COUNT(*) < 10                 THEN '⏳ Insufficient Data'
+             / NULLIF(COUNT(*) FILTER (WHERE bhn_position_taken = true), 0) >= 0.55 THEN '🟡 Model Marginal'
+        WHEN COUNT(*) FILTER (WHERE bhn_position_taken = true) < 10 THEN '⏳ Insufficient Data'
         ELSE                                    '🔴 Model Underperforming'
     END                                                AS model_verdict
 
@@ -917,24 +931,27 @@ SELECT
     COUNT(*) FILTER (WHERE bhn_position_taken = true) AS trades_placed,
 
     -- Accuracy
+    -- FIXED 2026-07-02: denominator was COUNT(*) over ALL rows including
+    -- SKIP (always bhn_was_correct=NULL) — now COUNT(*) FILTER (WHERE
+    -- bhn_position_taken = true), the true trade-only win rate per city.
     COUNT(*) FILTER (WHERE bhn_was_correct = true)    AS bhn_correct,
     ROUND(
         COUNT(*) FILTER (WHERE bhn_was_correct = true)::numeric
-        / NULLIF(COUNT(*), 0) * 100, 1
+        / NULLIF(COUNT(*) FILTER (WHERE bhn_position_taken = true), 0) * 100, 1
     )                                                  AS bhn_win_rate_pct,
     ROUND(
         COUNT(*) FILTER (WHERE market_was_correct = true)::numeric
-        / NULLIF(COUNT(*), 0) * 100, 1
+        / NULLIF(COUNT(*) FILTER (WHERE bhn_position_taken = true), 0) * 100, 1
     )                                                  AS market_win_rate_pct,
 
     -- BHN advantage per city
     ROUND(
         (
             COUNT(*) FILTER (WHERE bhn_was_correct = true)::numeric
-            / NULLIF(COUNT(*), 0)
+            / NULLIF(COUNT(*) FILTER (WHERE bhn_position_taken = true), 0)
             -
             COUNT(*) FILTER (WHERE market_was_correct = true)::numeric
-            / NULLIF(COUNT(*), 0)
+            / NULLIF(COUNT(*) FILTER (WHERE bhn_position_taken = true), 0)
         ) * 100, 1
     )                                                  AS bhn_advantage_pct,
 
@@ -946,13 +963,14 @@ SELECT
     ROUND(SUM(pnl_dollar), 2)                          AS total_pnl,
     ROUND(AVG(pnl_dollar), 2)                          AS avg_pnl_per_signal,
 
-    -- City verdict
+    -- City verdict (same fix — judge on trades actually placed, not
+    -- diluted by skipped signals)
     CASE
-        WHEN COUNT(*) < 5 THEN '⏳ Insufficient Data'
+        WHEN COUNT(*) FILTER (WHERE bhn_position_taken = true) < 5 THEN '⏳ Insufficient Data'
         WHEN COUNT(*) FILTER (WHERE bhn_was_correct = true)::numeric
-             / NULLIF(COUNT(*), 0) >= 0.65 THEN '✅ Strong Edge City'
+             / NULLIF(COUNT(*) FILTER (WHERE bhn_position_taken = true), 0) >= 0.65 THEN '✅ Strong Edge City'
         WHEN COUNT(*) FILTER (WHERE bhn_was_correct = true)::numeric
-             / NULLIF(COUNT(*), 0) >= 0.50 THEN '🟡 Developing Edge'
+             / NULLIF(COUNT(*) FILTER (WHERE bhn_position_taken = true), 0) >= 0.50 THEN '🟡 Developing Edge'
         ELSE '🔴 Weak Edge — Review Calibration'
     END                                                AS city_verdict,
 

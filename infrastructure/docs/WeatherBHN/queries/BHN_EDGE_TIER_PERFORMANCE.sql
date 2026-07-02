@@ -26,6 +26,12 @@
 -- ad-hoc WHERE filter. Do NOT use this card's Strong Edge tier to justify
 -- tightening the edge threshold without separately re-validating the
 -- current-pipeline-only pattern holds up over time.
+--
+-- FIXED 2026-07-02: win-rate denominator was COUNT(*) over ALL rows
+-- including SKIP (bhn_correct always NULL for skips) — this is exactly
+-- the number used to judge whether a tier justifies tightening the
+-- trading threshold, so the dilution wasn't cosmetic. Denominator is now
+-- COUNT(*) FILTER (WHERE bhn_position_taken = true) throughout.
 
 WITH weather_model_accuracy AS (
     SELECT
@@ -63,27 +69,28 @@ SELECT
     END                                                AS edge_tier,
 
     COUNT(*)                                           AS total_signals,
+    COUNT(*) FILTER (WHERE bhn_position_taken = true) AS trades_placed,
     COUNT(*) FILTER (WHERE bhn_was_correct = true)    AS bhn_correct,
     COUNT(*) FILTER (WHERE market_was_correct = true)  AS market_correct,
 
     -- Win rates
     ROUND(
         COUNT(*) FILTER (WHERE bhn_was_correct = true)::numeric
-        / NULLIF(COUNT(*), 0) * 100, 1
+        / NULLIF(COUNT(*) FILTER (WHERE bhn_position_taken = true), 0) * 100, 1
     )                                                  AS bhn_win_rate_pct,
     ROUND(
         COUNT(*) FILTER (WHERE market_was_correct = true)::numeric
-        / NULLIF(COUNT(*), 0) * 100, 1
+        / NULLIF(COUNT(*) FILTER (WHERE bhn_position_taken = true), 0) * 100, 1
     )                                                  AS market_win_rate_pct,
 
     -- BHN advantage per tier
     ROUND(
         (
             COUNT(*) FILTER (WHERE bhn_was_correct = true)::numeric
-            / NULLIF(COUNT(*), 0)
+            / NULLIF(COUNT(*) FILTER (WHERE bhn_position_taken = true), 0)
             -
             COUNT(*) FILTER (WHERE market_was_correct = true)::numeric
-            / NULLIF(COUNT(*), 0)
+            / NULLIF(COUNT(*) FILTER (WHERE bhn_position_taken = true), 0)
         ) * 100, 1
     )                                                  AS bhn_advantage_pct,
 
@@ -95,10 +102,10 @@ SELECT
     -- Verdict
     CASE
         WHEN COUNT(*) FILTER (WHERE bhn_was_correct = true)::numeric
-             / NULLIF(COUNT(*), 0) >= 0.70 THEN '✅ Model Working'
+             / NULLIF(COUNT(*) FILTER (WHERE bhn_position_taken = true), 0) >= 0.70 THEN '✅ Model Working'
         WHEN COUNT(*) FILTER (WHERE bhn_was_correct = true)::numeric
-             / NULLIF(COUNT(*), 0) >= 0.55 THEN '🟡 Model Marginal'
-        WHEN COUNT(*) < 10                 THEN '⏳ Insufficient Data'
+             / NULLIF(COUNT(*) FILTER (WHERE bhn_position_taken = true), 0) >= 0.55 THEN '🟡 Model Marginal'
+        WHEN COUNT(*) FILTER (WHERE bhn_position_taken = true) < 10 THEN '⏳ Insufficient Data'
         ELSE                                    '🔴 Model Underperforming'
     END                                                AS model_verdict
 

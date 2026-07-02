@@ -254,9 +254,15 @@ def _process_station_date(conn, station_code: str, target_date: date,
 
     # --- CP4: Kelly sizing + paper trade capture + ledger write ---
     # Run Kelly once; pass pre-computed buckets to both functions to avoid
-    # a second DB round-trip inside write_to_ledger.
+    # a second DB round-trip inside write_to_ledger. nws_tmax_f/om_tmax_f
+    # passed through so run_cp4_kelly can scale stake by model_confidence
+    # (2026-07-02) — must go in here, not just write_to_ledger, so
+    # record_paper_trade (below) sees the same already-scaled stake_usd
+    # rather than a pre-scaling value.
     buckets = run_cp4_kelly(station_code, target_date, predicted_f,
-                            cp3['model_rmse'], BANKROLL_USD)
+                            cp3['model_rmse'], BANKROLL_USD,
+                            nws_tmax_f=cp3.get('nws_forecast_f'),
+                            om_tmax_f=cp3.get('om_tmax_f'))
 
     # Record qualifying signals as paper trades (always, even in DRY_RUN).
     # is_paper_trade=True when DRY_RUN=True so paper vs live stays distinct.

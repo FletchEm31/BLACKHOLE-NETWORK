@@ -168,9 +168,14 @@ def calculate_bucket_probability(predicted_tmax_f: float,
 # Function 3 — Main Kelly engine
 # ---------------------------------------------------------------------------
 
+CONFIDENCE_STAKE_MULTIPLIER = {'HIGH': 1.0, 'MEDIUM': 0.5, 'LOW': 0.25}
+
+
 def run_cp4_kelly(station_code: str, target_date: date,
                   predicted_tmax_f: float, model_rmse: float,
-                  bankroll_usd: float = 1000.0) -> list[dict]:
+                  bankroll_usd: float = 1000.0,
+                  nws_tmax_f: Optional[float] = None,
+                  om_tmax_f: Optional[float] = None) -> list[dict]:
     """
     For each Kalshi bucket for station/date: compute edge and half-Kelly stake.
 
@@ -181,10 +186,27 @@ def run_cp4_kelly(station_code: str, target_date: date,
       model_prob_no_cents = (1 - P(YES)) * 100   [our internal model estimate]
       edge_cents = model_prob_no_cents - no_ask_cents
       kelly_fraction = edge_cents / (100 - no_ask_cents)
-      stake = bankroll * half_kelly, capped at 10% of bankroll
+      stake = bankroll * half_kelly * confidence_multiplier, capped at 10% of bankroll
+
+    confidence_multiplier (added 2026-07-02, approved by Fletch): scales the
+    stake by model_confidence (same NWS-vs-GFS divergence used for the
+    display-only model_confidence field elsewhere) — 1.0/0.5/0.25 for
+    HIGH/MEDIUM/LOW. Deliberately only ever shrinks the stake, never the
+    qualify/edge threshold — a signal that would have qualified still
+    qualifies, it just risks less when the two forecast sources disagree.
+    nws_tmax_f/om_tmax_f optional: if either is missing, confidence can't be
+    computed, so this defaults to the most conservative multiplier (LOW),
+    consistent with "reduce risk under less information, never increase it."
 
     Returns list of dicts — one per bucket, sorted by bucket_floor.
     """
+    ref_f = nws_tmax_f if nws_tmax_f is not None else om_tmax_f
+    if ref_f is not None:
+        model_delta_f = predicted_tmax_f - ref_f
+        confidence = _model_confidence(model_delta_f)
+    else:
+        confidence = 'LOW'
+    confidence_multiplier = CONFIDENCE_STAKE_MULTIPLIER[confidence]
     conn = _get_conn()
     try:
         with conn.cursor() as cur:
@@ -298,8 +320,11 @@ def run_cp4_kelly(station_code: str, target_date: date,
             win_cents = 100.0 - no_ask_cents  # cents profit per winning NO contract
             if win_cents > 0:
                 kelly_fraction = edge_cents / win_cents
-                half_kelly = kelly_fraction * 0.5
-                # Cap at 10% of bankroll
+                half_kelly = kelly_fraction * 0.5 * confidence_multiplier
+                # Cap at 10% of bankroll — applied after the confidence
+                # scaling, so it remains the hard ceiling regardless of
+                # confidence (confidence can only shrink toward zero, the
+                # cap can't be scaled back up past it).
                 max_stake = bankroll_usd * min(half_kelly, BANKROLL_CAP_PCT)
                 cost_per_contract = no_ask_cents / 100.0  # dollars
                 contracts = max(0, int(max_stake // cost_per_contract))
