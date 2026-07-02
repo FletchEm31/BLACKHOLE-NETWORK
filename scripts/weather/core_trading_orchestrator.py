@@ -40,12 +40,82 @@ logger = logging.getLogger('bhn.trading.weather_orchestrator')
 # Config
 # ---------------------------------------------------------------------------
 
-ACTIVE_STATIONS = ['KDEN', 'KLAX', 'KMIA']
+# Single source of truth for which of the 16 possible (city, side)
+# combinations are actually live — replaces the old flat ACTIVE_STATIONS
+# list, which only ever expressed "3 HIGH cities enabled" and gave no place
+# to reason about the other 13 combinations without reconstructing state
+# from scattered evidence (logs, ticker maps, calibration dashboards).
+#
+# HIGH status values:
+#   'enabled'           — live, CP1-4 processes this station.
+#   'not_ready'         — calibration in progress. Self-resolving: will
+#                          become a candidate once 30 paired days clear.
+#                          Snapshot 2026-07-02: Austin/NYC/Chicago at
+#                          19/30 pairs (~11 days out). Re-check the real
+#                          calibration dashboard (CLEAN_QUERIES.sql Query 5)
+#                          for the current count — this comment will go
+#                          stale, the dashboard won't.
+#   'unavailable_high'  — NOT self-resolving. Kalshi does not offer a daily
+#                          HIGH-temperature market for this city at all
+#                          (confirmed live 2026-07-02: zero markets under
+#                          every ticker variant tried, and zero HIGH
+#                          contracts ever logged in prediction_contracts'
+#                          history — only LOW). No amount of calibration
+#                          or code fixing changes this; only re-check if
+#                          Kalshi's market catalog itself changes.
+#
+# Rollout gate for HIGH (per-city checklist — do NOT flip 'enabled' without
+# clearing all of these for that specific city):
+#   1. Calibration has genuinely cleared 30 paired days — check the real
+#      calibration dashboard number, don't assume from data existence.
+#   2. Ticker mapping is verified correct (KXHIGH{city}/KXLOWT{city} in
+#      kalshi_client.py, prediction_signal.py, weather_data_collector.py) —
+#      Austin's mapping was found completely missing earlier tonight, so
+#      "already fixed" does not mean "already verified" for the other 4.
+#   3. Flip alone (not bundled with another city), watch a few real
+#      orchestrator cycles, confirm sane signals — liquidity checks
+#      sometimes passing, not permanently SKIP/ILLIQUID every cycle.
+#   4. Only then move to the next city.
+#
+# LOW status value: 'not_built' for every city, unconditionally — this is
+# an engineering gap, not a data-accumulation one. CP3/CP4 only support
+# tmax_f; there is no calibrated model for tmin_f to check "30 paired days"
+# against at all. Stays 'not_built' until CP3/CP4 are generalized for Low,
+# a separate sequential project from HIGH's 6-city rollout, not something
+# that resolves by waiting. Low-side raw data collection
+# (low_side_ledger_populator.py) runs for all 8 cities regardless of this
+# matrix — that's a separate, storage-only, non-calibrated pass, not
+# signal generation gated here.
+#
+# HIGH ceiling is 6 cities, not 8 — Phoenix and Dallas are LOW-only
+# candidates once Low-side modeling eventually exists.
+STATION_STATUS = {
+    'KDEN': {'high': 'enabled',          'low': 'not_built'},  # Denver
+    'KLAX': {'high': 'enabled',          'low': 'not_built'},  # Los Angeles
+    'KMIA': {'high': 'enabled',          'low': 'not_built'},  # Miami
+    'KAUS': {'high': 'not_ready',        'low': 'not_built'},  # Austin
+    'KNYC': {'high': 'not_ready',        'low': 'not_built'},  # New York City
+    'KORD': {'high': 'not_ready',        'low': 'not_built'},  # Chicago O'Hare
+    'KPHX': {'high': 'unavailable_high', 'low': 'not_built'},  # Phoenix
+    'KDFW': {'high': 'unavailable_high', 'low': 'not_built'},  # Dallas/Fort Worth
+}
+
+# Derived, not hand-maintained — flipping a city's 'high' status in
+# STATION_STATUS above is the only edit needed to change what the
+# orchestrator processes. Preserves the flat-list shape existing code
+# (the active-targets query, argparse --station choices) already expects.
+ACTIVE_STATIONS = [code for code, sides in STATION_STATUS.items()
+                   if sides['high'] == 'enabled']
 
 STATION_TZ = {
     'KDEN': ZoneInfo('America/Denver'),
     'KLAX': ZoneInfo('America/Los_Angeles'),
     'KMIA': ZoneInfo('America/New_York'),
+    'KAUS': ZoneInfo('America/Chicago'),
+    'KDFW': ZoneInfo('America/Chicago'),
+    'KNYC': ZoneInfo('America/New_York'),
+    'KORD': ZoneInfo('America/Chicago'),
+    'KPHX': ZoneInfo('America/Phoenix'),
 }
 
 # Active market hours: 06:00 (open) to 00:00 (midnight, exclusive) local
