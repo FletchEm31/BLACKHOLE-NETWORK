@@ -38,7 +38,31 @@ EDGE_THRESHOLD_LIQ  = 5.0    # cents — liquid (volume > 100)
 EDGE_THRESHOLD_ILL  = 8.0    # cents — illiquid (volume <= 100 or unknown)
 MIN_NO_ASK_CENTS    = 3.0    # skip buckets with no_ask below this — effectively dead market
 
+# Liquidity caps — added 2026-07-03, shared by NO and YES qualification (do not
+# duplicate per side). Source: weather_bronze_kalshi_market_snapshots.volume /
+# .open_interest — confirmed real, populated columns; these were previously
+# unused (edge_threshold was hardcoded to EDGE_THRESHOLD_ILL regardless).
+OPEN_INTEREST_CAP_PCT = 0.10   # max position = 10% of the contract's open_interest
+VOLUME_CAP_PCT        = 0.05   # max position = 5% of the contract's current volume
+MAX_SPREAD_CENTS      = 20.0   # skip if yes_ask - yes_bid exceeds this
+
 CITY_MAP = {'KDEN': 'Denver', 'KLAX': 'Los Angeles', 'KMIA': 'Miami'}
+
+
+def apply_liquidity_caps(contracts: int, open_interest: Optional[float],
+                          volume: Optional[float]) -> int:
+    """Cap a Kelly-sized contract count to the open-interest and volume caps.
+
+    Shared helper for NO and YES qualification — call this from both instead
+    of reimplementing the cap per side. Unknown (None) open_interest or volume
+    caps to 0 contracts (fail closed — consistent with CP4's existing posture
+    of only ever reducing size under missing information, never increasing it).
+    """
+    if contracts <= 0:
+        return 0
+    oi_cap  = int(open_interest * OPEN_INTEREST_CAP_PCT) if open_interest is not None else 0
+    vol_cap = int(volume * VOLUME_CAP_PCT) if volume is not None else 0
+    return max(0, min(contracts, oi_cap, vol_cap))
 
 
 def _get_conn():
@@ -244,7 +268,8 @@ def run_cp4_kelly(station_code: str, target_date: date,
             cur.execute("""
                 SELECT bucket_label, bucket_type, bucket_floor, bucket_cap,
                        yes_bid, yes_ask, no_bid, no_ask,
-                       market_ticker, volume, market_status, retrieved_at AS snap_retrieved_at
+                       market_ticker, volume, open_interest, market_status,
+                       retrieved_at AS snap_retrieved_at
                 FROM weather_bronze_kalshi_market_snapshots
                 WHERE station_code = %s
                   AND target_date = %s
@@ -329,21 +354,35 @@ def run_cp4_kelly(station_code: str, target_date: date,
         # Edge on NO trade
         edge_cents = round(model_prob_no_cents - no_ask_cents, 2)
 
-        # Volume data not in snapshot table — conservative illiquid threshold
-        edge_threshold = EDGE_THRESHOLD_ILL
-
         # Pre-open guard — three conditions must all pass:
         #   1. volume > 100:  meaningful liquidity (> 0 catches brand-new markets,
         #                     > 100 filters single-trade opens and pre-seed fills)
         #   2. market_status != 'unopened': Kalshi has confirmed the market is live
         #   3. snapshot freshness: enforced at query level (retrieved_at >= NOW() - 45 min)
-        volume     = float(b['volume']) if b['volume'] is not None else 0.0
-        pre_open   = volume <= 100.0 or b.get('market_status') == 'unopened'
+        volume        = float(b['volume']) if b['volume'] is not None else 0.0
+        open_interest = float(b['open_interest']) if b.get('open_interest') is not None else None
+        pre_open      = volume <= 100.0 or b.get('market_status') == 'unopened'
+
+        # Liquid/illiquid edge threshold split — wired up 2026-07-03. Previously
+        # dead code (edge_threshold was hardcoded to EDGE_THRESHOLD_ILL, with a
+        # stale comment claiming volume data wasn't in the snapshot table — it
+        # is). Threshold matches the pre_open boundary, so in practice the ILL
+        # branch only applies to markets that are open but thin, since pre_open
+        # already excludes volume <= 100 entirely.
+        is_liquid      = volume > 100.0
+        edge_threshold = EDGE_THRESHOLD_LIQ if is_liquid else EDGE_THRESHOLD_ILL
+
+        # Bid-ask spread check — real yes_bid/yes_ask, NOT ensemble_spread
+        # (that's the unrelated NWS-vs-GFS forecast divergence field). Missing
+        # yes_ask fails closed (spread treated as too wide).
+        spread_cents    = (round(yes_ask_cents - yes_bid_cents, 2)
+                           if yes_ask_cents is not None else None)
+        spread_too_wide = spread_cents is None or spread_cents > MAX_SPREAD_CENTS
 
         no_ask_thin = no_ask_cents < MIN_NO_ASK_CENTS
         valid_price  = 0 < no_ask_cents < 100
         qualifies    = bool(not pre_open and valid_price and not no_ask_thin
-                            and edge_cents >= edge_threshold)
+                            and edge_cents >= edge_threshold and not spread_too_wide)
 
         # Dollar-sizing uses the corrected entry price (weather_position_exits.
         # entry_no_ask_cents via migration 003), not the live no_ask_cents —
@@ -356,6 +395,7 @@ def run_cp4_kelly(station_code: str, target_date: date,
 
         contracts = 0
         stake_usd = 0.0
+        illiquid_capped = False
         if qualifies:
             win_cents = 100.0 - entry_cents  # cents profit per winning NO contract
             if win_cents > 0:
@@ -368,6 +408,19 @@ def run_cp4_kelly(station_code: str, target_date: date,
                 max_stake = bankroll_usd * min(half_kelly, BANKROLL_CAP_PCT)
                 cost_per_contract = entry_cents / 100.0  # dollars
                 contracts = max(0, int(max_stake // cost_per_contract))
+
+                # Liquidity caps — shared by NO and YES, do not duplicate per
+                # side (see apply_liquidity_caps()). If the cap fully zeroes
+                # out the position, treat this bucket as not qualifying — a
+                # 0-contract BET_NO is meaningless — rather than writing a
+                # qualifying signal with no size.
+                capped_contracts = apply_liquidity_caps(contracts, open_interest, volume)
+                if capped_contracts < contracts and capped_contracts == 0:
+                    illiquid_capped = True
+                contracts = capped_contracts
+                if contracts == 0:
+                    qualifies = False
+
                 stake_usd = round(contracts * cost_per_contract, 2)
 
         results.append({
@@ -387,6 +440,11 @@ def run_cp4_kelly(station_code: str, target_date: date,
             'sigma_used':        round(sigma, 4),
             'distribution_used': dist,
             'hours_to_settle':   hours_to_settle,
+            'open_interest':     open_interest,
+            'is_liquid':         is_liquid,
+            'spread_cents':      spread_cents,
+            'spread_too_wide':   spread_too_wide,
+            'illiquid_capped':   illiquid_capped,
             'no_ask_thin':       no_ask_thin,
             'pre_open':          pre_open,
             'market_ticker':     b['market_ticker'],
@@ -406,7 +464,7 @@ INSERT INTO weather_gold_contract_ledger (
     bucket_floor, bucket_cap, bucket_label,
     nws_forecast_f, gfs_forecast_f,
     calibrated_prob, raw_model_prob,
-    model_delta_f, model_confidence, model_delta_flag,
+    model_delta_f, model_confidence,
     ensemble_spread,
     market_implied_prob, market_yes_mid,
     edge, edge_pct, edge_rank,
@@ -420,7 +478,7 @@ INSERT INTO weather_gold_contract_ledger (
     %(bucket_floor)s, %(bucket_cap)s, %(bucket_label)s,
     %(nws_forecast_f)s, %(gfs_forecast_f)s,
     %(calibrated_prob)s, %(raw_model_prob)s,
-    %(model_delta_f)s, %(model_confidence)s, %(model_delta_flag)s,
+    %(model_delta_f)s, %(model_confidence)s,
     %(ensemble_spread)s,
     %(market_implied_prob)s, %(market_yes_mid)s,
     %(edge)s, %(edge_pct)s, %(edge_rank)s,
@@ -435,7 +493,6 @@ ON CONFLICT (contract_ticker) DO UPDATE SET
     raw_model_prob       = EXCLUDED.raw_model_prob,
     model_delta_f        = EXCLUDED.model_delta_f,
     model_confidence     = EXCLUDED.model_confidence,
-    model_delta_flag     = EXCLUDED.model_delta_flag,
     ensemble_spread      = EXCLUDED.ensemble_spread,
     market_implied_prob  = EXCLUDED.market_implied_prob,
     market_yes_mid       = EXCLUDED.market_yes_mid,
@@ -523,6 +580,10 @@ def write_to_ledger(conn, station_code: str, target_date: date,
                 skip_reason = 'INVALID_PRICE'
             elif b.get('no_ask_thin'):
                 skip_reason = 'NO_ASK_TOO_THIN'
+            elif b.get('spread_too_wide'):
+                skip_reason = 'SPREAD_TOO_WIDE'
+            elif b.get('illiquid_capped'):
+                skip_reason = 'ILLIQUID_CAP'
             else:
                 skip_reason = 'EDGE_TOO_LOW'
         else:
@@ -554,7 +615,6 @@ def write_to_ledger(conn, station_code: str, target_date: date,
             'raw_model_prob':     round(b['model_prob_cents'] / 100.0, 6),
             'model_delta_f':      model_delta_f,
             'model_confidence':   _model_confidence(model_delta_f),
-            'model_delta_flag':   'DIVERGE' if abs(model_delta_f) >= 1.5 else 'CONVERGE',
             'ensemble_spread':    ensemble_spread,
             'market_implied_prob': round(no_ask_dec, 6),
             'market_yes_mid':     yes_mid,
@@ -572,7 +632,7 @@ def write_to_ledger(conn, station_code: str, target_date: date,
             'yes_ask':            round(yes_ask_dec, 6) if yes_ask_dec is not None else None,
             'no_bid':             round(no_bid_dec,  6) if no_bid_dec  is not None else None,
             'no_ask':             round(no_ask_dec,  6),
-            'market_liquidity':   'ILLIQUID',
+            'market_liquidity':   'LIQUID' if b.get('is_liquid') else 'ILLIQUID',
         })
 
     if dry_run:
