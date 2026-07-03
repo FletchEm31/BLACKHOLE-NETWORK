@@ -77,6 +77,36 @@ def _is_settled(station_code: str, target_date: date) -> bool:
     return datetime.now(timezone.utc) >= _settlement_dt(station_code, target_date)
 
 
+def _get_open_entry_prices(station_code: str, target_date: date) -> dict:
+    """market_ticker -> entry_no_ask_cents for still-open positions.
+
+    Fixes a real sizing bug: run_cp4_kelly()/write_to_ledger() were sizing
+    off the LIVE no_ask_cents every ~5-minute cycle, not the corrected
+    entry_no_ask_cents that migration 003_fix_entry_price_integrity.sql
+    added specifically to guard against transient opening-price spikes.
+    Confirmed with real rows (position_exits ids 422/523/527): position
+    size mathematically matched the cheap spike price every time, never
+    the corrected entry price — inflating size ~8-20x. Fixed 2026-07-03.
+
+    A ticker with no open row (or a NULL entry_no_ask_cents) falls back to
+    the live price at the call site — a brand-new signal's "entry" price
+    genuinely is today's price; there's nothing to correct yet."""
+    conn = _get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT COALESCE(real_market_ticker, contract_ticker) AS ticker,
+                       entry_no_ask_cents
+                FROM weather_position_exits
+                WHERE station_code = %s AND target_date = %s
+                  AND scored_at IS NULL
+                  AND entry_no_ask_cents IS NOT NULL
+            """, (station_code, target_date))
+            return {r['ticker']: float(r['entry_no_ask_cents']) for r in cur.fetchall()}
+    finally:
+        conn.close()
+
+
 def _model_confidence(delta_f: float) -> str:
     """Confidence in the edge signal based on model vs NWS divergence."""
     abs_delta = abs(delta_f)
@@ -207,6 +237,7 @@ def run_cp4_kelly(station_code: str, target_date: date,
     else:
         confidence = 'LOW'
     confidence_multiplier = CONFIDENCE_STAKE_MULTIPLIER[confidence]
+    entry_prices = _get_open_entry_prices(station_code, target_date)
     conn = _get_conn()
     try:
         with conn.cursor() as cur:
@@ -314,10 +345,19 @@ def run_cp4_kelly(station_code: str, target_date: date,
         qualifies    = bool(not pre_open and valid_price and not no_ask_thin
                             and edge_cents >= edge_threshold)
 
+        # Dollar-sizing uses the corrected entry price (weather_position_exits.
+        # entry_no_ask_cents via migration 003), not the live no_ask_cents —
+        # see _get_open_entry_prices() docstring. Falls back to the live price
+        # when there's no open position yet (a brand-new signal's entry price
+        # genuinely is today's price). The qualify/edge decision above is
+        # deliberately left on the live price — this only changes how big the
+        # position is sized, not whether it's taken.
+        entry_cents = entry_prices.get(b['market_ticker'], no_ask_cents)
+
         contracts = 0
         stake_usd = 0.0
         if qualifies:
-            win_cents = 100.0 - no_ask_cents  # cents profit per winning NO contract
+            win_cents = 100.0 - entry_cents  # cents profit per winning NO contract
             if win_cents > 0:
                 kelly_fraction = edge_cents / win_cents
                 half_kelly = kelly_fraction * 0.5 * confidence_multiplier
@@ -326,7 +366,7 @@ def run_cp4_kelly(station_code: str, target_date: date,
                 # confidence (confidence can only shrink toward zero, the
                 # cap can't be scaled back up past it).
                 max_stake = bankroll_usd * min(half_kelly, BANKROLL_CAP_PCT)
-                cost_per_contract = no_ask_cents / 100.0  # dollars
+                cost_per_contract = entry_cents / 100.0  # dollars
                 contracts = max(0, int(max_stake // cost_per_contract))
                 stake_usd = round(contracts * cost_per_contract, 2)
 
@@ -338,6 +378,7 @@ def run_cp4_kelly(station_code: str, target_date: date,
             'yes_ask_cents':     yes_ask_cents,
             'no_bid_cents':      no_bid_cents,
             'no_ask_cents':      no_ask_cents,
+            'entry_no_ask_cents': entry_cents,
             'model_prob_cents':  model_prob_no_cents,
             'edge_cents':        edge_cents,
             'qualifies':         qualifies,
@@ -462,11 +503,15 @@ def write_to_ledger(conn, station_code: str, target_date: date,
     for b in buckets:
         edge_cents   = b['edge_cents']
         no_ask_cents = b['no_ask_cents']
+        entry_cents  = b.get('entry_no_ask_cents', no_ask_cents)
         qualifies    = b['qualifies']
 
+        # Sized off the corrected entry price, not the live no_ask_cents —
+        # see _get_open_entry_prices() docstring. Matches run_cp4_kelly()'s
+        # own stake calc so both writers agree on position size.
         stake_fraction = 0.0
-        if qualifies and no_ask_cents > 0:
-            win_cents = 100.0 - no_ask_cents
+        if qualifies and entry_cents > 0:
+            win_cents = 100.0 - entry_cents
             if win_cents > 0:
                 kelly = edge_cents / win_cents
                 stake_fraction = round(min(kelly * 0.5, BANKROLL_CAP_PCT), 6)

@@ -16,7 +16,7 @@ ExecStart=/usr/bin/python3 /opt/bhn/trading/weather_settlement_reconciliation.py
 StandardOutput=append:/var/log/bhn-trading/weather-settlement-recon.log
 StandardError=append:/var/log/bhn-trading/weather-settlement-recon.log
 
-TimeoutStartSec=120
+TimeoutStartSec=300
 TimeoutStopSec=30
 
 [Install]

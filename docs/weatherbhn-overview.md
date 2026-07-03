@@ -111,6 +111,17 @@ Live rows weighted 3.0× in training. Test set = most recent 20% of live rows on
 
 BHN synthetic format (`KXHIGHDEN-26JUL02-86-87`) ≠ Kalshi native (`KXHIGHDEN-26JUL01-B86.5`). The 9 existing paper-trade rows store synthetic tickers; they settle correctly because the scorer joins on `(station_code, target_date, bucket_label)`, not `contract_ticker`. New positions must store real tickers once CP4 is fixed.
 
+## Kalshi Demo API Integration (Execution-Mechanics Testing Only)
+
+A demo Kalshi account is wired up for testing order placement, cancellation,
+and fill-tracking — proving the code that will eventually place real orders
+works, without demo data ever touching CP1-4's signals or edge calculation.
+Production market data remains the only source the model learns from. See
+[`infrastructure/docs/WeatherBHN/WEATHERBHN_KALSHI_DEMO_INTEGRATION.md`](../infrastructure/docs/WeatherBHN/WEATHERBHN_KALSHI_DEMO_INTEGRATION.md)
+for full scope, components, and the Kalshi order API V1→V2 migration this
+testing surfaced (a real bug affecting `place_order()`/`cancel_order()` for
+both demo and eventual production use — fixed 2026-07-02).
+
 ## Pre-Live Blockers (must resolve before flipping DRY_RUN=false)
 
 ### TICKET-W1 — Fix CP4 to store real `market_ticker` in `contract_ticker`

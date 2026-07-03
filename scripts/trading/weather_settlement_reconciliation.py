@@ -289,7 +289,15 @@ def reconcile(target_date: Optional[date] = None, dry_run: bool = False) -> int:
 
 
 def main() -> int:
-    dry_run_env = os.getenv("DRY_RUN", "false").lower() in ("true", "1", "yes")
+    # Deliberately NOT reading the global DRY_RUN env var (set in
+    # strat9.env to keep real Kalshi orders from ever firing). This script
+    # never places orders — it only scores already-placed paper trades —
+    # so it was silently inheriting an unrelated kill-switch and never
+    # writing settlement rows. Identical disease to the bug already fixed
+    # in cp4_kelly_sizer.py::write_to_ledger() (see its "Fixed 2026-07-02"
+    # comment); this is the same fix for the sibling script. Opt-in only,
+    # via a script-specific var or --dry-run, so it can't happen again.
+    dry_run_env = os.getenv("SETTLEMENT_RECON_DRY_RUN", "false").lower() in ("true", "1", "yes")
 
     parser = argparse.ArgumentParser(description="WeatherBHN settlement reconciliation")
     parser.add_argument(
