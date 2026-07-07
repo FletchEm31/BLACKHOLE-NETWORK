@@ -7,8 +7,11 @@ and writes to the weather-schema tables.
 
 BSG dual-write layer (added 2026-06-11):
   Every bronze table write is followed inline by a silver population helper.
-  Old tables (weather_forecasts, weather_contract_prices, prediction_contracts)
-  are still written to in parallel — no backward-compat break.
+  Old tables (weather_forecasts, prediction_contracts) are still written to
+  in parallel — no backward-compat break. weather_contract_prices's
+  dual-write was removed 2026-07-06 (redundant with the bronze/silver
+  Kalshi tables); the table itself was archived + dropped the same day —
+  see infrastructure/docs/WeatherBHN/WEATHERBHN-TABLE-INVENTORY-2026-07-06-RESOLUTION.md.
 
 Model hierarchy (post-research-findings update, 2026-05-13):
   PRIMARY      NWS gridpoints API  — Kalshi settles weather contracts on
@@ -39,7 +42,11 @@ Model hierarchy (post-research-findings update, 2026-05-13):
                           → weather_bronze_openmeteo_*            ✅ new
                           → weather_silver_forecast_conformed      ✅ new
   Kalshi weather markets  → prediction_contracts (legacy)         ✅ running
-                          → weather_contract_prices (legacy)       ✅ running
+                          → weather_contract_prices (legacy)       ⛔ removed 2026-07-06 (redundant
+                                                                       dual-write of bronze; table
+                                                                       archived + dropped same day —
+                                                                       see WEATHERBHN-TABLE-INVENTORY-
+                                                                       2026-07-06-RESOLUTION.md)
                           → weather_bronze_kalshi_market_snapshots ✅ new
                           → weather_kalshi_contract_catalog        ✅ new
                           → weather_silver_market_conformed        ✅ new
@@ -276,6 +283,28 @@ def _parse_kalshi_ticker(ticker: str) -> dict:
     except (ValueError, IndexError):
         pass
     return {}
+
+
+def _date_from_kalshi_ticker(ticker: str) -> Optional[date]:
+    """Parse the settlement date embedded in a Kalshi weather ticker.
+    KXHIGHMIA-26JUL06-B87.5 -> date(2026, 7, 6).
+
+    This is the authoritative source for target_date/resolution_date --
+    NOT market.get("close_time"). Kalshi keeps these markets open until the
+    NWS CLI final report confirms settlement (issued the morning after the
+    trading day), so close_time's UTC calendar date is uniformly ~1 day
+    after the day the ticker actually names. Confirmed on 100% of settled
+    weather_position_exits rows checked and hand-verified against raw NWS
+    CLI bulletin text 2026-07-05/06 -- see
+    sql/migrations/2026-07-06-fix-kalshi-target-date-offset.sql.
+    """
+    parts = ticker.split("-")
+    if len(parts) < 2:
+        return None
+    try:
+        return datetime.strptime(parts[1], "%y%b%d").date()
+    except ValueError:
+        return None
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -947,8 +976,9 @@ def _variable_from_kalshi_ticker(ticker: str) -> Optional[str]:
 
 def fetch_kalshi_markets(dry_run: bool = False) -> int:
     """Fetch open Kalshi weather markets.
-    Dual-write: legacy tables + new bronze/catalog/silver tables.
-    Returns rows inserted to weather_contract_prices."""
+    Writes to weather_bronze_kalshi_market_snapshots, weather_kalshi_contract_catalog,
+    and weather_silver_market_conformed. Returns count of markets processed
+    (weather_contract_prices dual-write removed 2026-07-06)."""
     try:
         from kalshi_client import KalshiClient
     except ImportError:
@@ -987,13 +1017,27 @@ def fetch_kalshi_markets(dry_run: bool = False) -> int:
             continue
 
         title = market.get("title") or market.get("subtitle") or ""
-        close_str = market.get("close_time") or market.get("expiration_time")
-        resolution_date: Optional[date] = None
-        if close_str:
-            try:
-                resolution_date = date.fromisoformat(close_str[:10])
-            except (ValueError, TypeError):
-                pass
+
+        # FIXED 2026-07-06: resolution_date must come from the ticker itself,
+        # not close_time. close_time is ~1 day after the true trading day
+        # (Kalshi holds the market open until the NWS CLI final report
+        # confirms settlement the next morning) -- see
+        # _date_from_kalshi_ticker() docstring and
+        # sql/migrations/2026-07-06-fix-kalshi-target-date-offset.sql.
+        # Falls back to close_time only if the ticker doesn't parse (should
+        # not normally happen for weather tickers).
+        resolution_date = _date_from_kalshi_ticker(ticker)
+        if resolution_date is None:
+            close_str = market.get("close_time") or market.get("expiration_time")
+            if close_str:
+                try:
+                    resolution_date = date.fromisoformat(close_str[:10])
+                    logger.warning(
+                        f"kalshi_markets: {ticker} date unparseable from ticker, "
+                        f"fell back to close_time -> {resolution_date}"
+                    )
+                except (ValueError, TypeError):
+                    pass
 
         # Kalshi renamed price fields: yes_bid→yes_bid_dollars (fractional 0-1),
         # yes_ask→yes_ask_dollars, etc.  _cents_to_frac handles both formats.
@@ -1078,21 +1122,6 @@ def fetch_kalshi_markets(dry_run: bool = False) -> int:
         bucket_info = _parse_kalshi_ticker(ticker)
 
         if not dry_run:
-            _insert_contract_price(
-                exchange="kalshi",
-                contract_id=ticker,
-                contract_title=title,
-                implied_probability=implied_prob,
-                yes_price=yes_price,
-                no_price=no_price,
-                volume_24h=volume_24h,
-                open_interest=open_interest,
-                resolution_date=resolution_date,
-                region=station_code,
-                variable=_variable_from_kalshi_ticker(ticker),
-                raw_payload=market,
-            )
-
             # Bronze snapshot
             try:
                 _insert_bronze_kalshi_snapshot(
@@ -1339,26 +1368,6 @@ def _insert_enso(*, week_ending: date, nino34_sst_anomaly: float,
                       phase              = EXCLUDED.phase,
                       fetched_at         = NOW()
             """, (week_ending, nino34_sst_anomaly, oni_value, phase))
-
-
-def _insert_contract_price(*, exchange: str, contract_id: str,
-                            contract_title: str, implied_probability: float,
-                            yes_price: Optional[float], no_price: Optional[float],
-                            volume_24h: Optional[float], open_interest: Optional[float],
-                            resolution_date: Optional[date], region: Optional[str],
-                            variable: Optional[str], raw_payload: Optional[dict]) -> None:
-    with tc.get_pg_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-                INSERT INTO weather_contract_prices
-                    (exchange, contract_id, contract_title, implied_probability,
-                     yes_price, no_price, volume_24h, open_interest,
-                     resolution_date, region, variable, raw_payload)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
-            """, (exchange, contract_id, contract_title, implied_probability,
-                  yes_price, no_price, volume_24h, open_interest,
-                  resolution_date, region, variable,
-                  json.dumps(raw_payload) if raw_payload else None))
 
 
 def _upsert_degree_days(*, station_code: str, target_date: date,
