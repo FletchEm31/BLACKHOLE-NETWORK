@@ -325,51 +325,10 @@ CREATE INDEX IF NOT EXISTS scal_station_side_idx
     ON weather_silver_calibration_training_set (station_code, contract_side, target_date DESC);
 
 
-CREATE TABLE IF NOT EXISTS weather_silver_model_base (
-    id                      BIGSERIAL   PRIMARY KEY,
-    city                    TEXT        NOT NULL,
-    station_code            TEXT        NOT NULL,
-    target_date             DATE        NOT NULL,
-    contract_side           TEXT        NOT NULL,
-    forecast_run_time       TIMESTAMPTZ NOT NULL,
-    lead_hours              INTEGER,
-    nws_tmax_f              NUMERIC,
-    nws_tmin_f              NUMERIC,
-    nws_dewpoint_f          NUMERIC,
-    nws_rh_pct              NUMERIC,
-    nws_wind_speed_mph      NUMERIC,
-    nws_cloud_cover_pct     NUMERIC,
-    nws_pop_pct             NUMERIC,
-    gfs_tmax_f              NUMERIC,
-    gfs_tmin_f              NUMERIC,
-    gfs_dewpoint_f          NUMERIC,
-    gfs_rh_pct              NUMERIC,
-    gfs_wind_speed          NUMERIC,
-    gfs_cloud_cover         NUMERIC,
-    nws_gfs_tmax_delta      NUMERIC,
-    nws_gfs_tmin_delta      NUMERIC,
-    market_ticker           TEXT,
-    kalshi_yes_mid          NUMERIC,
-    kalshi_implied_prob     NUMERIC,
-    kalshi_volume           NUMERIC,
-    kalshi_snapshot_time    TIMESTAMPTZ,
-    actual_tmax_f           NUMERIC,
-    actual_tmin_f           NUMERIC,
-    is_settled              BOOLEAN     NOT NULL DEFAULT FALSE,
-    is_valid                BOOLEAN     NOT NULL DEFAULT TRUE,
-    quality_flag            TEXT,
-    created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-
-    CONSTRAINT silver_model_base_unique
-        UNIQUE (station_code, target_date, contract_side, forecast_run_time)
-);
-
-CREATE INDEX IF NOT EXISTS smbase_station_date_idx
-    ON weather_silver_model_base (station_code, target_date DESC, contract_side);
-
-CREATE INDEX IF NOT EXISTS smbase_unsettled_idx
-    ON weather_silver_model_base (target_date, station_code)
-    WHERE is_settled = FALSE;
+-- weather_silver_model_base — REMOVED 2026-07-07. Never populated (0 rows);
+-- near-duplicate of weather_silver_forecast_conformed, superseded before it
+-- shipped. Archived (restore-verified 0=0 rows) and dropped — see
+-- infrastructure/docs/WeatherBHN/WEATHERBHN-TABLE-INVENTORY-2026-07-06-RESOLUTION.md.
 
 
 -- ═════════════════════════════════════════════════════════════════════════════
@@ -504,7 +463,6 @@ BEGIN
             weather_silver_actuals_conformed,
             weather_silver_forecast_error,
             weather_silver_calibration_training_set,
-            weather_silver_model_base,
             weather_gold_city_day_features,
             weather_gold_calibrated_probabilities,
             weather_gold_daily_edge_sheet

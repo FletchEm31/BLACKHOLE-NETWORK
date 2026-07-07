@@ -1,0 +1,17 @@
+# BHN weather partition maintenance — monthly.
+# Activated by bhn-weather-partition-maintenance.timer at 04:00 UTC on the 1st.
+
+[Unit]
+Description=BHN weather_bronze_kalshi_market_snapshots partition maintenance
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/bhn/trading
+
+ExecStart=/usr/local/sbin/bhn-weather-partition-maintenance.sh
+
+StandardOutput=append:/var/log/bhn-weather-partition-maintenance.log
+StandardError=append:/var/log/bhn-weather-partition-maintenance.log
+
+TimeoutStartSec=300

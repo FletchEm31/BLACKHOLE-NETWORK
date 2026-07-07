@@ -1,0 +1,14 @@
+# BHN weather partition maintenance — fires monthly, 1st of month 04:00 UTC
+# (low-traffic hour). Creates the next-but-one month's partition ahead of
+# time and relocates the partition that just aged past the 90-day
+# retention cutoff to the eh_cold_ts cold-tier tablespace.
+
+[Unit]
+Description=BHN weather_bronze_kalshi_market_snapshots partition maintenance
+
+[Timer]
+OnCalendar=*-*-01 04:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
