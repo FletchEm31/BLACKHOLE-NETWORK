@@ -4,7 +4,10 @@
 #   ufw allow 9001/tcp comment 'Tor relay ORPort'
 #
 # SocksPort 9050 is bound to Helsinki's WG tunnel IP (10.8.0.8 on LA's wg0).
-# Set BIND_IP=10.8.0.8 in .env (copy from .env.example).
+# That binding lets BHN-internal services (e.g. SearXNG) route privacy-sensitive
+# lookups through Helsinki's relay over the tunnel, mirroring Hillsboro's setup.
+# Enabled 2026-07-13 — previously SocksPort was disabled (relay-only), which
+# left SearXNG's Hillsboro/Helsinki proxy failover silently broken.
 #
 # Deploy:
 #   cd /opt/bhn-tor-relay-helsinki
@@ -21,7 +24,7 @@ services:
     ports:
       # ORPort — PUBLIC, required for Tor consensus reachability
       - "9001:9001/tcp"
-      # SocksPort — bound to WG tunnel IP (10.8.0.8 on LA's wg0)
+      # SocksPort — bound to tunnel IP (10.8.0.8 on LA's wg0)
       - "${BIND_IP}:9050:9050/tcp"
     volumes:
       - tor-data:/var/lib/tor
