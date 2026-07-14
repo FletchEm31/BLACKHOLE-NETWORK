@@ -29,8 +29,8 @@ Retired:
 | LA wg0 | Operator workstation <BHN_WG_PEER_IP> | wg0 | `<BHN_WG_PEER_IP>/32` | yes (PSK) | Second operator endpoint (1.67 GB rx / 19.3 GB tx). |
 | NJ wg0 | LA | wg0 | `10.8.0.0/24` | yes (PSK, rotated 2026-05-28) | Matching side of the LA↔NJ rotation. |
 | Hillsboro wg0 | LA | wg0 | `10.8.0.0/24` | yes (PSK) | Primary mesh return path. |
-| Hillsboro wg0 | LA wg1 (point-to-point) | wg0 | `10.10.0.0/30` | **none** | The 10.10.0.0/30 link. Returns keepalive every ~25s. Pre-existing gap, not yet closed. |
-| Helsinki wg0 | LA wg1 (point-to-point) | wg0 | `10.10.0.0/30` | yes (PSK, added 2026-07-14) | The alt-egress 10.10.0.0/30 link, symmetric with Hillsboro's but with a PSK. |
+| Hillsboro wg0 | LA wg1 (point-to-point) | wg0 | `10.10.0.0/30` | yes (PSK, added 2026-07-14) | The 10.10.0.0/30 link. Returns keepalive every ~25s. Closed the last remaining PSK gap. |
+| Helsinki wg0 | LA wg1 (point-to-point) | wg0 | `10.10.0.0/30` | yes (PSK, added 2026-07-14) | The alt-egress 10.10.0.0/30 link, symmetric with Hillsboro's, both now PSK-protected. |
 | ~~LA wg0 → FRA~~ | ~~FRA (via wg1 on FRA side)~~ | ~~wg0~~ | ~~`0.0.0.0/0`~~ | — | **Retired 2026-05-28.** FRA peer block removed from LA `wg0.conf`. Used to carry the SOCKS scrape egress; replaced by `curl_cffi` impersonation from LA's own IP. |
 | ~~FRA wg1 → LA~~ | — | — | — | — | **Retired 2026-05-28** — FRA server destroyed. |
 
@@ -46,7 +46,7 @@ is currently selected**, parallel to the main `wg0` mesh, used to forward
 full-tunnel client traffic through that node's public IP.
 
 - LA side: `wg1` interface, key `V3RenHJ/3UQTD1gl3bfqWnAC/iaqXGvVCzogVlDH8GQ=`, listens on `51822`, self IP `10.10.0.1/30`, `fwmark 0xca6c` (same as wg0 — keeps wg1's underlay packets out of table `51820`). The interface is fully torn down and rebuilt on every switch — the peer key/endpoint are the only things that change.
-- Hillsboro side: a `[Peer]` block in `wg0.conf` for pubkey `V3RenH...` with `AllowedIPs = 10.10.0.0/30`. No PSK (pre-existing gap). Endpoint learned dynamically. Return route `10.10.0.0/30 dev wg0` added 2026-05-28.
+- Hillsboro side: a `[Peer]` block in `wg0.conf` for pubkey `V3RenH...` with `AllowedIPs = 10.10.0.0/30`, **with a PSK** (added 2026-07-14, closing the last remaining PSK gap — stored at `/etc/wireguard/wg1-la.psk` on Hillsboro and `/etc/wireguard/wg1-hillsboro.psk` on LA). Endpoint learned dynamically. Return route `10.10.0.0/30 dev wg0` added 2026-05-28.
 - Helsinki side: a `[Peer]` block in `wg0.conf` for the same LA wg1 pubkey, `AllowedIPs = 10.10.0.0/30`, **with a PSK** (added 2026-07-14, stored at `/etc/wireguard/wg1-la.psk` on Helsinki and `/etc/wireguard/wg1-helsinki.psk` on LA). UFW egress rule `ALLOW OUT 149.28.91.100 51822/udp` added to permit the wg1 handshake reply.
 - LA's wg1 peer endpoint: `<BHN_HIL_PUBLIC_IP>:51821` or `<BHN_HEL_PUBLIC_IP>:51821` depending on target (both nodes listen on the same wg0 port; demultiplexed by handshake key).
 
@@ -158,11 +158,18 @@ its peer was provisioned via a full `wg-quick` cycle) to find it.
 All ends of the tunnel hold legitimate config that the script depends on.
 Edit the script (and the repo copy) rather than poking at runtime state.
 
-## PSK gaps (work queued)
+## PSK gaps (closed)
 
 - ~~**LA ↔ NJ on `wg0`:** no PSK on either side.~~ ✅ Rotated 2026-05-28.
-- **LA wg1 ↔ Hillsboro `V3RenH` peer:** no PSK. Could be added in a
-  separate session — operator decision.
+- ~~**LA wg1 ↔ Hillsboro `V3RenH` peer:** no PSK.~~ ✅ Added 2026-07-14,
+  matching Helsinki's wg1 peer (added same night). Every hop from device →
+  LA → Hillsboro/Helsinki (both main mesh and wg1 alt-egress underlay) is
+  now PSK-covered. Verified live: `wg show` shows `preshared key: (hidden)`
+  on both ends, confirmed with a brief switch-to-Hillsboro-and-back test.
+- **LA wg0 peer `10.8.0.10/32`:** no PSK, no `Endpoint` line, not
+  identified (not in `wg-clients/`, not the operator's active device —
+  that's `10.8.0.4`). Separate from the backbone links above; still open,
+  needs the operator to confirm what this peer is.
 
 ## Pubkey reference (full)
 

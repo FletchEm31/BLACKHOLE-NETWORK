@@ -32,11 +32,11 @@ STATE_FILE="/etc/wireguard/wg1-current-target"
 
 # Node lookup table: name -> "pubkey|endpoint|pskfile(or empty)"
 # Pubkeys are not secret; endpoints are redacted here (see repo convention
-# in the retired bhn-wg1-hillsboro.sh). Helsinki's peer carries a PSK
-# (added 2026-07-13/14); Hillsboro's does not yet (pre-existing gap,
-# tracked separately, not retrofitted here).
+# in the retired bhn-wg1-hillsboro.sh). Both peers carry a PSK as of
+# 2026-07-14 (Helsinki added 2026-07-13/14, Hillsboro added 2026-07-14,
+# closing what had been the last remaining PSK gap in the mesh).
 declare -A NODES=(
-    [hillsboro]="EwBHwkT4iJXzhJZMvtlo70NOLx+wPv8IXmAGSa89zBg=|<BHN_HIL_PUBLIC_IP>:51821|"
+    [hillsboro]="EwBHwkT4iJXzhJZMvtlo70NOLx+wPv8IXmAGSa89zBg=|<BHN_HIL_PUBLIC_IP>:51821|/etc/wireguard/wg1-hillsboro.psk"
     [helsinki]="uQZyqleD4vx4rjklp+PHo6v4AuvPN4apzKCyq4zzkDg=|<BHN_HEL_PUBLIC_IP>:51821|/etc/wireguard/wg1-helsinki.psk"
 )
 
