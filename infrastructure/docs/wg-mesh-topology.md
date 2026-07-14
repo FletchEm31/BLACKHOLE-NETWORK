@@ -106,6 +106,52 @@ When provisioning a new wg0 client that should egress via wg1 (whichever target 
 2. Add the matching UFW egress rule (`ALLOW OUT 149.28.91.100 51822/udp`).
 3. Add an entry to the `NODES` lookup table in `bhn-wg1-egress.sh` (pubkey, endpoint, PSK file path).
 4. No other script changes needed — table 200/fwmark/CLIENT_IPS machinery is already target-agnostic.
+5. **Verify the `10.10.0.0/30 dev wg0` route exists on the new node before trusting it as an egress target** — see the gotcha below. Don't skip this; it doesn't show up as a WireGuard error, only as return traffic silently vanishing.
+
+#### ⚠ `wg set` vs `wg-quick` — the route-creation gotcha (cost real debugging time 2026-07-14)
+
+`wg-quick up` (i.e. the `wg-quick@wg0` systemd service) automatically adds
+a kernel route for every `[Peer]`'s `AllowedIPs` block **at interface-start
+time**, by reading the static `wg0.conf` file. `wg set` (the imperative,
+live-reconfiguration command) does **not** — it only updates WireGuard's
+own peer table, never the kernel routing table.
+
+If you add a new peer to an *already-running* `wg0` via `wg set ... peer
+... allowed-ips 10.10.0.0/30` (which is exactly what provisioning a new
+egress node live requires — you don't want to bounce `wg0` and drop the
+main mesh peer to add a second peer), the peer works fine for anything
+`wg0` itself originates or terminates, but **no route to that
+`AllowedIPs` subnet gets created**. This is easy to miss because nothing
+errors: the WireGuard handshake succeeds, `wg show` looks correct, and
+outbound-only checks (ping, a SOCKS5 test, `wg show ... latest-handshakes`)
+all pass. The failure only shows up as forwarded traffic whose *return*
+leg needs that route — which is exactly wg1's use case (NAT'd traffic
+comes back from the internet addressed to `10.10.0.1`, and without the
+route it falls through to the node's default route out its own WAN
+interface instead of back through `wg0` to LA). Symptom: outbound
+half of a proxied connection works, the reply never arrives — timeouts,
+or a browser-side 502 from whatever's waiting on the response.
+
+This is exactly what happened when Helsinki's wg1 peer was added live on
+2026-07-14: peer/handshake/PSK were all correct, but `10.10.0.0/30 dev
+wg0` never got created, and it took a live-traffic failure plus a direct
+`ip route show` diff against Hillsboro (which has the route, added when
+its peer was provisioned via a full `wg-quick` cycle) to find it.
+
+**Fix/workaround, in order of preference:**
+- After `wg set`-ing a new peer with an `AllowedIPs` subnet that needs to
+  be routable (not just reachable as a WireGuard endpoint), immediately
+  run `ip route add <AllowedIPs> dev wg0` by hand.
+- Confirm it'll survive a restart: since the peer is also written to
+  `wg0.conf` (not just live-`wg set`), a future `systemctl restart
+  wg-quick@wg0` (or reboot) will recreate the route automatically via
+  `wg-quick`'s normal startup behavior — verified 2026-07-14 by restarting
+  `wg-quick@wg0` on Helsinki and confirming the route reappeared. No
+  `PostUp` line is needed for this specifically, *as long as* the peer
+  block is actually persisted to the conf file, not just live-`wg set`.
+- Verification command: `ip route show | grep <AllowedIPs>` — should show
+  `dev wg0`. If it's absent, don't trust that peer's traffic to route
+  correctly, even if `wg show` looks perfect.
 
 ### Do not modify by hand
 

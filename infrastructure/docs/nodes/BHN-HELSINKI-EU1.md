@@ -42,6 +42,18 @@ alternative to Hillsboro, switchable via `bhn-wg1-egress.sh` on LA — see
 `infrastructure/docs/wg-mesh-topology.md`. No PSK exists yet on the
 equivalent Hillsboro↔LA wg1 peer (pre-existing, separate gap).
 
+**Kernel route required, added separately (2026-07-14):** adding this
+peer via `wg set` (live, without bouncing the already-running `wg0`) does
+not create the `10.10.0.0/30 dev wg0` kernel route the way `wg-quick`
+would at interface-start time — this caused a real outage (outbound
+traffic forwarded fine, replies silently dropped, no error anywhere) until
+diagnosed and fixed with `ip route add 10.10.0.0/30 dev wg0`. Verified
+this survives a `wg-quick@wg0` restart/reboot on its own, since the peer
+block is persisted in `wg0.conf`. Full writeup of the general gotcha is in
+`infrastructure/docs/wg-mesh-topology.md` under "Adding a third egress
+node" — read it before live-adding any future peer with a routable
+`AllowedIPs` subnet.
+
 ---
 
 ## tinyproxy
