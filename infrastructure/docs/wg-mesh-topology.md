@@ -29,52 +29,87 @@ Retired:
 | LA wg0 | Operator workstation <BHN_WG_PEER_IP> | wg0 | `<BHN_WG_PEER_IP>/32` | yes (PSK) | Second operator endpoint (1.67 GB rx / 19.3 GB tx). |
 | NJ wg0 | LA | wg0 | `10.8.0.0/24` | yes (PSK, rotated 2026-05-28) | Matching side of the LA↔NJ rotation. |
 | Hillsboro wg0 | LA | wg0 | `10.8.0.0/24` | yes (PSK) | Primary mesh return path. |
-| Hillsboro wg0 | LA wg1 (point-to-point) | wg0 | `10.10.0.0/30` | **none** | The 10.10.0.0/30 link. Returns keepalive every ~25s. |
+| Hillsboro wg0 | LA wg1 (point-to-point) | wg0 | `10.10.0.0/30` | **none** | The 10.10.0.0/30 link. Returns keepalive every ~25s. Pre-existing gap, not yet closed. |
+| Helsinki wg0 | LA wg1 (point-to-point) | wg0 | `10.10.0.0/30` | yes (PSK, added 2026-07-14) | The alt-egress 10.10.0.0/30 link, symmetric with Hillsboro's but with a PSK. |
 | ~~LA wg0 → FRA~~ | ~~FRA (via wg1 on FRA side)~~ | ~~wg0~~ | ~~`0.0.0.0/0`~~ | — | **Retired 2026-05-28.** FRA peer block removed from LA `wg0.conf`. Used to carry the SOCKS scrape egress; replaced by `curl_cffi` impersonation from LA's own IP. |
 | ~~FRA wg1 → LA~~ | — | — | — | — | **Retired 2026-05-28** — FRA server destroyed. |
 
-## `wg1` on LA — full-tunnel client egress to Hillsboro
+## `wg1` on LA — full-tunnel client egress, switchable Hillsboro/Helsinki
 
-**Activated 2026-05-28 (late).** Replaced the Frankfurt-based full-tunnel
-egress retired earlier that day. Prior to activation, `wg1` had been
-provisioned-but-dormant since May.
+**Activated 2026-05-28 (late)** as a Hillsboro-only tunnel, replacing the
+Frankfurt-based full-tunnel egress retired earlier that day. **Generalized
+2026-07-14** into a switchable target (Hillsboro or Helsinki), so the
+egress node can be flipped without touching any client's WireGuard config.
 
-A **dedicated point-to-point WireGuard tunnel between LA and Hillsboro,
-parallel to the main `wg0` mesh**, used to forward full-tunnel client
-traffic through Hillsboro's public IP `<BHN_HIL_PUBLIC_IP>`.
+A **dedicated point-to-point WireGuard tunnel between LA and whichever node
+is currently selected**, parallel to the main `wg0` mesh, used to forward
+full-tunnel client traffic through that node's public IP.
 
-- LA side: `wg1` interface, key `V3RenHJ/3UQTD1gl3bfqWnAC/iaqXGvVCzogVlDH8GQ=`, listens on `51822`, self IP `10.10.0.1/30`, `fwmark 0xca6c` (same as wg0 — keeps wg1's underlay packets out of table `51820`).
-- Hillsboro side: a `[Peer]` block in `wg0.conf` for pubkey `V3RenH...` with `AllowedIPs = 10.10.0.0/30`. Endpoint learned dynamically. Return route `10.10.0.0/30 dev wg0` added 2026-05-28.
-- LA's wg1 peer endpoint: `<BHN_HIL_PUBLIC_IP>:51821` (Hillsboro's wg0 listener — same port as the wg0 peer; demultiplexed by handshake key).
+- LA side: `wg1` interface, key `V3RenHJ/3UQTD1gl3bfqWnAC/iaqXGvVCzogVlDH8GQ=`, listens on `51822`, self IP `10.10.0.1/30`, `fwmark 0xca6c` (same as wg0 — keeps wg1's underlay packets out of table `51820`). The interface is fully torn down and rebuilt on every switch — the peer key/endpoint are the only things that change.
+- Hillsboro side: a `[Peer]` block in `wg0.conf` for pubkey `V3RenH...` with `AllowedIPs = 10.10.0.0/30`. No PSK (pre-existing gap). Endpoint learned dynamically. Return route `10.10.0.0/30 dev wg0` added 2026-05-28.
+- Helsinki side: a `[Peer]` block in `wg0.conf` for the same LA wg1 pubkey, `AllowedIPs = 10.10.0.0/30`, **with a PSK** (added 2026-07-14, stored at `/etc/wireguard/wg1-la.psk` on Helsinki and `/etc/wireguard/wg1-helsinki.psk` on LA). UFW egress rule `ALLOW OUT 149.28.91.100 51822/udp` added to permit the wg1 handshake reply.
+- LA's wg1 peer endpoint: `<BHN_HIL_PUBLIC_IP>:51821` or `<BHN_HEL_PUBLIC_IP>:51821` depending on target (both nodes listen on the same wg0 port; demultiplexed by handshake key).
 
 ### How traffic actually moves
 
-Lifecycle is driven by `/etc/wireguard/bhn-wg1-hillsboro.sh` (repo copy:
-`infrastructure/wg-clients/bhn-wg1-hillsboro.sh`), invoked from wg0's
-`PostUp` so wg1 comes up whenever wg0 comes up.
+Lifecycle is driven by `/etc/wireguard/bhn-wg1-egress.sh` (repo copy:
+`infrastructure/wg-clients/bhn-wg1-egress.sh`), invoked from wg0's
+`PostUp` (`bhn-wg1-egress.sh hillsboro up` by default) so wg1 comes up
+whenever wg0 comes up. Supersedes the old single-target
+`bhn-wg1-hillsboro.sh` (retired 2026-07-14, kept as `.bak` on LA for
+reference).
 
-The script wires:
-1. `wg1` interface up with the Hillsboro peer.
+Usage: `bhn-wg1-egress.sh <hillsboro|helsinki> up`, `bhn-wg1-egress.sh
+down`, `bhn-wg1-egress.sh status` (prints the current target from
+`/etc/wireguard/wg1-current-target`, plus live interface/routing/iptables
+state).
+
+The script wires (same machinery regardless of target):
+1. `wg1` interface up with the selected node's peer (pubkey/endpoint from an internal lookup table, PSK file if the target has one).
 2. Routing table `200`: `default dev wg1`, `10.8.0.0/24 dev wg0`, `10.10.0.0/30 dev wg1`.
-3. `ip rule from {<BHN_WG_PEER_IP>, <BHN_WG_OPC_IP>, <BHN_WG_PEER_IP>, <BHN_WG_PEER_IP>, <BHN_WG_PEER_IP>, 10.10.0.0/30} lookup 200 priority 201`. Mesh peers (NJ `<BHN_WG_NJ_IP>`, Hillsboro `<BHN_WG_HIL_IP>`, LA itself `<BHN_WG_LA_IP>`) are intentionally NOT in this list — they keep their existing egress.
-4. `iptables FORWARD wg0↔wg1 ACCEPT`, `OUTPUT wg1 ACCEPT`, `nat POSTROUTING -o wg1 MASQUERADE` (SNATs to `10.10.0.1` so Hillsboro's V3RenH `AllowedIPs = 10.10.0.0/30` matches), `mangle FORWARD -o wg1 TCPMSS --clamp-mss-to-pmtu`.
+3. `ip rule from {<BHN_WG_PEER_IP>, <BHN_WG_OPC_IP>, <BHN_WG_PEER_IP>, <BHN_WG_PEER_IP>, <BHN_WG_PEER_IP>, 10.10.0.0/30} lookup 200 priority 201`. Mesh peers (NJ `<BHN_WG_NJ_IP>`, Hillsboro `<BHN_WG_HIL_IP>`, Helsinki `<BHN_WG_HEL_IP>`, LA itself `<BHN_WG_LA_IP>`) are intentionally NOT in this list — they keep their existing egress.
+4. `iptables FORWARD wg0↔wg1 ACCEPT`, `OUTPUT wg1 ACCEPT`, `nat POSTROUTING -o wg1 MASQUERADE` (SNATs to `10.10.0.1` so the target's `AllowedIPs = 10.10.0.0/30` peer matches), `mangle FORWARD -o wg1 TCPMSS --clamp-mss-to-pmtu`.
 
-On Hillsboro: the existing `iptables nat POSTROUTING -o eth0 MASQUERADE` SNATs again to `<BHN_HIL_PUBLIC_IP>`. UFW rule 12 (`Anywhere on eth0 ALLOW FWD Anywhere on wg0`) covers the forward path. UFW egress rule on Hillsboro now also allows UDP `51822` back to LA (needed for wg1 handshake replies).
+On the target node: the existing `iptables nat POSTROUTING -o eth0 MASQUERADE` SNATs again to that node's public IP. UFW covers the forward path (`FWD eth0<->wg0`) and now, on both nodes, an explicit egress allow for UDP `51822` back to LA (needed for the wg1 handshake reply).
+
+**Switching is disruptive for ~3-5 seconds and breaks in-flight TCP
+connections.** `up()` fully tears down table 200 before rebuilding it
+against the new target — there's a brief window with no route at all, and
+any already-open TCP connection that was NAT'd through the old node's
+public IP breaks when the visible source IP changes (same as changing
+networks mid-connection). New connections after the switch work cleanly.
+
+**Known-fixed bug (2026-07-14):** `up()`'s teardown originally didn't clear
+the docker-bridge exemption `ip rule` (item 3 above, `to 172.16.0.0/12
+lookup main priority 100`) from a prior run. Re-running `up()` while `wg1`
+was already up (i.e. switching targets) hit `RTNETLINK answers: File
+exists` on the re-add and aborted under `set -e`, leaving table 200 with
+**zero** rules — this took down a live full-tunnel session during initial
+testing. Fixed by clearing that rule in the teardown block too; validated
+with two clean round-trip switches (Hillsboro→Helsinki→Hillsboro) with real
+client traffic confirmed flowing after each.
 
 ### Verifying it works
 
-From LA: `curl --interface wg1 --noproxy '*' -k -s https://1.1.1.1/cdn-cgi/trace | grep ip=` → returns `ip=<BHN_HIL_PUBLIC_IP>`. From a client running a full-tunnel profile: `curl https://1.1.1.1/cdn-cgi/trace` should likewise show Hillsboro's IP.
+From LA: `curl --interface wg1 --noproxy '*' -k -s https://1.1.1.1/cdn-cgi/trace | grep ip=` → returns the current target's public IP. From a client running a full-tunnel profile: `curl https://1.1.1.1/cdn-cgi/trace` should likewise show that IP. `bhn-wg1-egress.sh status` gives a full readout without needing an external check.
 
 ### Adding a new full-tunnel client peer
 
-When provisioning a new wg0 client that should egress via Hillsboro:
+When provisioning a new wg0 client that should egress via wg1 (whichever target is active):
 1. Add the peer block in `/etc/wireguard/wg0.conf` (assign next free `10.8.0.X/32`).
-2. Add `10.8.0.X` to the `CLIENT_IPS` array in `bhn-wg1-hillsboro.sh`.
-3. Re-run `bash bhn-wg1-hillsboro.sh down && bash bhn-wg1-hillsboro.sh up` (or restart wg0 if convenient).
+2. Add `10.8.0.X` to the `CLIENT_IPS` array in `bhn-wg1-egress.sh`.
+3. Re-run `bash bhn-wg1-egress.sh <current-target> up` (or restart wg0 if convenient) — `status` shows the current target if unsure.
+
+### Adding a third egress node
+
+1. Provision the node's own tunnel: main mesh peer (with PSK) plus a second `[Peer]` block on its `wg0` for LA's wg1 pubkey (`AllowedIPs = 10.10.0.0/30`, PSK recommended), matching Helsinki's setup above.
+2. Add the matching UFW egress rule (`ALLOW OUT 149.28.91.100 51822/udp`).
+3. Add an entry to the `NODES` lookup table in `bhn-wg1-egress.sh` (pubkey, endpoint, PSK file path).
+4. No other script changes needed — table 200/fwmark/CLIENT_IPS machinery is already target-agnostic.
 
 ### Do not modify by hand
 
-Both ends of the tunnel hold legitimate config that the script depends on.
+All ends of the tunnel hold legitimate config that the script depends on.
 Edit the script (and the repo copy) rather than poking at runtime state.
 
 ## PSK gaps (work queued)

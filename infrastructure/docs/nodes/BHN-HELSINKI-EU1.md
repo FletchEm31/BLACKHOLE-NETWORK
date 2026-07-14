@@ -34,6 +34,14 @@ Helsinki peers to LA on **port 51821/udp** (LA listens on 51820). PersistentKeep
 | Config | `/etc/wireguard/wg0.conf` |
 | PresharedKey | Set 2026-07-01 (LA↔Helsinki peer, matching value on both ends) |
 
+**Second peer (wg1 alt-egress underlay, added 2026-07-14):** a `[Peer]`
+block for LA's `wg1` pubkey `V3RenHJ/3UQTD1gl3bfqWnAC/iaqXGvVCzogVlDH8GQ=`,
+`AllowedIPs = 10.10.0.0/30`, with a PSK (`/etc/wireguard/wg1-la.psk`).
+Lets LA route full-tunnel client traffic through Helsinki as an
+alternative to Hillsboro, switchable via `bhn-wg1-egress.sh` on LA — see
+`infrastructure/docs/wg-mesh-topology.md`. No PSK exists yet on the
+equivalent Hillsboro↔LA wg1 peer (pre-existing, separate gap).
+
 ---
 
 ## tinyproxy
@@ -62,7 +70,7 @@ curl -x http://10.8.0.8:8888 https://wttr.in/Helsinki?format=3
 | Nickname | **BHNAuroraEU1** |
 | Fingerprint | `6AA0F8D730220D992914DB599E6A305DB5384913` |
 | ORPort | `9001/tcp` (public) |
-| SocksPort | `0` (disabled — relay-only, no proxy) |
+| SocksPort | `9050`, bound to `10.8.0.8` (enabled 2026-07-13 — SearXNG Tor-proxy fallback; was `0`/disabled at commissioning) |
 | ExitRelay | `0` — never exits traffic |
 | Contact | `admin@eventhorizonvpn.com` |
 | BandwidthRate | 512 KB/s |
@@ -97,6 +105,7 @@ ALLOW OUT 53/udp+tcp   (DNS)
 ALLOW OUT 123/udp      (NTP)
 ALLOW OUT 443/tcp      (HTTPS)
 ALLOW OUT 149.28.91.100:51820/udp  (WireGuard to LA)
+ALLOW OUT 149.28.91.100:51822/udp  (wg1 handshake reply to LA, added 2026-07-14)
 ALLOW OUT 10.8.0.0/24  (tunnel)
 ALLOW FWD eth0 ↔ wg0
 ```
