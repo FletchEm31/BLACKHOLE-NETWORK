@@ -166,10 +166,20 @@ Edit the script (and the repo copy) rather than poking at runtime state.
   LA → Hillsboro/Helsinki (both main mesh and wg1 alt-egress underlay) is
   now PSK-covered. Verified live: `wg show` shows `preshared key: (hidden)`
   on both ends, confirmed with a brief switch-to-Hillsboro-and-back test.
-- **LA wg0 peer `10.8.0.10/32`:** no PSK, no `Endpoint` line, not
-  identified (not in `wg-clients/`, not the operator's active device —
-  that's `10.8.0.4`). Separate from the backbone links above; still open,
-  needs the operator to confirm what this peer is.
+- ~~**LA wg0 peer `10.8.0.10/32`:** no PSK, no `Endpoint` line, not
+  identified.~~ ✅ **Removed 2026-07-14** — investigated and found to be a
+  dead/never-used entry: no comment or label in `wg0.conf`, no PSK, and
+  `wg show` had no `latest handshake`/`endpoint`/`transfer` lines at all
+  (WireGuard only populates those after a first handshake — this peer had
+  never once connected). Not the operator's active device (that's
+  `10.8.0.4`, confirmed live and PSK-covered). Consistent with a stray
+  provisioning artifact — a keypair generated for a device that was never
+  actually deployed. Removed live via `wg set wg0 peer ... remove` and
+  from `/etc/wireguard/wg0.conf`, no interface bounce needed.
+
+  **Removed pubkey, kept for reference** in case anything ever tries to
+  reconnect with it or it needs to be matched against a found key:
+  `oa2m54TTycOLhaNr6xZLy3WWKnQFdt7Lk/fnV/PFrys=`
 
 ## Pubkey reference (full)
 
