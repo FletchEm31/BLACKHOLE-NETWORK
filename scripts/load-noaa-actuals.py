@@ -49,6 +49,7 @@ DAILY_ICAO_MAP: dict[str, str] = {
     "USW00003017": "KDEN",   # Denver International Airport
     "USW00023174": "KLAX",   # Los Angeles International Airport
     "USW00094789": "KJFK",   # JFK International Airport
+    "USW00013904": "KAUS",   # Austin-Bergstrom International Airport (already used in HOURLY_ICAO_MAP)
 }
 
 # Hourly normals stations — 1981-2010 CDO download.
@@ -80,6 +81,7 @@ DAILY_FILE_PATTERNS = [
     "NOAA Daily Summary - Los Angeles",
     "NOAA Daily Summary - New York",
     "NOAA Daily Summary - Denver",
+    "NOAA Daily Summary - Austin",
 ]
 
 HOURLY_FILE_PATTERNS = [

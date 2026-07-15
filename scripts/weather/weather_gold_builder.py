@@ -2,7 +2,11 @@
 """
 Populate weather_gold_city_day_features from bronze/silver/calibration tables.
 
-Scope: KDEN, KLAX, KMIA only (the three Kalshi-tradeable cities).
+Scope: KDEN, KLAX, KMIA, KORD, KAUS (Kalshi HIGH-tradeable or pending-HIGH
+cities). KNYC intentionally excluded until legitimate Central Park NOAA
+actuals are sourced (weather_bronze_noaa_daily_actuals currently only has
+KJFK, a different physical station — see
+WEATHERBHN-CP3-RETRAIN-SCOPING-2026-07-15.md).
 
 Usage:
     python3 weather_gold_builder.py [--dry-run] [--start-date YYYY-MM-DD] [--end-date YYYY-MM-DD]
@@ -19,7 +23,7 @@ from datetime import date, timedelta
 import psycopg2
 import psycopg2.extras
 
-TRADEABLE_STATIONS = ('KDEN', 'KLAX', 'KMIA')
+TRADEABLE_STATIONS = ('KDEN', 'KLAX', 'KMIA', 'KORD', 'KAUS')
 
 # Kalshi contracts settle at 4PM ET = 20:00 UTC.
 # We take the latest snapshot at or before (target_date - 1 day 20:00 UTC),
