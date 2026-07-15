@@ -2,10 +2,10 @@
 # Mesh-only: bound to 10.8.0.1:7575 (portal.eventhorizonvpn.com via AdGuard DNS).
 # Configure boards via UI after deploy: http://10.8.0.1:7575
 #   - Operator board: full service tile set
-#   - Guest board: Matrix, Invidious, SearXNG, Redlib tiles only
+#   - Guest board: Matrix, SearXNG, Redlib tiles only
 #
 # Deploy:
-#   mkdir -p /opt/bhn-homarr/{configs,icons,data}
+#   mkdir -p /opt/bhn-homarr/{configs,icons,data,backgrounds}
 #   cd /opt/bhn-homarr && docker compose up -d
 # Verify:
 #   curl --noproxy '*' -I http://10.8.0.1:7575/
@@ -20,8 +20,15 @@ services:
     volumes:
       - /opt/bhn-homarr/configs:/app/data/configs
       - /opt/bhn-homarr/icons:/app/public/icons
+      - /opt/bhn-homarr/backgrounds:/app/public/imgs/backgrounds
       - /opt/bhn-homarr/data:/data
       - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:
       - PORT=7575
       - DEFAULT_COLOR_SCHEME=dark
+      # Next.js standalone server binds to $HOSTNAME if set; Docker auto-sets
+      # HOSTNAME to the container's short ID, which only resolves to the
+      # container's bridge IP — not loopback. That breaks the built-in
+      # healthcheck (wget http://localhost:$PORT -> connection refused).
+      # Forcing 0.0.0.0 makes it bind on all interfaces, including loopback.
+      - HOSTNAME=0.0.0.0

@@ -1,0 +1,217 @@
+{
+  "schemaVersion": 1,
+  "configProperties": {
+    "name": "default"
+  },
+  "categories": [],
+  "wrappers": [
+    {
+      "id": "default",
+      "position": 0
+    }
+  ],
+  "apps": [
+    {
+      "id": "b1a1a111-1111-4111-8111-000000000003",
+      "name": "Redlib",
+      "url": "http://10.8.0.1:8091",
+      "behaviour": {
+        "onClickUrl": "http://10.8.0.1:8091",
+        "externalUrl": "http://10.8.0.1:8091",
+        "isOpeningNewTab": true
+      },
+      "network": {
+        "enabledStatusChecker": true,
+        "statusCodes": ["200", "404"]
+      },
+      "appearance": {
+        "iconUrl": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons@master/png/redlib.png",
+        "appNameStatus": "normal",
+        "positionAppName": "column",
+        "lineClampAppName": 1
+      },
+      "integration": { "type": null, "properties": [] },
+      "area": { "type": "wrapper", "properties": { "id": "default" } },
+      "shape": {
+        "md": { "location": { "x": 2, "y": 0 }, "size": { "width": 1, "height": 1 } },
+        "sm": { "location": { "x": 2, "y": 0 }, "size": { "width": 1, "height": 1 } },
+        "lg": { "location": { "x": 2, "y": 0 }, "size": { "width": 1, "height": 1 } }
+      }
+    },
+    {
+      "id": "b1a1a111-1111-4111-8111-000000000004",
+      "name": "SearXNG",
+      "url": "http://10.8.0.1:8095",
+      "behaviour": {
+        "onClickUrl": "http://10.8.0.1:8095",
+        "externalUrl": "http://10.8.0.1:8095",
+        "isOpeningNewTab": true
+      },
+      "network": {
+        "enabledStatusChecker": true,
+        "statusCodes": ["200"]
+      },
+      "appearance": {
+        "iconUrl": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons@master/png/searxng.png",
+        "appNameStatus": "normal",
+        "positionAppName": "column",
+        "lineClampAppName": 1
+      },
+      "integration": { "type": null, "properties": [] },
+      "area": { "type": "wrapper", "properties": { "id": "default" } },
+      "shape": {
+        "md": { "location": { "x": 3, "y": 0 }, "size": { "width": 1, "height": 1 } },
+        "sm": { "location": { "x": 0, "y": 1 }, "size": { "width": 1, "height": 1 } },
+        "lg": { "location": { "x": 3, "y": 0 }, "size": { "width": 1, "height": 1 } }
+      }
+    },
+    {
+      "id": "b1a1a111-1111-4111-8111-000000000005",
+      "name": "Wallos",
+      "url": "http://10.8.0.1:8090",
+      "behaviour": {
+        "onClickUrl": "http://10.8.0.1:8090",
+        "externalUrl": "http://10.8.0.1:8090",
+        "isOpeningNewTab": true
+      },
+      "network": {
+        "enabledStatusChecker": true,
+        "statusCodes": ["200"]
+      },
+      "appearance": {
+        "iconUrl": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons@master/png/wallos.png",
+        "appNameStatus": "normal",
+        "positionAppName": "column",
+        "lineClampAppName": 1
+      },
+      "integration": { "type": null, "properties": [] },
+      "area": { "type": "wrapper", "properties": { "id": "default" } },
+      "shape": {
+        "md": { "location": { "x": 4, "y": 0 }, "size": { "width": 1, "height": 1 } },
+        "sm": { "location": { "x": 1, "y": 1 }, "size": { "width": 1, "height": 1 } },
+        "lg": { "location": { "x": 4, "y": 0 }, "size": { "width": 1, "height": 1 } }
+      }
+    },
+    {
+      "id": "b1a1a111-1111-4111-8111-000000000006",
+      "name": "n8n",
+      "url": "http://10.8.0.1:5678",
+      "behaviour": {
+        "onClickUrl": "http://10.8.0.1:5678",
+        "externalUrl": "http://10.8.0.1:5678",
+        "isOpeningNewTab": true
+      },
+      "network": {
+        "enabledStatusChecker": true,
+        "statusCodes": ["200"]
+      },
+      "appearance": {
+        "iconUrl": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons@master/png/n8n.png",
+        "appNameStatus": "normal",
+        "positionAppName": "column",
+        "lineClampAppName": 1
+      },
+      "integration": { "type": null, "properties": [] },
+      "area": { "type": "wrapper", "properties": { "id": "default" } },
+      "shape": {
+        "md": { "location": { "x": 5, "y": 0 }, "size": { "width": 1, "height": 1 } },
+        "sm": { "location": { "x": 2, "y": 1 }, "size": { "width": 1, "height": 1 } },
+        "lg": { "location": { "x": 5, "y": 0 }, "size": { "width": 1, "height": 1 } }
+      }
+    },
+    {
+      "id": "b1a1a111-1111-4111-8111-000000000008",
+      "name": "Metabase",
+      "url": "http://10.8.0.1:3300",
+      "behaviour": {
+        "onClickUrl": "http://10.8.0.1:3300",
+        "externalUrl": "http://10.8.0.1:3300",
+        "isOpeningNewTab": true
+      },
+      "network": {
+        "enabledStatusChecker": true,
+        "statusCodes": ["200"]
+      },
+      "appearance": {
+        "iconUrl": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons@master/png/metabase.png",
+        "appNameStatus": "normal",
+        "positionAppName": "column",
+        "lineClampAppName": 1
+      },
+      "integration": { "type": null, "properties": [] },
+      "area": { "type": "wrapper", "properties": { "id": "default" } },
+      "shape": {
+        "md": { "location": { "x": 1, "y": 1 }, "size": { "width": 1, "height": 1 } },
+        "sm": { "location": { "x": 1, "y": 2 }, "size": { "width": 1, "height": 1 } },
+        "lg": { "location": { "x": 1, "y": 1 }, "size": { "width": 1, "height": 1 } }
+      }
+    },
+    {
+      "id": "b1a1a111-1111-4111-8111-000000000007",
+      "name": "Netdata",
+      "url": "http://10.8.0.1:19999",
+      "behaviour": {
+        "onClickUrl": "http://10.8.0.1:19999",
+        "externalUrl": "http://10.8.0.1:19999",
+        "isOpeningNewTab": true
+      },
+      "network": {
+        "enabledStatusChecker": true,
+        "statusCodes": ["200", "400"]
+      },
+      "appearance": {
+        "iconUrl": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons@master/png/netdata.png",
+        "appNameStatus": "normal",
+        "positionAppName": "column",
+        "lineClampAppName": 1
+      },
+      "integration": { "type": null, "properties": [] },
+      "area": { "type": "wrapper", "properties": { "id": "default" } },
+      "shape": {
+        "md": { "location": { "x": 0, "y": 1 }, "size": { "width": 1, "height": 1 } },
+        "sm": { "location": { "x": 0, "y": 2 }, "size": { "width": 1, "height": 1 } },
+        "lg": { "location": { "x": 0, "y": 1 }, "size": { "width": 1, "height": 1 } }
+      }
+    }
+  ],
+  "widgets": [],
+  "settings": {
+    "common": {
+      "searchEngine": {
+        "type": "google",
+        "properties": {}
+      }
+    },
+    "customization": {
+      "layout": {
+        "enabledLeftSidebar": false,
+        "enabledRightSidebar": false,
+        "enabledDocker": false,
+        "enabledPing": true,
+        "enabledSearchbar": true
+      },
+      "pageTitle": "BHN Portal",
+      "logoImageUrl": "/imgs/logo/logo.png",
+      "faviconUrl": "/imgs/favicon/favicon-squared.png",
+      "backgroundImageUrl": "/imgs/backgrounds/twinkle-and-pulse.gif",
+      "backgroundImageAttachment": "fixed",
+      "backgroundImageSize": "contain",
+      "backgroundImageRepeat": "no-repeat",
+      "customCss": "[style*=\"background-image\"] { background-size: 300px 300px !important; background-position: center center !important; background-repeat: no-repeat !important; background-attachment: fixed !important; }",
+      "colors": {
+        "primary": "red",
+        "secondary": "yellow",
+        "shade": 7
+      },
+      "appOpacity": 100,
+      "gridstack": {
+        "columnCountSmall": 3,
+        "columnCountMedium": 6,
+        "columnCountLarge": 10
+      }
+    },
+    "access": {
+      "allowGuests": false
+    }
+  }
+}
