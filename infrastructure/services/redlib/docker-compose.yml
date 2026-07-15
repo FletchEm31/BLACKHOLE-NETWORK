@@ -1,19 +1,43 @@
 # BHN — Redlib private Reddit frontend on LA hub.
 # Mesh-only: bound to 10.8.0.1:8091 (browse.eventhorizonvpn.com via AdGuard DNS).
 #
-# If quay.io/redlib/redlib is gated (403/auth-required), switch image to:
-#   ghcr.io/redlib-org/redlib:latest
+# quay.io/redlib/redlib:latest and ghcr.io/redlib-org/redlib:latest are both
+# unusable as of 2026-07-15 — see redlib-org/redlib#551 (open, no fix landed).
+# quay.io serves a stale image whose OAuth client Reddit now rejects with
+# 401/403 (self-reports "up to date" but /info shows 15 commits behind, even
+# though upstream main itself hasn't moved since 2026-04-24 — the whole repo
+# is effectively stalled). ghcr.io now returns "denied" outright. The
+# reporter on #551 confirmed building from source via Dockerfile.ubuntu
+# works correctly (OAuth succeeds, pages load) even at the same commit the
+# broken prebuilt image ships — the prebuilt pipeline itself is broken, not
+# the code.
 #
-# Deploy:
-#   cd /opt/bhn-redlib && docker compose up -d
+# So: build locally instead of pulling.
+#
+# Deploy / rebuild:
+#   cd /opt/bhn-redlib-src/redlib && git pull
+#   docker build -f Dockerfile.ubuntu -t bhn-redlib:local-latest .
+#   cd /opt/bhn-redlib && docker compose up -d --force-recreate
 # Verify:
 #   curl --noproxy '*' http://10.8.0.1:8091/ | head -5
+#   curl --noproxy '*' 'http://10.8.0.1:8091/r/popular/hot.json?limit=1'
+#
+# Re-check redlib-org/redlib#551 periodically — once quay.io publishes a
+# working image again, this can revert to pulling instead of building.
+#
+# Healthcheck disabled below: Dockerfile.ubuntu's release stage is bare
+# ubuntu:noble with neither wget nor curl installed, so the image's baked-in
+# HEALTHCHECK can never pass (exit 127, "not found") regardless of whether
+# the service is actually up. Real liveness is verified externally via curl
+# from the host / Homarr's own HTTP status checker instead.
 
 services:
   redlib:
-    image: quay.io/redlib/redlib:latest
+    image: bhn-redlib:local-latest
     container_name: bhn-redlib
     restart: unless-stopped
+    healthcheck:
+      disable: true
     environment:
       - REDLIB_DEFAULT_THEME=black
       - REDLIB_DEFAULT_FRONT_PAGE=default
