@@ -21,7 +21,7 @@ from datetime import date, timedelta
 import psycopg2
 import psycopg2.extras
 
-TRADEABLE_STATIONS = ('KDEN', 'KLAX', 'KMIA', 'KORD', 'KAUS')
+TRADEABLE_STATIONS = ('KDEN', 'KLAX', 'KMIA', 'KORD', 'KAUS', 'KNYC')
 
 # Kalshi contracts settle at 4PM ET = 20:00 UTC.
 # We take the latest snapshot at or before (target_date - 1 day 20:00 UTC),
