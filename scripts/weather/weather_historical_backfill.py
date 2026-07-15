@@ -26,15 +26,18 @@ import psycopg2
 import psycopg2.extras
 
 # Station metadata
-# KORD/KAUS coordinates sourced from NOAA's ghcnd-stations.txt (USW00094846,
-# USW00013904) 2026-07-15 — not estimated, to avoid silently pulling the
-# wrong city's weather.
+# KORD/KAUS/KNYC coordinates sourced from NOAA's ghcnd-stations.txt
+# (USW00094846, USW00013904, USW00094728) 2026-07-15 — not estimated, to
+# avoid silently pulling the wrong city's weather. KNYC = Central Park
+# (USW00094728), NOT JFK (USW00094789) — Kalshi settles NYC weather
+# against Central Park.
 STATION_COORDS = {
     'KLAX': (33.9425, -118.4081),
     'KDEN': (39.8617, -104.6731),
     'KMIA': (25.7959, -80.2870),
     'KORD': (41.9603, -87.9317),
     'KAUS': (30.1831, -97.6800),
+    'KNYC': (40.7789, -73.9692),
 }
 STATION_TIMEZONE = {
     'KLAX': 'America/Los_Angeles',
@@ -42,6 +45,7 @@ STATION_TIMEZONE = {
     'KMIA': 'America/New_York',
     'KORD': 'America/Chicago',
     'KAUS': 'America/Chicago',
+    'KNYC': 'America/New_York',
 }
 TRADEABLE_STATIONS = list(STATION_COORDS.keys())
 

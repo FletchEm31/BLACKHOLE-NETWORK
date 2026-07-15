@@ -48,8 +48,9 @@ DAILY_ICAO_MAP: dict[str, str] = {
     "USW00094846": "KORD",   # Chicago O'Hare International Airport
     "USW00003017": "KDEN",   # Denver International Airport
     "USW00023174": "KLAX",   # Los Angeles International Airport
-    "USW00094789": "KJFK",   # JFK International Airport
+    "USW00094789": "KJFK",   # JFK International Airport (NOT what Kalshi settles NYC weather against — see KNYC below)
     "USW00013904": "KAUS",   # Austin-Bergstrom International Airport (already used in HOURLY_ICAO_MAP)
+    "USW00094728": "KNYC",   # Central Park, NY — the actual NWS station Kalshi settles NYC weather against, distinct from KJFK
 }
 
 # Hourly normals stations — 1981-2010 CDO download.
