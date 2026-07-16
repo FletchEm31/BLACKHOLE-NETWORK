@@ -26,7 +26,7 @@ import psycopg2.extras
 
 MODEL_PATH = Path("/opt/bhn/trading/models/weather_xgb_tmax.json")
 
-STATION_ENC = {'KDEN': 0, 'KLAX': 1, 'KMIA': 2}
+STATION_ENC = {'KDEN': 0, 'KLAX': 1, 'KMIA': 2, 'KAUS': 3, 'KNYC': 4, 'KORD': 5}
 SEASON_ENC  = {'winter': 0, 'spring': 1, 'summer': 2, 'fall': 3}
 
 FEATURE_COLS = [

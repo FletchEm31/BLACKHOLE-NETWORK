@@ -31,6 +31,9 @@ SETTLEMENT_UTC_HOUR = {
     'KLAX': 0,   # 4PM PDT = 00:00 UTC next day (midnight)
     'KDEN': 22,  # 4PM MDT = 22:00 UTC same day
     'KMIA': 20,  # 4PM EDT = 20:00 UTC same day
+    'KNYC': 20,  # 4PM EDT = 20:00 UTC same day (same tz as KMIA)
+    'KAUS': 21,  # 4PM CDT = 21:00 UTC same day
+    'KORD': 21,  # 4PM CDT = 21:00 UTC same day (same tz as KAUS)
 }
 SIGMA_FLOOR_RATIO   = 0.20   # never compress below 20% of base_sigma
 BANKROLL_CAP_PCT    = 0.10   # never stake more than 10% of bankroll on one contract
@@ -46,7 +49,8 @@ OPEN_INTEREST_CAP_PCT = 0.10   # max position = 10% of the contract's open_inter
 VOLUME_CAP_PCT        = 0.05   # max position = 5% of the contract's current volume
 MAX_SPREAD_CENTS      = 20.0   # skip if yes_ask - yes_bid exceeds this
 
-CITY_MAP = {'KDEN': 'Denver', 'KLAX': 'Los Angeles', 'KMIA': 'Miami'}
+CITY_MAP = {'KDEN': 'Denver', 'KLAX': 'Los Angeles', 'KMIA': 'Miami',
+            'KNYC': 'New York City', 'KAUS': 'Austin', 'KORD': 'Chicago'}
 
 
 def apply_liquidity_caps(contracts: int, open_interest: Optional[float],

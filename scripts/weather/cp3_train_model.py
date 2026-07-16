@@ -26,9 +26,9 @@ from sklearn.metrics import mean_squared_error
 from xgboost import XGBRegressor
 
 MODEL_PATH = Path("/opt/bhn/trading/models/weather_xgb_tmax.json")
-TRADEABLE_STATIONS = ['KDEN', 'KLAX', 'KMIA']
+TRADEABLE_STATIONS = ['KDEN', 'KLAX', 'KMIA', 'KAUS', 'KNYC', 'KORD']
 
-STATION_ENC = {'KDEN': 0, 'KLAX': 1, 'KMIA': 2}
+STATION_ENC = {'KDEN': 0, 'KLAX': 1, 'KMIA': 2, 'KAUS': 3, 'KNYC': 4, 'KORD': 5}
 SEASON_ENC  = {'winter': 0, 'spring': 1, 'summer': 2, 'fall': 3}
 
 WEIGHT_LIVE       = 3.0
