@@ -561,30 +561,57 @@ ORDER BY liquidity_score DESC, city, contract_side, bucket_floor;
 -- weather_gold_contract_ledger_performance, a view with legacy rows
 -- already filtered out. This CTE now reads from that view — no ad-hoc
 -- WHERE filter needed here or in any future dashboard on this table.
+--
+-- REBUILT 2026-07-15: weather_gold_contract_ledger's settlement columns
+-- (contract_resolved_yes, bhn_correct, paper_pnl, settled_at,
+-- outcome_edge_realized) were retired/frozen 2026-07-07 (no new value
+-- since 2026-06-30) — this card was silently showing stale/dead data.
+-- CTE now FULL OUTER JOINs weather_gold_contract_ledger_performance
+-- against the live, corrected weather_position_exits; bhn_position_taken
+-- is keyed off presence in weather_position_exits, not the ledger's
+-- continuously re-evaluated recommended_action. Full rationale, join-key
+-- verification, and the accuracy_score re-derivation in
+-- BHN_OVERALL_SCORECARD.sql — identical CTE, not repeated here.
 -- ============================================================
 WITH weather_model_accuracy AS (
     SELECT
-        contract_ticker                                        AS contract_id,
-        contract_ticker                                        AS contract_title,
-        city                                                   AS region,
-        contract_side                                          AS variable,
-        calibrated_prob                                        AS bhn_predicted_probability,
-        market_implied_prob                                    AS market_implied_probability,
-        edge,
-        (recommended_action IN ('BET_YES', 'BET_NO'))          AS bhn_position_taken,
-        stake_usd                                              AS bhn_position_value,
+        COALESCE(g.contract_ticker, pe.contract_ticker)        AS contract_id,
+        COALESCE(g.contract_ticker, pe.contract_ticker)        AS contract_title,
+        COALESCE(g.city, CASE pe.station_code
+            WHEN 'KDEN' THEN 'Denver' WHEN 'KLAX' THEN 'Los Angeles' WHEN 'KMIA' THEN 'Miami'
+            ELSE pe.station_code END)                          AS region,
+        COALESCE(g.contract_side, 'high')                      AS variable,
+        COALESCE(g.calibrated_prob, pe.model_prob_no_cents / 100.0)
+                                                                AS bhn_predicted_probability,
+        COALESCE(g.market_implied_prob, COALESCE(pe.entry_no_ask_cents, pe.no_ask_cents) / 100.0)
+                                                                AS market_implied_probability,
+        COALESCE(g.edge, pe.edge_cents / 100.0)                AS edge,
+        (pe.contract_ticker IS NOT NULL)                       AS bhn_position_taken,
+        COALESCE(g.stake_usd, pe.corrected_stake_usd_recommended, pe.stake_usd_recommended)
+                                                                AS bhn_position_value,
+        CASE WHEN pe.contract_ticker IS NOT NULL THEN 'no' END AS bhn_position_side,
+        COALESCE(pe.corrected_actual_outcome, pe.actual_outcome)
+                                                                AS actual_outcome,
+        (COALESCE(pe.corrected_actual_outcome, pe.actual_outcome) = 'NO_WIN')
+                                                                AS bhn_was_correct,
+        (COALESCE(g.market_implied_prob, COALESCE(pe.entry_no_ask_cents, pe.no_ask_cents) / 100.0) >= 0.5)
+            = (COALESCE(pe.corrected_actual_outcome, pe.actual_outcome) = 'NO_WIN')
+                                                                AS market_was_correct,
+        COALESCE(pe.corrected_realized_pnl_usd, pe.realized_pnl_usd)
+                                                                AS pnl_dollar,
         CASE
-            WHEN recommended_action = 'BET_YES' THEN 'yes'
-            WHEN recommended_action = 'BET_NO'  THEN 'no'
-        END                                                    AS bhn_position_side,
-        contract_resolved_yes                                  AS actual_outcome,
-        bhn_correct                                            AS bhn_was_correct,
-        (market_implied_prob >= 0.5) = contract_resolved_yes   AS market_was_correct,
-        paper_pnl                                              AS pnl_dollar,
-        outcome_edge_realized                                  AS accuracy_score,
-        settled_at                                             AS resolved_at,
-        signal_generated_at                                    AS created_at
-    FROM weather_gold_contract_ledger_performance
+            WHEN pe.contract_ticker IS NULL
+              OR COALESCE(pe.corrected_actual_outcome, pe.actual_outcome) IS NULL
+              OR COALESCE(g.market_implied_prob, COALESCE(pe.entry_no_ask_cents, pe.no_ask_cents) / 100.0) IS NULL
+                THEN NULL
+            ELSE
+                (CASE WHEN COALESCE(pe.corrected_actual_outcome, pe.actual_outcome) = 'NO_WIN' THEN 1 ELSE 0 END)
+                - COALESCE(g.market_implied_prob, COALESCE(pe.entry_no_ask_cents, pe.no_ask_cents) / 100.0)
+        END                                                    AS accuracy_score,
+        pe.scored_at                                           AS resolved_at,
+        COALESCE(g.signal_generated_at, pe.decision_timestamp) AS created_at
+    FROM weather_gold_contract_ledger_performance g
+    FULL OUTER JOIN weather_position_exits pe ON pe.contract_ticker = g.contract_ticker
 )
 SELECT
     -- Volume
@@ -649,8 +676,11 @@ SELECT
        WHERE is_legacy_row AND contract_resolved_yes IS NOT NULL)
                                                        AS legacy_rows_excluded
 
-FROM weather_model_accuracy
-WHERE actual_outcome IS NOT NULL;
+FROM weather_model_accuracy;
+-- FIXED 2026-07-15: removed trailing WHERE actual_outcome IS NOT NULL,
+-- inherited unchanged since 2026-07-02 -- gated the whole result set
+-- before COUNT(*) ran, structurally zeroing signals_skipped. See
+-- BHN_OVERALL_SCORECARD.sql for the full explanation.
 
 
 -- ============================================================
@@ -681,30 +711,50 @@ WHERE actual_outcome IS NOT NULL;
 -- instead of an ad-hoc WHERE filter. Do NOT use this card's Strong Edge
 -- tier to justify tightening the edge threshold without separately
 -- re-validating the current-pipeline-only pattern holds up over time.
+--
+-- REBUILT 2026-07-15: same compat-CTE rebuild as Query 19 — settlement
+-- columns retired/frozen since 2026-07-07. Full rationale in
+-- BHN_EDGE_TIER_PERFORMANCE.sql / BHN_OVERALL_SCORECARD.sql.
 -- ============================================================
 WITH weather_model_accuracy AS (
     SELECT
-        contract_ticker                                        AS contract_id,
-        contract_ticker                                        AS contract_title,
-        city                                                   AS region,
-        contract_side                                          AS variable,
-        calibrated_prob                                        AS bhn_predicted_probability,
-        market_implied_prob                                    AS market_implied_probability,
-        edge,
-        (recommended_action IN ('BET_YES', 'BET_NO'))          AS bhn_position_taken,
-        stake_usd                                              AS bhn_position_value,
+        COALESCE(g.contract_ticker, pe.contract_ticker)        AS contract_id,
+        COALESCE(g.contract_ticker, pe.contract_ticker)        AS contract_title,
+        COALESCE(g.city, CASE pe.station_code
+            WHEN 'KDEN' THEN 'Denver' WHEN 'KLAX' THEN 'Los Angeles' WHEN 'KMIA' THEN 'Miami'
+            ELSE pe.station_code END)                          AS region,
+        COALESCE(g.contract_side, 'high')                      AS variable,
+        COALESCE(g.calibrated_prob, pe.model_prob_no_cents / 100.0)
+                                                                AS bhn_predicted_probability,
+        COALESCE(g.market_implied_prob, COALESCE(pe.entry_no_ask_cents, pe.no_ask_cents) / 100.0)
+                                                                AS market_implied_probability,
+        COALESCE(g.edge, pe.edge_cents / 100.0)                AS edge,
+        (pe.contract_ticker IS NOT NULL)                       AS bhn_position_taken,
+        COALESCE(g.stake_usd, pe.corrected_stake_usd_recommended, pe.stake_usd_recommended)
+                                                                AS bhn_position_value,
+        CASE WHEN pe.contract_ticker IS NOT NULL THEN 'no' END AS bhn_position_side,
+        COALESCE(pe.corrected_actual_outcome, pe.actual_outcome)
+                                                                AS actual_outcome,
+        (COALESCE(pe.corrected_actual_outcome, pe.actual_outcome) = 'NO_WIN')
+                                                                AS bhn_was_correct,
+        (COALESCE(g.market_implied_prob, COALESCE(pe.entry_no_ask_cents, pe.no_ask_cents) / 100.0) >= 0.5)
+            = (COALESCE(pe.corrected_actual_outcome, pe.actual_outcome) = 'NO_WIN')
+                                                                AS market_was_correct,
+        COALESCE(pe.corrected_realized_pnl_usd, pe.realized_pnl_usd)
+                                                                AS pnl_dollar,
         CASE
-            WHEN recommended_action = 'BET_YES' THEN 'yes'
-            WHEN recommended_action = 'BET_NO'  THEN 'no'
-        END                                                    AS bhn_position_side,
-        contract_resolved_yes                                  AS actual_outcome,
-        bhn_correct                                            AS bhn_was_correct,
-        (market_implied_prob >= 0.5) = contract_resolved_yes   AS market_was_correct,
-        paper_pnl                                              AS pnl_dollar,
-        outcome_edge_realized                                  AS accuracy_score,
-        settled_at                                             AS resolved_at,
-        signal_generated_at                                    AS created_at
-    FROM weather_gold_contract_ledger_performance
+            WHEN pe.contract_ticker IS NULL
+              OR COALESCE(pe.corrected_actual_outcome, pe.actual_outcome) IS NULL
+              OR COALESCE(g.market_implied_prob, COALESCE(pe.entry_no_ask_cents, pe.no_ask_cents) / 100.0) IS NULL
+                THEN NULL
+            ELSE
+                (CASE WHEN COALESCE(pe.corrected_actual_outcome, pe.actual_outcome) = 'NO_WIN' THEN 1 ELSE 0 END)
+                - COALESCE(g.market_implied_prob, COALESCE(pe.entry_no_ask_cents, pe.no_ask_cents) / 100.0)
+        END                                                    AS accuracy_score,
+        pe.scored_at                                           AS resolved_at,
+        COALESCE(g.signal_generated_at, pe.decision_timestamp) AS created_at
+    FROM weather_gold_contract_ledger_performance g
+    FULL OUTER JOIN weather_position_exits pe ON pe.contract_ticker = g.contract_ticker
 )
 SELECT
     -- Edge tier classification
@@ -774,7 +824,8 @@ FROM (
             ELSE 6
         END AS edge_tier_sort
     FROM weather_model_accuracy
-    WHERE actual_outcome IS NOT NULL
+    -- FIXED 2026-07-15: removed WHERE actual_outcome IS NOT NULL here too --
+    -- same bug as Query 19, see BHN_OVERALL_SCORECARD.sql.
 ) tiered
 GROUP BY edge_tier, edge_tier_sort
 ORDER BY edge_tier_sort;
@@ -797,30 +848,53 @@ ORDER BY edge_tier_sort;
 -- and Query 19's note for full context. This is a raw trade log, so
 -- showing legacy rows here would be actively misleading for "spot patterns
 -- and debug model errors" against the current pipeline.
+--
+-- REBUILT 2026-07-15: same compat-CTE rebuild as Query 19 — settlement
+-- columns retired/frozen since 2026-07-07. FULL OUTER JOIN (not LEFT)
+-- matters especially here: 9 real settled 2026-07-01 trades have no
+-- ledger row at all, and this is exactly the raw trade log that exists to
+-- show them. Full rationale in BHN_RECENT_RESULTS.sql / BHN_OVERALL_
+-- SCORECARD.sql.
 -- ============================================================
 WITH weather_model_accuracy AS (
     SELECT
-        contract_ticker                                        AS contract_id,
-        contract_ticker                                        AS contract_title,
-        city                                                   AS region,
-        contract_side                                          AS variable,
-        calibrated_prob                                        AS bhn_predicted_probability,
-        market_implied_prob                                    AS market_implied_probability,
-        edge,
-        (recommended_action IN ('BET_YES', 'BET_NO'))          AS bhn_position_taken,
-        stake_usd                                              AS bhn_position_value,
+        COALESCE(g.contract_ticker, pe.contract_ticker)        AS contract_id,
+        COALESCE(g.contract_ticker, pe.contract_ticker)        AS contract_title,
+        COALESCE(g.city, CASE pe.station_code
+            WHEN 'KDEN' THEN 'Denver' WHEN 'KLAX' THEN 'Los Angeles' WHEN 'KMIA' THEN 'Miami'
+            ELSE pe.station_code END)                          AS region,
+        COALESCE(g.contract_side, 'high')                      AS variable,
+        COALESCE(g.calibrated_prob, pe.model_prob_no_cents / 100.0)
+                                                                AS bhn_predicted_probability,
+        COALESCE(g.market_implied_prob, COALESCE(pe.entry_no_ask_cents, pe.no_ask_cents) / 100.0)
+                                                                AS market_implied_probability,
+        COALESCE(g.edge, pe.edge_cents / 100.0)                AS edge,
+        (pe.contract_ticker IS NOT NULL)                       AS bhn_position_taken,
+        COALESCE(g.stake_usd, pe.corrected_stake_usd_recommended, pe.stake_usd_recommended)
+                                                                AS bhn_position_value,
+        CASE WHEN pe.contract_ticker IS NOT NULL THEN 'no' END AS bhn_position_side,
+        COALESCE(pe.corrected_actual_outcome, pe.actual_outcome)
+                                                                AS actual_outcome,
+        (COALESCE(pe.corrected_actual_outcome, pe.actual_outcome) = 'NO_WIN')
+                                                                AS bhn_was_correct,
+        (COALESCE(g.market_implied_prob, COALESCE(pe.entry_no_ask_cents, pe.no_ask_cents) / 100.0) >= 0.5)
+            = (COALESCE(pe.corrected_actual_outcome, pe.actual_outcome) = 'NO_WIN')
+                                                                AS market_was_correct,
+        COALESCE(pe.corrected_realized_pnl_usd, pe.realized_pnl_usd)
+                                                                AS pnl_dollar,
         CASE
-            WHEN recommended_action = 'BET_YES' THEN 'yes'
-            WHEN recommended_action = 'BET_NO'  THEN 'no'
-        END                                                    AS bhn_position_side,
-        contract_resolved_yes                                  AS actual_outcome,
-        bhn_correct                                            AS bhn_was_correct,
-        (market_implied_prob >= 0.5) = contract_resolved_yes   AS market_was_correct,
-        paper_pnl                                              AS pnl_dollar,
-        outcome_edge_realized                                  AS accuracy_score,
-        settled_at                                             AS resolved_at,
-        signal_generated_at                                    AS created_at
-    FROM weather_gold_contract_ledger_performance
+            WHEN pe.contract_ticker IS NULL
+              OR COALESCE(pe.corrected_actual_outcome, pe.actual_outcome) IS NULL
+              OR COALESCE(g.market_implied_prob, COALESCE(pe.entry_no_ask_cents, pe.no_ask_cents) / 100.0) IS NULL
+                THEN NULL
+            ELSE
+                (CASE WHEN COALESCE(pe.corrected_actual_outcome, pe.actual_outcome) = 'NO_WIN' THEN 1 ELSE 0 END)
+                - COALESCE(g.market_implied_prob, COALESCE(pe.entry_no_ask_cents, pe.no_ask_cents) / 100.0)
+        END                                                    AS accuracy_score,
+        pe.scored_at                                           AS resolved_at,
+        COALESCE(g.signal_generated_at, pe.decision_timestamp) AS created_at
+    FROM weather_gold_contract_ledger_performance g
+    FULL OUTER JOIN weather_position_exits pe ON pe.contract_ticker = g.contract_ticker
 )
 SELECT
     -- Contract identification
@@ -897,30 +971,51 @@ LIMIT 100;
 -- permanently excluded via is_legacy_row, see
 -- sql/migrations/2026-07-02-ledger-exclude-legacy-rows.sql and Query 19's
 -- note for full context.
+--
+-- REBUILT 2026-07-15: same compat-CTE rebuild as Query 19 — settlement
+-- columns retired/frozen since 2026-07-07. region falls back to
+-- station_code (e.g. "KDEN") for the handful of rows with no ledger match.
+-- Full rationale in BHN_CITY_PERFORMANCE.sql / BHN_OVERALL_SCORECARD.sql.
 -- ============================================================
 WITH weather_model_accuracy AS (
     SELECT
-        contract_ticker                                        AS contract_id,
-        contract_ticker                                        AS contract_title,
-        city                                                   AS region,
-        contract_side                                          AS variable,
-        calibrated_prob                                        AS bhn_predicted_probability,
-        market_implied_prob                                    AS market_implied_probability,
-        edge,
-        (recommended_action IN ('BET_YES', 'BET_NO'))          AS bhn_position_taken,
-        stake_usd                                              AS bhn_position_value,
+        COALESCE(g.contract_ticker, pe.contract_ticker)        AS contract_id,
+        COALESCE(g.contract_ticker, pe.contract_ticker)        AS contract_title,
+        COALESCE(g.city, CASE pe.station_code
+            WHEN 'KDEN' THEN 'Denver' WHEN 'KLAX' THEN 'Los Angeles' WHEN 'KMIA' THEN 'Miami'
+            ELSE pe.station_code END)                          AS region,
+        COALESCE(g.contract_side, 'high')                      AS variable,
+        COALESCE(g.calibrated_prob, pe.model_prob_no_cents / 100.0)
+                                                                AS bhn_predicted_probability,
+        COALESCE(g.market_implied_prob, COALESCE(pe.entry_no_ask_cents, pe.no_ask_cents) / 100.0)
+                                                                AS market_implied_probability,
+        COALESCE(g.edge, pe.edge_cents / 100.0)                AS edge,
+        (pe.contract_ticker IS NOT NULL)                       AS bhn_position_taken,
+        COALESCE(g.stake_usd, pe.corrected_stake_usd_recommended, pe.stake_usd_recommended)
+                                                                AS bhn_position_value,
+        CASE WHEN pe.contract_ticker IS NOT NULL THEN 'no' END AS bhn_position_side,
+        COALESCE(pe.corrected_actual_outcome, pe.actual_outcome)
+                                                                AS actual_outcome,
+        (COALESCE(pe.corrected_actual_outcome, pe.actual_outcome) = 'NO_WIN')
+                                                                AS bhn_was_correct,
+        (COALESCE(g.market_implied_prob, COALESCE(pe.entry_no_ask_cents, pe.no_ask_cents) / 100.0) >= 0.5)
+            = (COALESCE(pe.corrected_actual_outcome, pe.actual_outcome) = 'NO_WIN')
+                                                                AS market_was_correct,
+        COALESCE(pe.corrected_realized_pnl_usd, pe.realized_pnl_usd)
+                                                                AS pnl_dollar,
         CASE
-            WHEN recommended_action = 'BET_YES' THEN 'yes'
-            WHEN recommended_action = 'BET_NO'  THEN 'no'
-        END                                                    AS bhn_position_side,
-        contract_resolved_yes                                  AS actual_outcome,
-        bhn_correct                                            AS bhn_was_correct,
-        (market_implied_prob >= 0.5) = contract_resolved_yes   AS market_was_correct,
-        paper_pnl                                              AS pnl_dollar,
-        outcome_edge_realized                                  AS accuracy_score,
-        settled_at                                             AS resolved_at,
-        signal_generated_at                                    AS created_at
-    FROM weather_gold_contract_ledger_performance
+            WHEN pe.contract_ticker IS NULL
+              OR COALESCE(pe.corrected_actual_outcome, pe.actual_outcome) IS NULL
+              OR COALESCE(g.market_implied_prob, COALESCE(pe.entry_no_ask_cents, pe.no_ask_cents) / 100.0) IS NULL
+                THEN NULL
+            ELSE
+                (CASE WHEN COALESCE(pe.corrected_actual_outcome, pe.actual_outcome) = 'NO_WIN' THEN 1 ELSE 0 END)
+                - COALESCE(g.market_implied_prob, COALESCE(pe.entry_no_ask_cents, pe.no_ask_cents) / 100.0)
+        END                                                    AS accuracy_score,
+        pe.scored_at                                           AS resolved_at,
+        COALESCE(g.signal_generated_at, pe.decision_timestamp) AS created_at
+    FROM weather_gold_contract_ledger_performance g
+    FULL OUTER JOIN weather_position_exits pe ON pe.contract_ticker = g.contract_ticker
 )
 SELECT
     region                                             AS city,
@@ -981,7 +1076,10 @@ SELECT
                                                        AS latest_signal_pt
 
 FROM weather_model_accuracy
-WHERE actual_outcome IS NOT NULL
+-- FIXED 2026-07-15: removed WHERE actual_outcome IS NOT NULL -- same bug
+-- as Query 19, see BHN_OVERALL_SCORECARD.sql. region also now maps
+-- station_code -> city name for the 9 ledger-orphan rows instead of
+-- showing the raw code, so each city no longer splits into two rows.
 GROUP BY region, variable
 ORDER BY bhn_win_rate_pct DESC NULLS LAST, total_signals DESC;
 

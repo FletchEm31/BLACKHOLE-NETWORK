@@ -3,6 +3,7 @@
 -- Shows whether BHN was right or wrong on each trade.
 -- Raw trade log — use to spot patterns and debug model errors.
 -- Source: WeatherBHN_Performance_Queries.txt (June 12, 2026) — Query 21
+-- (that file removed 2026-07-15 as a stale, unreferenced duplicate)
 -- Tab: FORMULA/MODELS
 --
 -- UPDATED 2026-07-02: weather_model_accuracy -> weather_gold_contract_ledger
@@ -17,30 +18,61 @@
 -- and BHN_OVERALL_SCORECARD.sql's note for full context. This is a raw
 -- trade log, so showing legacy rows here would be actively misleading for
 -- "spot patterns and debug model errors" against the current pipeline.
+--
+-- REBUILT 2026-07-15: same compat-CTE rebuild as BHN_OVERALL_SCORECARD.sql
+-- — weather_gold_contract_ledger's settlement columns are retired/frozen
+-- since 2026-07-07 (no new value since 2026-06-30), so this trade log was
+-- silently frozen too. CTE now FULL OUTER JOINs weather_gold_contract_
+-- ledger_performance against the live, corrected weather_position_exits;
+-- bhn_position_taken is keyed off presence in weather_position_exits, not
+-- the ledger's continuously re-evaluated recommended_action (confirmed 67
+-- of 98 real positions now show SKIP in the live ledger snapshot after
+-- market conditions moved post-entry). FULL OUTER JOIN (not LEFT) also
+-- picks up 9 real settled 2026-07-01 trades with no ledger row at all —
+-- important for a raw trade log specifically, since a LEFT JOIN would have
+-- silently dropped exactly the rows this query exists to show. Full
+-- rationale and the accuracy_score re-derivation in
+-- BHN_OVERALL_SCORECARD.sql — identical CTE, not repeated here.
 
 WITH weather_model_accuracy AS (
     SELECT
-        contract_ticker                                        AS contract_id,
-        contract_ticker                                        AS contract_title,
-        city                                                   AS region,
-        contract_side                                          AS variable,
-        calibrated_prob                                        AS bhn_predicted_probability,
-        market_implied_prob                                    AS market_implied_probability,
-        edge,
-        (recommended_action IN ('BET_YES', 'BET_NO'))          AS bhn_position_taken,
-        stake_usd                                              AS bhn_position_value,
+        COALESCE(g.contract_ticker, pe.contract_ticker)        AS contract_id,
+        COALESCE(g.contract_ticker, pe.contract_ticker)        AS contract_title,
+        COALESCE(g.city, CASE pe.station_code
+            WHEN 'KDEN' THEN 'Denver' WHEN 'KLAX' THEN 'Los Angeles' WHEN 'KMIA' THEN 'Miami'
+            ELSE pe.station_code END)                          AS region,
+        COALESCE(g.contract_side, 'high')                      AS variable,
+        COALESCE(g.calibrated_prob, pe.model_prob_no_cents / 100.0)
+                                                                AS bhn_predicted_probability,
+        COALESCE(g.market_implied_prob, COALESCE(pe.entry_no_ask_cents, pe.no_ask_cents) / 100.0)
+                                                                AS market_implied_probability,
+        COALESCE(g.edge, pe.edge_cents / 100.0)                AS edge,
+        (pe.contract_ticker IS NOT NULL)                       AS bhn_position_taken,
+        COALESCE(g.stake_usd, pe.corrected_stake_usd_recommended, pe.stake_usd_recommended)
+                                                                AS bhn_position_value,
+        CASE WHEN pe.contract_ticker IS NOT NULL THEN 'no' END AS bhn_position_side,
+        COALESCE(pe.corrected_actual_outcome, pe.actual_outcome)
+                                                                AS actual_outcome,
+        (COALESCE(pe.corrected_actual_outcome, pe.actual_outcome) = 'NO_WIN')
+                                                                AS bhn_was_correct,
+        (COALESCE(g.market_implied_prob, COALESCE(pe.entry_no_ask_cents, pe.no_ask_cents) / 100.0) >= 0.5)
+            = (COALESCE(pe.corrected_actual_outcome, pe.actual_outcome) = 'NO_WIN')
+                                                                AS market_was_correct,
+        COALESCE(pe.corrected_realized_pnl_usd, pe.realized_pnl_usd)
+                                                                AS pnl_dollar,
         CASE
-            WHEN recommended_action = 'BET_YES' THEN 'yes'
-            WHEN recommended_action = 'BET_NO'  THEN 'no'
-        END                                                    AS bhn_position_side,
-        contract_resolved_yes                                  AS actual_outcome,
-        bhn_correct                                            AS bhn_was_correct,
-        (market_implied_prob >= 0.5) = contract_resolved_yes   AS market_was_correct,
-        paper_pnl                                              AS pnl_dollar,
-        outcome_edge_realized                                  AS accuracy_score,
-        settled_at                                             AS resolved_at,
-        signal_generated_at                                    AS created_at
-    FROM weather_gold_contract_ledger_performance
+            WHEN pe.contract_ticker IS NULL
+              OR COALESCE(pe.corrected_actual_outcome, pe.actual_outcome) IS NULL
+              OR COALESCE(g.market_implied_prob, COALESCE(pe.entry_no_ask_cents, pe.no_ask_cents) / 100.0) IS NULL
+                THEN NULL
+            ELSE
+                (CASE WHEN COALESCE(pe.corrected_actual_outcome, pe.actual_outcome) = 'NO_WIN' THEN 1 ELSE 0 END)
+                - COALESCE(g.market_implied_prob, COALESCE(pe.entry_no_ask_cents, pe.no_ask_cents) / 100.0)
+        END                                                    AS accuracy_score,
+        pe.scored_at                                           AS resolved_at,
+        COALESCE(g.signal_generated_at, pe.decision_timestamp) AS created_at
+    FROM weather_gold_contract_ledger_performance g
+    FULL OUTER JOIN weather_position_exits pe ON pe.contract_ticker = g.contract_ticker
 )
 SELECT
     -- Contract identification
