@@ -41,6 +41,14 @@ EDGE_THRESHOLD_LIQ  = 5.0    # cents — liquid (volume > 100)
 EDGE_THRESHOLD_ILL  = 8.0    # cents — illiquid (volume <= 100 or unknown)
 MIN_NO_ASK_CENTS    = 3.0    # skip buckets with no_ask below this — effectively dead market
 
+# Daily bucket cap — added 2026-07-17c, harm-reduction stopgap for
+# correlated multi-bucket betting (see run_cp4_kelly()'s cap logic for the
+# full backtest rationale). Backtested cap=2 by confidence = -6.7% ROI vs
+# -13.3% uncapped on the 87-trade dataset — still net-negative, NOT a
+# profitability fix. Does not replace the joint-probability-distribution
+# redesign (tracked separately).
+DAILY_BUCKET_CAP    = 2      # max qualifying NO-side bets per station/target_date per cycle
+
 # Liquidity caps — added 2026-07-03, shared by NO and YES qualification (do not
 # duplicate per side). Source: weather_bronze_kalshi_market_snapshots.volume /
 # .open_interest — confirmed real, populated columns; these were previously
@@ -464,7 +472,42 @@ def run_cp4_kelly(station_code: str, target_date: date,
             'pre_open':          pre_open,
             'market_ticker':     b['market_ticker'],
             'volume':            volume,
+            'daily_cap_exceeded': False,
         })
+
+    # Daily bucket cap -- added 2026-07-17c. HARM REDUCTION, NOT a
+    # profitability fix: backtested against the 87-trade dataset, cap=2
+    # (kept by confidence) = -6.7% ROI vs -13.3% uncapped -- still
+    # net-negative. Multi-bucket correlated betting on the same
+    # station/target_date was found to mechanically produce a
+    # near-guaranteed one-loss-per-day pattern (25/26 multi-bucket days
+    # showed exactly N-1 wins/1 loss -- the actual daily high can only
+    # land in one bucket, so betting NO across most of the plausible
+    # range all but guarantees exactly one loss via the pigeonhole
+    # principle, regardless of signal quality). Confidence
+    # (model_prob_cents), not edge_cents, is the keep-criterion --
+    # backtested best of the options tried (cap=1 by edge: -21.3% ROI vs
+    # cap=1 by confidence: -11.4% ROI). Purpose: (1) stop the worst of
+    # the structural bleeding while the deeper calibration issue is
+    # investigated separately; (2) once bucket-count is capped, the
+    # edge_cents/confidence/proximity backtests can be re-run on
+    # genuinely single-or-double-bucket days to see if real signal was
+    # previously drowned out by the correlation effect. Does NOT replace
+    # the joint-probability-distribution redesign (tracked separately,
+    # out of scope here) -- that remains the real long-term fix; this is
+    # a stopgap. Layered on top of the existing per-bucket edge/Kelly
+    # calculations -- does not touch them.
+    qualifying_idx = [i for i, r in enumerate(results) if r['qualifies']]
+    if len(qualifying_idx) > DAILY_BUCKET_CAP:
+        ranked = sorted(qualifying_idx,
+                        key=lambda i: results[i]['model_prob_cents'], reverse=True)
+        keep = set(ranked[:DAILY_BUCKET_CAP])
+        for i in qualifying_idx:
+            if i not in keep:
+                results[i]['qualifies']          = False
+                results[i]['contracts']          = 0
+                results[i]['stake_usd']          = 0.0
+                results[i]['daily_cap_exceeded'] = True
 
     return results
 
@@ -599,6 +642,8 @@ def write_to_ledger(conn, station_code: str, target_date: date,
                 skip_reason = 'SPREAD_TOO_WIDE'
             elif b.get('illiquid_capped'):
                 skip_reason = 'ILLIQUID_CAP'
+            elif b.get('daily_cap_exceeded'):
+                skip_reason = 'DAILY_BUCKET_CAP'
             else:
                 skip_reason = 'EDGE_TOO_LOW'
         else:
