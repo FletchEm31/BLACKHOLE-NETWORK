@@ -107,11 +107,24 @@ main { padding: 16px 20px 60px; display: flex; flex-direction: column; gap: 16px
 .badge { padding: 2px 8px; border-radius: var(--radius-pill); border: 1px solid var(--panel-border); color: var(--text-dim); }
 .badge.entry_frozen { color: var(--green); border-color: var(--green); }
 .badge.live { color: var(--orange); border-color: var(--orange); }
+.badge.ledger_skip { color: var(--accent-blue); border-color: var(--accent-blue); }
+.badge.computed_fresh { color: var(--accent-blue); border-color: var(--accent-blue); }
 .badge.none { color: var(--red); border-color: var(--red); }
+.stale-banner {
+  margin-top: 8px; padding: 6px 10px; border-radius: 8px;
+  background: var(--red-dim); border: 1px solid var(--red); color: var(--red); font-size: 12px;
+}
 
 /* ---------- Charts row ---------- */
 .charts-row { display: grid; grid-template-columns: 1.4fr 1fr; gap: 16px; }
 @media (max-width: 900px) { .charts-row { grid-template-columns: 1fr; } }
+
+.chart-panel-header { display: flex; justify-content: space-between; align-items: center; }
+.refresh-countdown {
+  font-size: 11px; color: var(--text-dim); border: 1px solid var(--panel-border);
+  border-radius: var(--radius-pill); padding: 2px 10px; min-width: 58px; text-align: center;
+}
+.refresh-countdown.reset { color: var(--green); border-color: var(--green); }
 
 /* ---------- Tables ---------- */
 .table-scroll { overflow-x: auto; }
@@ -135,7 +148,7 @@ main { padding: 16px 20px 60px; display: flex; flex-direction: column; gap: 16px
 
 .pill { border-radius: var(--radius-pill); padding: 4px 12px; font-weight: 700; font-size: 12px; display: inline-block; min-width: 56px; }
 .pill.yes { border: 1px solid var(--green); color: var(--green); }
-.pill.no  { border: 1px solid var(--text-dim); color: var(--text); background: #171b26; }
+.pill.no  { border: 1px solid var(--red); color: var(--red); background: #171b26; }
 
 .win-checkbox { width: 18px; height: 18px; accent-color: var(--green); cursor: pointer; }
 
@@ -151,7 +164,12 @@ main { padding: 16px 20px 60px; display: flex; flex-direction: column; gap: 16px
 .calc-summary { grid-column: span 2; font-size: 11px; color: var(--text-dim); margin-top: 2px; display: flex; justify-content: space-between; }
 .calc-summary .profit-pos { color: var(--green); }
 .calc-summary .profit-neg { color: var(--red); }
-.calc-cell.illiquid { opacity: 0.55; }
+/* Illiquid buckets get a small red text flag only (see .illiquid-flag) --
+   deliberately NOT dimmed/shadowed via opacity: that made the No column
+   look broken/dark whenever volume=0 (which was most rows, until the
+   volume-column bug is fixed upstream), and visual weight should come
+   from the explicit flag text, not a whole-cell fade that reads as an
+   unstyled/broken state next to the always-full-opacity Yes column. */
 .illiquid-flag { color: var(--red); font-size: 10px; }
 
 /* ---------- Simulation panel ---------- */

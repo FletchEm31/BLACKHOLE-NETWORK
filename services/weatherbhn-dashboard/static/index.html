@@ -20,9 +20,9 @@
   <div class="topbar-controls">
     <div class="city-tabs" id="cityTabs"></div>
     <div class="date-nav">
-      <button id="datePrev" class="icon-btn" title="Previous day">&larr;</button>
-      <input type="date" id="dateInput">
-      <button id="dateNext" class="icon-btn" title="Next day">&rarr;</button>
+      <!-- Only today/tomorrow -- matches Kalshi's own UI (currently-open
+           markets only). No historical/past-date browsing, per scope. -->
+      <div class="city-tabs" id="dayToggle"></div>
     </div>
     <div class="refresh-indicator" id="refreshIndicator">live</div>
   </div>
@@ -33,6 +33,7 @@
   <!-- Reference strip -->
   <section class="panel reference-strip">
     <div class="panel-title">Sigma Reference &mdash; <span id="refStripSubtitle">&nbsp;</span></div>
+    <div id="staleBanner" class="stale-banner" style="display:none">Data is stale (collector hasn't reported in over 45 minutes) &mdash; showing the last known state.</div>
     <div id="sigmaMarkerStrip" class="sigma-marker-strip"></div>
     <div class="source-badges" id="sourceBadges"></div>
   </section>
@@ -40,7 +41,10 @@
   <!-- Charts row -->
   <section class="charts-row">
     <div class="panel chart-panel">
-      <div class="panel-title">Model Probability vs. Market-Implied Chance</div>
+      <div class="chart-panel-header">
+        <div class="panel-title">Model Probability vs. Market-Implied Chance</div>
+        <div class="refresh-countdown" id="refreshCountdown">30s</div>
+      </div>
       <canvas id="probabilityChart" height="220"></canvas>
     </div>
     <div class="panel volume-panel">

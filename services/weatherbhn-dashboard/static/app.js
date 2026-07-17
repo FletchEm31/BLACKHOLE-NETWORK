@@ -13,7 +13,14 @@ const state = {
   winningBucket: null,    // bucket_label currently marked as the winning outcome
   journal: [],
   probChart: null,
+  countdownSec: PRICE_REFRESH_MS / 1000,
 };
+
+function todayIso() { return new Date().toISOString().slice(0, 10); }
+function tomorrowIso() {
+  const d = new Date(); d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
 
 // ---------------------------------------------------------------------------
 // Fee math — mirrors app/fees.py / scripts/trading/fee_calculator.py exactly.
@@ -43,31 +50,39 @@ async function init() {
   const cfg = await fetchJSON('/api/config');
   state.cities = cfg.cities.filter(c => c.enabled);
   state.station = state.cities[0].station_code;
-  state.date = new Date().toISOString().slice(0, 10);
+  state.date = todayIso();
 
-  document.getElementById('dateInput').value = state.date;
   renderCityTabs();
-
-  document.getElementById('dateInput').addEventListener('change', (e) => {
-    state.date = e.target.value;
-    onCityOrDateChanged();
-  });
-  document.getElementById('datePrev').addEventListener('click', () => shiftDate(-1));
-  document.getElementById('dateNext').addEventListener('click', () => shiftDate(1));
+  renderDayToggle();
   document.getElementById('journalForm').addEventListener('submit', onJournalSubmit);
 
   await refreshAll(true);
   await refreshJournal();
 
   setInterval(() => refreshLadder(false), PRICE_REFRESH_MS);
+  setInterval(tickCountdown, 1000);
 }
 
-function shiftDate(deltaDays) {
-  const d = new Date(state.date + 'T00:00:00Z');
-  d.setUTCDate(d.getUTCDate() + deltaDays);
-  state.date = d.toISOString().slice(0, 10);
-  document.getElementById('dateInput').value = state.date;
-  onCityOrDateChanged();
+// Only today/tomorrow -- matches Kalshi's own UI (currently-open markets
+// only). Deliberately no historical/past-date browsing.
+function renderDayToggle() {
+  const el = document.getElementById('dayToggle');
+  el.innerHTML = '';
+  const options = [
+    { label: 'Today', date: todayIso() },
+    { label: 'Tomorrow', date: tomorrowIso() },
+  ];
+  for (const o of options) {
+    const btn = document.createElement('button');
+    btn.className = 'city-tab' + (o.date === state.date ? ' active' : '');
+    btn.textContent = o.label;
+    btn.addEventListener('click', () => {
+      state.date = o.date;
+      renderDayToggle();
+      onCityOrDateChanged();
+    });
+    el.appendChild(btn);
+  }
 }
 
 function onCityOrDateChanged() {
@@ -75,6 +90,12 @@ function onCityOrDateChanged() {
   state.winningBucket = null;
   refreshAll(true);
   refreshJournal();
+}
+
+function tickCountdown() {
+  state.countdownSec = Math.max(0, state.countdownSec - 1);
+  const el = document.getElementById('refreshCountdown');
+  if (el) el.textContent = `${state.countdownSec}s`;
 }
 
 function renderCityTabs() {
@@ -131,8 +152,20 @@ async function refreshLadder(isFullRefresh) {
     renderLadderTable(data);
     renderSimulation();
 
+    const staleBanner = document.getElementById('staleBanner');
+    staleBanner.style.display = data.data_stale ? '' : 'none';
+
     indicator.classList.remove('stale');
     indicator.textContent = 'live';
+
+    // Reset the countdown on every successful load, full or poll-triggered.
+    state.countdownSec = PRICE_REFRESH_MS / 1000;
+    const cd = document.getElementById('refreshCountdown');
+    if (cd) {
+      cd.textContent = `${state.countdownSec}s`;
+      cd.classList.add('reset');
+      setTimeout(() => cd.classList.remove('reset'), 400);
+    }
   } catch (e) {
     indicator.classList.add('stale');
     indicator.textContent = 'refresh failed';
@@ -140,11 +173,17 @@ async function refreshLadder(isFullRefresh) {
   }
 }
 
+const SOURCE_LABELS = {
+  entry_frozen: 'entry-frozen',
+  live: 'live (entry-frozen unavailable)',
+  ledger_skip: 'ledger (no bucket qualified yet)',
+  computed_fresh: 'computed fresh (CP4 formula, no signal row yet)',
+  none: 'no data',
+};
 function sourceBadge(label, source) {
   const span = document.createElement('span');
   span.className = 'badge ' + source;
-  const text = { entry_frozen: 'entry-frozen', live: 'live (entry-frozen unavailable)', none: 'no data' }[source] || source;
-  span.textContent = `${label}: ${text}`;
+  span.textContent = `${label}: ${SOURCE_LABELS[source] || source}`;
   return span;
 }
 
@@ -173,6 +212,23 @@ function renderReferenceStrip(data) {
 
 function renderProbabilityChart(data) {
   const ctx = document.getElementById('probabilityChart');
+  const emptyMsgId = 'probChartEmptyMsg';
+  document.getElementById(emptyMsgId)?.remove();
+  if (data.mu == null || data.sigma == null) {
+    if (state.probChart) { state.probChart.destroy(); state.probChart = null; }
+    const msg = document.createElement('div');
+    msg.id = emptyMsgId;
+    msg.className = 'hint';
+    msg.style.padding = '40px 0';
+    msg.style.textAlign = 'center';
+    msg.textContent = 'No model prediction available yet for this station/date — market bars will appear once buckets are quoted.';
+    ctx.parentElement.appendChild(msg);
+    // Still nothing to draw a model curve against, but market bars alone
+    // aren't useful without it either — skip the chart entirely rather
+    // than draw a bars-only chart that looks like a rendering failure.
+    return;
+  }
+
   const labels = data.buckets.map(b => b.bucket_label);
   const marketChance = data.buckets.map(b => b.chance_pct);
 
@@ -279,7 +335,7 @@ function renderLadderTable(data) {
         <span class="pill yes">Yes ${fmtC(b.yes_ask_cents)}</span><br>
         <span class="pill no">No ${fmtC(b.no_ask_cents)}</span>
       </td>
-      <td class="calc-cell no-side ${b.is_liquid === false ? 'illiquid' : ''}"></td>
+      <td class="calc-cell no-side"></td>
       <td class="calc-cell yes-side"></td>
     `;
     tbody.appendChild(tr);

@@ -55,5 +55,7 @@ GRANT SELECT ON weather_bronze_kalshi_market_snapshots TO weatherbhn_dashboard;
 GRANT SELECT ON weather_position_exits_clean            TO weatherbhn_dashboard;
 GRANT SELECT ON weather_station_climatology              TO weatherbhn_dashboard;
 GRANT SELECT ON weather_gold_city_day_features            TO weatherbhn_dashboard;
+GRANT SELECT ON weather_gold_contract_ledger              TO weatherbhn_dashboard;
+GRANT SELECT ON model_calibration                          TO weatherbhn_dashboard;
 
 COMMIT;

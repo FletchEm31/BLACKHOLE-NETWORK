@@ -15,7 +15,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import db, fees
+from . import db, fees, model_math
 
 app = FastAPI(title="WeatherBHN Trading Dashboard")
 
@@ -77,16 +77,28 @@ def get_ladder(station: str = Query(...), target_date: date = Query(...)):
         raise HTTPException(400, f"unknown station {station!r}")
 
     with db.conn_cursor() as cur:
+        # Mirrors cp4_kelly_sizer.run_cp4_kelly()'s own bucket query exactly:
+        # pin to the single latest retrieved_at batch for this station/date
+        # (not "latest per bucket_label ever seen" -- that was the bug: a
+        # bucket Kalshi stopped quoting would linger forever with stale
+        # prices instead of dropping out), plus the same 45-minute
+        # staleness cutoff CP4 uses (collector runs ~33 min; one cycle of
+        # headroom before declaring data stale).
         cur.execute("""
-            SELECT DISTINCT ON (bucket_label)
-                bucket_label, bucket_type, bucket_floor, bucket_cap,
+            SELECT bucket_label, bucket_type, bucket_floor, bucket_cap,
                 yes_bid, yes_ask, no_bid, no_ask, yes_mid, last_price,
                 volume, open_interest, market_ticker, market_status, retrieved_at
             FROM weather_bronze_kalshi_market_snapshots
             WHERE station_code = %s AND target_date = %s AND contract_side = 'high'
-            ORDER BY bucket_label, retrieved_at DESC
-        """, (station, target_date))
+              AND retrieved_at = (
+                  SELECT MAX(retrieved_at)
+                  FROM weather_bronze_kalshi_market_snapshots
+                  WHERE station_code = %s AND target_date = %s AND contract_side = 'high'
+              )
+              AND retrieved_at >= NOW() - INTERVAL '45 minutes'
+        """, (station, target_date, station, target_date))
         bucket_rows = cur.fetchall()
+        data_stale = len(bucket_rows) == 0
 
         cur.execute("""
             SELECT final_entry_predicted_tmax_f, final_entry_sigma_used,
@@ -98,6 +110,40 @@ def get_ladder(station: str = Query(...), target_date: date = Query(...)):
             LIMIT 1
         """, (station, target_date))
         signal_row = cur.fetchone()
+
+        # weather_position_exits only ever gets a row when a bucket
+        # QUALIFIES as a trade (edge >= threshold) -- on a day/cycle where
+        # nothing has qualified yet, signal_row is None even though CP4 has
+        # evaluated every bucket. weather_gold_contract_ledger logs every
+        # evaluated bucket (including SKIP), so it's a much more complete
+        # mu source: predicted_tmax_f = nws_forecast_f + model_delta_f
+        # (mirrors cp4_kelly_sizer.py's model_delta_f definition exactly).
+        ledger_row = None
+        if signal_row is None or (signal_row.get("final_entry_predicted_tmax_f") is None
+                                   and signal_row.get("predicted_tmax_f") is None):
+            cur.execute("""
+                SELECT nws_forecast_f, model_delta_f, signal_generated_at
+                FROM weather_gold_contract_ledger
+                WHERE station_code = %s AND target_date = %s
+                  AND nws_forecast_f IS NOT NULL AND model_delta_f IS NOT NULL
+                ORDER BY signal_generated_at DESC
+                LIMIT 1
+            """, (station, target_date))
+            ledger_row = cur.fetchone()
+
+        base_sigma_row = None
+        need_computed_sigma = signal_row is None or (
+            signal_row.get("final_entry_sigma_used") is None
+            and signal_row.get("sigma_used") is None
+        )
+        if need_computed_sigma:
+            cur.execute("""
+                SELECT rmse FROM model_calibration
+                WHERE station_code = %s AND variable = 'tmax_f'
+                  AND source_model = 'nws' AND lead_time_hours = 24
+                  AND season = %s
+            """, (station, model_math.season_for(target_date)))
+            base_sigma_row = cur.fetchone()
 
     mu = sigma = None
     mu_source = sigma_source = "none"
@@ -113,15 +159,55 @@ def get_ladder(station: str = Query(...), target_date: date = Query(...)):
         elif signal_row.get("sigma_used") is not None:
             sigma, sigma_source = float(signal_row["sigma_used"]), "live"
 
+    if mu is None and ledger_row is not None:
+        mu = float(ledger_row["nws_forecast_f"]) + float(ledger_row["model_delta_f"])
+        mu_source = "ledger_skip"  # bucket(s) evaluated this cycle, none qualified as a trade
+
+    if sigma is None and base_sigma_row is not None and base_sigma_row.get("rmse") is not None:
+        now_utc = datetime.now(timezone.utc)
+        sigma = round(model_math.calculate_time_decayed_sigma(
+            float(base_sigma_row["rmse"]), station, now_utc, target_date
+        ), 4)
+        sigma_source = "computed_fresh"  # same formula CP4 uses, computed here since no signal row exists yet
+        if hours_to_settle is None:
+            hours_to_settle = round(
+                max((model_math.settlement_dt(station, target_date) - now_utc).total_seconds() / 3600.0, 0.0), 2
+            )
+
     sigma_markers = []
     if mu is not None and sigma is not None:
         for n in SIGMA_MARKERS:
             sigma_markers.append({"n": n, "temp_f": round(mu + n * sigma, 1)})
 
+    # Port of cp4_kelly_sizer.run_cp4_kelly()'s threshold-bucket-opening
+    # logic, verbatim: Kalshi stores BOTH T-low and T-high threshold
+    # buckets with bucket_floor == bucket_cap == threshold_value (e.g. T90
+    # and T97 both literally store floor=cap). The smallest such value is
+    # the bottom ("<=X", opens downward to -inf); the largest is the top
+    # (">=X", opens upward to +inf). Without this, threshold buckets render
+    # as a malformed "90-90" range instead of "90 or below" / "97 or
+    # above", AND sigma-marker bucket-membership silently misattributes
+    # any marker beyond the threshold (it would fall outside [X,X] instead
+    # of the correct open-ended range).
+    thresh_vals = sorted(
+        float(b["bucket_floor"])
+        for b in bucket_rows
+        if b["bucket_type"] == "threshold"
+        and b["bucket_floor"] is not None and b["bucket_cap"] is not None
+        and float(b["bucket_floor"]) == float(b["bucket_cap"])
+    )
+    bottom_thresh = thresh_vals[0] if len(thresh_vals) >= 1 else None
+    top_thresh = thresh_vals[-1] if len(thresh_vals) >= 2 else None
+
     buckets = []
     for b in sorted(bucket_rows, key=_bucket_sort_key):
         floor = float(b["bucket_floor"]) if b["bucket_floor"] is not None else None
         cap = float(b["bucket_cap"]) if b["bucket_cap"] is not None else None
+        if b["bucket_type"] == "threshold" and floor is not None and floor == cap:
+            if floor == bottom_thresh:
+                floor = None   # "<=X" -- opens to -inf
+            elif floor == top_thresh:
+                cap = None     # ">=X" -- opens to +inf
         volume = float(b["volume"]) if b["volume"] is not None else None
         markers_in_bucket = []
         for m in sigma_markers:
@@ -157,6 +243,7 @@ def get_ladder(station: str = Query(...), target_date: date = Query(...)):
         "sigma_markers": sigma_markers,
         "hours_to_settle": float(hours_to_settle) if hours_to_settle is not None else None,
         "buckets": buckets,
+        "data_stale": data_stale,
     }
 
 
