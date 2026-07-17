@@ -488,7 +488,7 @@ function renderSimulation() {
   tbody.innerHTML = '';
 
   if (!state.ladder) return;
-  let grossTotal = 0, netTotal = 0, totalInvested = 0;
+  let grossTotal = 0, netTotal = 0, totalInvested = 0, totalFees = 0;
   let anyRows = false;
 
   for (const b of state.ladder.buckets) {
@@ -510,6 +510,7 @@ function renderSimulation() {
         : (sideWins ? result.profitIfWin : -result.totalCost);
 
       totalInvested += result.totalCost;
+      totalFees += result.fee;
       if (pnl != null) {
         grossTotal += sideWins ? result.payoutIfWin : 0;
         netTotal += pnl;
@@ -520,6 +521,7 @@ function renderSimulation() {
         <td>${bucketRangeLabel(b)}</td>
         <td>${side.toUpperCase()}</td>
         <td>$${result.totalCost.toFixed(2)}</td>
+        <td>$${result.fee.toFixed(2)}</td>
         <td>${state.winningBucket == null ? 'pending' : (sideWins ? '<span class="row-win">WIN</span>' : '<span class="row-loss">LOSS</span>')}</td>
         <td class="${pnl == null ? '' : (pnl >= 0 ? 'row-win' : 'row-loss')}">${pnl == null ? '—' : '$' + pnl.toFixed(2)}</td>`;
       tbody.appendChild(tr);
@@ -527,12 +529,13 @@ function renderSimulation() {
   }
 
   if (!anyRows) {
-    tbody.innerHTML = '<tr><td colspan="5" class="hint">No investment entered on any row yet.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" class="hint">No investment entered on any row yet.</td></tr>';
   }
 
   totalsEl.innerHTML = state.winningBucket == null
     ? `<div class="hint">Select a winning bucket above to see P&amp;L.</div>`
     : `<div><span class="total-label">Total invested</span><span class="total-value">$${totalInvested.toFixed(2)}</span></div>
+       <div><span class="total-label">Total fees</span><span class="total-value">$${totalFees.toFixed(2)}</span></div>
        <div><span class="total-label">Gross payout</span><span class="total-value">$${grossTotal.toFixed(2)}</span></div>
        <div><span class="total-label">Net P&amp;L</span><span class="total-value ${netTotal >= 0 ? 'pos' : 'neg'}">$${netTotal.toFixed(2)}</span></div>`;
 }
