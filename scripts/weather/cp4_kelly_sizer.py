@@ -385,6 +385,17 @@ def run_cp4_kelly(station_code: str, target_date: date,
 
         no_ask_thin = no_ask_cents < MIN_NO_ASK_CENTS
         valid_price  = 0 < no_ask_cents < 100
+
+        # No minimum lead-time requirement, by design (confirmed 2026-07-07,
+        # not an oversight): a signal qualifies the moment its edge crosses
+        # edge_threshold, whether that's a day out or minutes before close.
+        # This is fine because calculate_time_decayed_sigma() already
+        # compresses sigma as hours_remaining shrinks -- a last-minute
+        # decision is using a sharper (lower-uncertainty), not weaker,
+        # probability estimate off the same underlying data, not a worse
+        # guess. Real decision_timestamps span 0-day to 1-day lead and
+        # every hour in between; that spread is expected, not a bug. Do not
+        # add an hours_to_settle floor here without revisiting this note.
         qualifies    = bool(not pre_open and valid_price and not no_ask_thin
                             and edge_cents >= edge_threshold and not spread_too_wide)
 
