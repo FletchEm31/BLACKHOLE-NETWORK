@@ -21,7 +21,7 @@ const DATA_SOURCES = [
   { label: 'Liquidity guard', text: 'is_liquid = volume > 100, same threshold CP4 itself uses (EDGE_THRESHOLD_LIQ/ILL split)' },
   { label: 'Bucket set', text: 'latest single snapshot batch only (MAX(retrieved_at), 45-min staleness cutoff) — matches CP4\'s own query, so removed/stale buckets drop out instead of lingering' },
   { label: 'Model % / Edge columns', text: 'Model % = exact Gaussian CDF mass between the bucket\'s (already threshold-opened) floor/cap given today\'s μ/σ (Python math.erf, not the chart\'s JS approximation). Edge = Model % − market Chance%.' },
-  { label: 'Zone tag', text: 'Signed z-score (distance from μ to the bucket\'s near edge, ÷ σ) classified per WEATHERBHN-SIGMA-ZONE-ANALYSIS-2026-07-17.md — a read-only backtest report, "promising hypothesis, not a proven strategy." Only 2 of 7 backtested zones cleared that doc\'s own bar; hover a zone chip for the exact ROI/n.' },
+  { label: 'σ marker chip colors', text: '0σ = green (sole Yes-bet target), ±2σ = yellow, ±3σ = red (No-bet targets) — operator-specified single points, per WEATHERBHN-SIGMA-ZONE-ANALYSIS-2026-07-17.md context. Gold ★ on −2σ/−3σ/+3σ only is a separate, more specific marker layered on top.' },
 ];
 
 const KNOWN_ISSUES = [
@@ -242,8 +242,9 @@ function renderReferenceStrip(data) {
   } else {
     for (const m of data.sigma_markers) {
       const div = document.createElement('div');
-      div.className = 'sigma-marker' + (m.n === 0 ? ' zero' : '');
-      const star = STAR_MARKERS.has(m.n) ? ' &#9733;' : '';
+      const isStarred = STAR_MARKERS.has(m.n);
+      div.className = 'sigma-marker' + (m.n === 0 ? ' zero' : '') + (isStarred ? ' starred' : '');
+      const star = isStarred ? ' &#9733;' : '';
       div.innerHTML = `<div class="n">${m.n > 0 ? '+' : ''}${m.n}&sigma;${star}</div><div class="temp">${m.temp_f}&deg;F</div>`;
       strip.appendChild(div);
     }
@@ -348,15 +349,6 @@ function bucketRangeLabel(b) {
 // +2sigma was a confirmed losing zone at -11.1% ROI and stays unstarred).
 const STAR_MARKERS = new Set([-2, -3, 3]);
 
-// Per WEATHERBHN-SIGMA-ZONE-ANALYSIS-2026-07-17.md -- a read-only backtest
-// report, "promising hypothesis, not a proven strategy." Full rationale in
-// each bucket's zone_label (shown as a tooltip on hover).
-const ZONE_SHORT_LABEL = {
-  confirmed_profitable: '−2σ..−1σ',
-  confirmed_bad: '0..+1σ',
-  unvalidated: 'unvalidated',
-};
-
 function renderLadderTable(data) {
   const tbody = document.getElementById('ladderBody');
   tbody.innerHTML = '';
@@ -367,7 +359,11 @@ function renderLadderTable(data) {
 
 
     // Same format as the reference strip (n-sigma / temp) so each row is
-    // self-contained -- no need to cross-reference the top strip.
+    // self-contained -- no need to cross-reference the top strip. Stacked
+    // vertically (not wrapped inline) in bell-curve order: -4sigma at top
+    // down through -1, then 0, then +1 up through +4sigma at the bottom --
+    // sigma_markers_in_bucket is already ascending by construction
+    // (backend builds it from range(-4,5)), so no re-sort needed here.
     const sigmaChips = b.sigma_markers_in_bucket
       .map(n => {
         const marker = data.sigma_markers.find(m => m.n === n);
@@ -381,10 +377,9 @@ function renderLadderTable(data) {
         if (n === 0) colorClass = ' chip-green';
         else if (n === 2 || n === -2) colorClass = ' chip-yellow';
         else if (n === 3 || n === -3) colorClass = ' chip-red';
-        return `<span class="sigma-chip${colorClass}${star ? ' starred' : ''}">${n > 0 ? '+' : ''}${n}&sigma;${tempStr}${star}</span>`;
+        return `<div class="sigma-chip${colorClass}${star ? ' starred' : ''}">${n > 0 ? '+' : ''}${n}&sigma;${tempStr}${star}</div>`;
       }).join('');
 
-    const zoneChip = `<span class="zone-chip zone-${b.zone_tag}" title="${b.zone_label || ''}">${ZONE_SHORT_LABEL[b.zone_tag] || b.zone_tag}</span>`;
     const edgeClass = b.edge_pct == null ? '' : (b.edge_pct >= 0 ? 'edge-pos' : 'edge-neg');
     const edgeStr = b.edge_pct == null ? '—' : `${b.edge_pct >= 0 ? '+' : ''}${b.edge_pct}%`;
 
@@ -392,7 +387,6 @@ function renderLadderTable(data) {
       <td><input type="checkbox" class="win-checkbox" ${state.winningBucket === b.bucket_label ? 'checked' : ''}></td>
       <td class="col-bucket"><span class="bucket-range">${bucketRangeLabel(b)}</span></td>
       <td class="col-sigma">${sigmaChips || '&nbsp;'}</td>
-      <td class="col-zone">${zoneChip}</td>
       <td class="col-chance">${b.chance_pct != null ? b.chance_pct + '%' : '—'}</td>
       <td class="col-model">${b.model_prob_pct != null ? b.model_prob_pct + '%' : '—'}</td>
       <td class="col-edge ${edgeClass}">${edgeStr}</td>

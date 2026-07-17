@@ -103,6 +103,12 @@ main { padding: 16px 20px 60px; display: flex; flex-direction: column; gap: 16px
 .sigma-marker .n { font-size: 11px; color: var(--text-dim); }
 .sigma-marker .temp { font-size: 15px; font-weight: 700; margin-top: 2px; }
 .sigma-marker.zero { border-color: var(--accent-blue); }
+/* Same -2sigma/-3sigma/+3sigma star as the ladder's sigma-chip column --
+   applies identically across all cities (checks only m.n, not a
+   city-specific value). Was present in the markup already but unstyled
+   (plain gray text), easy to miss -- now visually matches the ladder. */
+.sigma-marker.starred { border-color: #ffd24d; }
+.sigma-marker.starred .n { color: #ffd24d; font-weight: 700; }
 .source-badges { margin-top: 8px; display: flex; gap: 8px; font-size: 11px; }
 .badge { padding: 2px 8px; border-radius: var(--radius-pill); border: 1px solid var(--panel-border); color: var(--text-dim); }
 .badge.entry_frozen { color: var(--green); border-color: var(--green); }
@@ -142,9 +148,13 @@ main { padding: 16px 20px 60px; display: flex; flex-direction: column; gap: 16px
 .ladder-table td.col-bucket, .ladder-table th.col-bucket { text-align: left; }
 
 .col-bucket .bucket-range { font-weight: 700; }
+/* Stacked vertically (bell-curve order, -4sigma top -> +4sigma bottom),
+   not wrapped inline -- multiple markers in one bucket sit right on top
+   of each other. */
 .col-sigma .sigma-chip {
-  display: inline-block; background: var(--input-bg); border: 1px solid var(--accent-blue);
-  color: var(--accent-blue); border-radius: 6px; padding: 1px 6px; font-size: 11px; margin: 1px;
+  display: block; background: var(--input-bg); border: 1px solid var(--accent-blue);
+  color: var(--accent-blue); border-radius: 6px; padding: 1px 6px; font-size: 11px; margin: 2px auto;
+  width: fit-content;
 }
 /* Single-point sigma-marker chip colors: 0sigma (sole Yes target), +-2sigma
    / +-3sigma (No targets). Lives on the chip badge only, not the row --
@@ -195,16 +205,6 @@ main { padding: 16px 20px 60px; display: flex; flex-direction: column; gap: 16px
    unstyled/broken state next to the always-full-opacity Yes column. */
 .illiquid-flag { color: var(--red); font-size: 10px; }
 
-/* Sigma-zone confidence tag -- WEATHERBHN-SIGMA-ZONE-ANALYSIS-2026-07-17.md.
-   Deliberately a read-only backtest signal, not a recommendation -- hover
-   for the exact zone/ROI/n via the title tooltip. */
-.zone-chip {
-  display: inline-block; border-radius: 6px; padding: 2px 6px; font-size: 10px;
-  font-weight: 700; border: 1px solid var(--panel-border); cursor: help; white-space: nowrap;
-}
-.zone-confirmed_profitable { background: var(--green-dim); border-color: var(--green); color: var(--green); }
-.zone-confirmed_bad { background: var(--red-dim); border-color: var(--red); color: var(--red); }
-.zone-unvalidated { background: transparent; border-color: var(--panel-border); color: var(--text-faint); }
 
 .col-edge.edge-pos { color: var(--green); font-weight: 700; }
 .col-edge.edge-neg { color: var(--red); font-weight: 700; }

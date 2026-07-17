@@ -46,43 +46,6 @@ def _normal_cdf(x: float, mu: float, sigma: float) -> float:
     return 0.5 * (1 + math.erf((x - mu) / (sigma * math.sqrt(2))))
 
 
-# Zone definitions verbatim from
-# infrastructure/docs/WeatherBHN/WEATHERBHN-SIGMA-ZONE-ANALYSIS-2026-07-17.md
-# -- a READ-ONLY backtest report, explicitly "promising hypothesis, not a
-# proven strategy" (n=8 for the "robust" zone). Signed z, per that doc:
-# positive = bucket entirely ABOVE the prediction (hotter than forecast),
-# negative = entirely BELOW (cooler), zero = prediction falls inside the
-# bucket. Only 2 of the 7 backtested zones cleared the doc's own bar for
-# "robust" / "worst zone in the dataset" -- everything else (including the
-# z=0 case, and anything beyond the +-3sigma backtested range) is tagged
-# unvalidated, per operator's explicit 3-tier request.
-def _sigma_zone(floor: Optional[float], cap: Optional[float],
-                 mu: float, sigma: float) -> tuple[float, str, str]:
-    if floor is not None and mu < floor:
-        signed_dist = floor - mu           # positive: bucket above prediction
-    elif cap is not None and mu > cap:
-        signed_dist = cap - mu             # negative: bucket below prediction
-    else:
-        signed_dist = 0.0                  # prediction falls inside the bucket
-    z = signed_dist / sigma
-
-    if -2 <= z < -1:
-        return z, "confirmed_profitable", "−2σ to −1σ — +36.6% ROI, n=8 (robust, independently reproduced twice)"
-    if 0 < z <= 1:
-        return z, "confirmed_bad", "0 to +1σ (excl. z=0) — −41.6% ROI, n=19 (worst zone in the backtest)"
-    if z == 0:
-        return z, "unvalidated", "z=0 — prediction falls inside this bucket — −3.6% ROI, n=16 (moderate sample)"
-    if -3 <= z < -2:
-        return z, "unvalidated", "−3σ to −2σ — +11.5% ROI, n=2 (too thin to trust)"
-    if -1 <= z < 0:
-        return z, "unvalidated", "−1σ to 0 — −8.6% ROI, n=17 (not independently stress-tested)"
-    if 1 < z <= 2:
-        return z, "unvalidated", "+1σ to +2σ — −11.1% ROI, n=9 (not independently stress-tested)"
-    if 2 < z <= 3:
-        return z, "unvalidated", "+2σ to +3σ — +9.9% ROI, n=1 (single trade, noise)"
-    return z, "unvalidated", "beyond ±3σ — no backtest data at this distance"
-
-
 @app.on_event("startup")
 def _startup():
     db.init_pool()
@@ -267,15 +230,13 @@ def get_ladder(station: str = Query(...), target_date: date = Query(...)):
                 markers_in_bucket.append(m["n"])
 
         chance_pct = _chance_pct(b)
-        model_prob_pct = edge_pct = signed_z = None
-        zone_tag, zone_label = "unvalidated", None
+        model_prob_pct = edge_pct = None
         if mu is not None and sigma is not None and sigma > 0:
             cdf_hi = _normal_cdf(cap if cap is not None else float("inf"), mu, sigma)
             cdf_lo = _normal_cdf(floor if floor is not None else float("-inf"), mu, sigma)
             model_prob_pct = round((cdf_hi - cdf_lo) * 100, 1)
             if chance_pct is not None:
                 edge_pct = round(model_prob_pct - chance_pct, 1)
-            signed_z, zone_tag, zone_label = _sigma_zone(floor, cap, mu, sigma)
 
         buckets.append({
             "bucket_label":  b["bucket_label"],
@@ -289,9 +250,6 @@ def get_ladder(station: str = Query(...), target_date: date = Query(...)):
             "chance_pct":    chance_pct,
             "model_prob_pct": model_prob_pct,
             "edge_pct":      edge_pct,
-            "signed_z":      round(signed_z, 2) if signed_z is not None else None,
-            "zone_tag":      zone_tag,
-            "zone_label":    zone_label,
             "volume":        volume,
             "open_interest": float(b["open_interest"]) if b["open_interest"] is not None else None,
             "is_liquid":     (volume > 100.0) if volume is not None else None,
