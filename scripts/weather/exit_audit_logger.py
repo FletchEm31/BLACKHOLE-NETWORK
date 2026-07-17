@@ -50,6 +50,18 @@ def _get_conn():
 # Part 1 — Signal capture (called by orchestrator at decision time)
 # ---------------------------------------------------------------------------
 
+# entry_edge_cents / entry_model_prob_no_cents (added 2026-07-17): frozen at
+# the same first-qualification moment as entry_no_ask_cents/entry_captured_at
+# -- deliberately absent from the ON CONFLICT DO UPDATE SET below, same as
+# those two. edge_cents/model_prob_no_cents are NOT frozen (see UPDATE SET)
+# and drift every cycle a signal keeps re-qualifying -- confirmed via a
+# same-night backtest that this drift is large enough to fabricate a false
+# "high edge / high confidence" pattern out of trades that were unremarkable
+# at entry and only look extreme after the market moved against them near
+# settlement. Do not use edge_cents/model_prob_no_cents for any backtest or
+# entry-time analysis -- use entry_edge_cents/entry_model_prob_no_cents.
+# edge_cents/model_prob_no_cents remain live-refreshed by design, for
+# "current state of an open position" monitoring -- not removed.
 _RECORD_SQL = """
     INSERT INTO weather_position_exits (
         station_code, target_date, contract_ticker, real_market_ticker,
@@ -57,14 +69,16 @@ _RECORD_SQL = """
         predicted_tmax_f, model_prob_no_cents, no_ask_cents,
         edge_cents, contracts_recommended, stake_usd_recommended,
         hours_to_settle, sigma_used, is_paper_trade,
-        entry_no_ask_cents, entry_captured_at
+        entry_no_ask_cents, entry_captured_at,
+        entry_edge_cents, entry_model_prob_no_cents
     ) VALUES (
         %(station_code)s, %(target_date)s, %(contract_ticker)s, %(real_market_ticker)s,
         %(bucket_label)s, %(bucket_floor)s, %(bucket_cap)s, %(decision_timestamp)s,
         %(predicted_tmax_f)s, %(model_prob_no_cents)s, %(no_ask_cents)s,
         %(edge_cents)s, %(contracts_recommended)s, %(stake_usd_recommended)s,
         %(hours_to_settle)s, %(sigma_used)s, %(is_paper_trade)s,
-        %(no_ask_cents)s, %(decision_timestamp)s
+        %(no_ask_cents)s, %(decision_timestamp)s,
+        %(edge_cents)s, %(model_prob_no_cents)s
     )
     ON CONFLICT (contract_ticker) DO UPDATE SET
         decision_timestamp    = EXCLUDED.decision_timestamp,
@@ -139,27 +153,35 @@ def _determine_outcome(actual_tmax_f: float,
     """
     Determine NO-side outcome for a settled contract.
 
-    Standard bucket (floor AND cap set):
-      NO_WIN  if actual < floor OR actual >= cap  (tmax outside bucket)
-      NO_LOSS if floor <= actual < cap            (tmax inside bucket; YES won)
+    FIXED 2026-07-07: every boundary is inclusive on the bucket-wins side --
+    confirmed against Kalshi's own rules_primary text ("...is between 90-91,
+    then resolves Yes" -- both ends included) and independently confirmed
+    against a real settled market record (KXHIGHNY-26JUN10-B81.5,
+    settlement_temp_f=82.0 exactly equal to cap_strike=82, result=yes).
+    Previously used >= cap / <= floor for the NO_WIN (bucket-loses) side,
+    which silently excluded the exact boundary value from the bucket --
+    wrong on every shape (between/T-low/T-high), not just the between-
+    bucket cap. Confirmed real rows misclassified this way: 422, 523,
+    709, 1495, 2397 (all actual_tmax_f == bucket_cap, recorded NO_WIN,
+    truly NO_LOSS).
+
+    Standard bucket (floor AND cap set), e.g. "90-91":
+      NO_WIN  if actual < floor OR actual > cap   (tmax outside [floor, cap])
+      NO_LOSS if floor <= actual <= cap           (tmax inside; YES won)
 
     T-low threshold (floor=None, cap=threshold, e.g. T65 '<=65°F'):
-      YES wins if actual < cap (temp stayed below)
-      NO_WIN  if actual >= cap
-      NO_LOSS if actual < cap
+      YES wins if actual <= cap (temp at or below threshold)
+      NO_WIN  if actual > cap
+      NO_LOSS if actual <= cap
 
     T-high threshold (floor=threshold, cap=None, e.g. T95 '>=95°F'):
-      YES wins if actual > floor (temp hit threshold)
-      NO_WIN  if actual <= floor
-      NO_LOSS if actual > floor
+      YES wins if actual >= floor (temp at or above threshold)
+      NO_WIN  if actual < floor
+      NO_LOSS if actual >= floor
     """
-    if bucket_floor is not None and bucket_cap is not None:
-        return ('NO_WIN' if (actual_tmax_f < bucket_floor or actual_tmax_f >= bucket_cap)
-                else 'NO_LOSS')
-    elif bucket_cap is not None:
-        return 'NO_WIN' if actual_tmax_f >= bucket_cap else 'NO_LOSS'
-    else:
-        return 'NO_WIN' if actual_tmax_f <= bucket_floor else 'NO_LOSS'
+    below_floor = bucket_floor is not None and actual_tmax_f < bucket_floor
+    above_cap   = bucket_cap   is not None and actual_tmax_f > bucket_cap
+    return 'NO_WIN' if (below_floor or above_cap) else 'NO_LOSS'
 
 
 def score_settled_positions(dry_run: bool = False,
@@ -185,7 +207,8 @@ def score_settled_positions(dry_run: bool = False,
                 cur.execute("""
                     SELECT id, station_code, target_date, contract_ticker,
                            bucket_label, bucket_floor, bucket_cap,
-                           no_ask_cents, contracts_recommended
+                           no_ask_cents, entry_no_ask_cents, contracts_recommended,
+                           stake_usd_recommended
                     FROM weather_position_exits
                     WHERE target_date = %s
                       AND scored_at IS NULL
@@ -195,7 +218,8 @@ def score_settled_positions(dry_run: bool = False,
                 cur.execute("""
                     SELECT id, station_code, target_date, contract_ticker,
                            bucket_label, bucket_floor, bucket_cap,
-                           no_ask_cents, contracts_recommended
+                           no_ask_cents, entry_no_ask_cents, contracts_recommended,
+                           stake_usd_recommended
                     FROM weather_position_exits
                     WHERE scored_at IS NULL
                     ORDER BY target_date, station_code
@@ -241,13 +265,31 @@ def score_settled_positions(dry_run: bool = False,
             actual_tmax = float(act_row['final_tmax_f'])
             floor_val   = float(row['bucket_floor']) if row['bucket_floor'] is not None else None
             cap_val     = float(row['bucket_cap'])   if row['bucket_cap']   is not None else None
-            no_ask_c    = float(row['no_ask_cents'])
             contracts   = int(row['contracts_recommended'])
+
+            # P&L must be sized off entry_no_ask_cents (the price locked in at
+            # first signal capture), not no_ask_cents (refreshed live every
+            # orchestrator cycle via ON CONFLICT DO UPDATE — see _RECORD_SQL).
+            # Identical bug to the one fixed in cp4_kelly_sizer.py's
+            # _get_open_entry_prices() on 2026-07-03: using the live price
+            # matches whatever the last refresh happened to see, not what was
+            # actually paid to enter. Falls back to no_ask_cents only for rows
+            # predating migration 003 (entry_no_ask_cents was never backfilled
+            # for rows already scored at that time).
+            if row['entry_no_ask_cents'] is not None:
+                entry_ask_c = float(row['entry_no_ask_cents'])
+            else:
+                entry_ask_c = float(row['no_ask_cents'])
+                logger.warning(
+                    '%s: entry_no_ask_cents is NULL — falling back to live '
+                    'no_ask_cents for P&L (pre-migration-003 row)',
+                    row['contract_ticker'],
+                )
 
             outcome = _determine_outcome(actual_tmax, floor_val, cap_val)
             pnl = round(
-                contracts * (1.00 - no_ask_c / 100.0) if outcome == 'NO_WIN'
-                else contracts * (-no_ask_c / 100.0),
+                contracts * (1.00 - entry_ask_c / 100.0) if outcome == 'NO_WIN'
+                else contracts * (-entry_ask_c / 100.0),
                 4,
             )
 
@@ -269,12 +311,17 @@ def score_settled_positions(dry_run: bool = False,
                 with conn.cursor() as cur:
                     cur.execute("""
                         UPDATE weather_position_exits
-                        SET actual_tmax_f    = %s,
-                            actual_outcome   = %s,
-                            realized_pnl_usd = %s,
-                            scored_at        = NOW()
+                        SET actual_tmax_f                     = %s,
+                            actual_outcome                     = %s,
+                            realized_pnl_usd                   = %s,
+                            corrected_realized_pnl_usd         = %s,
+                            corrected_contracts_recommended    = %s,
+                            corrected_stake_usd_recommended    = %s,
+                            scored_at                          = NOW()
                         WHERE id = %s
-                    """, (actual_tmax, outcome, pnl, row['id']))
+                    """, (actual_tmax, outcome, pnl, pnl,
+                          row['contracts_recommended'], row['stake_usd_recommended'],
+                          row['id']))
                 conn.commit()
                 logger.info('%s %s %s: actual=%.1f°F → %s  pnl=$%+.4f',
                             station, tdate, row['bucket_label'], actual_tmax, outcome, pnl)
