@@ -273,30 +273,20 @@ main { padding: 16px 20px 60px; display: flex; flex-direction: column; gap: 16px
 .notepad-widget.collapsed .notepad-textarea { display: none; }
 @media (max-width: 1100px) { .notepad-widget { position: static; width: auto; margin: 0 20px 16px; } }
 
-/* ---------- Sigma-marker performance (pooled + per-city grid) ---------- */
-.sigma-perf-table th, .sigma-perf-table td { text-align: center; }
+/* ---------- Sigma-marker performance (pooled + per-city grid) ----------
+   Deliberately small/dense (operator request) -- only a positive-ROI cell
+   is highlighted (green); everything else stays neutral, no other colors. */
+.sigma-perf-table th, .sigma-perf-table td { text-align: center; padding: 3px 4px; }
 .sigma-perf-table td:first-child, .sigma-perf-table th:first-child { text-align: left; font-weight: 700; white-space: nowrap; }
-.perf-cell { border-radius: 6px; padding: 4px 6px; cursor: help; }
-.perf-pct { font-size: 12px; font-weight: 700; }
-.perf-roi { font-size: 11px; }
-.perf-n { font-size: 10px; color: var(--text-faint); }
-.perf-dollars { font-size: 10px; color: var(--text-dim); margin-top: 1px; }
+.perf-cell { border-radius: 4px; padding: 2px 4px; cursor: help; }
+.perf-pct { font-size: 10px; font-weight: 700; }
+.perf-roi { font-size: 9px; }
+.perf-n { font-size: 9px; color: var(--text-faint); }
+.perf-dollars { font-size: 9px; color: var(--text-dim); }
 .perf-dollars.profit-pos { color: var(--green); }
 .perf-dollars.profit-neg { color: var(--red); }
-/* 0sigma only -- resimulated as a Yes bet (live system only ever bets No).
-   Deliberately distinct from the normal cell styling so it never reads as
-   a plain No-side result; hover for the full caveat. */
-.perf-sim-badge {
-  font-size: 9px; font-weight: 700; color: var(--accent-blue); border: 1px solid var(--accent-blue);
-  border-radius: 4px; padding: 0 4px; margin-bottom: 2px; cursor: help; display: inline-block;
-}
 .perf-green { background: var(--green-dim); border: 1px solid var(--green); }
 .perf-green .perf-pct, .perf-green .perf-roi { color: var(--green); }
-.perf-red { background: var(--red-dim); border: 1px solid var(--red); }
-.perf-red .perf-pct, .perf-red .perf-roi { color: var(--red); }
-.perf-thin { background: rgba(230, 184, 0, 0.08); border: 1px solid #e6b800; }
-.perf-thin .perf-pct, .perf-thin .perf-roi { color: #e6b800; }
-.perf-nodata { background: transparent; border: 1px solid var(--panel-border); }
 
 /* ---------- Footer: data sources + known issues (muted, collapsed) ---------- */
 .dash-footer { margin-top: 4px; }

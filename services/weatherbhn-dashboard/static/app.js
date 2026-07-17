@@ -22,7 +22,7 @@ const DATA_SOURCES = [
   { label: 'Bucket set', text: 'latest single snapshot batch only (MAX(retrieved_at), 45-min staleness cutoff) — matches CP4\'s own query, so removed/stale buckets drop out instead of lingering' },
   { label: 'Model % / Edge columns', text: 'Model % = exact Gaussian CDF mass between the bucket\'s (already threshold-opened) floor/cap given today\'s μ/σ (Python math.erf, not the chart\'s JS approximation). Edge = Model % − market Chance%.' },
   { label: 'σ marker chip colors', text: '0σ = green (sole Yes-bet target), ±2σ = yellow, ±3σ = red (No-bet targets) — operator-specified single points, per WEATHERBHN-SIGMA-ZONE-ANALYSIS-2026-07-17.md context. Gold ★ on −2σ/−3σ/+3σ only is a separate, more specific marker layered on top.' },
-  { label: 'Sigma-Marker Performance panel', text: 'Live, recomputed on every load from every settled trade (weather_position_exits_clean) across all 3 cities — grows as more trades settle, not a snapshot. Each trade\'s entry-time signed z-score is rounded to the nearest integer marker (-4..+4), so these numbers will NOT exactly match WEATHERBHN-SIGMA-ZONE-ANALYSIS-2026-07-17.md\'s custom zone-ranges — different binning method, same underlying trades. Cell color: green/red requires n≥8 (the same bar that doc used to call a zone "robust"); anything thinner stays yellow/gray regardless of ROI sign.' },
+  { label: 'Sigma-Marker Performance panel', text: 'Live, recomputed on every load from every settled trade (weather_position_exits_clean) across all 3 cities — grows as more trades settle, not a snapshot. Each trade\'s entry-time signed z-score is rounded to the nearest integer marker (-4..+4), so these numbers will NOT exactly match WEATHERBHN-SIGMA-ZONE-ANALYSIS-2026-07-17.md\'s custom zone-ranges — different binning method, same underlying trades. Every marker (including 0σ) uses the plain recorded No-side outcome — no Yes-side resimulation. Cell color: green = positive ROI (any sample size), everything else neutral.' },
 ];
 
 const KNOWN_ISSUES = [
@@ -684,23 +684,18 @@ function setSaveStatus(text) {
 // ---------------------------------------------------------------------------
 function markerLabel(n) { return `${n > 0 ? '+' : ''}${n}σ`; }
 
+// Binary now, per operator simplification: only a positive-ROI cell gets
+// highlighted, everything else stays neutral (no separate red/thin/
+// no_data states).
 function tagClass(tag) {
-  return { green: 'perf-green', red: 'perf-red', thin: 'perf-thin', no_data: 'perf-nodata' }[tag] || '';
+  return tag === 'positive' ? 'perf-green' : '';
 }
 
 function cellHtml(cell) {
-  // 0sigma: the live system only ever bets No, and 0sigma is structurally
-  // the worst possible No bet (the bucket the model itself thinks is most
-  // likely) -- resimulated server-side as a Yes bet using real historical
-  // yes_ask pricing at each trade's actual entry moment. Surface that
-  // distinctly rather than let it blend in as if it were a normal No cell.
-  const simBadge = cell.yes_simulated
-    ? `<div class="perf-sim-badge" title="${cell.yes_simulated_note || ''}">YES SIM</div>` : '';
-  if (cell.n === 0) return simBadge + '<span class="hint">—</span>';
+  if (cell.n === 0) return '<span class="hint">—</span>';
   const netClass = cell.pnl >= 0 ? 'profit-pos' : 'profit-neg';
-  const tooltip = `n=${cell.n}, staked $${cell.staked}, pnl $${cell.pnl}`
-    + (cell.yes_simulated ? ` — ${cell.yes_simulated_note}` : '');
-  return simBadge + `<div class="perf-cell ${tagClass(cell.tag)}" title="${tooltip}">`
+  const tooltip = `n=${cell.n}, staked $${cell.staked}, pnl $${cell.pnl}`;
+  return `<div class="perf-cell ${tagClass(cell.tag)}" title="${tooltip}">`
     + `<div class="perf-pct">${cell.win_pct}% win</div>`
     + `<div class="perf-roi">${cell.roi_pct == null ? '—' : (cell.roi_pct >= 0 ? '+' : '') + cell.roi_pct + '% ROI'}</div>`
     + `<div class="perf-n">n=${cell.n}</div>`

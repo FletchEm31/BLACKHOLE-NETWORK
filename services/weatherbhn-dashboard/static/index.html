@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>WeatherBHN Trading Dashboard</title>
-<link rel="stylesheet" href="style.css?v=20">
+<link rel="stylesheet" href="style.css?v=21">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 </head>
 <body>
@@ -54,7 +54,7 @@
         <tbody id="sigmaPerfPooledBody"></tbody>
       </table>
     </div>
-    <div class="panel-title" style="margin-top:14px">By City <span class="hint">(green/red requires n&ge;8 per cell &mdash; same bar the original analysis used for "robust"; thinner cells stay gray/yellow regardless of ROI sign)</span></div>
+    <div class="panel-title" style="margin-top:14px">By City <span class="hint">(green = positive ROI, any sample size; everything else neutral)</span></div>
     <div class="table-scroll">
       <table id="sigmaPerfCityTable" class="data-table sigma-perf-table">
         <thead><tr id="sigmaPerfCityHead"></tr></thead>
@@ -177,6 +177,6 @@
 
 </main>
 
-<script src="app.js?v=20"></script>
+<script src="app.js?v=21"></script>
 </body>
 </html>
