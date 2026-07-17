@@ -41,6 +41,17 @@ EDGE_THRESHOLD_LIQ  = 5.0    # cents — liquid (volume > 100)
 EDGE_THRESHOLD_ILL  = 8.0    # cents — illiquid (volume <= 100 or unknown)
 MIN_NO_ASK_CENTS    = 3.0    # skip buckets with no_ask below this — effectively dead market
 
+# Edge ceiling — added 2026-07-16, backed by a backtest of all 87 settled
+# weather_position_exits rows: cumulative ROI peaks at a 25c ceiling
+# (+21.4%) and the marginal 25-30c bucket is the first to invert negative
+# (-21.1%), with an unbounded book at -13.3% ROI overall. All 87 settled
+# trades were LIQUID at entry (volume>100) — pre_open's volume<=100 cutoff
+# makes the illiquid branch structurally unreachable today, so this ceiling
+# is applied uniformly to both branches for now; do not split it by
+# liquidity without first fixing that pre_open/is_liquid boundary overlap
+# (separate task, not done here).
+EDGE_CEILING_CENTS  = 25.0   # cents — skip signals with edge above this (both liquid/illiquid)
+
 # Liquidity caps — added 2026-07-03, shared by NO and YES qualification (do not
 # duplicate per side). Source: weather_bronze_kalshi_market_snapshots.volume /
 # .open_interest — confirmed real, populated columns; these were previously
@@ -385,8 +396,21 @@ def run_cp4_kelly(station_code: str, target_date: date,
 
         no_ask_thin = no_ask_cents < MIN_NO_ASK_CENTS
         valid_price  = 0 < no_ask_cents < 100
+        edge_too_high = edge_cents > EDGE_CEILING_CENTS
+
+        # No minimum lead-time requirement, by design (confirmed 2026-07-07,
+        # not an oversight): a signal qualifies the moment its edge crosses
+        # edge_threshold, whether that's a day out or minutes before close.
+        # This is fine because calculate_time_decayed_sigma() already
+        # compresses sigma as hours_remaining shrinks -- a last-minute
+        # decision is using a sharper (lower-uncertainty), not weaker,
+        # probability estimate off the same underlying data, not a worse
+        # guess. Real decision_timestamps span 0-day to 1-day lead and
+        # every hour in between; that spread is expected, not a bug. Do not
+        # add an hours_to_settle floor here without revisiting this note.
         qualifies    = bool(not pre_open and valid_price and not no_ask_thin
-                            and edge_cents >= edge_threshold and not spread_too_wide)
+                            and edge_cents >= edge_threshold and edge_cents <= EDGE_CEILING_CENTS
+                            and not spread_too_wide)
 
         # Dollar-sizing uses the corrected entry price (weather_position_exits.
         # entry_no_ask_cents via migration 003), not the live no_ask_cents —
@@ -450,6 +474,7 @@ def run_cp4_kelly(station_code: str, target_date: date,
             'spread_too_wide':   spread_too_wide,
             'illiquid_capped':   illiquid_capped,
             'no_ask_thin':       no_ask_thin,
+            'edge_too_high':     edge_too_high,
             'pre_open':          pre_open,
             'market_ticker':     b['market_ticker'],
             'volume':            volume,
@@ -584,6 +609,8 @@ def write_to_ledger(conn, station_code: str, target_date: date,
                 skip_reason = 'INVALID_PRICE'
             elif b.get('no_ask_thin'):
                 skip_reason = 'NO_ASK_TOO_THIN'
+            elif b.get('edge_too_high'):
+                skip_reason = 'EDGE_TOO_HIGH'
             elif b.get('spread_too_wide'):
                 skip_reason = 'SPREAD_TOO_WIDE'
             elif b.get('illiquid_capped'):
