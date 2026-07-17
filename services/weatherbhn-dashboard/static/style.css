@@ -164,8 +164,11 @@ main { padding: 16px 20px 60px; display: flex; flex-direction: column; gap: 16px
    not wrapped inline -- multiple markers in one bucket sit right on top
    of each other. */
 .col-sigma .sigma-chip {
-  display: block; background: var(--input-bg); border: 1px solid var(--accent-blue);
-  color: var(--accent-blue); border-radius: 6px; padding: 1px 6px; font-size: 11px; margin: 2px auto;
+  /* Neutral by default -- only 0/+-2/+-3sigma get a color (via chip-green/
+     yellow/red below); +-1sigma and +-4sigma are intentionally NOT
+     highlighted, so they stay plain/neutral, not blue. */
+  display: block; background: var(--input-bg); border: 1px solid var(--panel-border);
+  color: var(--text-dim); border-radius: 6px; padding: 1px 6px; font-size: 11px; margin: 2px auto;
   width: fit-content;
 }
 /* Single-point sigma-marker chip colors: 0sigma (sole Yes target), +-2sigma
