@@ -51,19 +51,23 @@ def _get_conn():
 # ---------------------------------------------------------------------------
 
 # entry_edge_cents / entry_model_prob_no_cents / entry_predicted_tmax_f /
-# entry_hours_to_settle (added 2026-07-17/2026-07-17b): frozen at the same
-# first-qualification moment as entry_no_ask_cents/entry_captured_at --
-# deliberately absent from the ON CONFLICT DO UPDATE SET below, same as
-# those two. edge_cents/model_prob_no_cents/predicted_tmax_f/hours_to_settle
+# entry_hours_to_settle / entry_sigma_used (added 2026-07-17/2026-07-17b/d):
+# frozen at the same first-qualification moment as
+# entry_no_ask_cents/entry_captured_at -- deliberately absent from the
+# ON CONFLICT DO UPDATE SET below, same as those two.
+# edge_cents/model_prob_no_cents/predicted_tmax_f/hours_to_settle/sigma_used
 # are NOT frozen (see UPDATE SET) and drift every cycle a signal keeps
 # re-qualifying -- confirmed via same-night backtests that this drift is
 # large enough to fabricate false "high edge", "high confidence", and
 # "far outside the bucket" patterns out of trades that were unremarkable at
 # entry and only look extreme after the market/forecast moved near
-# settlement. Do not use the un-prefixed columns for any backtest or
-# entry-time analysis -- use the entry_* versions. The un-prefixed columns
-# remain live-refreshed by design, for "current state of an open position"
-# monitoring -- not removed.
+# settlement. sigma_used specifically also mechanically decays toward
+# settlement via calculate_time_decayed_sigma() (sqrt(hours_remaining/24)),
+# so a live-refreshed sigma_used reflects sigma near exit, not the
+# uncertainty actually priced in at entry. Do not use the un-prefixed
+# columns for any backtest or entry-time analysis -- use the entry_*
+# versions. The un-prefixed columns remain live-refreshed by design, for
+# "current state of an open position" monitoring -- not removed.
 _RECORD_SQL = """
     INSERT INTO weather_position_exits (
         station_code, target_date, contract_ticker, real_market_ticker,
@@ -73,7 +77,7 @@ _RECORD_SQL = """
         hours_to_settle, sigma_used, is_paper_trade,
         entry_no_ask_cents, entry_captured_at,
         entry_edge_cents, entry_model_prob_no_cents,
-        entry_predicted_tmax_f, entry_hours_to_settle
+        entry_predicted_tmax_f, entry_hours_to_settle, entry_sigma_used
     ) VALUES (
         %(station_code)s, %(target_date)s, %(contract_ticker)s, %(real_market_ticker)s,
         %(bucket_label)s, %(bucket_floor)s, %(bucket_cap)s, %(decision_timestamp)s,
@@ -82,7 +86,7 @@ _RECORD_SQL = """
         %(hours_to_settle)s, %(sigma_used)s, %(is_paper_trade)s,
         %(no_ask_cents)s, %(decision_timestamp)s,
         %(edge_cents)s, %(model_prob_no_cents)s,
-        %(predicted_tmax_f)s, %(entry_hours_to_settle)s
+        %(predicted_tmax_f)s, %(entry_hours_to_settle)s, %(sigma_used)s
     )
     ON CONFLICT (contract_ticker) DO UPDATE SET
         decision_timestamp    = EXCLUDED.decision_timestamp,
