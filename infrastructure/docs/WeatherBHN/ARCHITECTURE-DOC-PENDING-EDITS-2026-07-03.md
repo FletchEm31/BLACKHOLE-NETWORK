@@ -34,13 +34,15 @@ Replace the `weather_model_accuracy` bullet with:
 | 2026-07-03 | Silver-table permission bug fixed | bhn_weather_collector had zero grants on 3 silver tables since 7/1 migration. Fixed via GRANT. forecast_conformed resumed all 8 cities; actuals_conformed only 1/8 stations recovered so far - recheck in 24h. |
 | 2026-07-03 | NO-side liquidity caps deployed | Wired up dead liquid/illiquid edge split; added open-interest cap (10%), volume cap (5%), spread check (20¢ max) as shared `apply_liquidity_caps()` for NO + future YES. Verified against real KDEN (thin, caps bind) and KORD (liquid, caps don't bind) rows before deploying. Live cycle clean, zero errors. |
 | 2026-07-03 | Architecture doc corrections | 7/2 snapshot had factual errors: edge_sheet marked fully retired (still read nightly), model_accuracy marked stale (actively written), position_exits writer marked unconfirmed (now confirmed). Corrected in Sections 4.1-4.3. |
+| 2026-07-16 | Edge ceiling added (`EDGE_CEILING_CENTS = 25.0`) | Backtested +21.4% ROI vs -13.3% unbounded (87 settled trades, 3 cities: KDEN/KMIA/KLAX, ~16 days). Applied uniformly to both liquid/illiquid `edge_threshold` branches — new `EDGE_TOO_HIGH` skip_reason. Deployed to `/opt/bhn/trading/cp4_kelly_sizer.py` 02:51:50 UTC; DRY_RUN unchanged (still true). **25¢ edge ceiling deployed 2026-07-16 — revisit once (a) trade count grows meaningfully beyond 87, (b) other 5 cities (KPHX, KDFW, KNYC, KORD, KAUS) begin producing settled trades, or (c) a full season/quarter of data exists, whichever comes first. Current ceiling is based on a 3-city, ~16-day sample and should not be treated as final.** Pre_open/is_liquid boundary bug (illiquid branch unreachable) explicitly NOT touched — separate task. |
 
 ## New §2.3 — NO-Side Qualification Logic (cp4_kelly_sizer.py)
 
 CP4's NO-side qualification runs in `run_cp4_kelly()`. As of 7/2 only the edge threshold and pre-open filter were live; the liquidity-based checks below were dead code until fixed 7/3.
 
 - **Pre-open filter**: skip if volume ≤ 100 contracts, market not active, or snapshot older than 45 min.
-- **Edge threshold**: ≥5¢ if liquid (volume > 100), ≥8¢ if illiquid. LIVE as of 7/3 — previously hardcoded to always use the 8¢ illiquid threshold regardless of real liquidity (dead code, stale comment claimed volume data didn't exist).
+- **Edge threshold**: ≥5¢ if liquid (volume > 100), ≥8¢ if illiquid. LIVE as of 7/3 — previously hardcoded to always use the 8¢ illiquid threshold regardless of real liquidity (dead code, stale comment claimed volume data didn't exist). NOTE (7/16): the illiquid branch is itself unreachable today — pre-open's `volume ≤ 100` cutoff and `is_liquid`'s `volume > 100` threshold share the same boundary, so no trade has ever qualified as illiquid. Not fixed here; see 7/16 log entry below.
+- **Edge ceiling**: ≤25¢, both liquid and illiquid. NEW, deployed 7/16 — see Table 7 for backtest basis and revisit checkpoint. Skip reason `EDGE_TOO_HIGH`.
 - **Bid-ask spread check**: skip if yes_ask − yes_bid > 20¢. NEW, deployed 7/3. Real yes_bid/yes_ask, never the unrelated `ensemble_spread` (NWS-vs-GFS forecast divergence) field.
 - **Open-interest cap**: position capped at 10% of the contract's open_interest. NEW, deployed 7/3.
 - **Daily volume cap**: position capped at 5% of current volume. NEW, deployed 7/3.
