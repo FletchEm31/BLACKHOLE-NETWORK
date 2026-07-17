@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>WeatherBHN Trading Dashboard</title>
-<link rel="stylesheet" href="style.css?v=18">
+<link rel="stylesheet" href="style.css?v=19">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 </head>
 <body>
@@ -49,6 +49,26 @@
     <div id="staleBanner" class="stale-banner" style="display:none">Data is stale (collector hasn't reported in over 45 minutes) &mdash; showing the last known state.</div>
     <div id="sigmaMarkerStrip" class="sigma-marker-strip"></div>
     <div class="source-badges" id="sourceBadges"></div>
+  </section>
+
+  <!-- Sigma-marker performance -- live, growing computation over every
+       settled trade across all 3 cities. NOT a snapshot of the
+       2026-07-17 backtest doc (different binning method -- see hint). -->
+  <section class="panel sigma-perf-panel">
+    <div class="panel-title">Sigma-Marker Performance <span class="hint">(live, grows as trades settle &mdash; rounds each trade's entry z-score to the nearest integer marker, so numbers won't exactly match WEATHERBHN-SIGMA-ZONE-ANALYSIS-2026-07-17.md's custom zone-ranges)</span></div>
+    <div class="table-scroll">
+      <table id="sigmaPerfPooledTable" class="data-table sigma-perf-table">
+        <thead><tr id="sigmaPerfPooledHead"></tr></thead>
+        <tbody id="sigmaPerfPooledBody"></tbody>
+      </table>
+    </div>
+    <div class="panel-title" style="margin-top:14px">By City <span class="hint">(green/red requires n&ge;8 per cell &mdash; same bar the original analysis used for "robust"; thinner cells stay gray/yellow regardless of ROI sign)</span></div>
+    <div class="table-scroll">
+      <table id="sigmaPerfCityTable" class="data-table sigma-perf-table">
+        <thead><tr id="sigmaPerfCityHead"></tr></thead>
+        <tbody id="sigmaPerfCityBody"></tbody>
+      </table>
+    </div>
   </section>
 
   <!-- Charts row -->
@@ -156,6 +176,6 @@
 
 </main>
 
-<script src="app.js?v=18"></script>
+<script src="app.js?v=19"></script>
 </body>
 </html>

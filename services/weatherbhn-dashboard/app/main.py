@@ -351,6 +351,117 @@ def delete_journal_entry(entry_id: int):
 
 
 # ---------------------------------------------------------------------------
+# Sigma-marker performance -- LIVE, growing computation over every settled
+# trade (weather_position_exits_clean, scored_at IS NOT NULL), re-run on
+# every request as more paper trades get made and graded. NOT a snapshot of
+# WEATHERBHN-SIGMA-ZONE-ANALYSIS-2026-07-17.md's numbers (that doc pooled
+# into 7 zone-ranges from a fixed 87-trade dataset) -- this recomputes from
+# scratch, binned by the same 9 integer sigma markers (-4..+4) the ladder
+# and reference strip use, both pooled across all 3 cities AND cross-tabbed
+# per city, so a city (e.g. KDEN, weaker forecast calibration) can be seen
+# diverging from the pooled result at a specific marker.
+#
+# "Robust" threshold (n>=8 for green/red, else 'thin') is borrowed directly
+# from that doc's own stated bar for calling a zone trustworthy -- not an
+# arbitrary number invented here.
+# ---------------------------------------------------------------------------
+
+ROBUST_N_THRESHOLD = 8
+
+
+def _sigma_marker_for_trade(bucket_floor, bucket_cap, mu, sigma) -> int:
+    """Same signed-distance-to-near-edge convention as
+    WEATHERBHN-SIGMA-ZONE-ANALYSIS-2026-07-17.md, rounded to the nearest
+    integer marker and clamped to [-4, 4] (the same 9 markers the ladder
+    shows)."""
+    if bucket_floor is not None and mu < bucket_floor:
+        signed_dist = bucket_floor - mu
+    elif bucket_cap is not None and mu > bucket_cap:
+        signed_dist = bucket_cap - mu
+    else:
+        signed_dist = 0.0
+    z = signed_dist / sigma
+    return max(-4, min(4, round(z)))
+
+
+def _aggregate_cell(rows: list[dict]) -> dict:
+    n = len(rows)
+    wins = sum(1 for r in rows if r["win"])
+    staked = sum(r["stake_usd"] for r in rows if r["stake_usd"] is not None)
+    pnl = sum(r["pnl"] for r in rows if r["pnl"] is not None)
+    win_pct = round(wins / n * 100, 1) if n else None
+    roi_pct = round(pnl / staked * 100, 1) if staked else None
+
+    if n == 0:
+        tag = "no_data"
+    elif n < ROBUST_N_THRESHOLD:
+        tag = "thin"
+    elif roi_pct is not None and roi_pct > 0:
+        tag = "green"
+    elif roi_pct is not None and roi_pct < 0:
+        tag = "red"
+    else:
+        tag = "thin"
+
+    return {"n": n, "wins": wins, "win_pct": win_pct,
+            "staked": round(staked, 2), "pnl": round(pnl, 2),
+            "roi_pct": roi_pct, "tag": tag}
+
+
+@app.get("/api/sigma-performance")
+def get_sigma_performance():
+    with db.conn_cursor() as cur:
+        cur.execute("""
+            SELECT station_code, bucket_floor, bucket_cap,
+                   final_entry_predicted_tmax_f, final_entry_sigma_used,
+                   final_outcome, final_realized_pnl_usd,
+                   entry_no_ask_cents, final_contracts_recommended
+            FROM weather_position_exits_clean
+            WHERE scored_at IS NOT NULL
+              AND final_entry_predicted_tmax_f IS NOT NULL
+              AND final_entry_sigma_used IS NOT NULL
+              AND final_entry_sigma_used > 0
+              AND station_code = ANY(%s)
+        """, (list(ENABLED_STATIONS),))
+        raw_rows = cur.fetchall()
+
+    per_marker: dict[int, list[dict]] = {n: [] for n in SIGMA_MARKERS}
+    per_city_marker: dict[str, dict[int, list[dict]]] = {
+        c: {n: [] for n in SIGMA_MARKERS} for c in ENABLED_STATIONS
+    }
+
+    for r in raw_rows:
+        mu = float(r["final_entry_predicted_tmax_f"])
+        sigma = float(r["final_entry_sigma_used"])
+        floor = float(r["bucket_floor"]) if r["bucket_floor"] is not None else None
+        cap = float(r["bucket_cap"]) if r["bucket_cap"] is not None else None
+        marker = _sigma_marker_for_trade(floor, cap, mu, sigma)
+
+        contracts = r["final_contracts_recommended"]
+        entry_cents = r["entry_no_ask_cents"]
+        stake_usd = (float(contracts) * float(entry_cents) / 100.0
+                     if contracts is not None and entry_cents is not None else None)
+
+        row = {
+            "win": r["final_outcome"] == "NO_WIN",
+            "pnl": float(r["final_realized_pnl_usd"]) if r["final_realized_pnl_usd"] is not None else None,
+            "stake_usd": stake_usd,
+        }
+        per_marker[marker].append(row)
+        per_city_marker[r["station_code"]][marker].append(row)
+
+    return {
+        "robust_n_threshold": ROBUST_N_THRESHOLD,
+        "markers": SIGMA_MARKERS,
+        "pooled": {str(n): _aggregate_cell(per_marker[n]) for n in SIGMA_MARKERS},
+        "by_city": {
+            city: {str(n): _aggregate_cell(per_city_marker[city][n]) for n in SIGMA_MARKERS}
+            for city in ENABLED_STATIONS
+        },
+    }
+
+
+# ---------------------------------------------------------------------------
 # Per-city scratch notepad -- freeform, separate from the structured trade
 # journal above. One overwritable note per station (see
 # sql/weatherbhn-dashboard-notes-schema.sql for why).

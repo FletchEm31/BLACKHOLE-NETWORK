@@ -266,6 +266,21 @@ main { padding: 16px 20px 60px; display: flex; flex-direction: column; gap: 16px
 .notepad-widget.collapsed .notepad-textarea { display: none; }
 @media (max-width: 1100px) { .notepad-widget { position: static; width: auto; margin: 0 20px 16px; } }
 
+/* ---------- Sigma-marker performance (pooled + per-city grid) ---------- */
+.sigma-perf-table th, .sigma-perf-table td { text-align: center; }
+.sigma-perf-table td:first-child, .sigma-perf-table th:first-child { text-align: left; font-weight: 700; white-space: nowrap; }
+.perf-cell { border-radius: 6px; padding: 4px 6px; cursor: help; }
+.perf-pct { font-size: 12px; font-weight: 700; }
+.perf-roi { font-size: 11px; }
+.perf-n { font-size: 10px; color: var(--text-faint); }
+.perf-green { background: var(--green-dim); border: 1px solid var(--green); }
+.perf-green .perf-pct, .perf-green .perf-roi { color: var(--green); }
+.perf-red { background: var(--red-dim); border: 1px solid var(--red); }
+.perf-red .perf-pct, .perf-red .perf-roi { color: var(--red); }
+.perf-thin { background: rgba(230, 184, 0, 0.08); border: 1px solid #e6b800; }
+.perf-thin .perf-pct, .perf-thin .perf-roi { color: #e6b800; }
+.perf-nodata { background: transparent; border: 1px solid var(--panel-border); }
+
 /* ---------- Footer: data sources + known issues (muted, collapsed) ---------- */
 .dash-footer { margin-top: 4px; }
 .dash-footer details {

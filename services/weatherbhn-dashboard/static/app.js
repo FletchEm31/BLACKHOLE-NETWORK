@@ -22,6 +22,7 @@ const DATA_SOURCES = [
   { label: 'Bucket set', text: 'latest single snapshot batch only (MAX(retrieved_at), 45-min staleness cutoff) — matches CP4\'s own query, so removed/stale buckets drop out instead of lingering' },
   { label: 'Model % / Edge columns', text: 'Model % = exact Gaussian CDF mass between the bucket\'s (already threshold-opened) floor/cap given today\'s μ/σ (Python math.erf, not the chart\'s JS approximation). Edge = Model % − market Chance%.' },
   { label: 'σ marker chip colors', text: '0σ = green (sole Yes-bet target), ±2σ = yellow, ±3σ = red (No-bet targets) — operator-specified single points, per WEATHERBHN-SIGMA-ZONE-ANALYSIS-2026-07-17.md context. Gold ★ on −2σ/−3σ/+3σ only is a separate, more specific marker layered on top.' },
+  { label: 'Sigma-Marker Performance panel', text: 'Live, recomputed on every load from every settled trade (weather_position_exits_clean) across all 3 cities — grows as more trades settle, not a snapshot. Each trade\'s entry-time signed z-score is rounded to the nearest integer marker (-4..+4), so these numbers will NOT exactly match WEATHERBHN-SIGMA-ZONE-ANALYSIS-2026-07-17.md\'s custom zone-ranges — different binning method, same underlying trades. Cell color: green/red requires n≥8 (the same bar that doc used to call a zone "robust"); anything thinner stays yellow/gray regardless of ROI sign.' },
 ];
 
 const KNOWN_ISSUES = [
@@ -101,9 +102,14 @@ async function init() {
   await refreshAll(true);
   await refreshJournal();
   await refreshNotepad();
+  await refreshSigmaPerformance();
 
   setInterval(() => refreshLadder(false), PRICE_REFRESH_MS);
   setInterval(tickCountdown, 1000);
+  // Global, city-agnostic view (all 3 cities' settled trades) -- trades
+  // settle once a day via the nightly recon job, so the 5-min orchestrator
+  // cadence is more than fast enough here, no need for the 20s poll.
+  setInterval(refreshSigmaPerformance, MODEL_REFRESH_MS);
 }
 
 // Only today/tomorrow -- matches Kalshi's own UI (currently-open markets
@@ -639,6 +645,48 @@ async function saveNotepad(station, text) {
 function setSaveStatus(text) {
   const el = document.getElementById('notepadSaveStatus');
   if (el) el.textContent = text;
+}
+
+// ---------------------------------------------------------------------------
+// Sigma-marker performance -- live, growing computation (all settled trades
+// across all 3 cities), pooled table + per-city cross-tab grid. Global/
+// city-agnostic -- doesn't depend on state.station or state.date.
+// ---------------------------------------------------------------------------
+function markerLabel(n) { return `${n > 0 ? '+' : ''}${n}σ`; }
+
+function tagClass(tag) {
+  return { green: 'perf-green', red: 'perf-red', thin: 'perf-thin', no_data: 'perf-nodata' }[tag] || '';
+}
+
+function cellHtml(cell) {
+  if (cell.n === 0) return '<span class="hint">—</span>';
+  return `<div class="perf-cell ${tagClass(cell.tag)}" title="n=${cell.n}, staked $${cell.staked}, pnl $${cell.pnl}">`
+    + `<div class="perf-pct">${cell.win_pct}% win</div>`
+    + `<div class="perf-roi">${cell.roi_pct == null ? '—' : (cell.roi_pct >= 0 ? '+' : '') + cell.roi_pct + '% ROI'}</div>`
+    + `<div class="perf-n">n=${cell.n}</div></div>`;
+}
+
+async function refreshSigmaPerformance() {
+  let data;
+  try {
+    data = await fetchJSON('/api/sigma-performance');
+  } catch (e) {
+    console.error(e);
+    return;
+  }
+
+  const pooledHead = document.getElementById('sigmaPerfPooledHead');
+  pooledHead.innerHTML = '<th>All cities</th>' + data.markers.map(m => `<th>${markerLabel(m)}</th>`).join('');
+  document.getElementById('sigmaPerfPooledBody').innerHTML =
+    `<tr><td>Pooled</td>${data.markers.map(m => `<td>${cellHtml(data.pooled[m])}</td>`).join('')}</tr>`;
+
+  const cityHead = document.getElementById('sigmaPerfCityHead');
+  cityHead.innerHTML = '<th>City</th>' + data.markers.map(m => `<th>${markerLabel(m)}</th>`).join('');
+  const cityBody = document.getElementById('sigmaPerfCityBody');
+  cityBody.innerHTML = Object.keys(data.by_city).sort().map(city => {
+    const cityName = (state.cities.find(c => c.station_code === city) || {}).city || city;
+    return `<tr><td>${cityName}</td>${data.markers.map(m => `<td>${cellHtml(data.by_city[city][m])}</td>`).join('')}</tr>`;
+  }).join('');
 }
 
 init();
