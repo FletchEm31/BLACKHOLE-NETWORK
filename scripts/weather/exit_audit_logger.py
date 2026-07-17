@@ -25,7 +25,7 @@ from typing import Optional
 import psycopg2
 import psycopg2.extras
 
-from cp4_kelly_sizer import _is_settled
+from cp4_kelly_sizer import _is_settled, _settlement_dt
 
 logger = logging.getLogger('bhn.trading.exit_audit')
 
@@ -50,18 +50,20 @@ def _get_conn():
 # Part 1 — Signal capture (called by orchestrator at decision time)
 # ---------------------------------------------------------------------------
 
-# entry_edge_cents / entry_model_prob_no_cents (added 2026-07-17): frozen at
-# the same first-qualification moment as entry_no_ask_cents/entry_captured_at
-# -- deliberately absent from the ON CONFLICT DO UPDATE SET below, same as
-# those two. edge_cents/model_prob_no_cents are NOT frozen (see UPDATE SET)
-# and drift every cycle a signal keeps re-qualifying -- confirmed via a
-# same-night backtest that this drift is large enough to fabricate a false
-# "high edge / high confidence" pattern out of trades that were unremarkable
-# at entry and only look extreme after the market moved against them near
-# settlement. Do not use edge_cents/model_prob_no_cents for any backtest or
-# entry-time analysis -- use entry_edge_cents/entry_model_prob_no_cents.
-# edge_cents/model_prob_no_cents remain live-refreshed by design, for
-# "current state of an open position" monitoring -- not removed.
+# entry_edge_cents / entry_model_prob_no_cents / entry_predicted_tmax_f /
+# entry_hours_to_settle (added 2026-07-17/2026-07-17b): frozen at the same
+# first-qualification moment as entry_no_ask_cents/entry_captured_at --
+# deliberately absent from the ON CONFLICT DO UPDATE SET below, same as
+# those two. edge_cents/model_prob_no_cents/predicted_tmax_f/hours_to_settle
+# are NOT frozen (see UPDATE SET) and drift every cycle a signal keeps
+# re-qualifying -- confirmed via same-night backtests that this drift is
+# large enough to fabricate false "high edge", "high confidence", and
+# "far outside the bucket" patterns out of trades that were unremarkable at
+# entry and only look extreme after the market/forecast moved near
+# settlement. Do not use the un-prefixed columns for any backtest or
+# entry-time analysis -- use the entry_* versions. The un-prefixed columns
+# remain live-refreshed by design, for "current state of an open position"
+# monitoring -- not removed.
 _RECORD_SQL = """
     INSERT INTO weather_position_exits (
         station_code, target_date, contract_ticker, real_market_ticker,
@@ -70,7 +72,8 @@ _RECORD_SQL = """
         edge_cents, contracts_recommended, stake_usd_recommended,
         hours_to_settle, sigma_used, is_paper_trade,
         entry_no_ask_cents, entry_captured_at,
-        entry_edge_cents, entry_model_prob_no_cents
+        entry_edge_cents, entry_model_prob_no_cents,
+        entry_predicted_tmax_f, entry_hours_to_settle
     ) VALUES (
         %(station_code)s, %(target_date)s, %(contract_ticker)s, %(real_market_ticker)s,
         %(bucket_label)s, %(bucket_floor)s, %(bucket_cap)s, %(decision_timestamp)s,
@@ -78,7 +81,8 @@ _RECORD_SQL = """
         %(edge_cents)s, %(contracts_recommended)s, %(stake_usd_recommended)s,
         %(hours_to_settle)s, %(sigma_used)s, %(is_paper_trade)s,
         %(no_ask_cents)s, %(decision_timestamp)s,
-        %(edge_cents)s, %(model_prob_no_cents)s
+        %(edge_cents)s, %(model_prob_no_cents)s,
+        %(predicted_tmax_f)s, %(entry_hours_to_settle)s
     )
     ON CONFLICT (contract_ticker) DO UPDATE SET
         decision_timestamp    = EXCLUDED.decision_timestamp,
@@ -113,6 +117,14 @@ def record_paper_trade(conn, station_code: str, target_date: date,
     if not qualifying:
         return 0
 
+    # Computed directly from _settlement_dt() (the same function
+    # cp4_kelly_sizer.py uses for the live, drifting hours_to_settle) rather
+    # than read from the bucket dict -- this is the frozen entry-time lead
+    # time, exact by construction, not an approximation.
+    entry_hours_to_settle = round(
+        max((_settlement_dt(station_code, target_date) - now_utc).total_seconds() / 3600.0, 0.0), 2
+    )
+
     inserted = 0
     with conn.cursor() as cur:
         for b in qualifying:
@@ -138,6 +150,7 @@ def record_paper_trade(conn, station_code: str, target_date: date,
                 'hours_to_settle':       b.get('hours_to_settle'),
                 'sigma_used':            b.get('sigma_used'),
                 'is_paper_trade':        is_paper_trade,
+                'entry_hours_to_settle': entry_hours_to_settle,
             })
             inserted += cur.rowcount
     return inserted
