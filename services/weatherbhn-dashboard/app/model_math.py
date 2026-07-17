@@ -17,6 +17,7 @@ sync if the source formula ever changes.
 import math
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 from scipy.stats import norm, t as student_t
 
@@ -89,3 +90,55 @@ def calculate_bucket_probability(predicted_tmax_f: float, sigma: float,
         dist = 'gaussian'
 
     return max(0.0, min(1.0, float(prob))), dist
+
+
+# ---------------------------------------------------------------------------
+# Market close time (Kalshi's "Last Trading Time") -- from operator-
+# confirmed Kalshi contract-rules data 2026-07-18, NOT derived from CP4's
+# SETTLEMENT_UTC_HOUR above (that's CP4's own still-unfixed "4PM local"
+# settlement-clock assumption, a different and currently-flagged-buggy
+# concept -- do not conflate the two).
+#
+# Legacy-template cities: Last Trading Time = 11:59:00 PM LOCAL CIVIL time
+# (DST-aware -- e.g. EDT in summer, EST in winter for KMIA).
+# New-template cities: Last Trading Time = 11:58:59 PM LOCAL STANDARD time
+# -- always the station's fixed non-DST offset, even during DST months.
+# Same DST-vs-standard-time care as weather_station_climatology's LST
+# conversion (build_station_climatology_2026_07_17.py) -- Phoenix-style
+# "always standard time" stations are exactly what this distinction exists
+# to get right.
+LEGACY_TEMPLATE_CITIES = {'KDEN', 'KMIA', 'KNYC', 'KORD', 'KAUS'}
+NEW_TEMPLATE_CITIES = {'KLAX', 'KPHX', 'KDFW'}
+
+STATION_TZ = {
+    'KMIA': 'America/New_York', 'KNYC': 'America/New_York',
+    'KDEN': 'America/Denver',
+    'KLAX': 'America/Los_Angeles',
+    'KPHX': 'America/Phoenix',
+    'KAUS': 'America/Chicago', 'KORD': 'America/Chicago', 'KDFW': 'America/Chicago',
+}
+# Fixed (never DST-adjusted) standard UTC offset, for the new-template rule.
+STATION_STANDARD_OFFSET_HOURS = {
+    'KMIA': -5, 'KNYC': -5,
+    'KDEN': -7,
+    'KLAX': -8,
+    'KPHX': -7,
+    'KAUS': -6, 'KORD': -6, 'KDFW': -6,
+}
+
+
+def market_close_time_utc(station_code: str, target_date: date) -> Optional[datetime]:
+    """Kalshi's Last Trading Time for this contract, in UTC. Returns None
+    for a station with no confirmed template classification -- never
+    guessed at."""
+    if station_code in LEGACY_TEMPLATE_CITIES:
+        local_dt = datetime(target_date.year, target_date.month, target_date.day,
+                             23, 59, 0, tzinfo=ZoneInfo(STATION_TZ[station_code]))
+        return local_dt.astimezone(timezone.utc)
+    if station_code in NEW_TEMPLATE_CITIES:
+        offset_hours = STATION_STANDARD_OFFSET_HOURS[station_code]
+        # Standard-time instant is a fixed offset from UTC by definition --
+        # no zoneinfo/DST resolution needed or wanted here.
+        naive_standard = datetime(target_date.year, target_date.month, target_date.day, 23, 58, 59)
+        return (naive_standard - timedelta(hours=offset_hours)).replace(tzinfo=timezone.utc)
+    return None

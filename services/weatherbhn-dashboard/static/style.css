@@ -121,6 +121,13 @@ main { padding: 16px 20px 60px; display: flex; flex-direction: column; gap: 16px
    adds weight via the (glyph); it must NOT override border/text color or
    it would hide the yellow/red on exactly the markers that need it. */
 .sigma-marker.starred .n { font-weight: 700; }
+.market-times-row { display: flex; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+.time-chip {
+  background: var(--input-bg); border: 1px solid var(--panel-border); border-radius: 8px;
+  padding: 6px 10px; cursor: default;
+}
+.time-chip-label { font-size: 10px; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.3px; }
+.time-chip-value { font-size: 13px; font-weight: 700; margin-top: 2px; }
 .source-badges { margin-top: 8px; display: flex; gap: 8px; font-size: 11px; }
 .badge { padding: 2px 8px; border-radius: var(--radius-pill); border: 1px solid var(--panel-border); color: var(--text-dim); }
 .badge.entry_frozen { color: var(--green); border-color: var(--green); }
@@ -273,6 +280,16 @@ main { padding: 16px 20px 60px; display: flex; flex-direction: column; gap: 16px
 .perf-pct { font-size: 12px; font-weight: 700; }
 .perf-roi { font-size: 11px; }
 .perf-n { font-size: 10px; color: var(--text-faint); }
+.perf-dollars { font-size: 10px; color: var(--text-dim); margin-top: 1px; }
+.perf-dollars.profit-pos { color: var(--green); }
+.perf-dollars.profit-neg { color: var(--red); }
+/* 0sigma only -- resimulated as a Yes bet (live system only ever bets No).
+   Deliberately distinct from the normal cell styling so it never reads as
+   a plain No-side result; hover for the full caveat. */
+.perf-sim-badge {
+  font-size: 9px; font-weight: 700; color: var(--accent-blue); border: 1px solid var(--accent-blue);
+  border-radius: 4px; padding: 0 4px; margin-bottom: 2px; cursor: help; display: inline-block;
+}
 .perf-green { background: var(--green-dim); border: 1px solid var(--green); }
 .perf-green .perf-pct, .perf-green .perf-roi { color: var(--green); }
 .perf-red { background: var(--red-dim); border: 1px solid var(--red); }

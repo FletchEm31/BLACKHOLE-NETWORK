@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>WeatherBHN Trading Dashboard</title>
-<link rel="stylesheet" href="style.css?v=19">
+<link rel="stylesheet" href="style.css?v=20">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 </head>
 <body>
@@ -43,14 +43,6 @@
 
 <main>
 
-  <!-- Reference strip -->
-  <section class="panel reference-strip">
-    <div class="panel-title">Sigma Reference &mdash; <span id="refStripSubtitle">&nbsp;</span></div>
-    <div id="staleBanner" class="stale-banner" style="display:none">Data is stale (collector hasn't reported in over 45 minutes) &mdash; showing the last known state.</div>
-    <div id="sigmaMarkerStrip" class="sigma-marker-strip"></div>
-    <div class="source-badges" id="sourceBadges"></div>
-  </section>
-
   <!-- Sigma-marker performance -- live, growing computation over every
        settled trade across all 3 cities. NOT a snapshot of the
        2026-07-17 backtest doc (different binning method -- see hint). -->
@@ -69,6 +61,15 @@
         <tbody id="sigmaPerfCityBody"></tbody>
       </table>
     </div>
+  </section>
+
+  <!-- Reference strip -->
+  <section class="panel reference-strip">
+    <div class="panel-title">Sigma Reference &mdash; <span id="refStripSubtitle">&nbsp;</span></div>
+    <div id="staleBanner" class="stale-banner" style="display:none">Data is stale (collector hasn't reported in over 45 minutes) &mdash; showing the last known state.</div>
+    <div id="marketTimesRow" class="market-times-row"></div>
+    <div id="sigmaMarkerStrip" class="sigma-marker-strip"></div>
+    <div class="source-badges" id="sourceBadges"></div>
   </section>
 
   <!-- Charts row -->
@@ -176,6 +177,6 @@
 
 </main>
 
-<script src="app.js?v=19"></script>
+<script src="app.js?v=20"></script>
 </body>
 </html>

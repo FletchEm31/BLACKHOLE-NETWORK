@@ -197,6 +197,7 @@ async function refreshLadder(isFullRefresh) {
     }
 
     renderReferenceStrip(data);
+    renderMarketTimes(data);
     renderProbabilityChart(data);
     renderVolumeTable(data);
     renderLadderTable(data);
@@ -261,6 +262,35 @@ function renderReferenceStrip(data) {
   badges.innerHTML = '';
   badges.appendChild(sourceBadge('&mu;'.replace('&mu;', 'μ'), data.mu_source));
   badges.appendChild(sourceBadge('σ', data.sigma_source));
+}
+
+// Market open / close (Last Trading Time) / average daily-high time, for
+// the currently selected city. Open/close come back as UTC ISO from the
+// backend; formatted here into that city's own local time via the
+// browser's Intl API using the timezone already in state.cities.
+function renderMarketTimes(data) {
+  const row = document.getElementById('marketTimesRow');
+  const cityTz = (state.cities.find(c => c.station_code === state.station) || {}).timezone;
+  const fmt = (iso) => {
+    if (!iso || !cityTz) return '—';
+    return new Date(iso).toLocaleString('en-US', {
+      timeZone: cityTz, month: 'short', day: 'numeric',
+      hour: 'numeric', minute: '2-digit', hour12: true, timeZoneName: 'short',
+    });
+  };
+  const items = [
+    { label: 'Market open', value: fmt(data.market_open_time) },
+    { label: 'Market close (Last Trading Time)', value: fmt(data.market_close_time) },
+    { label: 'Avg. daily-high time', value: data.avg_dailyhigh_time_local
+        ? `${data.avg_dailyhigh_time_local.slice(0, 5)} ${data.avg_dailyhigh_timezone || ''}`
+        + (data.avg_dailyhigh_source_note ? ' ⚠' : '')
+        : '—' },
+  ];
+  row.innerHTML = items.map(i =>
+    `<div class="time-chip" ${i.label.includes('daily-high') && data.avg_dailyhigh_source_note ? `title="${data.avg_dailyhigh_source_note}"` : ''}>
+       <div class="time-chip-label">${i.label}</div><div class="time-chip-value">${i.value}</div>
+     </div>`
+  ).join('');
 }
 
 function renderProbabilityChart(data) {
@@ -659,11 +689,23 @@ function tagClass(tag) {
 }
 
 function cellHtml(cell) {
-  if (cell.n === 0) return '<span class="hint">—</span>';
-  return `<div class="perf-cell ${tagClass(cell.tag)}" title="n=${cell.n}, staked $${cell.staked}, pnl $${cell.pnl}">`
+  // 0sigma: the live system only ever bets No, and 0sigma is structurally
+  // the worst possible No bet (the bucket the model itself thinks is most
+  // likely) -- resimulated server-side as a Yes bet using real historical
+  // yes_ask pricing at each trade's actual entry moment. Surface that
+  // distinctly rather than let it blend in as if it were a normal No cell.
+  const simBadge = cell.yes_simulated
+    ? `<div class="perf-sim-badge" title="${cell.yes_simulated_note || ''}">YES SIM</div>` : '';
+  if (cell.n === 0) return simBadge + '<span class="hint">—</span>';
+  const netClass = cell.pnl >= 0 ? 'profit-pos' : 'profit-neg';
+  const tooltip = `n=${cell.n}, staked $${cell.staked}, pnl $${cell.pnl}`
+    + (cell.yes_simulated ? ` — ${cell.yes_simulated_note}` : '');
+  return simBadge + `<div class="perf-cell ${tagClass(cell.tag)}" title="${tooltip}">`
     + `<div class="perf-pct">${cell.win_pct}% win</div>`
     + `<div class="perf-roi">${cell.roi_pct == null ? '—' : (cell.roi_pct >= 0 ? '+' : '') + cell.roi_pct + '% ROI'}</div>`
-    + `<div class="perf-n">n=${cell.n}</div></div>`;
+    + `<div class="perf-n">n=${cell.n}</div>`
+    + `<div class="perf-dollars">$${cell.staked.toFixed(0)} staked</div>`
+    + `<div class="perf-dollars ${netClass}">${cell.pnl >= 0 ? '+' : ''}$${cell.pnl.toFixed(0)} net</div></div>`;
 }
 
 async function refreshSigmaPerformance() {

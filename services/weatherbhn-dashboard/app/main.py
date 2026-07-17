@@ -6,6 +6,7 @@ Scope: KDEN, KLAX, KMIA (the 3 tradeable cities) -- CITIES below lists all
 8 BHN weather stations with an `enabled` flag so adding a future city is a
 config change, not a rebuild, per operator scope note.
 """
+import math
 from datetime import date, datetime, timezone
 from typing import Optional
 
@@ -98,6 +99,30 @@ def get_ladder(station: str = Query(...), target_date: date = Query(...)):
         """, (station, target_date, station, target_date))
         bucket_rows = cur.fetchall()
         data_stale = len(bucket_rows) == 0
+
+        # Market open time: Kalshi exposes this directly in its raw payload
+        # (open_time) -- captured all along in source_payload_json, just
+        # never promoted to its own column. Queried independently of the
+        # staleness filter above so it's still shown even if live pricing
+        # has gone stale.
+        cur.execute("""
+            SELECT source_payload_json ->> 'open_time' AS open_time
+            FROM weather_bronze_kalshi_market_snapshots
+            WHERE station_code = %s AND target_date = %s AND contract_side = 'high'
+            ORDER BY retrieved_at DESC LIMIT 1
+        """, (station, target_date))
+        open_time_row = cur.fetchone()
+        market_open_time = open_time_row["open_time"] if open_time_row else None
+
+        # Average time of daily high -- already computed in
+        # weather_station_climatology (build_station_climatology_2026_07_17.py),
+        # just surfaced here, no new calculation.
+        cur.execute("""
+            SELECT average_dailyhigh_time_local, average_dailyhigh_time_utc, local_timezone, source_station_note
+            FROM weather_station_climatology
+            WHERE station_code = %s AND month = %s
+        """, (station, target_date.month))
+        clim_row = cur.fetchone()
 
         cur.execute("""
             SELECT final_entry_predicted_tmax_f, final_entry_sigma_used,
@@ -246,6 +271,8 @@ def get_ladder(station: str = Query(...), target_date: date = Query(...)):
             "retrieved_at":  b["retrieved_at"].isoformat() if b["retrieved_at"] else None,
         })
 
+    market_close_dt = model_math.market_close_time_utc(station, target_date)
+
     return {
         "station_code": station,
         "target_date": target_date.isoformat(),
@@ -256,6 +283,14 @@ def get_ladder(station: str = Query(...), target_date: date = Query(...)):
         "hours_to_settle": float(hours_to_settle) if hours_to_settle is not None else None,
         "buckets": buckets,
         "data_stale": data_stale,
+        "market_open_time": market_open_time,
+        "market_close_time": market_close_dt.isoformat() if market_close_dt else None,
+        "avg_dailyhigh_time_local": (clim_row["average_dailyhigh_time_local"].isoformat()
+                                      if clim_row and clim_row["average_dailyhigh_time_local"] else None),
+        "avg_dailyhigh_time_utc": (clim_row["average_dailyhigh_time_utc"].isoformat()
+                                    if clim_row and clim_row["average_dailyhigh_time_utc"] else None),
+        "avg_dailyhigh_timezone": clim_row["local_timezone"] if clim_row else None,
+        "avg_dailyhigh_source_note": clim_row["source_station_note"] if clim_row else None,
     }
 
 
@@ -408,14 +443,62 @@ def _aggregate_cell(rows: list[dict]) -> dict:
             "roi_pct": roi_pct, "tag": tag}
 
 
+def _historical_yes_ask_cents(cur, station_code: str, target_date: date,
+                               bucket_label: str, entry_captured_at) -> Optional[float]:
+    """Real yes_ask quoted at or before the trade's actual entry moment --
+    never derived as (100 - no_ask): confirmed earlier tonight that
+    Yes+No don't sum cleanly to 100 cents (averaging ~105c), so that
+    shortcut would misprice every simulated Yes trade.
+
+    Bounded to a 2-hour lookback (collector runs ~5 min, so a real quote
+    should be well within that) rather than an open-ended <= scan --
+    weather_bronze_kalshi_market_snapshots is a 13M+-row table partitioned
+    by retrieved_at; an unbounded backward scan measured 20s for ~15
+    matched rows. This is a query-shape fix only, no index/schema change on
+    the live table."""
+    cur.execute("""
+        SELECT yes_ask FROM weather_bronze_kalshi_market_snapshots
+        WHERE station_code = %s AND target_date = %s AND bucket_label = %s
+          AND contract_side = 'high'
+          AND retrieved_at <= %s AND retrieved_at >= %s - INTERVAL '2 hours'
+        ORDER BY retrieved_at DESC LIMIT 1
+    """, (station_code, target_date, bucket_label, entry_captured_at, entry_captured_at))
+    row = cur.fetchone()
+    return round(float(row["yes_ask"]) * 100, 2) if row and row["yes_ask"] is not None else None
+
+
+# 0sigma is structurally the worst possible No bet -- it's the bucket the
+# model itself thinks is most likely to occur, so a No bet there is
+# betting against the model's own best guess. The live system only ever
+# bets No, so 0sigma's cell would otherwise just show "confirmed bad" and
+# nothing more useful. Per operator direction 2026-07-18: retroactively
+# resimulate 0sigma's trades as Yes bets instead, using the REAL yes_ask
+# quoted at that trade's actual entry_captured_at (not inverted no_ask --
+# see _historical_yes_ask_cents), same dollar amount originally staked,
+# win/loss flipped (a No loss -- the bucket occurred -- becomes a Yes win).
+#
+# Same honest-framing requirement as the earlier standalone 0-1sigma Yes
+# analysis: a real edge here is a modest calibration signal, not a
+# headline ROI number -- 'yes_simulated' surfaces which cell this applies
+# to so the frontend can carry that caveat explicitly, not just imply it.
+ZERO_SIGMA_YES_CAVEAT = (
+    "0sigma is resimulated as a Yes bet (the live system never trades Yes) "
+    "using the real historical yes_ask at each trade's actual entry moment, "
+    "same dollar stake, win/loss flipped from the recorded No outcome. "
+    "Treat any edge here as a modest win-rate/calibration signal, not a "
+    "literal ROI you could have captured -- a small sample easily produces "
+    "a misleadingly large headline number."
+)
+
+
 @app.get("/api/sigma-performance")
 def get_sigma_performance():
     with db.conn_cursor() as cur:
         cur.execute("""
-            SELECT station_code, bucket_floor, bucket_cap,
+            SELECT station_code, target_date, bucket_label, bucket_floor, bucket_cap,
                    final_entry_predicted_tmax_f, final_entry_sigma_used,
                    final_outcome, final_realized_pnl_usd,
-                   entry_no_ask_cents, final_contracts_recommended
+                   entry_no_ask_cents, entry_captured_at, final_contracts_recommended
             FROM weather_position_exits_clean
             WHERE scored_at IS NOT NULL
               AND final_entry_predicted_tmax_f IS NOT NULL
@@ -425,39 +508,61 @@ def get_sigma_performance():
         """, (list(ENABLED_STATIONS),))
         raw_rows = cur.fetchall()
 
-    per_marker: dict[int, list[dict]] = {n: [] for n in SIGMA_MARKERS}
-    per_city_marker: dict[str, dict[int, list[dict]]] = {
-        c: {n: [] for n in SIGMA_MARKERS} for c in ENABLED_STATIONS
-    }
-
-    for r in raw_rows:
-        mu = float(r["final_entry_predicted_tmax_f"])
-        sigma = float(r["final_entry_sigma_used"])
-        floor = float(r["bucket_floor"]) if r["bucket_floor"] is not None else None
-        cap = float(r["bucket_cap"]) if r["bucket_cap"] is not None else None
-        marker = _sigma_marker_for_trade(floor, cap, mu, sigma)
-
-        contracts = r["final_contracts_recommended"]
-        entry_cents = r["entry_no_ask_cents"]
-        stake_usd = (float(contracts) * float(entry_cents) / 100.0
-                     if contracts is not None and entry_cents is not None else None)
-
-        row = {
-            "win": r["final_outcome"] == "NO_WIN",
-            "pnl": float(r["final_realized_pnl_usd"]) if r["final_realized_pnl_usd"] is not None else None,
-            "stake_usd": stake_usd,
+        per_marker: dict[int, list[dict]] = {n: [] for n in SIGMA_MARKERS}
+        per_city_marker: dict[str, dict[int, list[dict]]] = {
+            c: {n: [] for n in SIGMA_MARKERS} for c in ENABLED_STATIONS
         }
-        per_marker[marker].append(row)
-        per_city_marker[r["station_code"]][marker].append(row)
+        zero_sigma_unmatched = 0
+
+        for r in raw_rows:
+            mu = float(r["final_entry_predicted_tmax_f"])
+            sigma = float(r["final_entry_sigma_used"])
+            floor = float(r["bucket_floor"]) if r["bucket_floor"] is not None else None
+            cap = float(r["bucket_cap"]) if r["bucket_cap"] is not None else None
+            marker = _sigma_marker_for_trade(floor, cap, mu, sigma)
+
+            contracts = r["final_contracts_recommended"]
+            entry_no_ask_cents = r["entry_no_ask_cents"]
+            stake_usd = (float(contracts) * float(entry_no_ask_cents) / 100.0
+                         if contracts is not None and entry_no_ask_cents is not None else None)
+
+            if marker == 0 and stake_usd is not None and r["entry_captured_at"] is not None:
+                yes_ask_cents = _historical_yes_ask_cents(
+                    cur, r["station_code"], r["target_date"], r["bucket_label"], r["entry_captured_at"]
+                )
+                if yes_ask_cents is None or yes_ask_cents <= 0:
+                    zero_sigma_unmatched += 1
+                    continue  # no real historical price found -- excluded, not guessed at
+                contracts_yes = math.floor(stake_usd / (yes_ask_cents / 100.0))
+                cost_yes = contracts_yes * yes_ask_cents / 100.0
+                yes_win = r["final_outcome"] == "NO_LOSS"  # bucket occurred -> No lost -> Yes would have won
+                pnl_yes = (contracts_yes * 1.0 - cost_yes) if yes_win else -cost_yes
+                row = {"win": yes_win, "pnl": pnl_yes, "stake_usd": cost_yes}
+            else:
+                row = {
+                    "win": r["final_outcome"] == "NO_WIN",
+                    "pnl": float(r["final_realized_pnl_usd"]) if r["final_realized_pnl_usd"] is not None else None,
+                    "stake_usd": stake_usd,
+                }
+            per_marker[marker].append(row)
+            per_city_marker[r["station_code"]][marker].append(row)
+
+    pooled = {str(n): _aggregate_cell(per_marker[n]) for n in SIGMA_MARKERS}
+    pooled["0"]["yes_simulated"] = True
+    pooled["0"]["yes_simulated_note"] = ZERO_SIGMA_YES_CAVEAT
+    pooled["0"]["yes_simulated_unmatched"] = zero_sigma_unmatched
+
+    by_city = {}
+    for city in ENABLED_STATIONS:
+        by_city[city] = {str(n): _aggregate_cell(per_city_marker[city][n]) for n in SIGMA_MARKERS}
+        by_city[city]["0"]["yes_simulated"] = True
+        by_city[city]["0"]["yes_simulated_note"] = ZERO_SIGMA_YES_CAVEAT
 
     return {
         "robust_n_threshold": ROBUST_N_THRESHOLD,
         "markers": SIGMA_MARKERS,
-        "pooled": {str(n): _aggregate_cell(per_marker[n]) for n in SIGMA_MARKERS},
-        "by_city": {
-            city: {str(n): _aggregate_cell(per_city_marker[city][n]) for n in SIGMA_MARKERS}
-            for city in ENABLED_STATIONS
-        },
+        "pooled": pooled,
+        "by_city": by_city,
     }
 
 
