@@ -51,10 +51,18 @@ def _get_conn():
 # ---------------------------------------------------------------------------
 
 # entry_edge_cents / entry_model_prob_no_cents / entry_predicted_tmax_f /
-# entry_hours_to_settle / entry_sigma_used (added 2026-07-17/2026-07-17b/d):
-# frozen at the same first-qualification moment as
-# entry_no_ask_cents/entry_captured_at -- deliberately absent from the
-# ON CONFLICT DO UPDATE SET below, same as those two.
+# entry_hours_to_settle / entry_sigma_used / entry_hours_to_avg_dailyhigh
+# (added 2026-07-17/2026-07-17b/d/e): frozen at the same first-qualification
+# moment as entry_no_ask_cents/entry_captured_at -- deliberately absent from
+# the ON CONFLICT DO UPDATE SET below, same as those two.
+#
+# entry_hours_to_avg_dailyhigh specifically: computed by
+# _entry_hours_to_avg_dailyhigh() below via a join against
+# weather_station_climatology (station-level climatology, not duplicated
+# per-row) -- see sql/migrations/2026-07-17e-... for the full definition
+# and sign convention. NULL when no climatology row exists for that
+# station/month (e.g. a station not yet populated by
+# build_station_climatology_2026_07_17.py) -- never guessed at.
 # edge_cents/model_prob_no_cents/predicted_tmax_f/hours_to_settle/sigma_used
 # are NOT frozen (see UPDATE SET) and drift every cycle a signal keeps
 # re-qualifying -- confirmed via same-night backtests that this drift is
@@ -77,7 +85,8 @@ _RECORD_SQL = """
         hours_to_settle, sigma_used, is_paper_trade,
         entry_no_ask_cents, entry_captured_at,
         entry_edge_cents, entry_model_prob_no_cents,
-        entry_predicted_tmax_f, entry_hours_to_settle, entry_sigma_used
+        entry_predicted_tmax_f, entry_hours_to_settle, entry_sigma_used,
+        entry_hours_to_avg_dailyhigh
     ) VALUES (
         %(station_code)s, %(target_date)s, %(contract_ticker)s, %(real_market_ticker)s,
         %(bucket_label)s, %(bucket_floor)s, %(bucket_cap)s, %(decision_timestamp)s,
@@ -86,7 +95,8 @@ _RECORD_SQL = """
         %(hours_to_settle)s, %(sigma_used)s, %(is_paper_trade)s,
         %(no_ask_cents)s, %(decision_timestamp)s,
         %(edge_cents)s, %(model_prob_no_cents)s,
-        %(predicted_tmax_f)s, %(entry_hours_to_settle)s, %(sigma_used)s
+        %(predicted_tmax_f)s, %(entry_hours_to_settle)s, %(sigma_used)s,
+        %(entry_hours_to_avg_dailyhigh)s
     )
     ON CONFLICT (contract_ticker) DO UPDATE SET
         decision_timestamp    = EXCLUDED.decision_timestamp,
@@ -101,6 +111,35 @@ _RECORD_SQL = """
         sigma_used            = EXCLUDED.sigma_used
     WHERE weather_position_exits.scored_at IS NULL
 """
+
+
+def _entry_hours_to_avg_dailyhigh(conn, station_code: str, target_date: date,
+                                  now_utc: datetime) -> Optional[float]:
+    """Hours between now_utc and that station/month's climatological
+    average-daily-high UTC instant on target_date. Positive = entry before
+    the climatological peak (more uncertainty remaining); negative = after.
+
+    Returns None (not 0.0 or a guess) if weather_station_climatology has no
+    row for (station_code, month(target_date)) -- e.g. a station not yet
+    populated by build_station_climatology_2026_07_17.py."""
+    with conn.cursor() as cur:
+        cur.execute("""
+            SELECT average_dailyhigh_time_utc
+            FROM weather_station_climatology
+            WHERE station_code = %s AND month = %s
+        """, (station_code, target_date.month))
+        row = cur.fetchone()
+    if row is None or row['average_dailyhigh_time_utc'] is None:
+        return None
+    peak_time = row['average_dailyhigh_time_utc']
+    # average_dailyhigh_time_utc is a fixed clock time (LST-derived, never
+    # DST-adjusted -- see migration file header), so combining it directly
+    # with target_date gives the correct UTC instant. Peak hours for all
+    # currently-populated stations fall in the 17-22 UTC range, same
+    # calendar date as the local trading day, so no cross-midnight
+    # adjustment is needed here.
+    peak_instant = datetime.combine(target_date, peak_time, tzinfo=timezone.utc)
+    return round((peak_instant - now_utc).total_seconds() / 3600.0, 3)
 
 
 def record_paper_trade(conn, station_code: str, target_date: date,
@@ -129,6 +168,13 @@ def record_paper_trade(conn, station_code: str, target_date: date,
         max((_settlement_dt(station_code, target_date) - now_utc).total_seconds() / 3600.0, 0.0), 2
     )
 
+    # Same station/target_date for every bucket in this call -- one lookup,
+    # not per-bucket. None if weather_station_climatology has no row yet
+    # for this station/month (never guessed at -- see helper docstring).
+    entry_hours_to_avg_dailyhigh = _entry_hours_to_avg_dailyhigh(
+        conn, station_code, target_date, now_utc
+    )
+
     inserted = 0
     with conn.cursor() as cur:
         for b in qualifying:
@@ -155,6 +201,7 @@ def record_paper_trade(conn, station_code: str, target_date: date,
                 'sigma_used':            b.get('sigma_used'),
                 'is_paper_trade':        is_paper_trade,
                 'entry_hours_to_settle': entry_hours_to_settle,
+                'entry_hours_to_avg_dailyhigh': entry_hours_to_avg_dailyhigh,
             })
             inserted += cur.rowcount
     return inserted
