@@ -102,13 +102,25 @@ main { padding: 16px 20px 60px; display: flex; flex-direction: column; gap: 16px
 }
 .sigma-marker .n { font-size: 11px; color: var(--text-dim); }
 .sigma-marker .temp { font-size: 15px; font-weight: 700; margin-top: 2px; }
-.sigma-marker.zero { border-color: var(--accent-blue); }
+/* Same 0sigma=green / +-2sigma=yellow / +-3sigma=red scheme as the ladder's
+   sigma-chip column (markerColorClass() in app.js) -- top strip and ladder
+   must always agree, same city, same day. Replaces the old plain-blue
+   "zero" treatment. */
+.sigma-marker.chip-green  { border-color: var(--green); }
+.sigma-marker.chip-green .n  { color: var(--green); font-weight: 700; }
+.sigma-marker.chip-yellow { border-color: #e6b800; }
+.sigma-marker.chip-yellow .n { color: #e6b800; font-weight: 700; }
+.sigma-marker.chip-red    { border-color: var(--red); }
+.sigma-marker.chip-red .n    { color: var(--red); font-weight: 700; }
 /* Same -2sigma/-3sigma/+3sigma star as the ladder's sigma-chip column --
    applies identically across all cities (checks only m.n, not a
    city-specific value). Was present in the markup already but unstyled
    (plain gray text), easy to miss -- now visually matches the ladder. */
-.sigma-marker.starred { border-color: #ffd24d; }
-.sigma-marker.starred .n { color: #ffd24d; font-weight: 700; }
+/* Star is layered on top of the color scheme above, not a replacement --
+   every starred marker (-2/-3/+3) already has a chip-* color, so this only
+   adds weight via the (glyph); it must NOT override border/text color or
+   it would hide the yellow/red on exactly the markers that need it. */
+.sigma-marker.starred .n { font-weight: 700; }
 .source-badges { margin-top: 8px; display: flex; gap: 8px; font-size: 11px; }
 .badge { padding: 2px 8px; border-radius: var(--radius-pill); border: 1px solid var(--panel-border); color: var(--text-dim); }
 .badge.entry_frozen { color: var(--green); border-color: var(--green); }

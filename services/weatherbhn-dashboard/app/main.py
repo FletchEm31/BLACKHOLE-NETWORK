@@ -6,7 +6,6 @@ Scope: KDEN, KLAX, KMIA (the 3 tradeable cities) -- CITIES below lists all
 8 BHN weather stations with an `enabled` flag so adding a future city is a
 config change, not a rebuild, per operator scope note.
 """
-import math
 from datetime import date, datetime, timezone
 from typing import Optional
 
@@ -32,18 +31,6 @@ CITIES = [
 ENABLED_STATIONS = {c["station_code"] for c in CITIES if c["enabled"]}
 
 SIGMA_MARKERS = list(range(-4, 5))  # -4sigma .. +4sigma
-
-
-def _normal_cdf(x: float, mu: float, sigma: float) -> float:
-    """Exact standard-normal CDF via math.erf (not an approximation --
-    unlike the frontend chart's JS Abramowitz-Stegun fallback, used only
-    because JS has no built-in erf). x must be a real number or +-inf --
-    callers convert None (open-ended bucket edge) to the correct signed
-    infinity BEFORE calling this; None means -inf for a floor and +inf for
-    a cap, so it can't be handled generically inside this function."""
-    if math.isinf(x):
-        return 1.0 if x > 0 else 0.0
-    return 0.5 * (1 + math.erf((x - mu) / (sigma * math.sqrt(2))))
 
 
 @app.on_event("startup")
@@ -231,10 +218,10 @@ def get_ladder(station: str = Query(...), target_date: date = Query(...)):
 
         chance_pct = _chance_pct(b)
         model_prob_pct = edge_pct = None
+        distribution_used = None
         if mu is not None and sigma is not None and sigma > 0:
-            cdf_hi = _normal_cdf(cap if cap is not None else float("inf"), mu, sigma)
-            cdf_lo = _normal_cdf(floor if floor is not None else float("-inf"), mu, sigma)
-            model_prob_pct = round((cdf_hi - cdf_lo) * 100, 1)
+            prob, distribution_used = model_math.calculate_bucket_probability(mu, sigma, floor, cap)
+            model_prob_pct = round(prob * 100, 1)
             if chance_pct is not None:
                 edge_pct = round(model_prob_pct - chance_pct, 1)
 
@@ -250,6 +237,7 @@ def get_ladder(station: str = Query(...), target_date: date = Query(...)):
             "chance_pct":    chance_pct,
             "model_prob_pct": model_prob_pct,
             "edge_pct":      edge_pct,
+            "distribution_used": distribution_used,
             "volume":        volume,
             "open_interest": float(b["open_interest"]) if b["open_interest"] is not None else None,
             "is_liquid":     (volume > 100.0) if volume is not None else None,

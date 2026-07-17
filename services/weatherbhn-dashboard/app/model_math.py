@@ -18,6 +18,8 @@ import math
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
+from scipy.stats import norm, t as student_t
+
 # Mirrors cp4_kelly_sizer.py SETTLEMENT_UTC_HOUR exactly.
 SETTLEMENT_UTC_HOUR = {
     'KLAX': 0, 'KDEN': 22, 'KMIA': 20, 'KNYC': 20, 'KAUS': 21, 'KORD': 21,
@@ -52,3 +54,38 @@ def season_for(d: date) -> str:
     if m in (3, 4, 5):  return 'spring'
     if m in (6, 7, 8):  return 'summer'
     return 'fall'
+
+
+def calculate_bucket_probability(predicted_tmax_f: float, sigma: float,
+                                  bucket_floor: Optional[float],
+                                  bucket_cap: Optional[float]) -> tuple[float, str]:
+    """Verbatim port of cp4_kelly_sizer.calculate_bucket_probability() --
+    same scipy.stats calls (norm / student_t), same eff_floor/eff_cap
+    sentinels, same 2-sigma threshold, same df=5 -- not an independent
+    approximation. Operator requirement 2026-07-18: the dashboard's
+    Model % must match CP4's actual math, not just disclose that it
+    differs, since CP4 switches to Student-t (fatter tails) beyond 2sigma
+    and a pure-Gaussian display number understated tail-bucket
+    probability relative to what CP4 actually sizes trades against.
+
+    Returns (prob, distribution_used) where distribution_used is
+    'gaussian' or 'student_t' -- exposed so the dashboard can show which
+    one applied, same as CP4's own return value.
+    """
+    eff_floor = bucket_floor if bucket_floor is not None else -9999.0
+    eff_cap = bucket_cap if bucket_cap is not None else 9999.0
+    sigma = max(sigma, 0.01)
+
+    bucket_mid = (eff_floor + eff_cap) / 2.0
+    sigma_dist = abs(bucket_mid - predicted_tmax_f) / sigma
+
+    if sigma_dist > 2.0:
+        prob = (student_t.cdf(eff_cap, df=5, loc=predicted_tmax_f, scale=sigma)
+                - student_t.cdf(eff_floor, df=5, loc=predicted_tmax_f, scale=sigma))
+        dist = 'student_t'
+    else:
+        prob = (norm.cdf(eff_cap, loc=predicted_tmax_f, scale=sigma)
+                - norm.cdf(eff_floor, loc=predicted_tmax_f, scale=sigma))
+        dist = 'gaussian'
+
+    return max(0.0, min(1.0, float(prob))), dist

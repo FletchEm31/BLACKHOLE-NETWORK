@@ -243,7 +243,8 @@ function renderReferenceStrip(data) {
     for (const m of data.sigma_markers) {
       const div = document.createElement('div');
       const isStarred = STAR_MARKERS.has(m.n);
-      div.className = 'sigma-marker' + (m.n === 0 ? ' zero' : '') + (isStarred ? ' starred' : '');
+      const colorClass = markerColorClass(m.n);
+      div.className = 'sigma-marker' + (colorClass ? ' ' + colorClass : '') + (isStarred ? ' starred' : '');
       const star = isStarred ? ' &#9733;' : '';
       div.innerHTML = `<div class="n">${m.n > 0 ? '+' : ''}${m.n}&sigma;${star}</div><div class="temp">${m.temp_f}&deg;F</div>`;
       strip.appendChild(div);
@@ -349,6 +350,17 @@ function bucketRangeLabel(b) {
 // +2sigma was a confirmed losing zone at -11.1% ROI and stays unstarred).
 const STAR_MARKERS = new Set([-2, -3, 3]);
 
+// Shared color rule for BOTH the top reference strip and the ladder's
+// sigma-chip column -- they must always agree, same city, same day:
+// 0sigma = green (sole Yes-bet target), +-2sigma = yellow, +-3sigma = red,
+// everything else uncolored.
+function markerColorClass(n) {
+  if (n === 0) return 'chip-green';
+  if (n === 2 || n === -2) return 'chip-yellow';
+  if (n === 3 || n === -3) return 'chip-red';
+  return '';
+}
+
 function renderLadderTable(data) {
   const tbody = document.getElementById('ladderBody');
   tbody.innerHTML = '';
@@ -369,15 +381,11 @@ function renderLadderTable(data) {
         const marker = data.sigma_markers.find(m => m.n === n);
         const tempStr = marker ? ` / ${marker.temp_f}&deg;F` : '';
         const star = STAR_MARKERS.has(n) ? ' &#9733;' : '';
-        // Color lives on the chip badge itself, not the whole row: 0sigma
-        // (green, sole Yes-bet target), +-2sigma (yellow), +-3sigma (red).
-        // Star (-2/-3/+3 only) is a separate, more specific marker layered
-        // on top -- not the same set as the color scheme.
-        let colorClass = '';
-        if (n === 0) colorClass = ' chip-green';
-        else if (n === 2 || n === -2) colorClass = ' chip-yellow';
-        else if (n === 3 || n === -3) colorClass = ' chip-red';
-        return `<div class="sigma-chip${colorClass}${star ? ' starred' : ''}">${n > 0 ? '+' : ''}${n}&sigma;${tempStr}${star}</div>`;
+        // Same markerColorClass() shared with the reference strip -- the
+        // two must always agree. Star (-2/-3/+3 only) is a separate, more
+        // specific marker layered on top, not the same set as the colors.
+        const colorClass = markerColorClass(n);
+        return `<div class="sigma-chip${colorClass ? ' ' + colorClass : ''}${star ? ' starred' : ''}">${n > 0 ? '+' : ''}${n}&sigma;${tempStr}${star}</div>`;
       }).join('');
 
     const edgeClass = b.edge_pct == null ? '' : (b.edge_pct >= 0 ? 'edge-pos' : 'edge-neg');
