@@ -240,7 +240,8 @@ function renderReferenceStrip(data) {
     for (const m of data.sigma_markers) {
       const div = document.createElement('div');
       div.className = 'sigma-marker' + (m.n === 0 ? ' zero' : '');
-      div.innerHTML = `<div class="n">${m.n > 0 ? '+' : ''}${m.n}&sigma;</div><div class="temp">${m.temp_f}&deg;F</div>`;
+      const star = STAR_MARKERS.has(m.n) ? ' &#9733;' : '';
+      div.innerHTML = `<div class="n">${m.n > 0 ? '+' : ''}${m.n}&sigma;${star}</div><div class="temp">${m.temp_f}&deg;F</div>`;
       strip.appendChild(div);
     }
   }
@@ -365,6 +366,11 @@ function bucketRangeLabel(b) {
   return b.bucket_label;
 }
 
+// Exactly these three sigma points get a star -- operator-specified,
+// not derived from any rule (explicitly NOT the naive -2/+2 symmetry:
+// +2sigma was a confirmed losing zone at -11.1% ROI and stays unstarred).
+const STAR_MARKERS = new Set([-2, -3, 3]);
+
 // Per WEATHERBHN-SIGMA-ZONE-ANALYSIS-2026-07-17.md -- a read-only backtest
 // report, "promising hypothesis, not a proven strategy." Full rationale in
 // each bucket's zone_label (shown as a tooltip on hover).
@@ -401,7 +407,8 @@ function renderLadderTable(data) {
       .map(n => {
         const marker = data.sigma_markers.find(m => m.n === n);
         const tempStr = marker ? ` / ${marker.temp_f}&deg;F` : '';
-        return `<span class="sigma-chip">${n > 0 ? '+' : ''}${n}&sigma;${tempStr}</span>`;
+        const star = STAR_MARKERS.has(n) ? ' &#9733;' : '';
+        return `<span class="sigma-chip${star ? ' starred' : ''}">${n > 0 ? '+' : ''}${n}&sigma;${tempStr}${star}</span>`;
       }).join('');
 
     const zoneChip = `<span class="zone-chip zone-${b.zone_tag}" title="${b.zone_label || ''}">${ZONE_SHORT_LABEL[b.zone_tag] || b.zone_tag}</span>`;
