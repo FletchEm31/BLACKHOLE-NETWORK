@@ -141,23 +141,24 @@ main { padding: 16px 20px 60px; display: flex; flex-direction: column; gap: 16px
 .ladder-table td, .ladder-table th { text-align: center; }
 .ladder-table td.col-bucket, .ladder-table th.col-bucket { text-align: left; }
 
-/* Single-point sigma-marker row highlights: 0sigma (sole Yes target),
-   +-2sigma / +-3sigma (No targets). Left border keeps the tint readable
-   without fighting the row-hover background. */
-.ladder-table tr.row-marker-green  { background: var(--green-dim); border-left: 3px solid var(--green); }
-.ladder-table tr.row-marker-yellow { background: rgba(230, 184, 0, 0.12); border-left: 3px solid #e6b800; }
-.ladder-table tr.row-marker-red    { background: var(--red-dim); border-left: 3px solid var(--red); }
-.ladder-table tr.row-marker-green:hover,
-.ladder-table tr.row-marker-yellow:hover,
-.ladder-table tr.row-marker-red:hover { filter: brightness(1.15); }
 .col-bucket .bucket-range { font-weight: 700; }
 .col-sigma .sigma-chip {
   display: inline-block; background: var(--input-bg); border: 1px solid var(--accent-blue);
   color: var(--accent-blue); border-radius: 6px; padding: 1px 6px; font-size: 11px; margin: 1px;
 }
+/* Single-point sigma-marker chip colors: 0sigma (sole Yes target), +-2sigma
+   / +-3sigma (No targets). Lives on the chip badge only, not the row --
+   operator preference, keeps the ladder scannable without a full-row tint. */
+.col-sigma .sigma-chip.chip-green  { background: var(--green-dim); border-color: var(--green); color: var(--green); }
+.col-sigma .sigma-chip.chip-yellow { background: rgba(230, 184, 0, 0.12); border-color: #e6b800; color: #e6b800; }
+.col-sigma .sigma-chip.chip-red    { background: var(--red-dim); border-color: var(--red); color: var(--red); }
 /* Exactly -2sigma/-3sigma/+3sigma get a star -- operator-specified single
    points, not derived from any zone/ROI rule. */
-.col-sigma .sigma-chip.starred { border-color: #ffd24d; color: #ffd24d; font-weight: 700; }
+/* Star (-2/-3/+3 only) is layered on top of the color scheme above, not a
+   replacement for it -- every starred marker already has a chip-* color
+   (chip-green never overlaps with STAR_MARKERS), so this only adds
+   weight, it doesn't override border/text color. */
+.col-sigma .sigma-chip.starred { font-weight: 700; }
 
 .pill { border-radius: var(--radius-pill); padding: 4px 12px; font-weight: 700; font-size: 12px; display: inline-block; min-width: 56px; }
 .pill.yes { border: 1px solid var(--green); color: var(--green); }
@@ -228,6 +229,27 @@ main { padding: 16px 20px 60px; display: flex; flex-direction: column; gap: 16px
 }
 .journal-form button:hover { opacity: 0.9; }
 .journal-delete { background: none; border: none; color: var(--red); cursor: pointer; font-size: 12px; }
+
+/* ---------- Per-city scratch notepad (fixed, off to the side) ---------- */
+.notepad-widget {
+  position: fixed; top: 90px; right: 16px; width: 220px; z-index: 50;
+  background: var(--panel-bg); border: 1px solid var(--panel-border); border-radius: var(--radius);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+}
+.notepad-header {
+  display: flex; align-items: center; justify-content: space-between; gap: 6px;
+  padding: 6px 10px; border-bottom: 1px solid var(--panel-border);
+  font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; color: var(--text-dim);
+}
+.notepad-header .icon-btn { width: 22px; height: 22px; font-size: 12px; padding: 0; }
+.notepad-save-status { font-size: 10px; color: var(--text-faint); text-transform: none; letter-spacing: 0; flex: 1; text-align: right; margin-right: 4px; }
+.notepad-textarea {
+  display: block; width: 100%; min-height: 140px; resize: vertical;
+  background: #1c2330; color: var(--text); border: none; border-radius: 0 0 var(--radius) var(--radius);
+  padding: 8px 10px; font-size: 12px; font-family: inherit; box-sizing: border-box;
+}
+.notepad-widget.collapsed .notepad-textarea { display: none; }
+@media (max-width: 1100px) { .notepad-widget { position: static; width: auto; margin: 0 20px 16px; } }
 
 /* ---------- Footer: data sources + known issues (muted, collapsed) ---------- */
 .dash-footer { margin-top: 4px; }

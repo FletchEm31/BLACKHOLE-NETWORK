@@ -95,10 +95,12 @@ async function init() {
   renderCityTabs();
   renderDayToggle();
   renderFooter();
+  initNotepad();
   document.getElementById('journalForm').addEventListener('submit', onJournalSubmit);
 
   await refreshAll(true);
   await refreshJournal();
+  await refreshNotepad();
 
   setInterval(() => refreshLadder(false), PRICE_REFRESH_MS);
   setInterval(tickCountdown, 1000);
@@ -150,6 +152,7 @@ function renderCityTabs() {
       state.station = c.station_code;
       renderCityTabs();
       onCityOrDateChanged();
+      refreshNotepad(); // notepad is per-city, not per-date -- reload on city switch only
     });
     el.appendChild(btn);
   }
@@ -284,6 +287,12 @@ function renderProbabilityChart(data) {
   const volumes = data.buckets.map(b => b.volume);
   const volumeColors = data.buckets.map(b => b.is_liquid === false ? 'rgba(255, 77, 94, 0.45)' : 'rgba(77, 141, 255, 0.45)');
   const volumeBorders = data.buckets.map(b => b.is_liquid === false ? '#ff4d5e' : '#4d8dff');
+  // Volume is a secondary/accent signal -- Market chance % is the primary
+  // read. Compress the volume axis to ~1/3 of the chart height (rather
+  // than letting it auto-scale to fill the full height) so volume bars
+  // never visually compete with the taller, more important chance bars.
+  const maxVolume = Math.max(1, ...volumes.filter(v => v != null));
+  const volumeAxisMax = maxVolume * 5;
 
   if (state.probChart) state.probChart.destroy();
   state.probChart = new Chart(ctx, {
@@ -316,6 +325,7 @@ function renderProbabilityChart(data) {
           backgroundColor: volumeColors,
           borderColor: volumeBorders,
           borderWidth: 1,
+          barThickness: 6,   // skinny accent bar -- Market chance % stays the visually dominant series
           yAxisID: 'yVolume',
         },
       ],
@@ -332,10 +342,12 @@ function renderProbabilityChart(data) {
         // Independent scale per bucket/day -- volume ranges from single
         // digits to tens of thousands depending on the day, so this axis
         // auto-scales (no fixed max) rather than sharing the 0-100 % axis.
+        // No visible axis -- the separate Volume & Liquidity table already
+        // shows the exact numbers; here volume is just a small secondary
+        // accent bar, read via hover tooltip, not a second scale to parse.
         yVolume: {
-          type: 'linear', position: 'right', beginAtZero: true,
-          ticks: { color: '#8891a3' }, grid: { drawOnChartArea: false },
-          title: { display: true, text: 'volume', color: '#8891a3' },
+          type: 'linear', position: 'right', beginAtZero: true, max: volumeAxisMax,
+          display: false,
         },
       },
       plugins: { legend: { labels: { color: '#e6e9ef' } } },
@@ -388,18 +400,6 @@ function renderLadderTable(data) {
     const tr = document.createElement('tr');
     tr.dataset.bucket = b.bucket_label;
 
-    // Highlight whichever bucket contains one of three specific single-
-    // point markers: 0sigma (green, the sole Yes-bet target), +-2sigma
-    // (yellow, No-bet targets), +-3sigma (red, No-bet targets). Everything
-    // else (+-1sigma, +-4sigma, or a bucket with no marker at all) stays
-    // unhighlighted. Precedence green > yellow > red if a very tight sigma
-    // ever put more than one of these in the same bucket.
-    const markerSet = new Set(b.sigma_markers_in_bucket);
-    let highlightClass = '';
-    if (markerSet.has(0)) highlightClass = 'row-marker-green';
-    else if (markerSet.has(2) || markerSet.has(-2)) highlightClass = 'row-marker-yellow';
-    else if (markerSet.has(3) || markerSet.has(-3)) highlightClass = 'row-marker-red';
-    if (highlightClass) tr.classList.add(highlightClass);
 
     // Same format as the reference strip (n-sigma / temp) so each row is
     // self-contained -- no need to cross-reference the top strip.
@@ -408,7 +408,15 @@ function renderLadderTable(data) {
         const marker = data.sigma_markers.find(m => m.n === n);
         const tempStr = marker ? ` / ${marker.temp_f}&deg;F` : '';
         const star = STAR_MARKERS.has(n) ? ' &#9733;' : '';
-        return `<span class="sigma-chip${star ? ' starred' : ''}">${n > 0 ? '+' : ''}${n}&sigma;${tempStr}${star}</span>`;
+        // Color lives on the chip badge itself, not the whole row: 0sigma
+        // (green, sole Yes-bet target), +-2sigma (yellow), +-3sigma (red).
+        // Star (-2/-3/+3 only) is a separate, more specific marker layered
+        // on top -- not the same set as the color scheme.
+        let colorClass = '';
+        if (n === 0) colorClass = ' chip-green';
+        else if (n === 2 || n === -2) colorClass = ' chip-yellow';
+        else if (n === 3 || n === -3) colorClass = ' chip-red';
+        return `<span class="sigma-chip${colorClass}${star ? ' starred' : ''}">${n > 0 ? '+' : ''}${n}&sigma;${tempStr}${star}</span>`;
       }).join('');
 
     const zoneChip = `<span class="zone-chip zone-${b.zone_tag}" title="${b.zone_label || ''}">${ZONE_SHORT_LABEL[b.zone_tag] || b.zone_tag}</span>`;
@@ -611,6 +619,59 @@ async function onJournalSubmit(e) {
   });
   form.reset();
   refreshJournal();
+}
+
+// ---------------------------------------------------------------------------
+// Per-city scratch notepad -- freeform, separate from the structured
+// journal above. One overwritable note per station, debounced autosave.
+// ---------------------------------------------------------------------------
+let notepadSaveTimer = null;
+let notepadLoadedStation = null; // guards against saving stale content over a station we've since switched away from
+
+function initNotepad() {
+  const textarea = document.getElementById('notepadText');
+  textarea.addEventListener('input', () => {
+    setSaveStatus('unsaved');
+    clearTimeout(notepadSaveTimer);
+    const stationAtEdit = state.station;
+    notepadSaveTimer = setTimeout(() => saveNotepad(stationAtEdit, textarea.value), 800);
+  });
+  document.getElementById('notepadCollapse').addEventListener('click', () => {
+    const widget = document.getElementById('notepadWidget');
+    const collapsed = widget.classList.toggle('collapsed');
+    document.getElementById('notepadCollapse').textContent = collapsed ? '+' : '−';
+  });
+}
+
+async function refreshNotepad() {
+  const cityName = (state.cities.find(c => c.station_code === state.station) || {}).city || state.station;
+  document.getElementById('notepadCityLabel').textContent = `Notes — ${cityName}`;
+  notepadLoadedStation = state.station;
+  const data = await fetchJSON(`/api/notes/${state.station}`);
+  // Guard: if the city changed again while this fetch was in flight, don't
+  // clobber the textarea with a now-stale response.
+  if (notepadLoadedStation !== state.station) return;
+  document.getElementById('notepadText').value = data.note_text || '';
+  setSaveStatus(data.updated_at ? `saved` : '');
+}
+
+async function saveNotepad(station, text) {
+  setSaveStatus('saving…');
+  try {
+    await fetch(`/api/notes/${station}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ note_text: text }),
+    });
+    if (state.station === station) setSaveStatus('saved');
+  } catch (e) {
+    if (state.station === station) setSaveStatus('save failed');
+    console.error(e);
+  }
+}
+
+function setSaveStatus(text) {
+  const el = document.getElementById('notepadSaveStatus');
+  if (el) el.textContent = text;
 }
 
 init();

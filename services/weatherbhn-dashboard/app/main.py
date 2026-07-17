@@ -405,6 +405,38 @@ def delete_journal_entry(entry_id: int):
 
 
 # ---------------------------------------------------------------------------
+# Per-city scratch notepad -- freeform, separate from the structured trade
+# journal above. One overwritable note per station (see
+# sql/weatherbhn-dashboard-notes-schema.sql for why).
+# ---------------------------------------------------------------------------
+
+class NoteBody(BaseModel):
+    note_text: str
+
+
+@app.get("/api/notes/{station}")
+def get_note(station: str):
+    with db.conn_cursor() as cur:
+        cur.execute("SELECT note_text, updated_at FROM weatherbhn_dashboard_notes WHERE station_code = %s", (station,))
+        row = cur.fetchone()
+    return {"note_text": row["note_text"] if row else "",
+            "updated_at": row["updated_at"].isoformat() if row and row["updated_at"] else None}
+
+
+@app.put("/api/notes/{station}")
+def put_note(station: str, body: NoteBody):
+    with db.conn_cursor() as cur:
+        cur.execute("""
+            INSERT INTO weatherbhn_dashboard_notes (station_code, note_text, updated_at)
+            VALUES (%s, %s, NOW())
+            ON CONFLICT (station_code) DO UPDATE SET note_text = EXCLUDED.note_text, updated_at = NOW()
+            RETURNING note_text, updated_at
+        """, (station, body.note_text))
+        row = cur.fetchone()
+    return {"note_text": row["note_text"], "updated_at": row["updated_at"].isoformat()}
+
+
+# ---------------------------------------------------------------------------
 # Static frontend
 # ---------------------------------------------------------------------------
 

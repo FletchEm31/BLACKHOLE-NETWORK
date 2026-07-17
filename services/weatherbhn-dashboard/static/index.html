@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>WeatherBHN Trading Dashboard</title>
-<link rel="stylesheet" href="style.css?v=11">
+<link rel="stylesheet" href="style.css?v=13">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 </head>
 <body>
@@ -27,6 +27,19 @@
     <div class="refresh-indicator" id="refreshIndicator">live</div>
   </div>
 </header>
+
+<!-- Freeform per-city scratch notepad -- separate from the structured
+     trade journal below. Fixed to the side so it's reachable without
+     scrolling; content switches automatically with the city tab, and
+     autosaves (debounced) to its own table, keyed by station_code. -->
+<aside id="notepadWidget" class="notepad-widget">
+  <div class="notepad-header">
+    <span id="notepadCityLabel">Notes</span>
+    <span id="notepadSaveStatus" class="notepad-save-status"></span>
+    <button id="notepadCollapse" class="icon-btn" title="Collapse">&minus;</button>
+  </div>
+  <textarea id="notepadText" class="notepad-textarea" placeholder="Quick notes for this city..."></textarea>
+</aside>
 
 <main>
 
@@ -144,6 +157,6 @@
 
 </main>
 
-<script src="app.js?v=11"></script>
+<script src="app.js?v=13"></script>
 </body>
 </html>
