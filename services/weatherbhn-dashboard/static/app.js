@@ -382,6 +382,19 @@ function renderLadderTable(data) {
     const tr = document.createElement('tr');
     tr.dataset.bucket = b.bucket_label;
 
+    // Highlight whichever bucket contains one of three specific single-
+    // point markers: 0sigma (green, the sole Yes-bet target), +-2sigma
+    // (yellow, No-bet targets), +-3sigma (red, No-bet targets). Everything
+    // else (+-1sigma, +-4sigma, or a bucket with no marker at all) stays
+    // unhighlighted. Precedence green > yellow > red if a very tight sigma
+    // ever put more than one of these in the same bucket.
+    const markerSet = new Set(b.sigma_markers_in_bucket);
+    let highlightClass = '';
+    if (markerSet.has(0)) highlightClass = 'row-marker-green';
+    else if (markerSet.has(2) || markerSet.has(-2)) highlightClass = 'row-marker-yellow';
+    else if (markerSet.has(3) || markerSet.has(-3)) highlightClass = 'row-marker-red';
+    if (highlightClass) tr.classList.add(highlightClass);
+
     // Same format as the reference strip (n-sigma / temp) so each row is
     // self-contained -- no need to cross-reference the top strip.
     const sigmaChips = b.sigma_markers_in_bucket

@@ -140,6 +140,16 @@ main { padding: 16px 20px 60px; display: flex; flex-direction: column; gap: 16px
 /* ---------- Ladder table specifics ---------- */
 .ladder-table td, .ladder-table th { text-align: center; }
 .ladder-table td.col-bucket, .ladder-table th.col-bucket { text-align: left; }
+
+/* Single-point sigma-marker row highlights: 0sigma (sole Yes target),
+   +-2sigma / +-3sigma (No targets). Left border keeps the tint readable
+   without fighting the row-hover background. */
+.ladder-table tr.row-marker-green  { background: var(--green-dim); border-left: 3px solid var(--green); }
+.ladder-table tr.row-marker-yellow { background: rgba(230, 184, 0, 0.12); border-left: 3px solid #e6b800; }
+.ladder-table tr.row-marker-red    { background: var(--red-dim); border-left: 3px solid var(--red); }
+.ladder-table tr.row-marker-green:hover,
+.ladder-table tr.row-marker-yellow:hover,
+.ladder-table tr.row-marker-red:hover { filter: brightness(1.15); }
 .col-bucket .bucket-range { font-weight: 700; }
 .col-sigma .sigma-chip {
   display: inline-block; background: var(--input-bg); border: 1px solid var(--accent-blue);
