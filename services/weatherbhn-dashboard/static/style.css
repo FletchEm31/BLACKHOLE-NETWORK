@@ -276,6 +276,10 @@ main { padding: 16px 20px 60px; display: flex; flex-direction: column; gap: 16px
 /* ---------- Sigma-marker performance (pooled + per-city grid) ----------
    Deliberately small/dense (operator request) -- only a positive-ROI cell
    is highlighted (green); everything else stays neutral, no other colors. */
+.collapsible-title { cursor: pointer; list-style: none; user-select: none; }
+.collapsible-title::-webkit-details-marker { display: none; }
+.collapsible-title::before { content: "▾ "; }
+details:not([open]) > .collapsible-title::before { content: "▸ "; }
 .sigma-perf-table th, .sigma-perf-table td { text-align: center; padding: 3px 4px; }
 .sigma-perf-table td:first-child, .sigma-perf-table th:first-child { text-align: left; font-weight: 700; white-space: nowrap; }
 .perf-cell { border-radius: 4px; padding: 2px 4px; cursor: help; }

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>WeatherBHN Trading Dashboard</title>
-<link rel="stylesheet" href="style.css?v=21">
+<link rel="stylesheet" href="style.css?v=22">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 </head>
 <body>
@@ -45,22 +45,25 @@
 
   <!-- Sigma-marker performance -- live, growing computation over every
        settled trade across all 3 cities. NOT a snapshot of the
-       2026-07-17 backtest doc (different binning method -- see hint). -->
+       2026-07-17 backtest doc (different binning method -- see hint).
+       Collapsible (open by default) -- panel-title moved into <summary>. -->
   <section class="panel sigma-perf-panel">
-    <div class="panel-title">Sigma-Marker Performance <span class="hint">(live, grows as trades settle &mdash; rounds each trade's entry z-score to the nearest integer marker, so numbers won't exactly match WEATHERBHN-SIGMA-ZONE-ANALYSIS-2026-07-17.md's custom zone-ranges)</span></div>
-    <div class="table-scroll">
-      <table id="sigmaPerfPooledTable" class="data-table sigma-perf-table">
-        <thead><tr id="sigmaPerfPooledHead"></tr></thead>
-        <tbody id="sigmaPerfPooledBody"></tbody>
-      </table>
-    </div>
-    <div class="panel-title" style="margin-top:14px">By City <span class="hint">(green = positive ROI, any sample size; everything else neutral)</span></div>
-    <div class="table-scroll">
-      <table id="sigmaPerfCityTable" class="data-table sigma-perf-table">
-        <thead><tr id="sigmaPerfCityHead"></tr></thead>
-        <tbody id="sigmaPerfCityBody"></tbody>
-      </table>
-    </div>
+    <details open>
+      <summary class="panel-title collapsible-title">Sigma-Marker Performance <span class="hint">(live, grows as trades settle &mdash; rounds each trade's entry z-score to the nearest integer marker, so numbers won't exactly match WEATHERBHN-SIGMA-ZONE-ANALYSIS-2026-07-17.md's custom zone-ranges)</span></summary>
+      <div class="table-scroll">
+        <table id="sigmaPerfPooledTable" class="data-table sigma-perf-table">
+          <thead><tr id="sigmaPerfPooledHead"></tr></thead>
+          <tbody id="sigmaPerfPooledBody"></tbody>
+        </table>
+      </div>
+      <div class="panel-title" style="margin-top:14px">By City <span class="hint">(green = positive ROI, any sample size; everything else neutral)</span></div>
+      <div class="table-scroll">
+        <table id="sigmaPerfCityTable" class="data-table sigma-perf-table">
+          <thead><tr id="sigmaPerfCityHead"></tr></thead>
+          <tbody id="sigmaPerfCityBody"></tbody>
+        </table>
+      </div>
+    </details>
   </section>
 
   <!-- Reference strip -->
@@ -177,6 +180,6 @@
 
 </main>
 
-<script src="app.js?v=21"></script>
+<script src="app.js?v=22"></script>
 </body>
 </html>
