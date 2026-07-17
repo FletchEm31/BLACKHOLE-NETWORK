@@ -280,19 +280,6 @@ function renderProbabilityChart(data) {
   // re-deriving it here -- one source of truth, matches the ladder's
   // Model % column exactly instead of a second, JS-approximated curve.
   const modelProb = data.buckets.map(b => b.model_prob_pct);
-  // Volume only (not open interest -- that stays in the separate table,
-  // not duplicated here). Color-coded by CP4's actual liquidity guard
-  // (is_liquid = volume > 100) so the bar itself signals liquidity, not
-  // just its height.
-  const volumes = data.buckets.map(b => b.volume);
-  const volumeColors = data.buckets.map(b => b.is_liquid === false ? 'rgba(255, 77, 94, 0.45)' : 'rgba(77, 141, 255, 0.45)');
-  const volumeBorders = data.buckets.map(b => b.is_liquid === false ? '#ff4d5e' : '#4d8dff');
-  // Volume is a secondary/accent signal -- Market chance % is the primary
-  // read. Compress the volume axis to ~1/3 of the chart height (rather
-  // than letting it auto-scale to fill the full height) so volume bars
-  // never visually compete with the taller, more important chance bars.
-  const maxVolume = Math.max(1, ...volumes.filter(v => v != null));
-  const volumeAxisMax = maxVolume * 5;
 
   if (state.probChart) state.probChart.destroy();
   state.probChart = new Chart(ctx, {
@@ -306,7 +293,6 @@ function renderProbabilityChart(data) {
           backgroundColor: 'rgba(23, 201, 100, 0.35)',
           borderColor: '#17c964',
           borderWidth: 1,
-          yAxisID: 'yPct',
         },
         {
           type: 'line',
@@ -316,17 +302,6 @@ function renderProbabilityChart(data) {
           backgroundColor: '#4d8dff',
           tension: 0.3,
           pointRadius: 3,
-          yAxisID: 'yPct',
-        },
-        {
-          type: 'bar',
-          label: 'Volume (is_liquid = volume > 100)',
-          data: volumes,
-          backgroundColor: volumeColors,
-          borderColor: volumeBorders,
-          borderWidth: 1,
-          barThickness: 6,   // skinny accent bar -- Market chance % stays the visually dominant series
-          yAxisID: 'yVolume',
         },
       ],
     },
@@ -334,20 +309,10 @@ function renderProbabilityChart(data) {
       responsive: true,
       scales: {
         x: { ticks: { color: '#8891a3' }, grid: { color: '#232937' } },
-        yPct: {
-          type: 'linear', position: 'left', beginAtZero: true, max: 100,
+        y: {
+          beginAtZero: true, max: 100,
           ticks: { color: '#8891a3' }, grid: { color: '#232937' },
           title: { display: true, text: '%', color: '#8891a3' },
-        },
-        // Independent scale per bucket/day -- volume ranges from single
-        // digits to tens of thousands depending on the day, so this axis
-        // auto-scales (no fixed max) rather than sharing the 0-100 % axis.
-        // No visible axis -- the separate Volume & Liquidity table already
-        // shows the exact numbers; here volume is just a small secondary
-        // accent bar, read via hover tooltip, not a second scale to parse.
-        yVolume: {
-          type: 'linear', position: 'right', beginAtZero: true, max: volumeAxisMax,
-          display: false,
         },
       },
       plugins: { legend: { labels: { color: '#e6e9ef' } } },
