@@ -4,6 +4,38 @@
 const PRICE_REFRESH_MS = 20000;   // live Kalshi price/volume/chance
 const MODEL_REFRESH_MS = 5 * 60000; // mu/sigma — matches orchestrator cadence
 
+// ---------------------------------------------------------------------------
+// Footer content — edit these two arrays directly, no markup changes needed.
+// Rendered once on load by renderFooter(). KNOWN_ISSUES is meant to be a
+// living log: add an entry the moment something's found broken/degraded,
+// change its status to 'resolved' (or delete it) once actually fixed and
+// verified live — not a one-time snapshot.
+// ---------------------------------------------------------------------------
+const DATA_SOURCES = [
+  { label: 'Market prices / Yes¢ / No¢ / Chance%', text: 'weather_bronze_kalshi_market_snapshots (live Kalshi collector), refreshes every ~20-30s poll from this page' },
+  { label: 'Volume / Open Interest', text: 'same snapshot table — see Known Issues, volume is currently unreliable' },
+  { label: 'Model prediction (μ)', text: 'CP3 XGBoost via weather_position_exits_clean (entry-frozen or live) when a bucket has qualified as a trade; falls back to weather_gold_contract_ledger (nws_forecast_f + model_delta_f, logged for every evaluated bucket including SKIP) otherwise' },
+  { label: 'Uncertainty (σ)', text: 'entry-frozen entry_sigma_used for a bucket that actually qualified as a trade; live sigma_used for a still-open qualified position; computed fresh (same calculate_time_decayed_sigma formula CP4 itself uses) when nothing has qualified yet' },
+  { label: 'Sigma markers (-4σ..+4σ)', text: 'μ ± n·σ, recomputed on every refresh from that day\'s actual values — never fixed/hardcoded' },
+  { label: 'Fee calculation', text: 'maker rate by default: ceil(0.0175 × price × (1−price) × contracts × 100) / 100, matches scripts/trading/fee_calculator.py exactly' },
+  { label: 'Liquidity guard', text: 'is_liquid = volume > 100, same threshold CP4 itself uses (EDGE_THRESHOLD_LIQ/ILL split)' },
+  { label: 'Bucket set', text: 'latest single snapshot batch only (MAX(retrieved_at), 45-min staleness cutoff) — matches CP4\'s own query, so removed/stale buckets drop out instead of lingering' },
+];
+
+const KNOWN_ISSUES = [
+  { status: 'investigating', text: 'Volume showing 0 for most/all buckets — traced to weather_data_collector.py\'s field-parsing chain, not yet confirmed whether it\'s a genuine bug or real thin trading volume on these markets (open_interest is populated normally). Liquidity guard/volume table are not trustworthy until this resolves.' },
+];
+
+function renderFooter() {
+  const srcEl = document.getElementById('dataSourceList');
+  srcEl.innerHTML = DATA_SOURCES.map(d => `<li><strong>${d.label}:</strong> ${d.text}</li>`).join('');
+
+  const issuesEl = document.getElementById('knownIssuesList');
+  issuesEl.innerHTML = KNOWN_ISSUES.length
+    ? KNOWN_ISSUES.map(i => `<li class="issue-${i.status}">${i.text}</li>`).join('')
+    : '<li class="issue-resolved">No known issues.</li>';
+}
+
 const state = {
   station: null,
   date: null,
@@ -54,6 +86,7 @@ async function init() {
 
   renderCityTabs();
   renderDayToggle();
+  renderFooter();
   document.getElementById('journalForm').addEventListener('submit', onJournalSubmit);
 
   await refreshAll(true);

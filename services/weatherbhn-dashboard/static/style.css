@@ -192,3 +192,27 @@ main { padding: 16px 20px 60px; display: flex; flex-direction: column; gap: 16px
 }
 .journal-form button:hover { opacity: 0.9; }
 .journal-delete { background: none; border: none; color: var(--red); cursor: pointer; font-size: 12px; }
+
+/* ---------- Footer: data sources + known issues (muted, collapsed) ---------- */
+.dash-footer { margin-top: 4px; }
+.dash-footer details {
+  background: transparent; border: 1px solid var(--panel-border); border-radius: var(--radius);
+  padding: 2px 14px;
+}
+.dash-footer summary {
+  cursor: pointer; padding: 10px 0; font-size: 12px; color: var(--text-faint);
+  list-style: none; user-select: none;
+}
+.dash-footer summary::-webkit-details-marker { display: none; }
+.dash-footer summary::before { content: "▸ "; }
+.dash-footer details[open] summary::before { content: "▾ "; }
+.footer-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; padding: 4px 0 14px; }
+@media (max-width: 700px) { .footer-grid { grid-template-columns: 1fr; } }
+.footer-heading { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-faint); margin-bottom: 6px; }
+.footer-list { list-style: none; margin: 0; padding: 0; font-size: 11px; color: var(--text-dim); line-height: 1.7; }
+.footer-list li { padding-left: 14px; position: relative; }
+.footer-list li::before { content: "—"; position: absolute; left: 0; color: var(--text-faint); }
+.footer-list .issue-investigating::before { content: "●"; color: var(--orange); }
+.footer-list .issue-degraded::before { content: "●"; color: var(--red); }
+.footer-list .issue-resolved::before { content: "●"; color: var(--green); }
+.footer-list strong { color: var(--text); font-weight: 600; }

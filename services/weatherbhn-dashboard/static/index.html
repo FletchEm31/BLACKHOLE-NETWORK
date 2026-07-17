@@ -118,6 +118,27 @@
     </div>
   </section>
 
+  <!-- Footer: data-source transparency + known-issues log. Content lives in
+       app.js (DATA_SOURCES / KNOWN_ISSUES arrays) so it's a quick edit,
+       not a markup change, whenever something is found/fixed. Collapsed
+       by default, muted styling -- deliberately not competing visually
+       with the trading data above. -->
+  <footer class="dash-footer">
+    <details>
+      <summary>Data sources &amp; known issues</summary>
+      <div class="footer-grid">
+        <div>
+          <div class="footer-heading">Data sources</div>
+          <ul id="dataSourceList" class="footer-list"></ul>
+        </div>
+        <div>
+          <div class="footer-heading">Known issues / status</div>
+          <ul id="knownIssuesList" class="footer-list"></ul>
+        </div>
+      </div>
+    </details>
+  </footer>
+
 </main>
 
 <script src="app.js"></script>
