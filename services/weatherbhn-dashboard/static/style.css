@@ -152,16 +152,25 @@ main { padding: 16px 20px 60px; display: flex; flex-direction: column; gap: 16px
 
 .win-checkbox { width: 18px; height: 18px; accent-color: var(--green); cursor: pointer; }
 
-.calc-cell { min-width: 190px; }
-.calc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 6px; text-align: left; }
-.calc-grid label { font-size: 10px; color: var(--text-faint); grid-column: span 2; margin-top: 2px; }
-.calc-grid input {
-  background: var(--input-bg); border: 1px solid var(--panel-border); color: var(--text);
-  border-radius: 6px; padding: 4px 6px; font-size: 12px; width: 100%;
+.calc-cell { min-width: 200px; }
+.calc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 8px; text-align: left; }
+.calc-field { display: flex; flex-direction: column; gap: 3px; }
+.calc-field label {
+  font-size: 11px; font-weight: 700; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.3px;
 }
-.calc-cell.no-side .calc-grid input:focus { border-color: var(--text); }
-.calc-cell.yes-side .calc-grid input:focus { border-color: var(--green); }
-.calc-summary { grid-column: span 2; font-size: 11px; color: var(--text-dim); margin-top: 2px; display: flex; justify-content: space-between; }
+.calc-field input {
+  /* Distinctly lighter than the page/panel background so the field reads
+     as an editable control, not a dark void -- the previous --input-bg
+     (#0d1119) was nearly indistinguishable from the page background
+     (#0a0e14). */
+  background: #1c2330; border: 1px solid #3a4256; color: var(--text);
+  border-radius: 6px; padding: 6px 8px; font-size: 13px; width: 100%;
+}
+.calc-field input::placeholder { color: var(--text-faint); }
+.calc-cell.no-side .calc-field input:focus { border-color: var(--red); outline: none; }
+.calc-cell.yes-side .calc-field input:focus { border-color: var(--green); outline: none; }
+.calc-summary-block { grid-column: span 2; display: flex; flex-direction: column; gap: 2px; margin-top: 4px; }
+.calc-summary { font-size: 11px; color: var(--text-dim); display: flex; justify-content: space-between; }
 .calc-summary .profit-pos { color: var(--green); }
 .calc-summary .profit-neg { color: var(--red); }
 /* Illiquid buckets get a small red text flag only (see .illiquid-flag) --
@@ -171,6 +180,20 @@ main { padding: 16px 20px 60px; display: flex; flex-direction: column; gap: 16px
    from the explicit flag text, not a whole-cell fade that reads as an
    unstyled/broken state next to the always-full-opacity Yes column. */
 .illiquid-flag { color: var(--red); font-size: 10px; }
+
+/* Sigma-zone confidence tag -- WEATHERBHN-SIGMA-ZONE-ANALYSIS-2026-07-17.md.
+   Deliberately a read-only backtest signal, not a recommendation -- hover
+   for the exact zone/ROI/n via the title tooltip. */
+.zone-chip {
+  display: inline-block; border-radius: 6px; padding: 2px 6px; font-size: 10px;
+  font-weight: 700; border: 1px solid var(--panel-border); cursor: help; white-space: nowrap;
+}
+.zone-confirmed_profitable { background: var(--green-dim); border-color: var(--green); color: var(--green); }
+.zone-confirmed_bad { background: var(--red-dim); border-color: var(--red); color: var(--red); }
+.zone-unvalidated { background: transparent; border-color: var(--panel-border); color: var(--text-faint); }
+
+.col-edge.edge-pos { color: var(--green); font-weight: 700; }
+.col-edge.edge-neg { color: var(--red); font-weight: 700; }
 
 /* ---------- Simulation panel ---------- */
 .sim-totals { display: flex; gap: 24px; margin-top: 10px; font-size: 13px; }

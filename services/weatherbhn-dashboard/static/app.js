@@ -13,17 +13,25 @@ const MODEL_REFRESH_MS = 5 * 60000; // mu/sigma — matches orchestrator cadence
 // ---------------------------------------------------------------------------
 const DATA_SOURCES = [
   { label: 'Market prices / Yes¢ / No¢ / Chance%', text: 'weather_bronze_kalshi_market_snapshots (live Kalshi collector), refreshes every ~20-30s poll from this page' },
-  { label: 'Volume / Open Interest', text: 'same snapshot table — see Known Issues, volume is currently unreliable' },
+  { label: 'Volume / Open Interest', text: 'same snapshot table — volume reflects real intraday cumulative trades and is legitimately near-zero early in a trading day (99-100% of rows are nonzero by the time a contract settles); low volume on today\'s/tomorrow\'s buckets is real market thinness, not missing data' },
   { label: 'Model prediction (μ)', text: 'CP3 XGBoost via weather_position_exits_clean (entry-frozen or live) when a bucket has qualified as a trade; falls back to weather_gold_contract_ledger (nws_forecast_f + model_delta_f, logged for every evaluated bucket including SKIP) otherwise' },
   { label: 'Uncertainty (σ)', text: 'entry-frozen entry_sigma_used for a bucket that actually qualified as a trade; live sigma_used for a still-open qualified position; computed fresh (same calculate_time_decayed_sigma formula CP4 itself uses) when nothing has qualified yet' },
   { label: 'Sigma markers (-4σ..+4σ)', text: 'μ ± n·σ, recomputed on every refresh from that day\'s actual values — never fixed/hardcoded' },
   { label: 'Fee calculation', text: 'maker rate by default: ceil(0.0175 × price × (1−price) × contracts × 100) / 100, matches scripts/trading/fee_calculator.py exactly' },
   { label: 'Liquidity guard', text: 'is_liquid = volume > 100, same threshold CP4 itself uses (EDGE_THRESHOLD_LIQ/ILL split)' },
   { label: 'Bucket set', text: 'latest single snapshot batch only (MAX(retrieved_at), 45-min staleness cutoff) — matches CP4\'s own query, so removed/stale buckets drop out instead of lingering' },
+  { label: 'Model % / Edge columns', text: 'Model % = exact Gaussian CDF mass between the bucket\'s (already threshold-opened) floor/cap given today\'s μ/σ (Python math.erf, not the chart\'s JS approximation). Edge = Model % − market Chance%.' },
+  { label: 'Zone tag', text: 'Signed z-score (distance from μ to the bucket\'s near edge, ÷ σ) classified per WEATHERBHN-SIGMA-ZONE-ANALYSIS-2026-07-17.md — a read-only backtest report, "promising hypothesis, not a proven strategy." Only 2 of 7 backtested zones cleared that doc\'s own bar; hover a zone chip for the exact ROI/n.' },
 ];
 
 const KNOWN_ISSUES = [
-  { status: 'investigating', text: 'Volume showing 0 for most/all buckets — traced to weather_data_collector.py\'s field-parsing chain, not yet confirmed whether it\'s a genuine bug or real thin trading volume on these markets (open_interest is populated normally). Liquidity guard/volume table are not trustworthy until this resolves.' },
+  // Resolved 2026-07-17: NOT a bug. Compared today/tomorrow (0.9%/4.5% of
+  // snapshot rows nonzero) against the 3 prior settled days (99.4%/100%/100%
+  // nonzero) -- these weather markets genuinely have near-zero trading
+  // activity in the early hours of a trading day; volume accumulates as
+  // the day progresses. The collector is reporting reality correctly. A
+  // bucket showing "illiquid" early in today's session is an accurate
+  // read of the market, not stale/broken data.
 ];
 
 function renderFooter() {
@@ -348,6 +356,15 @@ function bucketRangeLabel(b) {
   return b.bucket_label;
 }
 
+// Per WEATHERBHN-SIGMA-ZONE-ANALYSIS-2026-07-17.md -- a read-only backtest
+// report, "promising hypothesis, not a proven strategy." Full rationale in
+// each bucket's zone_label (shown as a tooltip on hover).
+const ZONE_SHORT_LABEL = {
+  confirmed_profitable: '−2σ..−1σ',
+  confirmed_bad: '0..+1σ',
+  unvalidated: 'unvalidated',
+};
+
 function renderLadderTable(data) {
   const tbody = document.getElementById('ladderBody');
   tbody.innerHTML = '';
@@ -356,14 +373,27 @@ function renderLadderTable(data) {
     const tr = document.createElement('tr');
     tr.dataset.bucket = b.bucket_label;
 
+    // Same format as the reference strip (n-sigma / temp) so each row is
+    // self-contained -- no need to cross-reference the top strip.
     const sigmaChips = b.sigma_markers_in_bucket
-      .map(n => `<span class="sigma-chip">${n > 0 ? '+' : ''}${n}&sigma;</span>`).join('');
+      .map(n => {
+        const marker = data.sigma_markers.find(m => m.n === n);
+        const tempStr = marker ? ` / ${marker.temp_f}&deg;F` : '';
+        return `<span class="sigma-chip">${n > 0 ? '+' : ''}${n}&sigma;${tempStr}</span>`;
+      }).join('');
+
+    const zoneChip = `<span class="zone-chip zone-${b.zone_tag}" title="${b.zone_label || ''}">${ZONE_SHORT_LABEL[b.zone_tag] || b.zone_tag}</span>`;
+    const edgeClass = b.edge_pct == null ? '' : (b.edge_pct >= 0 ? 'edge-pos' : 'edge-neg');
+    const edgeStr = b.edge_pct == null ? '—' : `${b.edge_pct >= 0 ? '+' : ''}${b.edge_pct}%`;
 
     tr.innerHTML = `
       <td><input type="checkbox" class="win-checkbox" ${state.winningBucket === b.bucket_label ? 'checked' : ''}></td>
       <td class="col-bucket"><span class="bucket-range">${bucketRangeLabel(b)}</span></td>
       <td class="col-sigma">${sigmaChips || '&nbsp;'}</td>
+      <td class="col-zone">${zoneChip}</td>
       <td class="col-chance">${b.chance_pct != null ? b.chance_pct + '%' : '—'}</td>
+      <td class="col-model">${b.model_prob_pct != null ? b.model_prob_pct + '%' : '—'}</td>
+      <td class="col-edge ${edgeClass}">${edgeStr}</td>
       <td class="col-yesno">
         <span class="pill yes">Yes ${fmtC(b.yes_ask_cents)}</span><br>
         <span class="pill no">No ${fmtC(b.no_ask_cents)}</span>
@@ -386,33 +416,55 @@ function renderLadderTable(data) {
 
 function fmtC(cents) { return cents == null ? '—' : `${cents}¢`; }
 
+// Builds the cell's DOM ONCE (labels + inputs). Deliberately does NOT get
+// called again on every keystroke -- rebuilding the inputs' innerHTML on
+// each 'input' event was destroying and recreating the focused element,
+// which killed keyboard focus/cursor position after every character (the
+// "can't type 0" bug). Only updateCalcSummary() runs on input events now,
+// touching just the read-only summary lines below the inputs.
 function buildCalcCell(cell, bucket, side, inputs) {
   const priceKey = side === 'no' ? 'noPrice' : 'yesPrice';
   const investKey = side === 'no' ? 'noInvestment' : 'yesInvestment';
-  const result = calcSide(inputs[priceKey], inputs[investKey]);
 
   cell.innerHTML = `
     <div class="calc-grid">
-      <label>Price &cent;</label><label>Invest $</label>
-      <input type="number" class="price-input" step="0.5" min="0.5" max="99.5" value="${inputs[priceKey]}">
-      <input type="number" class="invest-input" step="1" min="0" value="${inputs[investKey]}">
-      <div class="calc-summary"><span>Contracts</span><span>${result.contracts}</span></div>
-      <div class="calc-summary"><span>Fee (maker)</span><span>$${result.fee.toFixed(2)}</span></div>
-      <div class="calc-summary"><span>Payout if win</span><span>$${result.payoutIfWin.toFixed(2)}</span></div>
-      <div class="calc-summary"><span>Profit if win</span><span class="${result.profitIfWin >= 0 ? 'profit-pos' : 'profit-neg'}">$${result.profitIfWin.toFixed(2)}</span></div>
-      ${bucket.is_liquid === false ? '<div class="calc-summary illiquid-flag" style="grid-column:span 2">volume ≤ 100 — illiquid</div>' : ''}
+      <div class="calc-field">
+        <label for="price-${side}-${bucket.bucket_label}">Price &cent;</label>
+        <input id="price-${side}-${bucket.bucket_label}" type="number" class="price-input" step="0.5" min="0" max="99.5" value="${inputs[priceKey]}">
+      </div>
+      <div class="calc-field">
+        <label for="pos-${side}-${bucket.bucket_label}">Position $</label>
+        <input id="pos-${side}-${bucket.bucket_label}" type="number" class="invest-input" step="1" min="0" value="${inputs[investKey]}">
+      </div>
+      <div class="calc-summary-block"></div>
     </div>`;
 
   cell.querySelector('.price-input').addEventListener('input', (e) => {
     inputs[priceKey] = parseFloat(e.target.value) || 0;
-    buildCalcCell(cell, bucket, side, inputs);
+    updateCalcSummary(cell, bucket, side, inputs);
     renderSimulation();
   });
   cell.querySelector('.invest-input').addEventListener('input', (e) => {
     inputs[investKey] = parseFloat(e.target.value) || 0;
-    buildCalcCell(cell, bucket, side, inputs);
+    updateCalcSummary(cell, bucket, side, inputs);
     renderSimulation();
   });
+
+  updateCalcSummary(cell, bucket, side, inputs);
+}
+
+function updateCalcSummary(cell, bucket, side, inputs) {
+  const priceKey = side === 'no' ? 'noPrice' : 'yesPrice';
+  const investKey = side === 'no' ? 'noInvestment' : 'yesInvestment';
+  const result = calcSide(inputs[priceKey], inputs[investKey]);
+
+  cell.querySelector('.calc-summary-block').innerHTML = `
+    <div class="calc-summary"><span>Contracts</span><span>${result.contracts}</span></div>
+    <div class="calc-summary"><span>Fee (maker)</span><span>$${result.fee.toFixed(2)}</span></div>
+    <div class="calc-summary"><span>Payout if win</span><span>$${result.payoutIfWin.toFixed(2)}</span></div>
+    <div class="calc-summary"><span>Profit if win</span><span class="${result.profitIfWin >= 0 ? 'profit-pos' : 'profit-neg'}">$${result.profitIfWin.toFixed(2)}</span></div>
+    ${bucket.is_liquid === false ? '<div class="calc-summary illiquid-flag">volume &le; 100 — illiquid</div>' : ''}
+  `;
 }
 
 // ---------------------------------------------------------------------------
