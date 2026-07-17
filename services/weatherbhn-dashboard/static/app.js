@@ -272,18 +272,17 @@ function renderProbabilityChart(data) {
 
   const labels = data.buckets.map(b => b.bucket_label);
   const marketChance = data.buckets.map(b => b.chance_pct);
-
-  // Model probability per bucket: Gaussian mass between [floor,cap] given
-  // (mu, sigma) — same distribution CP4 uses for center buckets. Tail
-  // (Student-t) buckets are not re-derived here (display-only chart); the
-  // Gaussian approximation is clearly a different curve than CP4's live
-  // number and is for visual context, not a trading input.
-  const modelProb = data.buckets.map(b => {
-    if (data.mu == null || data.sigma == null) return null;
-    const lo = b.bucket_floor == null ? -Infinity : b.bucket_floor;
-    const hi = b.bucket_cap == null ? Infinity : b.bucket_cap;
-    return round2((normalCdf(hi, data.mu, data.sigma) - normalCdf(lo, data.mu, data.sigma)) * 100);
-  });
+  // Reuse the backend's exact model_prob_pct (Python math.erf) instead of
+  // re-deriving it here -- one source of truth, matches the ladder's
+  // Model % column exactly instead of a second, JS-approximated curve.
+  const modelProb = data.buckets.map(b => b.model_prob_pct);
+  // Volume only (not open interest -- that stays in the separate table,
+  // not duplicated here). Color-coded by CP4's actual liquidity guard
+  // (is_liquid = volume > 100) so the bar itself signals liquidity, not
+  // just its height.
+  const volumes = data.buckets.map(b => b.volume);
+  const volumeColors = data.buckets.map(b => b.is_liquid === false ? 'rgba(255, 77, 94, 0.45)' : 'rgba(77, 141, 255, 0.45)');
+  const volumeBorders = data.buckets.map(b => b.is_liquid === false ? '#ff4d5e' : '#4d8dff');
 
   if (state.probChart) state.probChart.destroy();
   state.probChart = new Chart(ctx, {
@@ -297,15 +296,26 @@ function renderProbabilityChart(data) {
           backgroundColor: 'rgba(23, 201, 100, 0.35)',
           borderColor: '#17c964',
           borderWidth: 1,
+          yAxisID: 'yPct',
         },
         {
           type: 'line',
-          label: 'Model probability % (Gaussian, display-only)',
+          label: 'Model probability %',
           data: modelProb,
           borderColor: '#4d8dff',
           backgroundColor: '#4d8dff',
           tension: 0.3,
           pointRadius: 3,
+          yAxisID: 'yPct',
+        },
+        {
+          type: 'bar',
+          label: 'Volume (is_liquid = volume > 100)',
+          data: volumes,
+          backgroundColor: volumeColors,
+          borderColor: volumeBorders,
+          borderWidth: 1,
+          yAxisID: 'yVolume',
         },
       ],
     },
@@ -313,24 +323,23 @@ function renderProbabilityChart(data) {
       responsive: true,
       scales: {
         x: { ticks: { color: '#8891a3' }, grid: { color: '#232937' } },
-        y: { ticks: { color: '#8891a3' }, grid: { color: '#232937' }, beginAtZero: true },
+        yPct: {
+          type: 'linear', position: 'left', beginAtZero: true, max: 100,
+          ticks: { color: '#8891a3' }, grid: { color: '#232937' },
+          title: { display: true, text: '%', color: '#8891a3' },
+        },
+        // Independent scale per bucket/day -- volume ranges from single
+        // digits to tens of thousands depending on the day, so this axis
+        // auto-scales (no fixed max) rather than sharing the 0-100 % axis.
+        yVolume: {
+          type: 'linear', position: 'right', beginAtZero: true,
+          ticks: { color: '#8891a3' }, grid: { drawOnChartArea: false },
+          title: { display: true, text: 'volume', color: '#8891a3' },
+        },
       },
       plugins: { legend: { labels: { color: '#e6e9ef' } } },
     },
   });
-}
-
-function normalCdf(x, mu, sigma) {
-  if (!isFinite(x)) return x > 0 ? 1 : 0;
-  return 0.5 * (1 + erf((x - mu) / (sigma * Math.SQRT2)));
-}
-function erf(x) {
-  // Abramowitz-Stegun 7.1.26 approximation — adequate for a display chart.
-  const sign = x < 0 ? -1 : 1; x = Math.abs(x);
-  const a1=0.254829592,a2=-0.284496736,a3=1.421413741,a4=-1.453152027,a5=1.061405429,p=0.3275911;
-  const t = 1/(1+p*x);
-  const y = 1-(((((a5*t+a4)*t)+a3)*t+a2)*t+a1)*t*Math.exp(-x*x);
-  return sign*y;
 }
 
 function renderVolumeTable(data) {
