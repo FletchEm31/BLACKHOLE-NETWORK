@@ -21,7 +21,8 @@ const DATA_SOURCES = [
   { label: 'Liquidity guard', text: 'is_liquid = volume > 100, same threshold CP4 itself uses (EDGE_THRESHOLD_LIQ/ILL split)' },
   { label: 'Bucket set', text: 'latest single snapshot batch only (MAX(retrieved_at), 45-min staleness cutoff) — matches CP4\'s own query, so removed/stale buckets drop out instead of lingering' },
   { label: 'Model % / Edge columns', text: 'Model % = exact Gaussian CDF mass between the bucket\'s (already threshold-opened) floor/cap given today\'s μ/σ (Python math.erf, not the chart\'s JS approximation). Edge = Model % − market Chance%.' },
-  { label: 'σ marker chip colors', text: '0σ = green (sole Yes-bet target), ±2σ = yellow, ±3σ = red (No-bet targets) — operator-specified single points, per WEATHERBHN-SIGMA-ZONE-ANALYSIS-2026-07-17.md context. Gold ★ on −2σ/−3σ/+3σ only is a separate, more specific marker layered on top.' },
+  { label: 'σ marker chip colors', text: '0σ = green (sole Yes-bet target), ±2σ = yellow, ±3σ = red (No-bet targets) — operator-specified single points, per WEATHERBHN-SIGMA-ZONE-ANALYSIS-2026-07-17.md context.' },
+  { label: 'σ marker gold ★', text: 'Dynamic, not fixed — a marker gets a star exactly when the Sigma-Marker Performance panel\'s pooled "All cities" row shows a positive-ROI (green) cell for it. Always matches that table; updates on its 5-min refresh cadence.' },
   { label: 'Sigma-Marker Performance panel', text: 'Live, recomputed on every load from every settled trade (weather_position_exits_clean) across all 3 cities — grows as more trades settle, not a snapshot. Each trade\'s entry-time signed z-score is rounded to the nearest integer marker (-4..+4), so these numbers will NOT exactly match WEATHERBHN-SIGMA-ZONE-ANALYSIS-2026-07-17.md\'s custom zone-ranges — different binning method, same underlying trades. Every marker (including 0σ) uses the plain recorded No-side outcome — no Yes-side resimulation. Cell color: green = positive ROI (any sample size), everything else neutral.' },
 ];
 
@@ -55,6 +56,7 @@ const state = {
   journal: [],
   probChart: null,
   countdownSec: PRICE_REFRESH_MS / 1000,
+  sigmaPerfPooled: null,  // /api/sigma-performance's pooled row, keyed by marker -- drives which sigma markers get a star
 };
 
 function todayIso() { return new Date().toISOString().slice(0, 10); }
@@ -99,10 +101,14 @@ async function init() {
   initNotepad();
   document.getElementById('journalForm').addEventListener('submit', onJournalSubmit);
 
+  // Sigma-performance fetched BEFORE the first ladder render -- it drives
+  // which sigma markers get a star, so state.sigmaPerfPooled needs to be
+  // populated before renderReferenceStrip/renderLadderTable's first paint,
+  // not after.
+  await refreshSigmaPerformance();
   await refreshAll(true);
   await refreshJournal();
   await refreshNotepad();
-  await refreshSigmaPerformance();
 
   setInterval(() => refreshLadder(false), PRICE_REFRESH_MS);
   setInterval(tickCountdown, 1000);
@@ -249,7 +255,7 @@ function renderReferenceStrip(data) {
   } else {
     for (const m of data.sigma_markers) {
       const div = document.createElement('div');
-      const isStarred = STAR_MARKERS.has(m.n);
+      const isStarred = isStarredMarker(m.n);
       const colorClass = markerColorClass(m.n);
       div.className = 'sigma-marker' + (colorClass ? ' ' + colorClass : '') + (isStarred ? ' starred' : '');
       const star = isStarred ? ' &#9733;' : '';
@@ -381,10 +387,17 @@ function bucketRangeLabel(b) {
   return b.bucket_label;
 }
 
-// Exactly these three sigma points get a star -- operator-specified,
-// not derived from any rule (explicitly NOT the naive -2/+2 symmetry:
-// +2sigma was a confirmed losing zone at -11.1% ROI and stays unstarred).
-const STAR_MARKERS = new Set([-2, -3, 3]);
+// Star markers are dynamic now (operator direction 2026-07-18): a marker
+// gets a star exactly when the Sigma-Marker Performance panel's POOLED
+// "All cities" row shows a positive-ROI (green) cell for it -- always
+// matches that table, not a fixed set. Driven by state.sigmaPerfPooled,
+// populated by refreshSigmaPerformance(). Falls back to "no stars" if that
+// data hasn't loaded yet (e.g. first paint before the initial fetch
+// resolves) rather than guessing.
+function isStarredMarker(n) {
+  const cell = state.sigmaPerfPooled && state.sigmaPerfPooled[n];
+  return !!cell && cell.tag === 'positive';
+}
 
 // Shared color rule for BOTH the top reference strip and the ladder's
 // sigma-chip column -- they must always agree, same city, same day:
@@ -416,10 +429,10 @@ function renderLadderTable(data) {
       .map(n => {
         const marker = data.sigma_markers.find(m => m.n === n);
         const tempStr = marker ? ` / ${marker.temp_f}&deg;F` : '';
-        const star = STAR_MARKERS.has(n) ? ' &#9733;' : '';
+        const star = isStarredMarker(n) ? ' &#9733;' : '';
         // Same markerColorClass() shared with the reference strip -- the
-        // two must always agree. Star (-2/-3/+3 only) is a separate, more
-        // specific marker layered on top, not the same set as the colors.
+        // two must always agree. Star is dynamic (isStarredMarker), a
+        // separate signal layered on top, not tied to the fixed colors.
         const colorClass = markerColorClass(n);
         return `<div class="sigma-chip${colorClass ? ' ' + colorClass : ''}${star ? ' starred' : ''}">${n > 0 ? '+' : ''}${n}&sigma;${tempStr}${star}</div>`;
       }).join('');
@@ -724,6 +737,17 @@ async function refreshSigmaPerformance() {
     const cityName = (state.cities.find(c => c.station_code === city) || {}).city || city;
     return `<tr><td>${cityName}</td>${data.markers.map(m => `<td>${cellHtml(data.by_city[city][m])}</td>`).join('')}</tr>`;
   }).join('');
+
+  // Star markers (reference strip + ladder) always match this pooled row's
+  // green cells -- re-render both if a ladder view is already on screen so
+  // a star change (this refreshes on its own 5-min cadence, independent of
+  // the ladder's 20s poll) shows up immediately, not just on the next
+  // ladder poll.
+  state.sigmaPerfPooled = data.pooled;
+  if (state.ladder) {
+    renderReferenceStrip(state.ladder);
+    renderLadderTable(state.ladder);
+  }
 }
 
 init();
