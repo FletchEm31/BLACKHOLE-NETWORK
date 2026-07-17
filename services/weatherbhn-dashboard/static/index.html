@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WeatherBHN Trading Dashboard</title>
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <img src="img/bhn-logo.png" alt="BHN" class="brand-logo">
+    <div class="brand-text">
+      <div class="brand-title">WeatherBHN</div>
+      <div class="brand-subtitle">Trading Dashboard &mdash; read-only planning tool, no live orders</div>
+    </div>
+  </div>
+  <div class="topbar-controls">
+    <div class="city-tabs" id="cityTabs"></div>
+    <div class="date-nav">
+      <button id="datePrev" class="icon-btn" title="Previous day">&larr;</button>
+      <input type="date" id="dateInput">
+      <button id="dateNext" class="icon-btn" title="Next day">&rarr;</button>
+    </div>
+    <div class="refresh-indicator" id="refreshIndicator">live</div>
+  </div>
+</header>
+
+<main>
+
+  <!-- Reference strip -->
+  <section class="panel reference-strip">
+    <div class="panel-title">Sigma Reference &mdash; <span id="refStripSubtitle">&nbsp;</span></div>
+    <div id="sigmaMarkerStrip" class="sigma-marker-strip"></div>
+    <div class="source-badges" id="sourceBadges"></div>
+  </section>
+
+  <!-- Charts row -->
+  <section class="charts-row">
+    <div class="panel chart-panel">
+      <div class="panel-title">Model Probability vs. Market-Implied Chance</div>
+      <canvas id="probabilityChart" height="220"></canvas>
+    </div>
+    <div class="panel volume-panel">
+      <div class="panel-title">Volume &amp; Liquidity (CP4 guard: is_liquid = volume &gt; 100)</div>
+      <div class="table-scroll">
+        <table id="volumeTable" class="data-table">
+          <thead>
+            <tr><th>Bucket</th><th>Volume</th><th>Open Int.</th><th>Liquid?</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- Main ladder -->
+  <section class="panel ladder-panel">
+    <div class="panel-title">Ladder</div>
+    <div class="table-scroll">
+      <table id="ladderTable" class="data-table ladder-table">
+        <thead>
+          <tr>
+            <th class="col-win">Win</th>
+            <th class="col-bucket">Bucket</th>
+            <th class="col-sigma">&sigma; markers</th>
+            <th class="col-chance">Chance</th>
+            <th class="col-yesno">Yes&nbsp;/&nbsp;No &cent;</th>
+            <th class="col-side">NO calculator</th>
+            <th class="col-side">YES calculator</th>
+          </tr>
+        </thead>
+        <tbody id="ladderBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Simulation summary -->
+  <section class="panel sim-panel">
+    <div class="panel-title">Simulation Summary <span class="hint">(select a winning bucket in the ladder above)</span></div>
+    <div class="table-scroll">
+      <table id="simTable" class="data-table">
+        <thead>
+          <tr><th>Bucket</th><th>Side</th><th>Investment</th><th>Result</th><th>P&amp;L</th></tr>
+        </thead>
+        <tbody id="simBody"></tbody>
+      </table>
+    </div>
+    <div class="sim-totals" id="simTotals"></div>
+  </section>
+
+  <!-- Manual journal -->
+  <section class="panel journal-panel">
+    <div class="panel-title">Manual Trade Journal <span class="hint">(informal track record &mdash; not wired into any trading logic)</span></div>
+    <form id="journalForm" class="journal-form">
+      <input type="text" name="bucket_label" placeholder="Bucket" required>
+      <select name="side"><option value="yes">Yes</option><option value="no">No</option></select>
+      <input type="number" name="price_cents" placeholder="Price &cent;" step="0.01" min="0.01" max="99.99" required>
+      <input type="number" name="investment_usd" placeholder="Investment $" step="0.01" min="0.01" required>
+      <input type="number" name="contracts" placeholder="Contracts" step="1" min="0" required>
+      <select name="outcome"><option value="pending">Pending</option><option value="win">Win</option><option value="loss">Loss</option></select>
+      <input type="text" name="notes" placeholder="Notes (optional)">
+      <button type="submit">Add entry</button>
+    </form>
+    <div class="table-scroll">
+      <table id="journalTable" class="data-table">
+        <thead>
+          <tr><th>Date</th><th>Bucket</th><th>Side</th><th>Price</th><th>Investment</th><th>Contracts</th><th>Outcome</th><th>P&amp;L</th><th>Notes</th><th></th></tr>
+        </thead>
+        <tbody id="journalBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>

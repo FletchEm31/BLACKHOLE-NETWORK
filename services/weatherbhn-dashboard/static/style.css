@@ -1,0 +1,176 @@
+/* WeatherBHN Trading Dashboard — styled to match Kalshi's own dark-theme
+   ladder UI (green Yes / near-black No pills, orange city badge, right-
+   aligned "Chance" column) so the dashboard reads as an extension of the
+   real trading page rather than a generic BI tool. */
+
+:root {
+  --bg:            #0a0e14;
+  --panel-bg:      #12161f;
+  --panel-border:  #232937;
+  --text:          #e6e9ef;
+  --text-dim:      #8891a3;
+  --text-faint:    #5b6274;
+  --green:         #17c964;
+  --green-dim:     rgba(23, 201, 100, 0.12);
+  --red:           #ff4d5e;
+  --red-dim:       rgba(255, 77, 94, 0.12);
+  --orange:        #ff8a3d;
+  --accent-blue:   #4d8dff;
+  --row-hover:     #171c27;
+  --input-bg:      #0d1119;
+  --radius:        10px;
+  --radius-pill:   999px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, "Segoe UI", Inter, Roboto, sans-serif;
+  font-size: 14px;
+}
+
+/* ---------- Topbar ---------- */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--panel-border);
+  background: var(--panel-bg);
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.brand { display: flex; align-items: center; gap: 10px; }
+.brand-logo { height: 32px; width: 32px; object-fit: contain; border-radius: 6px; }
+.brand-title { font-weight: 700; font-size: 16px; letter-spacing: 0.3px; }
+.brand-subtitle { font-size: 11px; color: var(--text-dim); }
+
+.topbar-controls { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+
+.city-tabs { display: flex; gap: 4px; background: var(--input-bg); padding: 3px; border-radius: var(--radius-pill); }
+.city-tab {
+  padding: 6px 14px; border-radius: var(--radius-pill); border: none;
+  background: transparent; color: var(--text-dim); cursor: pointer;
+  font-size: 13px; font-weight: 600;
+}
+.city-tab.active { background: var(--green); color: #04140a; }
+
+.date-nav { display: flex; align-items: center; gap: 6px; }
+.date-nav input[type="date"] {
+  background: var(--input-bg); border: 1px solid var(--panel-border);
+  color: var(--text); border-radius: 6px; padding: 5px 8px; font-size: 13px;
+}
+.icon-btn {
+  background: var(--input-bg); border: 1px solid var(--panel-border);
+  color: var(--text); border-radius: 6px; width: 28px; height: 28px; cursor: pointer;
+}
+.icon-btn:hover { background: var(--row-hover); }
+
+.refresh-indicator {
+  font-size: 11px; color: var(--green); border: 1px solid var(--green);
+  padding: 3px 10px; border-radius: var(--radius-pill); position: relative;
+}
+.refresh-indicator::before {
+  content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--green); margin-right: 6px; animation: pulse 2s infinite;
+}
+.refresh-indicator.stale { color: var(--text-faint); border-color: var(--text-faint); }
+.refresh-indicator.stale::before { background: var(--text-faint); animation: none; }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.25; } }
+
+/* ---------- Layout ---------- */
+main { padding: 16px 20px 60px; display: flex; flex-direction: column; gap: 16px; max-width: 1400px; margin: 0 auto; }
+
+.panel {
+  background: var(--panel-bg); border: 1px solid var(--panel-border);
+  border-radius: var(--radius); padding: 14px 16px;
+}
+.panel-title {
+  font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
+  color: var(--text-dim); margin-bottom: 10px;
+}
+.panel-title .hint { text-transform: none; font-weight: 400; color: var(--text-faint); letter-spacing: 0; }
+
+/* ---------- Reference strip ---------- */
+.sigma-marker-strip { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
+.sigma-marker {
+  flex: 0 0 auto; min-width: 78px; text-align: center; padding: 8px 10px;
+  background: var(--input-bg); border: 1px solid var(--panel-border); border-radius: 8px;
+}
+.sigma-marker .n { font-size: 11px; color: var(--text-dim); }
+.sigma-marker .temp { font-size: 15px; font-weight: 700; margin-top: 2px; }
+.sigma-marker.zero { border-color: var(--accent-blue); }
+.source-badges { margin-top: 8px; display: flex; gap: 8px; font-size: 11px; }
+.badge { padding: 2px 8px; border-radius: var(--radius-pill); border: 1px solid var(--panel-border); color: var(--text-dim); }
+.badge.entry_frozen { color: var(--green); border-color: var(--green); }
+.badge.live { color: var(--orange); border-color: var(--orange); }
+.badge.none { color: var(--red); border-color: var(--red); }
+
+/* ---------- Charts row ---------- */
+.charts-row { display: grid; grid-template-columns: 1.4fr 1fr; gap: 16px; }
+@media (max-width: 900px) { .charts-row { grid-template-columns: 1fr; } }
+
+/* ---------- Tables ---------- */
+.table-scroll { overflow-x: auto; }
+.data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.data-table th {
+  text-align: right; padding: 6px 8px; color: var(--text-dim); font-weight: 600;
+  border-bottom: 1px solid var(--panel-border); white-space: nowrap;
+}
+.data-table th:first-child, .data-table td:first-child { text-align: left; }
+.data-table td { padding: 6px 8px; border-bottom: 1px solid var(--panel-border); text-align: right; vertical-align: top; }
+.data-table tbody tr:hover { background: var(--row-hover); }
+
+/* ---------- Ladder table specifics ---------- */
+.ladder-table td, .ladder-table th { text-align: center; }
+.ladder-table td.col-bucket, .ladder-table th.col-bucket { text-align: left; }
+.col-bucket .bucket-range { font-weight: 700; }
+.col-sigma .sigma-chip {
+  display: inline-block; background: var(--input-bg); border: 1px solid var(--accent-blue);
+  color: var(--accent-blue); border-radius: 6px; padding: 1px 6px; font-size: 11px; margin: 1px;
+}
+
+.pill { border-radius: var(--radius-pill); padding: 4px 12px; font-weight: 700; font-size: 12px; display: inline-block; min-width: 56px; }
+.pill.yes { border: 1px solid var(--green); color: var(--green); }
+.pill.no  { border: 1px solid var(--text-dim); color: var(--text); background: #171b26; }
+
+.win-checkbox { width: 18px; height: 18px; accent-color: var(--green); cursor: pointer; }
+
+.calc-cell { min-width: 190px; }
+.calc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 6px; text-align: left; }
+.calc-grid label { font-size: 10px; color: var(--text-faint); grid-column: span 2; margin-top: 2px; }
+.calc-grid input {
+  background: var(--input-bg); border: 1px solid var(--panel-border); color: var(--text);
+  border-radius: 6px; padding: 4px 6px; font-size: 12px; width: 100%;
+}
+.calc-cell.no-side .calc-grid input:focus { border-color: var(--text); }
+.calc-cell.yes-side .calc-grid input:focus { border-color: var(--green); }
+.calc-summary { grid-column: span 2; font-size: 11px; color: var(--text-dim); margin-top: 2px; display: flex; justify-content: space-between; }
+.calc-summary .profit-pos { color: var(--green); }
+.calc-summary .profit-neg { color: var(--red); }
+.calc-cell.illiquid { opacity: 0.55; }
+.illiquid-flag { color: var(--red); font-size: 10px; }
+
+/* ---------- Simulation panel ---------- */
+.sim-totals { display: flex; gap: 24px; margin-top: 10px; font-size: 13px; }
+.sim-totals .total-label { color: var(--text-dim); margin-right: 6px; }
+.sim-totals .total-value.pos { color: var(--green); font-weight: 700; }
+.sim-totals .total-value.neg { color: var(--red); font-weight: 700; }
+.row-win { color: var(--green); font-weight: 700; }
+.row-loss { color: var(--red); font-weight: 700; }
+
+/* ---------- Journal ---------- */
+.journal-form { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.journal-form input, .journal-form select {
+  background: var(--input-bg); border: 1px solid var(--panel-border); color: var(--text);
+  border-radius: 6px; padding: 6px 8px; font-size: 12px;
+}
+.journal-form button {
+  background: var(--green); color: #04140a; border: none; border-radius: 6px;
+  padding: 6px 14px; font-weight: 700; cursor: pointer; font-size: 12px;
+}
+.journal-form button:hover { opacity: 0.9; }
+.journal-delete { background: none; border: none; color: var(--red); cursor: pointer; font-size: 12px; }

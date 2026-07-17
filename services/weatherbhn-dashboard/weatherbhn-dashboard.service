@@ -1,0 +1,16 @@
+[Unit]
+Description=BHN WeatherBHN trading dashboard (read-only planning/simulation tool)
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/bhn-weatherbhn-dashboard
+EnvironmentFile=/etc/bhn-trading/weatherbhn-dashboard.env
+ExecStart=/opt/bhn-weatherbhn-dashboard/venv/bin/python -m uvicorn app.main:app --host 10.8.0.1 --port 8098 --app-dir /opt/bhn-weatherbhn-dashboard
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=60
+
+[Install]
+WantedBy=multi-user.target
