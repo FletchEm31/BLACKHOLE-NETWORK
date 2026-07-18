@@ -90,5 +90,13 @@ CREATE INDEX IF NOT EXISTS wmcd_lookup_idx
 
 GRANT SELECT ON weather_model_calibration_daily TO grafana_reader;
 GRANT SELECT, INSERT, UPDATE ON weather_model_calibration_daily TO bhn_trader, ehuser;
+-- weatherbhn_dashboard missing here was a real bug (found + fixed
+-- 2026-07-18 night): main.py's get_ladder() queries this table directly
+-- whenever a station/date has no existing signal row (sigma_source=
+-- 'computed_fresh' path) -- every earlier test that night happened to hit
+-- a station/date WITH an open position (skips this query entirely via the
+-- entry_frozen path), so the missing grant went unnoticed for hours until
+-- a real request without an open position hit it and 500'd.
+GRANT SELECT ON weather_model_calibration_daily TO weatherbhn_dashboard;
 
 COMMIT;
