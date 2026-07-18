@@ -927,7 +927,7 @@ function resultClass(result) {
 function renderPaperPositionTable(positions) {
   const tbody = document.getElementById('paperPositionBody');
   if (!positions.length) {
-    tbody.innerHTML = '<tr><td colspan="12" class="hint">No paper trades placed yet.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="14" class="hint">No paper trades placed yet.</td></tr>';
     return;
   }
   tbody.innerHTML = positions.map(p => {
@@ -939,6 +939,8 @@ function renderPaperPositionTable(positions) {
       <td>${p.station_code}</td>
       <td class="ticker-cell">${p.contract_ticker}</td>
       <td>${bucketRangeLabel(p)}</td>
+      <td>${p.predicted_tmax_f == null ? '—' : p.predicted_tmax_f.toFixed(1) + '°'}</td>
+      <td>${p.actual_tmax_f == null ? '—' : p.actual_tmax_f.toFixed(1) + '°'}</td>
       <td>${p.side}</td>
       <td>${p.investment_usd == null ? '—' : '$' + p.investment_usd.toFixed(2)}</td>
       <td>${p.entry_price_cents == null ? '—' : p.entry_price_cents.toFixed(1) + '¢'}</td>

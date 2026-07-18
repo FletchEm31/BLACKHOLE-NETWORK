@@ -576,6 +576,7 @@ def get_position_exits(station: Optional[str] = Query(None)):
                    bucket_floor, bucket_cap, side,
                    final_contracts_recommended, final_stake_usd_recommended,
                    entry_no_ask_cents, final_entry_predicted_tmax_f, final_entry_sigma_used,
+                   final_actual_tmax_f,
                    fee_usd, scored_at, final_outcome, final_realized_pnl_usd
             FROM weather_position_exits_clean
             {where}
@@ -626,6 +627,8 @@ def get_position_exits(station: Optional[str] = Query(None)):
             "bucket_label":    r["bucket_label"],
             "bucket_floor":    float(r["bucket_floor"]) if r["bucket_floor"] is not None else None,
             "bucket_cap":      float(r["bucket_cap"]) if r["bucket_cap"] is not None else None,
+            "predicted_tmax_f": float(r["final_entry_predicted_tmax_f"]) if r["final_entry_predicted_tmax_f"] is not None else None,
+            "actual_tmax_f":    float(r["final_actual_tmax_f"]) if r["final_actual_tmax_f"] is not None else None,
             "side":            r["side"],
             "contracts":       r["final_contracts_recommended"],
             "investment_usd":  stake,
