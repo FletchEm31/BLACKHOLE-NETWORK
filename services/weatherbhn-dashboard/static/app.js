@@ -153,6 +153,7 @@ async function init() {
   renderDayToggle();
   renderFooter();
   initNotepad();
+  renderPaperPositionCityFilter();
   document.getElementById('journalForm').addEventListener('submit', onJournalSubmit);
 
   // Sigma-performance fetched BEFORE the first ladder render -- it drives
@@ -163,6 +164,7 @@ async function init() {
   await refreshAll(true);
   await refreshJournal();
   await refreshNotepad();
+  await refreshPaperPositions();
 
   setInterval(() => refreshLadder(false), PRICE_REFRESH_MS);
   setInterval(tickCountdown, 1000);
@@ -170,6 +172,9 @@ async function init() {
   // settle once a day via the nightly recon job, so the 5-min orchestrator
   // cadence is more than fast enough here, no need for the 20s poll.
   setInterval(refreshSigmaPerformance, MODEL_REFRESH_MS);
+  // Same rationale as sigma-performance's cadence above -- real paper
+  // trades settle once a day, not every 20s.
+  setInterval(refreshPaperPositions, MODEL_REFRESH_MS);
 }
 
 // Only today/tomorrow -- matches Kalshi's own UI (currently-open markets
@@ -867,6 +872,72 @@ async function refreshSigmaPerformance() {
     renderReferenceStrip(state.ladder);
     renderLadderTable(state.ladder);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Paper Position Summary -- REAL system-placed paper trades from
+// weather_position_exits, via /api/position-exits. Deliberately separate
+// from renderSimulation() above: that panel is manual what-if entries,
+// never reads or writes this table. Full history, no date filter (operator
+// direction 2026-07-18: "full paper-trading history... not scoped to the
+// current city/date tab or any rolling window") -- the city dropdown here
+// is an optional display filter only, independent of the ladder's city
+// tabs/state.station.
+// ---------------------------------------------------------------------------
+
+function renderPaperPositionCityFilter() {
+  const el = document.getElementById('paperPositionCityFilter');
+  for (const c of state.cities) {
+    const opt = document.createElement('option');
+    opt.value = c.station_code;
+    opt.textContent = c.city;
+    el.appendChild(opt);
+  }
+  el.addEventListener('change', refreshPaperPositions);
+}
+
+async function refreshPaperPositions() {
+  const stationFilter = document.getElementById('paperPositionCityFilter').value;
+  const url = stationFilter
+    ? `/api/position-exits?station=${stationFilter}`
+    : '/api/position-exits';
+  let data;
+  try {
+    data = await fetchJSON(url);
+  } catch (e) {
+    console.error(e);
+    return;
+  }
+  renderPaperPositionTable(data.positions);
+}
+
+function resultClass(result) {
+  if (result === 'WIN') return 'row-win';
+  if (result === 'LOSS') return 'row-loss';
+  return '';
+}
+
+function renderPaperPositionTable(positions) {
+  const tbody = document.getElementById('paperPositionBody');
+  if (!positions.length) {
+    tbody.innerHTML = '<tr><td colspan="9" class="hint">No paper trades placed yet.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = positions.map(p => {
+    const pnlClass = p.pnl_usd == null ? '' : (p.pnl_usd >= 0 ? 'row-win' : 'row-loss');
+    const roiClass = p.roi_pct == null ? '' : (p.roi_pct >= 0 ? 'row-win' : 'row-loss');
+    return `<tr>
+      <td>${p.station_code}</td>
+      <td class="ticker-cell">${p.contract_ticker}</td>
+      <td>${bucketRangeLabel(p)}</td>
+      <td>${p.side}</td>
+      <td>${p.investment_usd == null ? '—' : '$' + p.investment_usd.toFixed(2)}</td>
+      <td>${'$' + p.fee_usd.toFixed(2)}</td>
+      <td class="${resultClass(p.result)}">${p.result}</td>
+      <td class="${pnlClass}">${p.pnl_usd == null ? '—' : '$' + p.pnl_usd.toFixed(2)}</td>
+      <td class="${roiClass}">${p.roi_pct == null ? '—' : (p.roi_pct >= 0 ? '+' : '') + p.roi_pct.toFixed(1) + '%'}</td>
+    </tr>`;
+  }).join('');
 }
 
 init();

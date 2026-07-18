@@ -249,6 +249,19 @@ main { padding: 16px 20px 60px; display: flex; flex-direction: column; gap: 16px
 .row-win { color: var(--green); font-weight: 700; }
 .row-loss { color: var(--red); font-weight: 700; }
 
+/* ---------- Paper Position Summary ---------- */
+/* Distinct accent (blue left border) vs. the neutral Simulation Summary
+   panel above -- deliberately visually different so it's never ambiguous
+   whether a row is a REAL system-placed paper trade or a manual what-if
+   entry. */
+.paper-position-panel { border-left: 3px solid var(--accent-blue); }
+.paper-position-controls { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; font-size: 13px; }
+.paper-position-controls label { color: var(--text-dim); }
+.paper-position-controls select {
+  background: var(--input-bg); color: var(--text); border: 1px solid var(--panel-border);
+  border-radius: 6px; padding: 4px 8px; font-size: 13px;
+}
+
 /* ---------- Journal ---------- */
 .journal-form { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
 .journal-form input, .journal-form select {

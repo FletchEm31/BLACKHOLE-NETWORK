@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>WeatherBHN Trading Dashboard</title>
-<link rel="stylesheet" href="style.css?v=24">
+<link rel="stylesheet" href="style.css?v=25">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 </head>
 <body>
@@ -137,6 +137,31 @@
     <div class="sim-totals" id="simTotals"></div>
   </section>
 
+  <!-- Paper Position Summary -- REAL system-placed paper trades from
+       weather_position_exits. Deliberately separate from Simulation
+       Summary above (manual what-if entries, never touches this table) --
+       distinct styling (paper-position-panel) and header wording so it's
+       never ambiguous which one you're looking at. Full history, no date
+       filter (shows every trade ever placed, not just the current
+       city/date tab) -- city is an optional display filter only. -->
+  <section class="panel paper-position-panel">
+    <div class="panel-title">Paper Position Summary <span class="hint">(REAL system-placed paper trades from weather_position_exits &mdash; full history, not the current ladder's city/date. Not a simulation.)</span></div>
+    <div class="paper-position-controls">
+      <label for="paperPositionCityFilter">City</label>
+      <select id="paperPositionCityFilter">
+        <option value="">All cities</option>
+      </select>
+    </div>
+    <div class="table-scroll">
+      <table id="paperPositionTable" class="data-table">
+        <thead>
+          <tr><th>Station</th><th>Ticker</th><th>Bucket</th><th>Side</th><th>Investment</th><th>Fee</th><th>Result</th><th>P&amp;L</th><th>ROI%</th></tr>
+        </thead>
+        <tbody id="paperPositionBody"></tbody>
+      </table>
+    </div>
+  </section>
+
   <!-- Manual journal -->
   <section class="panel journal-panel">
     <div class="panel-title">Manual Trade Journal <span class="hint">(informal track record &mdash; not wired into any trading logic)</span></div>
@@ -183,6 +208,6 @@
 
 </main>
 
-<script src="app.js?v=24"></script>
+<script src="app.js?v=25"></script>
 </body>
 </html>

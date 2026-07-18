@@ -529,6 +529,83 @@ def get_sigma_performance():
 
 
 # ---------------------------------------------------------------------------
+# Paper Position Summary -- real system-placed paper trades from
+# weather_position_exits, as distinct from the Simulation Summary panel's
+# manual what-if entries (client-side only, never touches this table).
+# ---------------------------------------------------------------------------
+
+@app.get("/api/position-exits")
+def get_position_exits(station: Optional[str] = Query(None)):
+    """Full paper-trading history, no date filter -- operator direction
+    2026-07-18: 'full paper-trading history... not scoped to the current
+    city/date tab or any rolling window.' station is an optional display
+    filter only, not a default scope -- omit it to see every city.
+
+    result is side-aware: side='NO' wins when final_outcome='NO_WIN',
+    side='YES' (none exist yet, but this is the actual bug the 2026-07-18b
+    migration's UNIQUE(contract_ticker, side) + safe filters were built to
+    let coexist) wins on the opposite outcome. OPEN for unscored rows
+    (scored_at IS NULL), never guessed at.
+
+    investment_usd is final_stake_usd_recommended directly, NOT bundled
+    with fee_usd (unlike the Simulation Summary's client-side calcSide(),
+    CP4's real stake sizing never included the fee to begin with -- see
+    cp4_kelly_sizer.py's _maker_fee() docstring -- so no adjustment is
+    needed here to keep Investment/Fee from double-counting).
+    """
+    where = "WHERE 1=1"
+    params: list = []
+    if station:
+        where += " AND station_code = %s"
+        params.append(station)
+
+    with db.conn_cursor() as cur:
+        cur.execute(f"""
+            SELECT station_code, target_date, contract_ticker, bucket_label,
+                   bucket_floor, bucket_cap, side,
+                   final_contracts_recommended, final_stake_usd_recommended,
+                   fee_usd, scored_at, final_outcome, final_realized_pnl_usd
+            FROM weather_position_exits_clean
+            {where}
+            ORDER BY target_date DESC, decision_timestamp DESC
+        """, params)
+        rows = cur.fetchall()
+
+    positions = []
+    for r in rows:
+        stake = float(r["final_stake_usd_recommended"]) if r["final_stake_usd_recommended"] is not None else None
+        fee = float(r["fee_usd"]) if r["fee_usd"] is not None else 0.0
+        pnl = float(r["final_realized_pnl_usd"]) if r["final_realized_pnl_usd"] is not None else None
+        is_open = r["scored_at"] is None
+
+        result = "OPEN"
+        if not is_open:
+            side_won = ((r["final_outcome"] == "NO_WIN") if r["side"] == "NO"
+                        else (r["final_outcome"] == "NO_LOSS"))
+            result = "WIN" if side_won else "LOSS"
+
+        roi_pct = round((pnl / stake) * 100, 1) if (pnl is not None and stake) else None
+
+        positions.append({
+            "station_code":    r["station_code"],
+            "target_date":     r["target_date"].isoformat(),
+            "contract_ticker": r["contract_ticker"],
+            "bucket_label":    r["bucket_label"],
+            "bucket_floor":    float(r["bucket_floor"]) if r["bucket_floor"] is not None else None,
+            "bucket_cap":      float(r["bucket_cap"]) if r["bucket_cap"] is not None else None,
+            "side":            r["side"],
+            "contracts":       r["final_contracts_recommended"],
+            "investment_usd":  stake,
+            "fee_usd":         fee,
+            "result":          result,
+            "pnl_usd":         pnl,
+            "roi_pct":         roi_pct,
+        })
+
+    return {"positions": positions}
+
+
+# ---------------------------------------------------------------------------
 # Per-city scratch notepad -- freeform, separate from the structured trade
 # journal above. One overwritable note per station (see
 # sql/weatherbhn-dashboard-notes-schema.sql for why).
