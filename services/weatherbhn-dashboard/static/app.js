@@ -930,10 +930,21 @@ function resultClass(result) {
   return '';
 }
 
+// PST, always -- not the traded city's own local time (that's what the
+// market-times panel is for). Operator's own reference timezone for "when
+// did this trade actually fire," same for every row regardless of station.
+function _fmtPST(iso) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleString('en-US', {
+    timeZone: 'America/Los_Angeles', month: 'short', day: 'numeric',
+    hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true,
+  });
+}
+
 function renderPaperPositionTable(positions) {
   const tbody = document.getElementById('paperPositionBody');
   if (!positions.length) {
-    tbody.innerHTML = '<tr><td colspan="14" class="hint">No paper trades placed yet.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="18" class="hint">No paper trades placed yet.</td></tr>';
     return;
   }
   tbody.innerHTML = positions.map(p => {
@@ -943,9 +954,13 @@ function renderPaperPositionTable(positions) {
       : (p.entry_sigma_distance >= 0 ? '+' : '') + p.entry_sigma_distance.toFixed(1) + 'σ';
     return `<tr>
       <td>${p.station_code}</td>
+      <td>${_fmtPST(p.entry_captured_at)}</td>
       <td class="ticker-cell">${p.contract_ticker}</td>
       <td>${bucketRangeLabel(p)}</td>
       <td>${p.predicted_tmax_f == null ? '—' : p.predicted_tmax_f.toFixed(1) + '°'}</td>
+      <td>${p.nws_maxt_f == null ? '—' : p.nws_maxt_f.toFixed(1) + '°'}</td>
+      <td>${p.gfs_maxt_f == null ? '—' : p.gfs_maxt_f.toFixed(1) + '°'}</td>
+      <td>${p.model_maxt_f == null ? '—' : p.model_maxt_f.toFixed(1) + '°'}</td>
       <td>${p.actual_tmax_f == null ? '—' : p.actual_tmax_f.toFixed(1) + '°'}</td>
       <td>${p.side}</td>
       <td>${p.investment_usd == null ? '—' : '$' + p.investment_usd.toFixed(2)}</td>

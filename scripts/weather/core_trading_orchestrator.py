@@ -266,8 +266,16 @@ def _process_station_date(conn, station_code: str, target_date: date,
 
     # Record qualifying signals as paper trades (always, even in DRY_RUN).
     # is_paper_trade=True when DRY_RUN=True so paper vs live stays distinct.
+    # model_maxt_f (2026-07-19): only a real model prediction when
+    # mode=='xgboost' -- predicted_f in emergency_fallback mode is a
+    # NWS-bias-corrected value, not a model output, never passed as if it
+    # were one.
+    model_maxt_f = predicted_f if cp3['mode'] == 'xgboost' else None
     paper_n = record_paper_trade(conn, station_code, target_date, predicted_f,
-                                 buckets, is_paper_trade=DRY_RUN)
+                                 buckets, is_paper_trade=DRY_RUN,
+                                 nws_maxt_f=cp3.get('nws_forecast_f'),
+                                 gfs_maxt_f=cp3.get('om_tmax_f'),
+                                 model_maxt_f=model_maxt_f)
     if paper_n:
         conn.commit()
 

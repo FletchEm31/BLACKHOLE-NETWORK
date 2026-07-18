@@ -573,10 +573,11 @@ def get_position_exits(station: Optional[str] = Query(None)):
     with db.conn_cursor() as cur:
         cur.execute(f"""
             SELECT station_code, target_date, contract_ticker, bucket_label,
-                   bucket_floor, bucket_cap, side,
+                   bucket_floor, bucket_cap, side, entry_captured_at,
                    final_contracts_recommended, final_stake_usd_recommended,
                    entry_no_ask_cents, final_entry_predicted_tmax_f, final_entry_sigma_used,
                    final_actual_tmax_f,
+                   entry_nws_maxt_f, entry_gfs_maxt_f, entry_model_maxt_f,
                    fee_usd, scored_at, final_outcome, final_realized_pnl_usd
             FROM weather_position_exits_clean
             {where}
@@ -624,11 +625,15 @@ def get_position_exits(station: Optional[str] = Query(None)):
             "station_code":    r["station_code"],
             "target_date":     r["target_date"].isoformat(),
             "contract_ticker": r["contract_ticker"],
+            "entry_captured_at": r["entry_captured_at"].isoformat() if r["entry_captured_at"] is not None else None,
             "bucket_label":    r["bucket_label"],
             "bucket_floor":    float(r["bucket_floor"]) if r["bucket_floor"] is not None else None,
             "bucket_cap":      float(r["bucket_cap"]) if r["bucket_cap"] is not None else None,
             "predicted_tmax_f": float(r["final_entry_predicted_tmax_f"]) if r["final_entry_predicted_tmax_f"] is not None else None,
             "actual_tmax_f":    float(r["final_actual_tmax_f"]) if r["final_actual_tmax_f"] is not None else None,
+            "nws_maxt_f":       float(r["entry_nws_maxt_f"]) if r["entry_nws_maxt_f"] is not None else None,
+            "gfs_maxt_f":       float(r["entry_gfs_maxt_f"]) if r["entry_gfs_maxt_f"] is not None else None,
+            "model_maxt_f":     float(r["entry_model_maxt_f"]) if r["entry_model_maxt_f"] is not None else None,
             "side":            r["side"],
             "contracts":       r["final_contracts_recommended"],
             "investment_usd":  stake,

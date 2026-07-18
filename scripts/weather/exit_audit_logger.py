@@ -86,7 +86,8 @@ _RECORD_SQL = """
         entry_no_ask_cents, entry_captured_at,
         entry_edge_cents, entry_model_prob_no_cents,
         entry_predicted_tmax_f, entry_hours_to_settle, entry_sigma_used,
-        entry_hours_to_avg_dailyhigh, fee_usd
+        entry_hours_to_avg_dailyhigh, fee_usd,
+        entry_nws_maxt_f, entry_gfs_maxt_f, entry_model_maxt_f
     ) VALUES (
         %(station_code)s, %(target_date)s, %(contract_ticker)s, %(real_market_ticker)s,
         %(bucket_label)s, %(bucket_floor)s, %(bucket_cap)s, %(side)s, %(decision_timestamp)s,
@@ -96,7 +97,8 @@ _RECORD_SQL = """
         %(no_ask_cents)s, %(decision_timestamp)s,
         %(edge_cents)s, %(model_prob_no_cents)s,
         %(predicted_tmax_f)s, %(entry_hours_to_settle)s, %(sigma_used)s,
-        %(entry_hours_to_avg_dailyhigh)s, %(fee_usd)s
+        %(entry_hours_to_avg_dailyhigh)s, %(fee_usd)s,
+        %(entry_nws_maxt_f)s, %(entry_gfs_maxt_f)s, %(entry_model_maxt_f)s
     )
     ON CONFLICT (contract_ticker, side) DO UPDATE SET
         decision_timestamp    = EXCLUDED.decision_timestamp,
@@ -145,7 +147,10 @@ def _entry_hours_to_avg_dailyhigh(conn, station_code: str, target_date: date,
 
 def record_paper_trade(conn, station_code: str, target_date: date,
                        predicted_tmax_f: float, buckets: list[dict],
-                       is_paper_trade: bool = True, side: str = 'NO') -> int:
+                       is_paper_trade: bool = True, side: str = 'NO',
+                       nws_maxt_f: Optional[float] = None,
+                       gfs_maxt_f: Optional[float] = None,
+                       model_maxt_f: Optional[float] = None) -> int:
     """
     Upsert one row per qualifying bucket into weather_position_exits.
 
@@ -165,6 +170,14 @@ def record_paper_trade(conn, station_code: str, target_date: date,
     as of migration 2026-07-18b, so a NO and a YES bet on the literal same
     bucket contract now coexist as two distinct rows instead of colliding —
     see test_side_collision_2026_07_18.py for the proof.
+
+    nws_maxt_f/gfs_maxt_f/model_maxt_f (added 2026-07-19): the individual
+    forecast-source inputs at entry, frozen the same way as everything else
+    in _RECORD_SQL's entry_* column list -- NOT in ON CONFLICT DO UPDATE
+    SET. All three default None (never guessed at) if the caller doesn't
+    have them. model_maxt_f should be None whenever cp3_inference.py's mode
+    was 'emergency_fallback' -- no real model prediction exists in that
+    path, don't pass predicted_tmax_f as a stand-in for it.
 
     Returns number of rows inserted or updated.
     """
@@ -217,6 +230,9 @@ def record_paper_trade(conn, station_code: str, target_date: date,
                 'entry_hours_to_settle': entry_hours_to_settle,
                 'entry_hours_to_avg_dailyhigh': entry_hours_to_avg_dailyhigh,
                 'fee_usd':               b.get('fee_usd', 0.0),
+                'entry_nws_maxt_f':      nws_maxt_f,
+                'entry_gfs_maxt_f':      gfs_maxt_f,
+                'entry_model_maxt_f':    model_maxt_f,
             })
             inserted += cur.rowcount
     return inserted
