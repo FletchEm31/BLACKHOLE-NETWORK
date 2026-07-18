@@ -79,7 +79,7 @@ def _get_conn():
 _RECORD_SQL = """
     INSERT INTO weather_position_exits (
         station_code, target_date, contract_ticker, real_market_ticker,
-        bucket_label, bucket_floor, bucket_cap, decision_timestamp,
+        bucket_label, bucket_floor, bucket_cap, side, decision_timestamp,
         predicted_tmax_f, model_prob_no_cents, no_ask_cents,
         edge_cents, contracts_recommended, stake_usd_recommended,
         hours_to_settle, sigma_used, is_paper_trade,
@@ -89,7 +89,7 @@ _RECORD_SQL = """
         entry_hours_to_avg_dailyhigh
     ) VALUES (
         %(station_code)s, %(target_date)s, %(contract_ticker)s, %(real_market_ticker)s,
-        %(bucket_label)s, %(bucket_floor)s, %(bucket_cap)s, %(decision_timestamp)s,
+        %(bucket_label)s, %(bucket_floor)s, %(bucket_cap)s, %(side)s, %(decision_timestamp)s,
         %(predicted_tmax_f)s, %(model_prob_no_cents)s, %(no_ask_cents)s,
         %(edge_cents)s, %(contracts_recommended)s, %(stake_usd_recommended)s,
         %(hours_to_settle)s, %(sigma_used)s, %(is_paper_trade)s,
@@ -98,7 +98,7 @@ _RECORD_SQL = """
         %(predicted_tmax_f)s, %(entry_hours_to_settle)s, %(sigma_used)s,
         %(entry_hours_to_avg_dailyhigh)s
     )
-    ON CONFLICT (contract_ticker) DO UPDATE SET
+    ON CONFLICT (contract_ticker, side) DO UPDATE SET
         decision_timestamp    = EXCLUDED.decision_timestamp,
         real_market_ticker    = EXCLUDED.real_market_ticker,
         predicted_tmax_f      = EXCLUDED.predicted_tmax_f,
@@ -144,14 +144,26 @@ def _entry_hours_to_avg_dailyhigh(conn, station_code: str, target_date: date,
 
 def record_paper_trade(conn, station_code: str, target_date: date,
                        predicted_tmax_f: float, buckets: list[dict],
-                       is_paper_trade: bool = True) -> int:
+                       is_paper_trade: bool = True, side: str = 'NO') -> int:
     """
-    Upsert one row per qualifying BET_NO bucket into weather_position_exits.
+    Upsert one row per qualifying bucket into weather_position_exits.
 
     Uses the caller's open connection — does not commit or close it.
-    ON CONFLICT (contract_ticker) DO UPDATE refreshes signal cols each cycle
-    so the row reflects the latest model view. The WHERE scored_at IS NULL
-    guard prevents overwriting rows the exit scorer has already settled.
+    ON CONFLICT (contract_ticker, side) DO UPDATE refreshes signal cols each
+    cycle so the row reflects the latest model view. The WHERE scored_at IS
+    NULL guard prevents overwriting rows the exit scorer has already settled.
+
+    side defaults to 'NO' since CP4 remains NO-side-only ("Tail-No") today —
+    added 2026-07-18 as Yes-side trading infrastructure Phase 1 (schema +
+    data-model only, no YES trigger/decision logic built yet). One side per
+    call, same as station_code/target_date/predicted_tmax_f — a future
+    YES-side qualification pass would be a separate call with side='YES',
+    not mixed buckets within one call. Deliberately NOT in the ON CONFLICT
+    DO UPDATE SET (same frozen-at-entry posture as the entry_* columns).
+    weather_position_exits' UNIQUE constraint is on (contract_ticker, side)
+    as of migration 2026-07-18b, so a NO and a YES bet on the literal same
+    bucket contract now coexist as two distinct rows instead of colliding —
+    see test_side_collision_2026_07_18.py for the proof.
 
     Returns number of rows inserted or updated.
     """
@@ -190,6 +202,7 @@ def record_paper_trade(conn, station_code: str, target_date: date,
                 'bucket_label':          b['bucket_label'],
                 'bucket_floor':          b.get('bucket_floor'),
                 'bucket_cap':            b.get('bucket_cap'),
+                'side':                  side,
                 'decision_timestamp':    now_utc,
                 'predicted_tmax_f':      predicted_tmax_f,
                 'model_prob_no_cents':   b['model_prob_cents'],
@@ -253,7 +266,8 @@ def score_settled_positions(dry_run: bool = False,
     """
     Score unscored rows in weather_position_exits against NWS CLI actuals.
 
-    1. Query rows WHERE target_date < CURRENT_DATE AND scored_at IS NULL.
+    1. Query rows WHERE target_date < CURRENT_DATE AND scored_at IS NULL
+       AND side = 'NO'.
     2. For each row, look up final_tmax_f from weather_silver_actuals_conformed
        WHERE actual_source = 'nws_cli' AND is_final = TRUE.
        If no final actual yet: skip (will be retried on next run).
@@ -263,6 +277,15 @@ def score_settled_positions(dry_run: bool = False,
          NO_LOSS: contracts * (-no_ask_cents/100)
     5. UPDATE row (skipped when dry_run=True).
     6. Log per-station summary and return summary dict.
+
+    side = 'NO' filter added 2026-07-18b: the outcome/P&L logic above (step
+    3-4) is hardcoded NO-side math -- a YES row would be scored with the
+    wrong win condition and the wrong payout formula, not just a different
+    label. This filter is a safety net (CP4 can't produce YES rows yet, so
+    it's currently a no-op), not the real fix -- score_settled_positions()
+    needs side-branched outcome/P&L logic before Phase 2 ever settles a real
+    YES trade. Tracked, not built here (explicit scope: schema + data-model
+    only this pass).
     """
     conn = _get_conn()
     try:
@@ -276,6 +299,7 @@ def score_settled_positions(dry_run: bool = False,
                     FROM weather_position_exits
                     WHERE target_date = %s
                       AND scored_at IS NULL
+                      AND side = 'NO'
                     ORDER BY target_date, station_code
                 """, (target_date_override,))
             else:
@@ -286,6 +310,7 @@ def score_settled_positions(dry_run: bool = False,
                            stake_usd_recommended
                     FROM weather_position_exits
                     WHERE scored_at IS NULL
+                      AND side = 'NO'
                     ORDER BY target_date, station_code
                 """)
             # Filter in Python using _is_settled() so KDEN/KMIA same-day settlements

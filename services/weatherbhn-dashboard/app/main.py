@@ -139,12 +139,19 @@ def get_ladder(station: str = Query(...), target_date: date = Query(...)):
         """, (station, target_date.month))
         clim_row = cur.fetchone()
 
+        # side = 'NO' added 2026-07-18b: this ladder is CP4's NO-side view.
+        # Without the filter, once a YES-side row can exist for the same
+        # station/date, ORDER BY decision_timestamp DESC LIMIT 1 would
+        # arbitrarily return whichever side was decided more recently, with
+        # no side label surfaced to the frontend -- a real redesign (side
+        # selector, or showing both), not fixed by this filter alone; this
+        # just keeps today's NO-only behavior stable in the meantime.
         cur.execute("""
             SELECT final_entry_predicted_tmax_f, final_entry_sigma_used,
                    predicted_tmax_f, sigma_used, decision_timestamp,
                    hours_to_settle
             FROM weather_position_exits_clean
-            WHERE station_code = %s AND target_date = %s
+            WHERE station_code = %s AND target_date = %s AND side = 'NO'
             ORDER BY decision_timestamp DESC
             LIMIT 1
         """, (station, target_date))
