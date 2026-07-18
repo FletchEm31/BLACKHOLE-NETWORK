@@ -764,8 +764,16 @@ function tagClass(tag) {
   return tag === 'positive' ? 'perf-green' : '';
 }
 
+// Empty cells (n===0, e.g. -4sigma/+4sigma with no settled trades yet) now
+// render through the SAME .perf-cell wrapper as populated cells (styling
+// fix 2026-07-17) -- previously a bare <span>, which had no border and no
+// enforced size, so it rendered smaller/undefined next to the five-line
+// populated cells instead of matching their fixed dimensions. .perf-empty
+// just mutes the color; sizing/border come from the shared .perf-cell rule.
 function cellHtml(cell) {
-  if (cell.n === 0) return '<span class="hint">—</span>';
+  if (cell.n === 0) {
+    return '<div class="perf-cell perf-empty" title="No settled trades yet">—</div>';
+  }
   const netClass = cell.pnl >= 0 ? 'profit-pos' : 'profit-neg';
   const tooltip = `n=${cell.n}, staked $${cell.staked}, pnl $${cell.pnl}`;
   return `<div class="perf-cell ${tagClass(cell.tag)}" title="${tooltip}">`
@@ -798,11 +806,11 @@ async function refreshSigmaPerformance() {
     return `<tr><td>${cityName}</td>${data.markers.map(m => `<td>${cellHtml(data.by_city[city][m])}</td>`).join('')}</tr>`;
   }).join('');
 
-  // Star markers (reference strip + ladder) always match this pooled row's
-  // green cells -- re-render both if a ladder view is already on screen so
-  // a star change (this refreshes on its own 5-min cadence, independent of
-  // the ladder's 20s poll) shows up immediately, not just on the next
-  // ladder poll.
+  // Star markers (reference strip + ladder) are driven by this pooled row's
+  // net-$ per marker (isStarredMarker()), not the green/tag coloring shown
+  // here -- re-render both if a ladder view is already on screen so a star
+  // change (this refreshes on its own 5-min cadence, independent of the
+  // ladder's 20s poll) shows up immediately, not just on the next ladder poll.
   state.sigmaPerfPooled = data.pooled;
   if (state.ladder) {
     renderReferenceStrip(state.ladder);

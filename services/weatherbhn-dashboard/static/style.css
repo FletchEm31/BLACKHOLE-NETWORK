@@ -291,7 +291,18 @@ main { padding: 16px 20px 60px; display: flex; flex-direction: column; gap: 16px
 details:not([open]) > .collapsible-title::before { content: "▸ "; }
 .sigma-perf-table th, .sigma-perf-table td { text-align: center; padding: 3px 4px; }
 .sigma-perf-table td:first-child, .sigma-perf-table th:first-child { text-align: left; font-weight: 700; white-space: nowrap; }
-.perf-cell { border-radius: 4px; padding: 2px 4px; cursor: help; }
+/* Fixed cell size (2026-07-17 styling fix) -- every marker column, empty or
+   populated, gets the same width/height so the grid reads as a clean, even
+   table instead of empty cells collapsing smaller than data-filled ones. */
+.sigma-perf-table td:not(:first-child) { width: 68px; }
+.perf-cell {
+  border-radius: 4px; padding: 2px 4px; cursor: help;
+  border: 1px solid var(--panel-border);
+  min-width: 60px; min-height: 56px; box-sizing: border-box;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  margin: 0 auto;
+}
+.perf-empty { color: var(--text-faint); cursor: default; font-size: 12px; }
 .perf-pct { font-size: 10px; font-weight: 700; }
 .perf-roi { font-size: 9px; }
 .perf-n { font-size: 9px; color: var(--text-faint); }
