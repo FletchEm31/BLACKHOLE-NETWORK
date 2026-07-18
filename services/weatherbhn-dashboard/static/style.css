@@ -241,6 +241,7 @@ main { padding: 16px 20px 60px; display: flex; flex-direction: column; gap: 16px
 .col-edge.edge-neg { color: var(--red); font-weight: 700; }
 
 /* ---------- Simulation panel ---------- */
+.ticker-cell { font-family: monospace; font-size: 11px; white-space: nowrap; }
 .sim-totals { display: flex; gap: 24px; margin-top: 10px; font-size: 13px; }
 .sim-totals .total-label { color: var(--text-dim); margin-right: 6px; }
 .sim-totals .total-value.pos { color: var(--green); font-weight: 700; }

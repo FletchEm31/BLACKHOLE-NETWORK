@@ -51,8 +51,19 @@ const state = {
   date: null,
   cities: [],
   ladder: null,          // last /api/ladder response
-  rowInputs: {},          // bucket_label -> {noPrice, noInvestment, yesPrice, yesInvestment} (never overwritten by refresh)
-  winningBucket: null,    // bucket_label currently marked as the winning outcome
+  // market_ticker -> {station, target_date, bucket_label, bucket_floor, bucket_cap,
+  //   market_ticker, noPrice, noInvestment, yesPrice, yesInvestment}. Keyed by
+  // ticker (not bucket_label, which collides across cities/dates -- e.g. "T90"
+  // exists for every station) so rows from multiple cities can coexist in the
+  // same session (2026-07-17, see onCityOrDateChanged()). Never overwritten
+  // by a refresh once seeded.
+  rowInputs: {},
+  // stationDateKey(station, date) -> bucket_label currently marked as the
+  // winning outcome for THAT city/date. Replaces the old single global
+  // winningBucket string (2026-07-17) -- each city has its own real-world
+  // outcome, so one shared value couldn't represent multiple cities' results
+  // at once.
+  winningBuckets: {},
   journal: [],
   probChart: null,
   countdownSec: PRICE_REFRESH_MS / 1000,
@@ -184,8 +195,11 @@ function renderDayToggle() {
 }
 
 function onCityOrDateChanged() {
-  state.rowInputs = {};      // new station/date = genuinely different contracts, safe to reset
-  state.winningBucket = null;
+  // rowInputs/winningBuckets are deliberately NOT reset here (2026-07-17) --
+  // both are keyed by market_ticker / stationDateKey() respectively, so they
+  // no longer collide across cities/dates, and simulation rows entered on
+  // one city tab should persist when switching to another (multi-city
+  // sessions), not silently vanish.
   refreshAll(true);
   refreshJournal();
 }
@@ -232,11 +246,22 @@ async function refreshLadder(isFullRefresh) {
     const data = await fetchJSON(`/api/ladder?station=${state.station}&target_date=${state.date}`);
     state.ladder = data;
 
-    // Seed rowInputs defaults only for buckets we haven't seen yet — never
+    // Seed rowInputs defaults only for tickers we haven't seen yet — never
     // touch an existing entry, so a user mid-edit never gets reset by a poll.
+    // Keyed by market_ticker (unique per station+date+bucket), NOT
+    // bucket_label -- bucket_label alone collides across cities/dates (e.g.
+    // "T90" exists for every station), which would silently merge unrelated
+    // rows' simulation inputs together once rowInputs stopped being wiped on
+    // every city/date switch (see onCityOrDateChanged()). station/target_date/
+    // bucket_floor/bucket_cap/bucket_label are carried alongside the numeric
+    // inputs so renderSimulation() can render/resolve a row without needing
+    // state.ladder to still be showing that row's city.
     for (const b of data.buckets) {
-      if (!state.rowInputs[b.bucket_label]) {
-        state.rowInputs[b.bucket_label] = {
+      if (!state.rowInputs[b.market_ticker]) {
+        state.rowInputs[b.market_ticker] = {
+          station: state.station, target_date: state.date,
+          bucket_label: b.bucket_label, bucket_floor: b.bucket_floor, bucket_cap: b.bucket_cap,
+          market_ticker: b.market_ticker,
           noPrice: b.no_ask_cents ?? 50,
           noInvestment: 0,
           yesPrice: b.yes_ask_cents ?? 50,
@@ -469,11 +494,16 @@ function markerColorClass(n) {
   return '';
 }
 
+// station+date -> the single key state.winningBuckets is keyed by. Shared
+// so every reader/writer of winningBuckets agrees on the exact key format.
+function stationDateKey(station, date) { return `${station}::${date}`; }
+
 function renderLadderTable(data) {
   const tbody = document.getElementById('ladderBody');
   tbody.innerHTML = '';
+  const wbKey = stationDateKey(state.station, state.date);
   for (const b of data.buckets) {
-    const inputs = state.rowInputs[b.bucket_label];
+    const inputs = state.rowInputs[b.market_ticker];
     const tr = document.createElement('tr');
     tr.dataset.bucket = b.bucket_label;
 
@@ -501,7 +531,7 @@ function renderLadderTable(data) {
     const edgeStr = b.edge_pct == null ? '—' : `${b.edge_pct >= 0 ? '+' : ''}${b.edge_pct}%`;
 
     tr.innerHTML = `
-      <td><input type="checkbox" class="win-checkbox" ${state.winningBucket === b.bucket_label ? 'checked' : ''}></td>
+      <td><input type="checkbox" class="win-checkbox" ${state.winningBuckets[wbKey] === b.bucket_label ? 'checked' : ''}></td>
       <td class="col-bucket"><span class="bucket-range">${bucketRangeLabel(b)}</span></td>
       <td class="col-sigma">${sigmaChips || '&nbsp;'}</td>
       <td class="col-chance">${b.chance_pct != null ? b.chance_pct + '%' : '—'}</td>
@@ -517,8 +547,8 @@ function renderLadderTable(data) {
     tbody.appendChild(tr);
 
     tr.querySelector('.win-checkbox').addEventListener('change', (e) => {
-      state.winningBucket = e.target.checked ? b.bucket_label : null;
-      renderLadderTable(state.ladder); // re-render so only one checkbox is checked
+      state.winningBuckets[wbKey] = e.target.checked ? b.bucket_label : null;
+      renderLadderTable(state.ladder); // re-render so only one checkbox is checked (for THIS city/date)
       renderSimulation();
     });
 
@@ -581,24 +611,40 @@ function updateCalcSummary(cell, bucket, side, inputs) {
 }
 
 // ---------------------------------------------------------------------------
-// Simulation summary — resolves mixed Yes/No positions across the whole
-// ladder against the single selected winning bucket.
+// Simulation summary — resolves mixed Yes/No positions across EVERY city/date
+// a row has been entered for (2026-07-17: no longer scoped to state.ladder,
+// the currently-displayed city only), each against ITS OWN city/date's
+// selected winning bucket via state.winningBuckets:
 //   - Selected winning bucket: its YES position wins, its NO position loses.
-//   - Every other bucket: its NO position wins, its YES position loses.
+//   - Every other bucket (same city/date): its NO position wins, its YES
+//     position loses.
+//   - A city/date with no winning bucket selected yet: all its rows show
+//     "pending", same as before, just per-city now instead of all-or-nothing.
 // ---------------------------------------------------------------------------
 function renderSimulation() {
   const tbody = document.getElementById('simBody');
   const totalsEl = document.getElementById('simTotals');
   tbody.innerHTML = '';
 
-  if (!state.ladder) return;
+  // Fee bug fix (2026-07-17): totalInvested now accumulates PURE contract
+  // cost only (contracts * price), NOT totalCost (which bundles in the fee)
+  // -- previously "Total invested" silently included the fee, so it read as
+  // if fees were embedded in "invested" rather than shown as their own
+  // deduction. Net P&L's actual DOLLAR VALUE is unchanged by this (Net =
+  // Gross - PureInvested - Fees is algebraically identical to the old
+  // Gross - (PureInvested+Fees), since fees were always subtracted exactly
+  // once via totalCost, per-row, for both wins and losses) -- this fixes
+  // what "Total invested" honestly represents, not a double-counted fee.
   let grossTotal = 0, netTotal = 0, totalInvested = 0, totalFees = 0;
-  let anyRows = false;
+  let anyRows = false, anyResolved = false;
 
-  for (const b of state.ladder.buckets) {
-    const inputs = state.rowInputs[b.bucket_label];
-    if (!inputs) continue;
-    const isWinningBucket = state.winningBucket === b.bucket_label;
+  for (const ticker of Object.keys(state.rowInputs)) {
+    const inputs = state.rowInputs[ticker];
+    const wbKey = stationDateKey(inputs.station, inputs.target_date);
+    const winningBucket = state.winningBuckets[wbKey];
+    const hasResolution = winningBucket != null;
+    const isWinningBucket = hasResolution && winningBucket === inputs.bucket_label;
+    if (hasResolution) anyResolved = true;
 
     for (const side of ['no', 'yes']) {
       const investKey = side === 'no' ? 'noInvestment' : 'yesInvestment';
@@ -609,11 +655,13 @@ function renderSimulation() {
 
       const result = calcSide(inputs[priceKey], investment);
       const sideWins = (side === 'yes') ? isWinningBucket : !isWinningBucket;
-      const pnl = state.winningBucket == null
+      const pnl = !hasResolution
         ? null
         : (sideWins ? result.profitIfWin : -result.totalCost);
+      const pureCost = round2(result.totalCost - result.fee);
+      const roiPct = pnl != null && pureCost > 0 ? round2((pnl / pureCost) * 100) : null;
 
-      totalInvested += result.totalCost;
+      totalInvested += pureCost;
       totalFees += result.fee;
       if (pnl != null) {
         grossTotal += sideWins ? result.payoutIfWin : 0;
@@ -622,21 +670,24 @@ function renderSimulation() {
 
       const tr = document.createElement('tr');
       tr.innerHTML = `
-        <td>${bucketRangeLabel(b)}</td>
+        <td>${inputs.station}</td>
+        <td>${bucketRangeLabel(inputs)}</td>
+        <td class="ticker-cell">${inputs.market_ticker}</td>
         <td>${side.toUpperCase()}</td>
-        <td>$${result.totalCost.toFixed(2)}</td>
+        <td>$${pureCost.toFixed(2)}</td>
         <td>$${result.fee.toFixed(2)}</td>
-        <td>${state.winningBucket == null ? 'pending' : (sideWins ? '<span class="row-win">WIN</span>' : '<span class="row-loss">LOSS</span>')}</td>
-        <td class="${pnl == null ? '' : (pnl >= 0 ? 'row-win' : 'row-loss')}">${pnl == null ? '—' : '$' + pnl.toFixed(2)}</td>`;
+        <td>${!hasResolution ? 'pending' : (sideWins ? '<span class="row-win">WIN</span>' : '<span class="row-loss">LOSS</span>')}</td>
+        <td class="${pnl == null ? '' : (pnl >= 0 ? 'row-win' : 'row-loss')}">${pnl == null ? '—' : '$' + pnl.toFixed(2)}</td>
+        <td class="${roiPct == null ? '' : (roiPct >= 0 ? 'row-win' : 'row-loss')}">${roiPct == null ? '—' : (roiPct >= 0 ? '+' : '') + roiPct.toFixed(1) + '%'}</td>`;
       tbody.appendChild(tr);
     }
   }
 
   if (!anyRows) {
-    tbody.innerHTML = '<tr><td colspan="6" class="hint">No investment entered on any row yet.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" class="hint">No investment entered on any row yet.</td></tr>';
   }
 
-  totalsEl.innerHTML = state.winningBucket == null
+  totalsEl.innerHTML = !anyResolved
     ? `<div class="hint">Select a winning bucket above to see P&amp;L.</div>`
     : `<div><span class="total-label">Total invested</span><span class="total-value">$${totalInvested.toFixed(2)}</span></div>
        <div><span class="total-label">Total fees</span><span class="total-value">$${totalFees.toFixed(2)}</span></div>
