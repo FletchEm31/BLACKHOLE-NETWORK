@@ -97,7 +97,23 @@ def get_ladder(station: str = Query(...), target_date: date = Query(...)):
               AND retrieved_at >= NOW() - INTERVAL '45 minutes'
         """, (station, target_date, station, target_date))
         bucket_rows = cur.fetchall()
-        data_stale = len(bucket_rows) == 0
+
+        # A future/not-yet-listed market has zero snapshot rows for a
+        # legitimate reason (Kalshi hasn't opened it, so there's nothing to
+        # poll) -- that's not the same failure as a listed market the
+        # collector has stopped reporting on. prediction_contracts is
+        # populated by every discovery poll independent of whether price
+        # snapshotting succeeds, so it tells listed-vs-not apart from the
+        # snapshot table alone. Only flag data_stale when a market is
+        # actually listed and we still have no fresh bucket rows for it.
+        cur.execute("""
+            SELECT 1 FROM prediction_contracts
+            WHERE station_code = %s AND resolution_date = %s
+              AND variable = 'tmax_f' AND is_active
+            LIMIT 1
+        """, (station, target_date))
+        market_listed = cur.fetchone() is not None
+        data_stale = market_listed and len(bucket_rows) == 0
 
         # Market open time: Kalshi exposes this directly in its raw payload
         # (open_time) -- captured all along in source_payload_json, just
@@ -282,6 +298,7 @@ def get_ladder(station: str = Query(...), target_date: date = Query(...)):
         "hours_to_settle": float(hours_to_settle) if hours_to_settle is not None else None,
         "buckets": buckets,
         "data_stale": data_stale,
+        "market_listed": market_listed,
         "market_open_time": market_open_time,
         "market_close_time": market_close_dt.isoformat() if market_close_dt else None,
         "avg_dailyhigh_time_local": (clim_row["average_dailyhigh_time_local"].isoformat()
