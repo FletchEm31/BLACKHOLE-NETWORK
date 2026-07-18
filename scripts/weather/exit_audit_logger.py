@@ -232,34 +232,62 @@ def _determine_outcome(actual_tmax_f: float,
     """
     Determine NO-side outcome for a settled contract.
 
-    FIXED 2026-07-07: every boundary is inclusive on the bucket-wins side --
-    confirmed against Kalshi's own rules_primary text ("...is between 90-91,
-    then resolves Yes" -- both ends included) and independently confirmed
-    against a real settled market record (KXHIGHNY-26JUN10-B81.5,
-    settlement_temp_f=82.0 exactly equal to cap_strike=82, result=yes).
-    Previously used >= cap / <= floor for the NO_WIN (bucket-loses) side,
-    which silently excluded the exact boundary value from the bucket --
-    wrong on every shape (between/T-low/T-high), not just the between-
-    bucket cap. Confirmed real rows misclassified this way: 422, 523,
-    709, 1495, 2397 (all actual_tmax_f == bucket_cap, recorded NO_WIN,
-    truly NO_LOSS).
+    FIXED 2026-07-07: standard "between" buckets are inclusive on the
+    bucket-wins (YES) side -- confirmed against Kalshi's own rules_primary
+    text ("...is between 90-91, then resolves Yes" -- both ends included)
+    and independently confirmed against a real settled market record
+    (KXHIGHNY-26JUN10-B81.5, settlement_temp_f=82.0 exactly equal to
+    cap_strike=82, result=yes). Previously used >= cap / <= floor for the
+    NO_WIN (bucket-loses) side, which silently excluded the exact boundary
+    value from the bucket. Confirmed real rows misclassified this way:
+    422, 523, 709, 1495, 2397 (all actual_tmax_f == bucket_cap, recorded
+    NO_WIN, truly NO_LOSS).
+
+    FIXED 2026-07-18: the 2026-07-07 fix generalized that between-bucket
+    finding to threshold buckets too ("T95 means >=95"), but that
+    generalization was never independently verified and is wrong --
+    confirmed against raw Kalshi contract text (KXHIGHMIA-26JUL16-T97:
+    strike_type='greater', rules_primary "...is greater than 97°...",
+    subtitle "98° or above"; KXHIGHMIA-26JUL16-T90: strike_type='less',
+    rules_primary "...is less than 90°...", subtitle "89° or below").
+    Threshold buckets use a STRICT inequality for YES -- the exact
+    boundary value does NOT trigger YES, so it's a NO_WIN, not NO_LOSS.
+    Confirmed real rows misclassified this way: 6937 (KMIA T94,
+    actual_tmax_f=94.0 exactly, recorded NO_LOSS, truly NO_WIN), 12459
+    (KMIA T97, actual_tmax_f=97.0 exactly, recorded NO_LOSS, truly
+    NO_WIN).
 
     Standard bucket (floor AND cap set), e.g. "90-91":
-      NO_WIN  if actual < floor OR actual > cap   (tmax outside [floor, cap])
-      NO_LOSS if floor <= actual <= cap           (tmax inside; YES won)
+      NO_WIN  if actual < floor OR actual > cap   (tmax outside [floor, cap], strict)
+      NO_LOSS if floor <= actual <= cap           (tmax inside; YES won, inclusive)
 
-    T-low threshold (floor=None, cap=threshold, e.g. T65 '<=65°F'):
-      YES wins if actual <= cap (temp at or below threshold)
-      NO_WIN  if actual > cap
-      NO_LOSS if actual <= cap
+    T-low threshold (floor=None, cap=threshold, e.g. T90 '<90°F', Kalshi
+    subtitle "89° or below"):
+      YES wins if actual < cap (strict)
+      NO_WIN  if actual >= cap   (exact boundary -- YES did NOT trigger)
+      NO_LOSS if actual < cap
 
-    T-high threshold (floor=threshold, cap=None, e.g. T95 '>=95°F'):
-      YES wins if actual >= floor (temp at or above threshold)
-      NO_WIN  if actual < floor
-      NO_LOSS if actual >= floor
+    T-high threshold (floor=threshold, cap=None, e.g. T97 '>97°F', Kalshi
+    subtitle "98° or above"):
+      YES wins if actual > floor (strict)
+      NO_WIN  if actual <= floor  (exact boundary -- YES did NOT trigger)
+      NO_LOSS if actual > floor
     """
-    below_floor = bucket_floor is not None and actual_tmax_f < bucket_floor
-    above_cap   = bucket_cap   is not None and actual_tmax_f > bucket_cap
+    if bucket_floor is not None and bucket_cap is not None:
+        # Standard "between" bucket -- strict-outside/inclusive-inside,
+        # confirmed 2026-07-07 against a real settled market.
+        below_floor = actual_tmax_f < bucket_floor
+        above_cap   = actual_tmax_f > bucket_cap
+    elif bucket_cap is not None:
+        # T-low threshold -- strict "<cap" YES rule, confirmed 2026-07-18.
+        below_floor = False
+        above_cap   = actual_tmax_f >= bucket_cap
+    elif bucket_floor is not None:
+        # T-high threshold -- strict ">floor" YES rule, confirmed 2026-07-18.
+        below_floor = actual_tmax_f <= bucket_floor
+        above_cap   = False
+    else:
+        below_floor = above_cap = False
     return 'NO_WIN' if (below_floor or above_cap) else 'NO_LOSS'
 
 
