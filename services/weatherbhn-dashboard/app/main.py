@@ -439,18 +439,29 @@ def delete_journal_entry(entry_id: int):
 # ---------------------------------------------------------------------------
 
 
-def _sigma_marker_for_trade(bucket_floor, bucket_cap, mu, sigma) -> int:
-    """Same signed-distance-to-near-edge convention as
-    WEATHERBHN-SIGMA-ZONE-ANALYSIS-2026-07-17.md, rounded to the nearest
-    integer marker and clamped to [-4, 4] (the same 9 markers the ladder
-    shows)."""
+def _raw_sigma_distance(bucket_floor, bucket_cap, mu: float, sigma: float) -> float:
+    """Signed distance from the model's prediction to the bucket's near
+    edge, in units of sigma -- same convention as
+    WEATHERBHN-SIGMA-ZONE-ANALYSIS-2026-07-17.md. 0.0 when mu falls inside
+    the bucket (no near-edge distance in that case). Unrounded/unclamped --
+    _sigma_marker_for_trade() below rounds+clamps for the 9-marker display;
+    get_position_exits() uses the raw value for a precise per-trade figure
+    (e.g. "-2.1sigma")."""
     if bucket_floor is not None and mu < bucket_floor:
         signed_dist = bucket_floor - mu
     elif bucket_cap is not None and mu > bucket_cap:
         signed_dist = bucket_cap - mu
     else:
         signed_dist = 0.0
-    z = signed_dist / sigma
+    return signed_dist / sigma
+
+
+def _sigma_marker_for_trade(bucket_floor, bucket_cap, mu, sigma) -> int:
+    """Same signed-distance-to-near-edge convention as
+    WEATHERBHN-SIGMA-ZONE-ANALYSIS-2026-07-17.md, rounded to the nearest
+    integer marker and clamped to [-4, 4] (the same 9 markers the ladder
+    shows)."""
+    z = _raw_sigma_distance(bucket_floor, bucket_cap, mu, sigma)
     return max(-4, min(4, round(z)))
 
 
@@ -564,6 +575,7 @@ def get_position_exits(station: Optional[str] = Query(None)):
             SELECT station_code, target_date, contract_ticker, bucket_label,
                    bucket_floor, bucket_cap, side,
                    final_contracts_recommended, final_stake_usd_recommended,
+                   entry_no_ask_cents, final_entry_predicted_tmax_f, final_entry_sigma_used,
                    fee_usd, scored_at, final_outcome, final_realized_pnl_usd
             FROM weather_position_exits_clean
             {where}
@@ -586,6 +598,27 @@ def get_position_exits(station: Optional[str] = Query(None)):
 
         roi_pct = round((pnl / stake) * 100, 1) if (pnl is not None and stake) else None
 
+        # entry_price_cents: the actual price paid per contract, frozen at
+        # entry (entry_no_ask_cents) -- currently always the NO-side ask
+        # price since every row to date is side='NO'; this is not yet a
+        # side-aware field (no entry_yes_ask_cents exists), same open gap
+        # noted for Phase 2 elsewhere.
+        entry_price_cents = float(r["entry_no_ask_cents"]) if r["entry_no_ask_cents"] is not None else None
+
+        # entry_sigma_distance: how many sigma the bucket sat from the
+        # model's prediction at entry, using the frozen entry_* columns --
+        # same _raw_sigma_distance() convention as the reference strip's
+        # sigma markers, computed per-trade instead of per-marker-bucket.
+        entry_sigma_distance = None
+        mu    = r["final_entry_predicted_tmax_f"]
+        sigma = r["final_entry_sigma_used"]
+        if mu is not None and sigma is not None and float(sigma) > 0:
+            entry_sigma_distance = round(_raw_sigma_distance(
+                float(r["bucket_floor"]) if r["bucket_floor"] is not None else None,
+                float(r["bucket_cap"]) if r["bucket_cap"] is not None else None,
+                float(mu), float(sigma),
+            ), 1)
+
         positions.append({
             "station_code":    r["station_code"],
             "target_date":     r["target_date"].isoformat(),
@@ -596,6 +629,8 @@ def get_position_exits(station: Optional[str] = Query(None)):
             "side":            r["side"],
             "contracts":       r["final_contracts_recommended"],
             "investment_usd":  stake,
+            "entry_price_cents":    entry_price_cents,
+            "entry_sigma_distance": entry_sigma_distance,
             "fee_usd":         fee,
             "result":          result,
             "pnl_usd":         pnl,

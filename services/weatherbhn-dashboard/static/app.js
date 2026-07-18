@@ -454,10 +454,17 @@ function renderVolumeTable(data) {
   }
 }
 
+// Mirrors Kalshi's real ticker convention: a "between" bucket's ticker
+// suffix is B{midpoint} (e.g. B96.5 for 96-97), a threshold bucket's is
+// T{value} (e.g. T97) -- shown here as the range/open-end plus that same
+// suffix, so the label reads the same way the real contract_ticker does.
 function bucketRangeLabel(b) {
-  if (b.bucket_floor != null && b.bucket_cap != null) return `${b.bucket_floor}–${b.bucket_cap}°`;
-  if (b.bucket_floor != null) return `${b.bucket_floor}° or above`;
-  if (b.bucket_cap != null) return `${b.bucket_cap}° or below`;
+  if (b.bucket_floor != null && b.bucket_cap != null) {
+    const mid = (b.bucket_floor + b.bucket_cap) / 2;
+    return `${b.bucket_floor}–${b.bucket_cap}°, ${mid}`;
+  }
+  if (b.bucket_floor != null) return `${b.bucket_floor}° or above, T${b.bucket_floor}`;
+  if (b.bucket_cap != null) return `${b.bucket_cap}° or below, T${b.bucket_cap}`;
   return b.bucket_label;
 }
 
@@ -920,18 +927,23 @@ function resultClass(result) {
 function renderPaperPositionTable(positions) {
   const tbody = document.getElementById('paperPositionBody');
   if (!positions.length) {
-    tbody.innerHTML = '<tr><td colspan="9" class="hint">No paper trades placed yet.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="12" class="hint">No paper trades placed yet.</td></tr>';
     return;
   }
   tbody.innerHTML = positions.map(p => {
     const pnlClass = p.pnl_usd == null ? '' : (p.pnl_usd >= 0 ? 'row-win' : 'row-loss');
     const roiClass = p.roi_pct == null ? '' : (p.roi_pct >= 0 ? 'row-win' : 'row-loss');
+    const sigmaTxt = p.entry_sigma_distance == null ? '—'
+      : (p.entry_sigma_distance >= 0 ? '+' : '') + p.entry_sigma_distance.toFixed(1) + 'σ';
     return `<tr>
       <td>${p.station_code}</td>
       <td class="ticker-cell">${p.contract_ticker}</td>
       <td>${bucketRangeLabel(p)}</td>
       <td>${p.side}</td>
       <td>${p.investment_usd == null ? '—' : '$' + p.investment_usd.toFixed(2)}</td>
+      <td>${p.entry_price_cents == null ? '—' : p.entry_price_cents.toFixed(1) + '¢'}</td>
+      <td>${p.contracts == null ? '—' : p.contracts}</td>
+      <td>${sigmaTxt}</td>
       <td>${'$' + p.fee_usd.toFixed(2)}</td>
       <td class="${resultClass(p.result)}">${p.result}</td>
       <td class="${pnlClass}">${p.pnl_usd == null ? '—' : '$' + p.pnl_usd.toFixed(2)}</td>
