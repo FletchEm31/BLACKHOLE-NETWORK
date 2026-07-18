@@ -59,10 +59,53 @@ const state = {
   sigmaPerfPooled: null,  // /api/sigma-performance's pooled row, keyed by marker -- drives which sigma markers get a star
 };
 
-function todayIso() { return new Date().toISOString().slice(0, 10); }
+// Browser-local calendar date, NOT UTC (toISOString()/setUTCDate() give the
+// UTC calendar day -- wrong for a human clicking "Today": any time after
+// ~8PM EDT, UTC has already rolled to the next day, so the old
+// toISOString()-based version silently selected tomorrow's contract instead
+// of today's. Fixed 2026-07-17 -- same today/tomorrow confusion family as
+// the settlement-clock bug fixed in cp4_kelly_sizer.py tonight, but this is
+// an independent bug in a different codebase (dashboard date-picker
+// defaults), not the same code path.
+function localIso(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+function todayIso() { return localIso(new Date()); }
 function tomorrowIso() {
-  const d = new Date(); d.setUTCDate(d.getUTCDate() + 1);
-  return d.toISOString().slice(0, 10);
+  const d = new Date(); d.setDate(d.getDate() + 1);
+  return localIso(d);
+}
+
+// Ladder title ("Highest temperature in {City} {Today|Tomorrow}? {date}") --
+// parses state.date's Y-M-D components directly rather than `new Date(iso)`
+// + toLocaleString, since that round-trips through UTC midnight and would
+// shift the displayed date backward in negative-UTC-offset zones (the same
+// bug class fixed in todayIso()/tomorrowIso() above) -- a pure calendar
+// date like this has no time-of-day, so there's nothing to convert.
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'];
+function ordinalSuffix(n) {
+  if (n % 100 >= 11 && n % 100 <= 13) return 'th';
+  switch (n % 10) {
+    case 1: return 'st';
+    case 2: return 'nd';
+    case 3: return 'rd';
+    default: return 'th';
+  }
+}
+function formatLongDate(isoDateStr) {
+  const [y, m, d] = isoDateStr.split('-').map(Number);
+  return `${MONTH_NAMES[m - 1]} ${d}${ordinalSuffix(d)}, ${y}`;
+}
+function renderLadderTitle() {
+  const el = document.getElementById('ladderTitleMain');
+  if (!el) return;
+  const cityName = (state.cities.find(c => c.station_code === state.station) || {}).city || state.station;
+  const whenLabel = state.date === todayIso() ? 'Today' : 'Tomorrow';
+  el.textContent = `Highest temperature in ${cityName} ${whenLabel}? ${formatLongDate(state.date)}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -202,6 +245,7 @@ async function refreshLadder(isFullRefresh) {
       }
     }
 
+    renderLadderTitle();
     renderReferenceStrip(data);
     renderMarketTimes(data);
     renderProbabilityChart(data);

@@ -94,6 +94,15 @@ main { padding: 16px 20px 60px; display: flex; flex-direction: column; gap: 16px
 }
 .panel-title .hint { text-transform: none; font-weight: 400; color: var(--text-faint); letter-spacing: 0; }
 
+.ladder-title { margin-bottom: 10px; }
+.ladder-title-small {
+  font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
+  color: var(--text-dim);
+}
+.ladder-title-main {
+  font-size: 18px; font-weight: 700; color: var(--text); margin-top: 2px;
+}
+
 /* ---------- Reference strip ---------- */
 .sigma-marker-strip { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
 .sigma-marker {
