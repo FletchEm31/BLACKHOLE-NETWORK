@@ -20,21 +20,18 @@ import math
 import os
 import sys
 from datetime import date, datetime, timedelta, timezone
+from functools import lru_cache
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 import psycopg2
 import psycopg2.extras
 from scipy.stats import norm, t as student_t
 
-# Settlement = 4PM local. UTC equivalents:
-SETTLEMENT_UTC_HOUR = {
-    'KLAX': 0,   # 4PM PDT = 00:00 UTC next day (midnight)
-    'KDEN': 22,  # 4PM MDT = 22:00 UTC same day
-    'KMIA': 20,  # 4PM EDT = 20:00 UTC same day
-    'KNYC': 20,  # 4PM EDT = 20:00 UTC same day (same tz as KMIA)
-    'KAUS': 21,  # 4PM CDT = 21:00 UTC same day
-    'KORD': 21,  # 4PM CDT = 21:00 UTC same day (same tz as KAUS)
-}
+# Settlement clock — see _settlement_dt()'s docstring. Fixed 8AM ET is only
+# the fallback used when no live Kalshi snapshot exists yet; the real
+# per-contract estimate comes from Kalshi's own expected_expiration_time.
+_ET = ZoneInfo("America/New_York")
 SIGMA_FLOOR_RATIO   = 0.20   # never compress below 20% of base_sigma
 BANKROLL_CAP_PCT    = 0.10   # never stake more than 10% of bankroll on one contract
 EDGE_THRESHOLD_LIQ  = 5.0    # cents — liquid (volume > 100)
@@ -106,15 +103,57 @@ def _get_conn():
 # Helpers — settlement filter, ticker builder, label functions
 # ---------------------------------------------------------------------------
 
+@lru_cache(maxsize=512)
 def _settlement_dt(station_code: str, target_date: date) -> datetime:
-    """UTC settlement datetime for a given station/target_date."""
-    settle_hour = SETTLEMENT_UTC_HOUR.get(station_code, 20)
-    if settle_hour == 0:
-        # KLAX: 4PM PDT = midnight UTC start of (target_date + 1 day)
-        return (datetime(target_date.year, target_date.month, target_date.day,
-                         0, 0, 0, tzinfo=timezone.utc) + timedelta(days=1))
-    return datetime(target_date.year, target_date.month, target_date.day,
-                    settle_hour, 0, 0, tzinfo=timezone.utc)
+    """UTC settlement datetime for a given station/target_date.
+
+    Reads Kalshi's own expected_expiration_time from the latest live
+    snapshot (source_payload_json) instead of re-deriving the contract's
+    real rule ("sooner of the first 7:00 or 8:00 AM ET after NWS data
+    release, or one week after") ourselves -- Kalshi already computes this
+    per-contract, confirmed identical (same field, same ~10AM ET padded
+    estimate) across KAUS/KDEN/KMIA/KORD/KLAX regardless of legacy- vs
+    new-template Last Trading Time differences (see weatherbhn-dashboard/
+    app/model_math.py's LEGACY_TEMPLATE_CITIES/NEW_TEMPLATE_CITIES split --
+    that's Last Trading Time, a different concept; don't conflate the two).
+
+    Replaces the old "4PM local, same day" SETTLEMENT_UTC_HOUR assumption,
+    confirmed wrong for every station 2026-07-16/17. Falls back to a fixed
+    8AM ET next-day estimate (the rule's stated upper bound) only when no
+    snapshot exists yet, e.g. a market not yet listed.
+
+    Note: this is a conservative upper bound, not the real market-close
+    time -- real close (market_status='closed') has been confirmed to
+    happen ~5-9hrs earlier per station. run_cp4_kelly()'s own snapshot
+    query filters out market_status='closed' rows directly, so that gap
+    is closed at the signal-generation layer, not here.
+
+    Cached per (station_code, target_date): cp4_kelly_sizer runs as a fresh
+    process each 5-min cycle (bhn-weather-orchestrator.timer), so there's no
+    cross-cycle staleness risk -- this just avoids re-querying once per
+    bucket within a single run.
+    """
+    conn = _get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT source_payload_json ->> 'expected_expiration_time' AS eet
+                FROM weather_bronze_kalshi_market_snapshots
+                WHERE station_code = %s AND target_date = %s AND contract_side = 'high'
+                  AND source_payload_json ? 'expected_expiration_time'
+                ORDER BY retrieved_at DESC
+                LIMIT 1
+            """, (station_code, target_date))
+            row = cur.fetchone()
+    finally:
+        conn.close()
+
+    if row and row['eet']:
+        return datetime.fromisoformat(row['eet'].replace('Z', '+00:00'))
+
+    fallback_local = datetime(target_date.year, target_date.month, target_date.day,
+                               8, 0, 0, tzinfo=_ET) + timedelta(days=1)
+    return fallback_local.astimezone(timezone.utc)
 
 
 def _is_settled(station_code: str, target_date: date) -> bool:
@@ -177,12 +216,14 @@ def calculate_time_decayed_sigma(base_sigma: float, station_code: str,
     sigma_decayed = base_sigma * sqrt(hours_remaining / 24)
     Floor: 20% of base_sigma (never fully collapse uncertainty).
 
-    Must pass target_date to get the correct settlement time for that contract.
-    KLAX settles at midnight UTC the day AFTER target_date (4PM PDT).
-    KDEN/KMIA settle at 22:00/20:00 UTC on target_date itself.
+    Must pass target_date to get the correct settlement time for that
+    contract — see _settlement_dt() for how it's derived (Kalshi's own
+    expected_expiration_time, not a fixed per-station local-time offset).
 
-    Without target_date falls back to the old "next settlement from now"
-    logic — only correct for same-day contracts.
+    Without target_date, only reachable via a direct/test call (the real
+    pipeline always passes target_date): falls back to the next fixed 8AM
+    ET from `now`, same fallback _settlement_dt() uses when no snapshot
+    exists yet.
     """
     if evaluation_time_utc.tzinfo is None:
         now = evaluation_time_utc.replace(tzinfo=timezone.utc)
@@ -192,12 +233,10 @@ def calculate_time_decayed_sigma(base_sigma: float, station_code: str,
     if target_date is not None:
         settle_dt = _settlement_dt(station_code, target_date)
     else:
-        # Legacy path: "next settlement from now" — only correct for same-day contracts.
-        settle_hour = SETTLEMENT_UTC_HOUR.get(station_code, 20)
-        settle_dt = datetime(now.year, now.month, now.day,
-                             settle_hour, 0, 0, tzinfo=timezone.utc)
+        settle_local = datetime(now.year, now.month, now.day, 8, 0, 0, tzinfo=_ET)
+        settle_dt = settle_local.astimezone(timezone.utc)
         if settle_dt <= now:
-            settle_dt += timedelta(days=1)
+            settle_dt = (settle_local + timedelta(days=1)).astimezone(timezone.utc)
 
     hours_remaining = max((settle_dt - now).total_seconds() / 3600.0, 0.0)
     decay_factor = math.sqrt(min(hours_remaining, 24.0) / 24.0)
@@ -309,6 +348,16 @@ def run_cp4_kelly(station_code: str, target_date: date,
                   -- Staleness guard: collector runs ~33 min; 45 min gives one full
                   -- cycle of headroom before declaring data stale.
                   AND retrieved_at >= NOW() - INTERVAL '45 minutes'
+                  -- Real Kalshi market close, confirmed 2026-07-17 to happen
+                  -- ~5-9hrs BEFORE _is_settled()'s expected_expiration_time
+                  -- fires (that field is a flat padded upper-bound estimate,
+                  -- identical across stations -- not the actual close time).
+                  -- Without this, CP4 kept generating signals against a
+                  -- closed market for that whole gap. Only 'active'/'closed'
+                  -- values have ever been observed (verified against 14 days
+                  -- of live data, no nulls, no other statuses) -- excluding
+                  -- 'closed' is exact, not a guess at unseen status values.
+                  AND market_status != 'closed'
                   AND yes_bid  IS NOT NULL
                   AND no_ask   IS NOT NULL
                 ORDER BY bucket_floor NULLS LAST
