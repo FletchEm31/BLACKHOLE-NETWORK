@@ -180,17 +180,41 @@ def run_cp3_inference(station_code: str, target_date: date,
             }
 
         with conn.cursor() as cur:
+            # Day-of-year shrinkage calibration (2026-07-18c) -- replaces the
+            # season-bucket RMSE for CP4's actual sigma (NOT the two
+            # model-feature lookups above, which stay season-bucket since
+            # the trained XGBoost model expects that exact input
+            # distribution). blended_sigma is already shrinkage-blended
+            # between real forecast-error RMSE and an 80yr climatological
+            # prior -- see weather_model_calibration_daily's table comment.
             cur.execute("""
-                SELECT rmse
-                FROM model_calibration
+                SELECT blended_sigma AS rmse
+                FROM weather_model_calibration_daily
                 WHERE station_code = %s
                   AND variable = 'tmax_f'
                   AND source_model = 'nws'
                   AND lead_time_hours = 24
-                  AND season = %s
+                  AND day_of_year = %s
                 LIMIT 1
-            """, (station_code, season))
+            """, (station_code, target_date.timetuple().tm_yday))
             cal_row = cur.fetchone()
+
+            # Fall back to the season-bucket table if this station/day-of-year
+            # has no row yet (e.g. a station added after the last calibration
+            # build run) -- never a hard failure, same posture as the 3.5F
+            # fallback below.
+            if cal_row is None or cal_row['rmse'] is None:
+                cur.execute("""
+                    SELECT rmse
+                    FROM model_calibration
+                    WHERE station_code = %s
+                      AND variable = 'tmax_f'
+                      AND source_model = 'nws'
+                      AND lead_time_hours = 24
+                      AND season = %s
+                    LIMIT 1
+                """, (station_code, season))
+                cal_row = cur.fetchone()
 
     finally:
         if close_conn:

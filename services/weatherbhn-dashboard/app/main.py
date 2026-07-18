@@ -183,13 +183,26 @@ def get_ladder(station: str = Query(...), target_date: date = Query(...)):
             and signal_row.get("sigma_used") is None
         )
         if need_computed_sigma:
+            # Day-of-year shrinkage calibration (2026-07-18c) -- mirrors
+            # cp3_inference.py's real base_rmse lookup exactly, so the
+            # dashboard's "computed fresh" sigma preview matches what CP4
+            # actually uses. Falls back to the season-bucket model_calibration
+            # table if this station/day-of-year has no row yet.
             cur.execute("""
-                SELECT rmse FROM model_calibration
+                SELECT blended_sigma AS rmse FROM weather_model_calibration_daily
                 WHERE station_code = %s AND variable = 'tmax_f'
                   AND source_model = 'nws' AND lead_time_hours = 24
-                  AND season = %s
-            """, (station, model_math.season_for(target_date)))
+                  AND day_of_year = %s
+            """, (station, target_date.timetuple().tm_yday))
             base_sigma_row = cur.fetchone()
+            if base_sigma_row is None or base_sigma_row.get("rmse") is None:
+                cur.execute("""
+                    SELECT rmse FROM model_calibration
+                    WHERE station_code = %s AND variable = 'tmax_f'
+                      AND source_model = 'nws' AND lead_time_hours = 24
+                      AND season = %s
+                """, (station, model_math.season_for(target_date)))
+                base_sigma_row = cur.fetchone()
 
     mu = sigma = None
     mu_source = sigma_source = "none"
