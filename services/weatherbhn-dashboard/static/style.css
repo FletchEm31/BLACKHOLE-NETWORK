@@ -289,12 +289,20 @@ main { padding: 16px 20px 60px; display: flex; flex-direction: column; gap: 16px
 .collapsible-title::-webkit-details-marker { display: none; }
 .collapsible-title::before { content: "▾ "; }
 details:not([open]) > .collapsible-title::before { content: "▸ "; }
+/* table-layout: fixed + an explicit width on EVERY column (including the
+   first) -- .data-table's base width:100% otherwise means the browser's
+   auto layout dumps all leftover panel width into whichever column has no
+   explicit width (the first/label column here), ballooning it and shoving
+   every marker box to the right of the panel instead of spreading evenly.
+   width: auto + margin: 0 auto shrinks the table to its real content width
+   and centers it, rather than stretching to fill the panel. */
+.sigma-perf-table { table-layout: fixed; width: auto; margin: 0 auto; }
 .sigma-perf-table th, .sigma-perf-table td { text-align: center; padding: 3px 4px; }
-.sigma-perf-table td:first-child, .sigma-perf-table th:first-child { text-align: left; font-weight: 700; white-space: nowrap; }
+.sigma-perf-table td:first-child, .sigma-perf-table th:first-child { text-align: left; font-weight: 700; white-space: nowrap; width: 90px; }
 /* Fixed cell size (2026-07-17 styling fix) -- every marker column, empty or
    populated, gets the same width/height so the grid reads as a clean, even
    table instead of empty cells collapsing smaller than data-filled ones. */
-.sigma-perf-table td:not(:first-child) { width: 68px; }
+.sigma-perf-table td:not(:first-child), .sigma-perf-table th:not(:first-child) { width: 68px; }
 .perf-cell {
   border-radius: 4px; padding: 2px 4px; cursor: help;
   border: 1px solid var(--panel-border);
