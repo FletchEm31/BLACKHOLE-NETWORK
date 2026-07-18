@@ -456,15 +456,21 @@ function renderVolumeTable(data) {
 
 // Mirrors Kalshi's real ticker convention: a "between" bucket's ticker
 // suffix is B{midpoint} (e.g. B96.5 for 96-97), a threshold bucket's is
-// T{value} (e.g. T97) -- shown here as the range/open-end plus that same
-// suffix, so the label reads the same way the real contract_ticker does.
+// T{strike} (e.g. T97). The T-suffix is the raw stored strike (matches the
+// real contract_ticker), but the strike is an EXCLUSIVE boundary -- Kalshi's
+// rule is strictly ">strike"/"<strike", confirmed 2026-07-18 against raw
+// contract text (KXHIGHMIA-26JUL16-T97: rules "is greater than 97",
+// subtitle "98 or above"; -T90: rules "is less than 90", subtitle "89 or
+// below"). So the human-readable phrase is strike+-1 (matching Kalshi's own
+// subtitle), NOT the bare strike value -- same fix applied to the
+// exit_audit_logger.py settlement bug this same night.
 function bucketRangeLabel(b) {
   if (b.bucket_floor != null && b.bucket_cap != null) {
     const mid = (b.bucket_floor + b.bucket_cap) / 2;
     return `${b.bucket_floor}–${b.bucket_cap}°, ${mid}`;
   }
-  if (b.bucket_floor != null) return `${b.bucket_floor}° or above, T${b.bucket_floor}`;
-  if (b.bucket_cap != null) return `${b.bucket_cap}° or below, T${b.bucket_cap}`;
+  if (b.bucket_floor != null) return `${b.bucket_floor + 1}° or above, T${b.bucket_floor}`;
+  if (b.bucket_cap != null) return `${b.bucket_cap - 1}° or below, T${b.bucket_cap}`;
   return b.bucket_label;
 }
 
