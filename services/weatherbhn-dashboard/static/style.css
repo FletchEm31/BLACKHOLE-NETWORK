@@ -171,6 +171,14 @@ main { padding: 16px 20px 60px; display: flex; flex-direction: column; gap: 16px
 .data-table td { padding: 6px 8px; border-bottom: 1px solid var(--panel-border); text-align: right; vertical-align: top; }
 .data-table tbody tr:hover { background: var(--row-hover); }
 
+/* Column-group divider -- e.g. Position Summary's frozen-at-entry block
+   (Model Predicted Temp/NWS/GFS/Model Raw) bracketed off from what's
+   before (Bucket) and after (Final Actual Temp, the real settled value,
+   not frozen). Apply to both the group-label header row's edge cells and
+   every data cell at the same column position, so the line runs
+   unbroken from the label down through every row. */
+.data-table .col-divider-start { border-left: 2px solid var(--text-dim); }
+
 /* ---------- Ladder table specifics ---------- */
 .ladder-table td, .ladder-table th { text-align: center; }
 .ladder-table td.col-bucket, .ladder-table th.col-bucket { text-align: left; }
