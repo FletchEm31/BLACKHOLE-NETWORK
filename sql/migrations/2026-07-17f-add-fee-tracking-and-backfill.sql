@@ -46,12 +46,28 @@ WHERE fee_usd IS NULL
 -- corrected_actual_tmax_f/corrected_actual_outcome/etc.) rather than
 -- overwriting the raw realized_pnl_usd audit trail -- weather_position_
 -- exits_clean.final_realized_pnl_usd already COALESCEs to this column.
+--
+-- IMPORTANT -- verified live before writing this: 32 of the 101 settled
+-- rows already have a corrected_realized_pnl_usd that DIFFERS from raw
+-- realized_pnl_usd (a real prior correction, e.g. the boundary-inclusion
+-- outcome fix -- see _determine_outcome()'s docstring in
+-- exit_audit_logger.py). An earlier draft of this migration gated on
+-- "corrected_realized_pnl_usd IS NULL", which is wrong here (that column
+-- is never NULL for a settled row) and would have silently no-opped
+-- (as it did in dry-run) or, if the guard were simply removed, clobbered
+-- those 32 legitimate prior corrections. This version layers the fee
+-- subtraction on top of whatever correction already exists (COALESCE to
+-- the raw value only when no prior correction exists), so both classes
+-- of correction compose instead of one overwriting the other.
+--
+-- ONE-TIME BACKFILL, not idempotent -- do not re-run this UPDATE. A second
+-- run would subtract fee_usd a second time from every row's already-
+-- corrected value, since fee_usd itself doesn't change between runs.
 UPDATE weather_position_exits
-SET corrected_realized_pnl_usd = realized_pnl_usd - fee_usd
+SET corrected_realized_pnl_usd = COALESCE(corrected_realized_pnl_usd, realized_pnl_usd) - fee_usd
 WHERE scored_at IS NOT NULL
   AND realized_pnl_usd IS NOT NULL
-  AND fee_usd IS NOT NULL
-  AND corrected_realized_pnl_usd IS NULL;
+  AND fee_usd IS NOT NULL;
 
 -- View re-created to expose fee_usd (pass-through, no corrected_fee_usd
 -- counterpart planned -- unlike the other final_* columns, this one has no
