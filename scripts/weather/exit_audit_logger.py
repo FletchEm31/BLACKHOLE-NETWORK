@@ -232,6 +232,31 @@ def _determine_outcome(actual_tmax_f: float,
     """
     Determine NO-side outcome for a settled contract.
 
+    BUCKET DEFINITION -- READ THIS BEFORE TOUCHING THE COMPARISON OPERATORS
+    BELOW. Every possible whole-degree temperature reading belongs to
+    EXACTLY ONE bucket. No overlaps, no gaps. The boundary between any two
+    adjacent buckets is a single integer degree wide, touching but never
+    shared -- there is no reading that could plausibly belong to two
+    buckets.
+
+      - Range buckets are inclusive on BOTH ends, as whole-degree readings:
+        "79 to 80" means the outcome is exactly 79 OR exactly 80. Nothing
+        else.
+      - "81 or above" starts at 81, not 80. A reading of 80 belongs to
+        "79 to 80" and can NEVER be counted under "81 or above". A reading
+        of 81 belongs ONLY to "81 or above" and can NEVER be counted under
+        "79 to 80".
+      - Same logic on the bottom end: "72 or below" includes 72 and
+        everything colder, and stops there. A reading of 73 belongs ONLY
+        to "73 to 74", never to "72 or below". A reading of 72 belongs
+        ONLY to "72 or below", never to "73 to 74".
+      - Concretely: temp=80 -> "79-80" (never "81 or above"). temp=81 ->
+        "81 or above" (never "79-80"). temp=72 -> "72 or below" (never
+        "73-74"). temp=73 -> "73-74" (never "72 or below"). See
+        test_determine_outcome_boundaries.py for these exact four
+        assertions plus full coverage of all three bucket shapes -- run it
+        before changing anything in this function, and keep it passing.
+
     FIXED 2026-07-07: standard "between" buckets are inclusive on the
     bucket-wins (YES) side -- confirmed against Kalshi's own rules_primary
     text ("...is between 90-91, then resolves Yes" -- both ends included)
