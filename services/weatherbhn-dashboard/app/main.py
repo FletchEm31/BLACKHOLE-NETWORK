@@ -576,8 +576,10 @@ def get_position_exits(station: Optional[str] = Query(None)):
                    bucket_floor, bucket_cap, side, entry_captured_at,
                    final_contracts_recommended, final_stake_usd_recommended,
                    entry_no_ask_cents, final_entry_predicted_tmax_f, final_entry_sigma_used,
-                   final_actual_tmax_f,
+                   final_actual_tmax_f, final_entry_edge_cents,
                    entry_nws_maxt_f, entry_gfs_maxt_f, entry_model_maxt_f,
+                   GREATEST(entry_nws_maxt_f, entry_gfs_maxt_f, entry_model_maxt_f)
+                     - LEAST(entry_nws_maxt_f, entry_gfs_maxt_f, entry_model_maxt_f) AS entry_delta_f,
                    fee_usd, scored_at, final_outcome, final_realized_pnl_usd
             FROM weather_position_exits_clean
             {where}
@@ -634,6 +636,13 @@ def get_position_exits(station: Optional[str] = Query(None)):
             "nws_maxt_f":       float(r["entry_nws_maxt_f"]) if r["entry_nws_maxt_f"] is not None else None,
             "gfs_maxt_f":       float(r["entry_gfs_maxt_f"]) if r["entry_gfs_maxt_f"] is not None else None,
             "model_maxt_f":     float(r["entry_model_maxt_f"]) if r["entry_model_maxt_f"] is not None else None,
+            # entry_delta_f: GREATEST-LEAST spread across whichever of the
+            # 3 source forecasts are actually populated (Postgres
+            # GREATEST/LEAST skip NULLs, only NULL if all 3 are missing) --
+            # not "NULL unless all 3 present". View-level only, computed in
+            # the SELECT, no new column.
+            "entry_delta_f":    float(r["entry_delta_f"]) if r["entry_delta_f"] is not None else None,
+            "entry_edge_cents": float(r["final_entry_edge_cents"]) if r["final_entry_edge_cents"] is not None else None,
             "side":            r["side"],
             "contracts":       r["final_contracts_recommended"],
             "investment_usd":  stake,

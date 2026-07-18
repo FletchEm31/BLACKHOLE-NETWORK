@@ -944,7 +944,7 @@ function _fmtPST(iso) {
 function renderPaperPositionTable(positions) {
   const tbody = document.getElementById('paperPositionBody');
   if (!positions.length) {
-    tbody.innerHTML = '<tr><td colspan="18" class="hint">No paper trades placed yet.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="20" class="hint">No paper trades placed yet.</td></tr>';
     return;
   }
   tbody.innerHTML = positions.map(p => {
@@ -961,6 +961,8 @@ function renderPaperPositionTable(positions) {
       <td>${p.nws_maxt_f == null ? '—' : p.nws_maxt_f.toFixed(1) + '°'}</td>
       <td>${p.gfs_maxt_f == null ? '—' : p.gfs_maxt_f.toFixed(1) + '°'}</td>
       <td>${p.model_maxt_f == null ? '—' : p.model_maxt_f.toFixed(1) + '°'}</td>
+      <td>${p.entry_delta_f == null ? '—' : p.entry_delta_f.toFixed(1) + '°'}</td>
+      <td>${p.entry_edge_cents == null ? '—' : p.entry_edge_cents.toFixed(1) + '¢'}</td>
       <td class="col-divider-start">${p.actual_tmax_f == null ? '—' : p.actual_tmax_f.toFixed(1) + '°'}</td>
       <td>${p.side}</td>
       <td>${p.investment_usd == null ? '—' : '$' + p.investment_usd.toFixed(2)}</td>
