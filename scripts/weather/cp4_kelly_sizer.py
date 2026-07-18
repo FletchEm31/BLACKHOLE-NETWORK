@@ -41,6 +41,15 @@ EDGE_THRESHOLD_LIQ  = 5.0    # cents — liquid (volume > 100)
 EDGE_THRESHOLD_ILL  = 8.0    # cents — illiquid (volume <= 100 or unknown)
 MIN_NO_ASK_CENTS    = 3.0    # skip buckets with no_ask below this — effectively dead market
 
+# No-trade sigma zone — 2026-07-17, sigma-based (not fixed-degree), backed by
+# the entry_sigma_used backtest: -1σ..+1σ (excluding dead-center) tested at
+# -8.6%/-41.6% ROI on the real historical sample. -2σ..-1σ is the verified-
+# profitable zone (below/above sigma-zone asymmetry finding) this rule
+# preserves. Scales with each city/day's actual sigma rather than a flat
+# degree band, which would be too wide on low-sigma days (e.g. KMIA) and too
+# narrow on high-sigma days (e.g. KDEN).
+NO_TRADE_SIGMA_ZONE = 1.0    # exclude buckets within |z| < 1.0 of predicted mean
+
 # Daily bucket cap — added 2026-07-17c, harm-reduction stopgap for
 # correlated multi-bucket betting (see run_cp4_kelly()'s cap logic for the
 # full backtest rationale). Backtested cap=2 by confidence = -6.7% ROI vs
@@ -203,10 +212,11 @@ def calculate_bucket_probability(predicted_tmax_f: float,
                                   sigma: float,
                                   bucket_floor: Optional[float],
                                   bucket_cap: Optional[float],
-                                  blended_mean: float) -> tuple[float, str]:
+                                  blended_mean: float) -> tuple[float, str, float]:
     """
-    Returns (prob_yes, distribution_used).
+    Returns (prob_yes, distribution_used, sigma_dist).
     prob_yes = P(tmax falls in [bucket_floor, bucket_cap]).
+    sigma_dist = |bucket_mid - blended_mean| / sigma (used for the no-trade zone check).
 
     Within 2-sigma of blended_mean → Gaussian CDF.
     Beyond 2-sigma (tail bracket)  → Student-t CDF (df=5, heavier tails).
@@ -227,7 +237,7 @@ def calculate_bucket_probability(predicted_tmax_f: float,
               - norm.cdf(eff_floor, loc=blended_mean, scale=sigma))
         dist = 'gaussian'
 
-    return max(0.0, min(1.0, prob)), dist
+    return max(0.0, min(1.0, prob)), dist, sigma_dist
 
 
 # ---------------------------------------------------------------------------
@@ -355,7 +365,7 @@ def run_cp4_kelly(station_code: str, target_date: date,
         no_ask_cents  = round(no_ask_dec  * 100, 2)
 
         # P(YES): probability tmax lands in this bucket per our model
-        prob_yes, dist = calculate_bucket_probability(
+        prob_yes, dist, sigma_dist = calculate_bucket_probability(
             predicted_tmax_f, sigma, bucket_floor, bucket_cap, predicted_tmax_f
         )
         # P(NO): our model's probability this bucket does NOT win
@@ -393,6 +403,7 @@ def run_cp4_kelly(station_code: str, target_date: date,
 
         no_ask_thin = no_ask_cents < MIN_NO_ASK_CENTS
         valid_price  = 0 < no_ask_cents < 100
+        in_no_trade_zone = sigma_dist < NO_TRADE_SIGMA_ZONE
 
         # No minimum lead-time requirement, by design (confirmed 2026-07-07,
         # not an oversight): a signal qualifies the moment its edge crosses
@@ -405,7 +416,8 @@ def run_cp4_kelly(station_code: str, target_date: date,
         # every hour in between; that spread is expected, not a bug. Do not
         # add an hours_to_settle floor here without revisiting this note.
         qualifies    = bool(not pre_open and valid_price and not no_ask_thin
-                            and edge_cents >= edge_threshold and not spread_too_wide)
+                            and edge_cents >= edge_threshold and not spread_too_wide
+                            and not in_no_trade_zone)
 
         # Dollar-sizing uses the corrected entry price (weather_position_exits.
         # entry_no_ask_cents via migration 003), not the live no_ask_cents —
@@ -461,6 +473,8 @@ def run_cp4_kelly(station_code: str, target_date: date,
             'contracts':         contracts,
             'stake_usd':         stake_usd,
             'sigma_used':        round(sigma, 4),
+            'sigma_dist':        round(sigma_dist, 4),
+            'in_no_trade_zone':  in_no_trade_zone,
             'distribution_used': dist,
             'hours_to_settle':   hours_to_settle,
             'open_interest':     open_interest,
@@ -640,6 +654,8 @@ def write_to_ledger(conn, station_code: str, target_date: date,
                 skip_reason = 'NO_ASK_TOO_THIN'
             elif b.get('spread_too_wide'):
                 skip_reason = 'SPREAD_TOO_WIDE'
+            elif b.get('in_no_trade_zone'):
+                skip_reason = 'NO_TRADE_ZONE'
             elif b.get('illiquid_capped'):
                 skip_reason = 'ILLIQUID_CAP'
             elif b.get('daily_cap_exceeded'):
@@ -744,8 +760,8 @@ if __name__ == "__main__":
                          args.model_rmse, args.bankroll)
     print(f"{'Bucket':10} {'Floor':>6} {'Cap':>6} "
           f"{'no_ask¢':>8} {'yes_bid¢':>9} {'model¢':>7} {'edge¢':>7} "
-          f"{'qual':>5} {'contracts':>9} {'stake$':>7} {'sigma':>7} {'dist'}")
-    print("-" * 105)
+          f"{'qual':>5} {'contracts':>9} {'stake$':>7} {'sigma':>7} {'z':>6} {'zone':>5} {'dist'}")
+    print("-" * 120)
     for o in opps:
         print(f"{o['bucket_label']:10} "
               f"{(o['bucket_floor'] or 0):>6.0f} {(o['bucket_cap'] or 0):>6.0f} "
@@ -753,4 +769,5 @@ if __name__ == "__main__":
               f"{o['model_prob_cents']:>7.2f} {o['edge_cents']:>7.2f} "
               f"{'Y' if o['qualifies'] else 'N':>5} "
               f"{o['contracts']:>9} {o['stake_usd']:>7.2f} "
-              f"{o['sigma_used']:>7.4f} {o['distribution_used']}")
+              f"{o['sigma_used']:>7.4f} {o['sigma_dist']:>6.2f} "
+              f"{'NTZ' if o['in_no_trade_zone'] else '':>5} {o['distribution_used']}")
