@@ -22,7 +22,7 @@ const DATA_SOURCES = [
   { label: 'Bucket set', text: 'latest single snapshot batch only (MAX(retrieved_at), 45-min staleness cutoff) — matches CP4\'s own query, so removed/stale buckets drop out instead of lingering' },
   { label: 'Model % / Edge columns', text: 'Model % = exact Gaussian CDF mass between the bucket\'s (already threshold-opened) floor/cap given today\'s μ/σ (Python math.erf, not the chart\'s JS approximation). Edge = Model % − market Chance%.' },
   { label: 'σ marker chip colors', text: '0σ = green (sole Yes-bet target), ±2σ = yellow, ±3σ = red (No-bet targets) — operator-specified single points, per WEATHERBHN-SIGMA-ZONE-ANALYSIS-2026-07-17.md context.' },
-  { label: 'σ marker gold ★', text: 'Fixed set: -2σ, -3σ, +3σ only (reverted 2026-07-17 from a brief dynamic-ROI version — with cells this thin, chasing "whatever currently looks best" chases noise, not signal). -2σ is starred for real, twice-independently-verified evidence (+30-36% ROI, two methods, matched); -3σ/+3σ are starred as zones deliberately still being actively tested despite thin samples (n=1-2), not because they\'re top performers. A stable target to keep collecting data against, not a rule that shifts as trades settle. NOT the naive -2/+2 symmetry — +2σ was a confirmed losing zone at -11.1% ROI and stays unstarred.' },
+  { label: 'σ marker gold ★', text: 'Dynamic (permanent rule as of 2026-07-17, supersedes an earlier same-night fixed-set revert): a marker gets a star exactly when the Sigma-Marker Performance panel\'s pooled "All Cities" row shows positive NET DOLLARS for it — not ROI%, and not a fixed set. Updates automatically on the panel\'s 5-min refresh as trades settle; a marker can gain or lose its star on its own. Star = historically profitable in the pooled data, NOT live trading eligibility — a starred marker can still fall inside cp4_kelly_sizer.py\'s live |z|&lt;1.0 no-trade exclusion zone and be untradeable right now (hover a star for this note).' },
   { label: 'Sigma-Marker Performance panel', text: 'Live, recomputed on every load from every settled trade (weather_position_exits_clean) across all 3 cities — grows as more trades settle, not a snapshot. Each trade\'s entry-time signed z-score is rounded to the nearest integer marker (-4..+4), so these numbers will NOT exactly match WEATHERBHN-SIGMA-ZONE-ANALYSIS-2026-07-17.md\'s custom zone-ranges — different binning method, same underlying trades. Every marker (including 0σ) uses the plain recorded No-side outcome — no Yes-side resimulation. Cell color: green = positive ROI (any sample size), everything else neutral.' },
 ];
 
@@ -56,7 +56,7 @@ const state = {
   journal: [],
   probChart: null,
   countdownSec: PRICE_REFRESH_MS / 1000,
-  sigmaPerfPooled: null,  // /api/sigma-performance's pooled row, keyed by marker -- feeds the live performance panel only; does NOT drive stars (reverted 2026-07-17 to the fixed STAR_MARKERS set)
+  sigmaPerfPooled: null,  // /api/sigma-performance's pooled row, keyed by marker -- feeds BOTH the live performance panel AND isStarredMarker() (positive net $), same source of truth so they stay in sync automatically
 };
 
 // Browser-local calendar date, NOT UTC (toISOString()/setUTCDate() give the
@@ -302,7 +302,7 @@ function renderReferenceStrip(data) {
       const isStarred = isStarredMarker(m.n);
       const colorClass = markerColorClass(m.n);
       div.className = 'sigma-marker' + (colorClass ? ' ' + colorClass : '') + (isStarred ? ' starred' : '');
-      const star = isStarred ? ' &#9733;' : '';
+      const star = isStarred ? ` <span title="${starTitle()}">&#9733;</span>` : '';
       div.innerHTML = `<div class="n">${m.n > 0 ? '+' : ''}${m.n}&sigma;${star}</div><div class="temp">${m.temp_f}&deg;F</div>`;
       strip.appendChild(div);
     }
@@ -431,26 +431,31 @@ function bucketRangeLabel(b) {
   return b.bucket_label;
 }
 
-// Reverted 2026-07-17 back to a fixed set (was briefly dynamic in 5cc7aab,
-// driven by the Sigma-Marker Performance panel's live pooled ROI). Reason:
-// with cells this thin (n=1-6 across most of the grid), a rule that stars
-// "whatever's currently showing the best number" chases noise, not signal.
-// This exact set is a deliberate, explicit design choice, NOT derived from
-// which zones currently look best: -2sigma is starred because it's the only
-// zone with real, twice-independently-verified evidence (+30-36% ROI,
-// reconstructed by two separate methods and matched); -3sigma/+3sigma are
-// starred as zones deliberately still being actively tested despite thin
-// samples (n=1-2), not because they're top dynamic performers. The point is
-// a stable, unchanging target to keep collecting data against -- watch
-// whether -2sigma keeps holding up and whether -3/+3sigma eventually earn
-// real trust -- not to have the highlighted zones shift underneath us every
-// time new trades settle. Explicitly NOT the naive -2/+2 symmetry:
-// +2sigma was a confirmed losing zone at -11.1% ROI and stays unstarred.
-// The live Sigma-Marker Performance panel is still shown separately, for
-// watching real ROI accumulate -- it just no longer drives the stars.
-const STAR_MARKERS = new Set([-2, -3, 3]);
+// Dynamic again as of 2026-07-17, superseding the same-night fixed-set
+// revert -- deliberate reversal, operator direction, not a bug being
+// reintroduced. New permanent rule: a marker gets a star exactly when the
+// Sigma-Marker Performance panel's pooled "All Cities" row shows positive
+// NET DOLLARS (cell.pnl > 0) for it -- NOT positive ROI% (tagClass()/the
+// panel's own cell coloring stays ROI-based, unchanged; the star criterion
+// and the panel's green-cell criterion are deliberately different now, so
+// don't assume they always agree). Same source of truth as the panel
+// (state.sigmaPerfPooled), so both stay in sync automatically as trades
+// settle -- no separate maintenance. Stars gain/lose on their own on the
+// next 5-min refreshSigmaPerformance() cycle; no manual intervention.
+// Known, accepted consequence: a marker can show starred here (historically
+// profitable in the pooled data) while still being excluded from live
+// signals by cp4_kelly_sizer.py's |z|<1.0 no-trade zone -- e.g. -1sigma can
+// be starred while untradeable under the current live rule. Star = historical
+// performance, not live trading eligibility -- see starTitle()'s tooltip.
 function isStarredMarker(n) {
-  return STAR_MARKERS.has(n);
+  const cell = state.sigmaPerfPooled && state.sigmaPerfPooled[n];
+  return !!cell && cell.pnl != null && cell.pnl > 0;
+}
+
+// Shared tooltip text for the star glyph itself, both call sites -- keeps
+// the clarification from drifting between the reference strip and ladder.
+function starTitle() {
+  return "Historically profitable (positive net $) in the pooled live-trade data — may not currently be tradeable (e.g. inside cp4_kelly_sizer.py's |z|<1.0 no-trade exclusion zone). Star = historical performance, not live trading eligibility.";
 }
 
 // Shared color rule for BOTH the top reference strip and the ladder's
@@ -483,9 +488,9 @@ function renderLadderTable(data) {
       .map(n => {
         const marker = data.sigma_markers.find(m => m.n === n);
         const tempStr = marker ? ` / ${marker.temp_f}&deg;F` : '';
-        const star = isStarredMarker(n) ? ' &#9733;' : '';
+        const star = isStarredMarker(n) ? ` <span title="${starTitle()}">&#9733;</span>` : '';
         // Same markerColorClass() shared with the reference strip -- the
-        // two must always agree. Star is the fixed STAR_MARKERS set
+        // two must always agree. Star is the dynamic pooled-net-$ rule
         // (isStarredMarker), a separate signal layered on top, not tied
         // to the fixed colors.
         const colorClass = markerColorClass(n);
