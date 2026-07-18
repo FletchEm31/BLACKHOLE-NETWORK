@@ -86,7 +86,7 @@ _RECORD_SQL = """
         entry_no_ask_cents, entry_captured_at,
         entry_edge_cents, entry_model_prob_no_cents,
         entry_predicted_tmax_f, entry_hours_to_settle, entry_sigma_used,
-        entry_hours_to_avg_dailyhigh
+        entry_hours_to_avg_dailyhigh, fee_usd
     ) VALUES (
         %(station_code)s, %(target_date)s, %(contract_ticker)s, %(real_market_ticker)s,
         %(bucket_label)s, %(bucket_floor)s, %(bucket_cap)s, %(side)s, %(decision_timestamp)s,
@@ -96,7 +96,7 @@ _RECORD_SQL = """
         %(no_ask_cents)s, %(decision_timestamp)s,
         %(edge_cents)s, %(model_prob_no_cents)s,
         %(predicted_tmax_f)s, %(entry_hours_to_settle)s, %(sigma_used)s,
-        %(entry_hours_to_avg_dailyhigh)s
+        %(entry_hours_to_avg_dailyhigh)s, %(fee_usd)s
     )
     ON CONFLICT (contract_ticker, side) DO UPDATE SET
         decision_timestamp    = EXCLUDED.decision_timestamp,
@@ -108,7 +108,8 @@ _RECORD_SQL = """
         contracts_recommended = EXCLUDED.contracts_recommended,
         stake_usd_recommended = EXCLUDED.stake_usd_recommended,
         hours_to_settle       = EXCLUDED.hours_to_settle,
-        sigma_used            = EXCLUDED.sigma_used
+        sigma_used            = EXCLUDED.sigma_used,
+        fee_usd               = EXCLUDED.fee_usd
     WHERE weather_position_exits.scored_at IS NULL
 """
 
@@ -215,6 +216,7 @@ def record_paper_trade(conn, station_code: str, target_date: date,
                 'is_paper_trade':        is_paper_trade,
                 'entry_hours_to_settle': entry_hours_to_settle,
                 'entry_hours_to_avg_dailyhigh': entry_hours_to_avg_dailyhigh,
+                'fee_usd':               b.get('fee_usd', 0.0),
             })
             inserted += cur.rowcount
     return inserted
@@ -272,9 +274,21 @@ def score_settled_positions(dry_run: bool = False,
        WHERE actual_source = 'nws_cli' AND is_final = TRUE.
        If no final actual yet: skip (will be retried on next run).
     3. Determine NO_WIN / NO_LOSS.
-    4. Compute realized P&L:
-         NO_WIN:  contracts * (1.00 - no_ask_cents/100)
-         NO_LOSS: contracts * (-no_ask_cents/100)
+    4. Compute realized P&L (fee-adjusted, fixed 2026-07-17 -- see
+       cp4_kelly_sizer.py's _maker_fee() docstring for the full bug writeup):
+         NO_WIN:  contracts * (1.00 - entry_ask_c/100) - fee_usd
+         NO_LOSS: contracts * (-entry_ask_c/100) - fee_usd
+       fee_usd is charged at entry regardless of outcome, so it's subtracted
+       in both branches, not just the loss side. Rows predating this fix
+       have fee_usd = NULL -- COALESCE'd to 0.0 (no fee subtracted) rather
+       than guessed at; those 101 rows were backfilled separately via
+       sql/migrations/2026-07-17-backfill-position-exit-fees.sql, which
+       computes and stores their fee_usd AND writes the fee-adjusted total
+       to corrected_realized_pnl_usd (this function's own UPDATE below only
+       ever touches realized_pnl_usd, so it can't retroactively fix rows it
+       already scored without fee_usd -- the backfill migration is what
+       makes weather_position_exits_clean.final_realized_pnl_usd correct for
+       those rows via the corrected_realized_pnl_usd COALESCE).
     5. UPDATE row (skipped when dry_run=True).
     6. Log per-station summary and return summary dict.
 
@@ -295,7 +309,7 @@ def score_settled_positions(dry_run: bool = False,
                     SELECT id, station_code, target_date, contract_ticker,
                            bucket_label, bucket_floor, bucket_cap,
                            no_ask_cents, entry_no_ask_cents, contracts_recommended,
-                           stake_usd_recommended
+                           stake_usd_recommended, fee_usd
                     FROM weather_position_exits
                     WHERE target_date = %s
                       AND scored_at IS NULL
@@ -307,7 +321,7 @@ def score_settled_positions(dry_run: bool = False,
                     SELECT id, station_code, target_date, contract_ticker,
                            bucket_label, bucket_floor, bucket_cap,
                            no_ask_cents, entry_no_ask_cents, contracts_recommended,
-                           stake_usd_recommended
+                           stake_usd_recommended, fee_usd
                     FROM weather_position_exits
                     WHERE scored_at IS NULL
                       AND side = 'NO'
@@ -375,10 +389,16 @@ def score_settled_positions(dry_run: bool = False,
                     row['contract_ticker'],
                 )
 
+            # fee_usd NULL for rows predating the 2026-07-17 fee fix -- those
+            # were backfilled separately (see this function's docstring);
+            # COALESCE to 0.0 here rather than guessing at a value for any
+            # row this SELECT might somehow encounter without one.
+            fee_usd = float(row['fee_usd']) if row['fee_usd'] is not None else 0.0
+
             outcome = _determine_outcome(actual_tmax, floor_val, cap_val)
             pnl = round(
-                contracts * (1.00 - entry_ask_c / 100.0) if outcome == 'NO_WIN'
-                else contracts * (-entry_ask_c / 100.0),
+                (contracts * (1.00 - entry_ask_c / 100.0) if outcome == 'NO_WIN'
+                 else contracts * (-entry_ask_c / 100.0)) - fee_usd,
                 4,
             )
 

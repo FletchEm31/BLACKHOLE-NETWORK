@@ -67,6 +67,27 @@ CITY_MAP = {'KDEN': 'Denver', 'KLAX': 'Los Angeles', 'KMIA': 'Miami',
             'KNYC': 'New York City', 'KAUS': 'Austin', 'KORD': 'Chicago'}
 
 
+def _maker_fee(p: float, n: int) -> float:
+    """Kalshi maker fee, USD. ceil(0.0175 * p * (1-p) * n * 100) / 100.
+
+    Same formula as scripts/trading/fee_calculator.py's maker_fee() -- kept
+    as an inline duplicate (not imported) since that module isn't deployed
+    alongside cp4_kelly_sizer.py, same posture as weatherbhn-dashboard/
+    app/model_math.py's other duplicated-not-imported formulas.
+
+    Added 2026-07-17: confirmed CP4 sizing, weather_position_exits, and
+    exit_audit_logger.py's exit scoring never accounted for this fee
+    anywhere -- entry sizing, the stored stake/contracts, and every settled
+    trade's realized_pnl_usd were all fee-free (gross, not net). Quantified
+    against the 101 already-settled paper trades at the time of this fix:
+    $98.52 total overstatement (~$0.98/trade average). This function is the
+    fix's entry-side half; exit_audit_logger.py's score_settled_positions()
+    is the other half (subtracts the stored fee_usd from realized P&L).
+    """
+    p = max(0.0, min(1.0, float(p)))
+    return math.ceil(0.0175 * p * (1 - p) * n * 100) / 100
+
+
 def apply_liquidity_caps(contracts: int, open_interest: Optional[float],
                           volume: Optional[float]) -> int:
     """Cap a Kelly-sized contract count to the open-interest and volume caps.
@@ -507,6 +528,12 @@ def run_cp4_kelly(station_code: str, target_date: date,
 
                 stake_usd = round(contracts * cost_per_contract, 2)
 
+        # Kalshi maker fee, charged at entry regardless of win/loss -- see
+        # _maker_fee()'s docstring for the 2026-07-17 fee-omission fix this
+        # is part of. Computed off entry_cents/final contracts (post
+        # liquidity-cap adjustment) so it matches what was actually sized.
+        fee_usd = round(_maker_fee(entry_cents / 100.0, contracts), 2) if contracts > 0 else 0.0
+
         results.append({
             'bucket_label':      b['bucket_label'],
             'bucket_floor':      bucket_floor,
@@ -521,6 +548,7 @@ def run_cp4_kelly(station_code: str, target_date: date,
             'qualifies':         qualifies,
             'contracts':         contracts,
             'stake_usd':         stake_usd,
+            'fee_usd':           fee_usd,
             'sigma_used':        round(sigma, 4),
             'sigma_dist':        round(sigma_dist, 4),
             'in_no_trade_zone':  in_no_trade_zone,
