@@ -151,12 +151,17 @@
       <select id="paperPositionCityFilter">
         <option value="">All cities</option>
       </select>
+      <div class="col-picker-wrap">
+        <button type="button" id="paperPositionColsBtn" class="col-picker-btn">Columns ▾</button>
+        <div id="paperPositionColsPanel" class="col-picker-panel" hidden></div>
+      </div>
+      <span id="paperPositionTotals" class="paper-position-totals"></span>
     </div>
     <div class="table-scroll">
       <table id="paperPositionTable" class="data-table">
         <thead>
-          <tr><th colspan="5"></th><th colspan="6" class="col-divider-start" style="text-align:center">Entry</th><th colspan="9"></th></tr>
-          <tr><th>Station</th><th>Execution Time (PST)</th><th>Ticker</th><th>Bucket</th><th>Final Actual Temp</th><th class="col-divider-start">Model Predicted Temp</th><th>NWS Forecast</th><th>GFS Forecast</th><th>Model Raw</th><th>Entry Delta</th><th>Entry Edge</th><th class="col-divider-start">Side</th><th>Investment</th><th>Price</th><th>Contracts</th><th>Sigma</th><th>Fee</th><th>Result</th><th>P&amp;L</th><th>ROI%</th></tr>
+          <tr id="paperPositionGroupRow"></tr>
+          <tr id="paperPositionHeaderRow"></tr>
         </thead>
         <tbody id="paperPositionBody"></tbody>
       </table>

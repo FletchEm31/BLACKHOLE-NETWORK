@@ -154,6 +154,7 @@ async function init() {
   renderFooter();
   initNotepad();
   renderPaperPositionCityFilter();
+  initPaperPositionColumns();
   document.getElementById('journalForm').addEventListener('submit', onJournalSubmit);
 
   // Sigma-performance fetched BEFORE the first ladder render -- it drives
@@ -898,6 +899,172 @@ async function refreshSigmaPerformance() {
 // tabs/state.station.
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Paper Position Summary -- column hide/show + width resize. View-only,
+// never adds or removes underlying data/columns -- operator's explicit
+// 2026-07-19 scope. State persisted in localStorage so it survives a
+// reload. Order MUST match the hardcoded <td> order in
+// renderPaperPositionTable() exactly -- this array only drives the
+// header row/picker panel/resize handles, not row content itself.
+// ---------------------------------------------------------------------------
+
+const PP_COLUMNS = [
+  { key: 'station',    label: 'Station' },
+  { key: 'exec_time',  label: 'Execution Time (PST)' },
+  { key: 'ticker',     label: 'Ticker' },
+  { key: 'bucket',     label: 'Bucket' },
+  { key: 'actual_temp', label: 'Final Actual Temp' },
+  { key: 'pred_temp',  label: 'Model Predicted Temp', divider: true, group: 'entry-start' },
+  { key: 'nws',        label: 'NWS Forecast' },
+  { key: 'gfs',        label: 'GFS Forecast' },
+  { key: 'model_raw',  label: 'Model Raw' },
+  { key: 'entry_delta', label: 'Entry Delta' },
+  { key: 'entry_edge', label: 'Entry Edge', group: 'entry-end' },
+  { key: 'side',       label: 'Side', divider: true },
+  { key: 'investment', label: 'Investment' },
+  { key: 'price',      label: 'Price' },
+  { key: 'contracts',  label: 'Contracts' },
+  { key: 'sigma',      label: 'Sigma' },
+  { key: 'fee',        label: 'Fee' },
+  { key: 'result',     label: 'Result' },
+  { key: 'pnl',        label: 'P&L' },
+  { key: 'roi',        label: 'ROI%' },
+];
+
+const PP_STORAGE_KEY = 'ppColumnState.v1';
+
+function _ppLoadState() {
+  try {
+    const raw = localStorage.getItem(PP_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch (e) { return {}; }
+}
+function _ppSaveState(s) {
+  try { localStorage.setItem(PP_STORAGE_KEY, JSON.stringify(s)); } catch (e) {}
+}
+
+const ppState = _ppLoadState();
+if (!ppState.hidden) ppState.hidden = {};
+if (!ppState.widths) ppState.widths = {};
+
+function _ppApplyVisibilityCSS() {
+  let style = document.getElementById('ppVisibilityStyle');
+  if (!style) {
+    style = document.createElement('style');
+    style.id = 'ppVisibilityStyle';
+    document.head.appendChild(style);
+  }
+  style.textContent = PP_COLUMNS.map((c, i) => {
+    if (!ppState.hidden[c.key]) return '';
+    const n = i + 1;
+    return `#paperPositionTable #paperPositionHeaderRow th:nth-child(${n}), ` +
+           `#paperPositionTable tbody td:nth-child(${n}) { display: none; }`;
+  }).join('\n');
+}
+
+function _ppApplyWidthsCSS() {
+  let style = document.getElementById('ppWidthStyle');
+  if (!style) {
+    style = document.createElement('style');
+    style.id = 'ppWidthStyle';
+    document.head.appendChild(style);
+  }
+  style.textContent = PP_COLUMNS.map((c, i) => {
+    const w = ppState.widths[c.key];
+    if (!w) return '';
+    const n = i + 1;
+    return `#paperPositionTable #paperPositionHeaderRow th:nth-child(${n}), ` +
+           `#paperPositionTable tbody td:nth-child(${n}) ` +
+           `{ width: ${w}px; max-width: ${w}px; overflow: hidden; text-overflow: ellipsis; }`;
+  }).join('\n');
+}
+
+function _ppUpdateGroupSpans() {
+  const startIdx = PP_COLUMNS.findIndex(c => c.group === 'entry-start');
+  const endIdx = PP_COLUMNS.findIndex(c => c.group === 'entry-end');
+  let a = 0, entry = 0, b = 0;
+  PP_COLUMNS.forEach((c, i) => {
+    if (ppState.hidden[c.key]) return;
+    if (i < startIdx) a++;
+    else if (i <= endIdx) entry++;
+    else b++;
+  });
+  const row = document.getElementById('paperPositionGroupRow');
+  row.innerHTML = `<th colspan="${a}"></th>` +
+    (entry > 0 ? `<th colspan="${entry}" class="col-divider-start" style="text-align:center">Entry</th>` : '') +
+    `<th colspan="${b}"></th>`;
+}
+
+function _ppWireResize() {
+  document.querySelectorAll('#paperPositionHeaderRow th').forEach((th, i) => {
+    const handle = th.querySelector('.col-resize-handle');
+    if (!handle) return;
+    let startX, startW;
+    const onMove = (e) => {
+      const w = Math.max(30, startW + (e.clientX - startX));
+      th.style.width = w + 'px';
+      th.style.maxWidth = w + 'px';
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      ppState.widths[PP_COLUMNS[i].key] = th.offsetWidth;
+      _ppSaveState(ppState);
+      _ppApplyWidthsCSS();
+    };
+    handle.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      startX = e.clientX;
+      startW = th.offsetWidth;
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+  });
+}
+
+function buildPaperPositionHeader() {
+  const row = document.getElementById('paperPositionHeaderRow');
+  row.innerHTML = PP_COLUMNS.map(c =>
+    `<th class="${c.divider ? 'col-divider-start' : ''}">` +
+      `<span class="col-th-label">${c.label}</span>` +
+      `<span class="col-resize-handle"></span>` +
+    `</th>`
+  ).join('');
+  _ppUpdateGroupSpans();
+  _ppWireResize();
+}
+
+function buildPaperPositionColsPanel() {
+  const panel = document.getElementById('paperPositionColsPanel');
+  panel.innerHTML = PP_COLUMNS.map(c =>
+    `<label class="col-picker-item">` +
+      `<input type="checkbox" data-col-key="${c.key}" ${ppState.hidden[c.key] ? '' : 'checked'}> ${c.label}` +
+    `</label>`
+  ).join('');
+  panel.querySelectorAll('input[type=checkbox]').forEach(cb => {
+    cb.addEventListener('change', () => {
+      const key = cb.dataset.colKey;
+      if (cb.checked) delete ppState.hidden[key]; else ppState.hidden[key] = true;
+      _ppSaveState(ppState);
+      _ppApplyVisibilityCSS();
+      _ppUpdateGroupSpans();
+    });
+  });
+
+  const btn = document.getElementById('paperPositionColsBtn');
+  btn.addEventListener('click', (e) => { e.stopPropagation(); panel.hidden = !panel.hidden; });
+  document.addEventListener('click', (e) => {
+    if (!panel.hidden && !panel.contains(e.target) && e.target !== btn) panel.hidden = true;
+  });
+}
+
+function initPaperPositionColumns() {
+  buildPaperPositionHeader();
+  buildPaperPositionColsPanel();
+  _ppApplyVisibilityCSS();
+  _ppApplyWidthsCSS();
+}
+
 function renderPaperPositionCityFilter() {
   const el = document.getElementById('paperPositionCityFilter');
   for (const c of state.cities) {
@@ -941,7 +1108,35 @@ function _fmtPST(iso) {
   });
 }
 
+// Gross P&L - Gross Fee = Net P&L, scoped to whatever the city dropdown
+// currently shows (positions is already filtered server-side by station
+// before this runs). Settled trades only (result !== 'OPEN') -- an open
+// position's fee was charged at entry but its P&L isn't known yet, so
+// including one without the other would make "Net" inconsistent. Matches
+// the same scoping used for the operator's portfolio P&L reconciliation
+// earlier tonight (scored_at IS NOT NULL).
+function renderPaperPositionTotals(positions) {
+  const el = document.getElementById('paperPositionTotals');
+  if (!el) return;
+  const settled = positions.filter(p => p.result !== 'OPEN');
+  if (!settled.length) {
+    el.innerHTML = '<span class="hint">No settled trades yet for this filter.</span>';
+    return;
+  }
+  const grossPnl = settled.reduce((sum, p) => sum + (p.pnl_usd || 0), 0);
+  const grossFee = settled.reduce((sum, p) => sum + (p.fee_usd || 0), 0);
+  const netPnl = grossPnl - grossFee;
+  const cls = v => (v >= 0 ? 'row-win' : 'row-loss');
+  const openCount = positions.length - settled.length;
+  el.innerHTML =
+    `<span class="${cls(grossPnl)}">Gross P&amp;L: $${grossPnl.toFixed(2)}</span>` +
+    ` &minus; Gross Fee: $${grossFee.toFixed(2)}` +
+    ` = <strong class="${cls(netPnl)}">Net P&amp;L: $${netPnl.toFixed(2)}</strong>` +
+    ` <span class="hint">(${settled.length} settled${openCount ? `, ${openCount} open` : ''})</span>`;
+}
+
 function renderPaperPositionTable(positions) {
+  renderPaperPositionTotals(positions);
   const tbody = document.getElementById('paperPositionBody');
   if (!positions.length) {
     tbody.innerHTML = '<tr><td colspan="20" class="hint">No paper trades placed yet.</td></tr>';

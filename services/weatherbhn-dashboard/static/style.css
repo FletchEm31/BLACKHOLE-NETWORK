@@ -270,6 +270,35 @@ main { padding: 16px 20px 60px; display: flex; flex-direction: column; gap: 16px
   background: var(--input-bg); color: var(--text); border: 1px solid var(--panel-border);
   border-radius: 6px; padding: 4px 8px; font-size: 13px;
 }
+.paper-position-totals { margin-left: auto; font-size: 13px; }
+
+/* Column picker (hide/show) + resize handles -- view-only controls, never
+   add/remove data or columns, just what's visible and how wide. State
+   persisted client-side (localStorage), server/data untouched. */
+.col-picker-wrap { position: relative; }
+.col-picker-btn {
+  background: var(--input-bg); color: var(--text); border: 1px solid var(--panel-border);
+  border-radius: 6px; padding: 4px 10px; font-size: 13px; cursor: pointer;
+}
+.col-picker-btn:hover { border-color: var(--accent-blue); }
+.col-picker-panel {
+  position: absolute; top: calc(100% + 4px); left: 0; z-index: 20;
+  background: var(--panel-bg); border: 1px solid var(--panel-border); border-radius: 8px;
+  padding: 8px; min-width: 200px; max-height: 320px; overflow-y: auto;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  display: grid; grid-template-columns: 1fr 1fr; gap: 2px 12px;
+}
+.col-picker-item {
+  display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text);
+  white-space: nowrap; cursor: pointer; padding: 2px 0;
+}
+#paperPositionHeaderRow th { position: relative; padding-right: 14px; }
+.col-th-label { display: inline-block; }
+.col-resize-handle {
+  position: absolute; top: 0; right: 0; bottom: 0; width: 8px; cursor: col-resize;
+  user-select: none;
+}
+.col-resize-handle:hover { background: var(--accent-blue); opacity: 0.5; }
 
 /* ---------- Journal ---------- */
 .journal-form { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
