@@ -534,10 +534,15 @@ function activePositionInlineHtml(pos) {
   const pnlClass = pos.unrealized_pnl_usd == null ? '' : (pos.unrealized_pnl_usd >= 0 ? 'row-win' : 'row-loss');
   const pnlStr = pos.unrealized_pnl_usd == null ? '—' : `${pos.unrealized_pnl_usd >= 0 ? '+' : ''}$${pos.unrealized_pnl_usd.toFixed(2)}`;
   const roiStr = pos.unrealized_roi_pct == null ? '—' : `${pos.unrealized_roi_pct >= 0 ? '+' : ''}${pos.unrealized_roi_pct.toFixed(1)}%`;
+  // "Mkt" prefix deliberately labels this as price-based mark-to-market --
+  // the separate auto-win badge (bucketRangeLabel row, same td) is the only
+  // physical running-high signal on this row; the two are independent and
+  // can disagree, same caveat as Active Trade Summary's Mkt vs Temp Track
+  // columns.
   return `
     <div class="active-position-inline">
       <div class="api-row"><span class="api-label">Active:</span> ${pos.side} @ ${fmtC(pos.entry_price_cents)} &times; ${pos.contracts ?? '—'}</div>
-      <div class="api-row ${pnlClass}">${roiStr} / ${pnlStr}</div>
+      <div class="api-row ${pnlClass}" title="Mark-to-market off the live market price -- price-based, not temperature-based.">Mkt: ${roiStr} / ${pnlStr}</div>
     </div>`;
 }
 
@@ -944,9 +949,17 @@ function onTrackClass(onTrack) {
   if (onTrack === false) return 'row-loss';
   return '';
 }
+// Deliberately NOT "On track"/"Off track" -- those read as an overall
+// verdict on the position, but this is ONLY the physical running-high-vs-
+// bucket check (see the Temp Track column header's tooltip). It can and
+// does diverge from the price-based Mkt ROI%/P&L columns next to it (the
+// market hasn't necessarily caught up to what the temperature is already
+// showing, or vice versa) -- "Favorable"/"Unfavorable" keeps the label
+// scoped to what it actually measures instead of implying agreement with
+// the P&L columns.
 function onTrackLabel(onTrack) {
-  if (onTrack === true) return 'On track';
-  if (onTrack === false) return 'Off track';
+  if (onTrack === true) return 'Favorable (temp)';
+  if (onTrack === false) return 'Unfavorable (temp)';
   return '—';
 }
 
