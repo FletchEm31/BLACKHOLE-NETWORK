@@ -177,7 +177,8 @@ main { padding: 16px 20px 60px; display: flex; flex-direction: column; gap: 16px
    not frozen). Apply to both the group-label header row's edge cells and
    every data cell at the same column position, so the line runs
    unbroken from the label down through every row. */
-.data-table .col-divider-start { border-left: 2px solid var(--text-dim); }
+.data-table .col-divider-start { border-left: 2px solid var(--accent-blue); }
+.bucket-cell { white-space: nowrap; }
 
 /* ---------- Ladder table specifics ---------- */
 .ladder-table td, .ladder-table th { text-align: center; }

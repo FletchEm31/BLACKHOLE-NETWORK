@@ -956,15 +956,15 @@ function renderPaperPositionTable(positions) {
       <td>${p.station_code}</td>
       <td>${_fmtPST(p.entry_captured_at)}</td>
       <td class="ticker-cell">${p.contract_ticker}</td>
-      <td>${bucketRangeLabel(p)}</td>
+      <td class="bucket-cell">${bucketRangeLabel(p)}</td>
+      <td>${p.actual_tmax_f == null ? '—' : p.actual_tmax_f.toFixed(1) + '°'}</td>
       <td class="col-divider-start">${p.predicted_tmax_f == null ? '—' : p.predicted_tmax_f.toFixed(1) + '°'}</td>
       <td>${p.nws_maxt_f == null ? '—' : p.nws_maxt_f.toFixed(1) + '°'}</td>
       <td>${p.gfs_maxt_f == null ? '—' : p.gfs_maxt_f.toFixed(1) + '°'}</td>
       <td>${p.model_maxt_f == null ? '—' : p.model_maxt_f.toFixed(1) + '°'}</td>
       <td>${p.entry_delta_f == null ? '—' : p.entry_delta_f.toFixed(1) + '°'}</td>
       <td>${p.entry_edge_cents == null ? '—' : p.entry_edge_cents.toFixed(1) + '¢'}</td>
-      <td class="col-divider-start">${p.actual_tmax_f == null ? '—' : p.actual_tmax_f.toFixed(1) + '°'}</td>
-      <td>${p.side}</td>
+      <td class="col-divider-start">${p.side}</td>
       <td>${p.investment_usd == null ? '—' : '$' + p.investment_usd.toFixed(2)}</td>
       <td>${p.entry_price_cents == null ? '—' : p.entry_price_cents.toFixed(1) + '¢'}</td>
       <td>${p.contracts == null ? '—' : p.contracts}</td>
