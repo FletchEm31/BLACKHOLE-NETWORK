@@ -24,6 +24,7 @@ const DATA_SOURCES = [
   { label: 'σ marker chip colors', text: '0σ = green (sole Yes-bet target), ±2σ = yellow, ±3σ = red (No-bet targets) — operator-specified single points, per WEATHERBHN-SIGMA-ZONE-ANALYSIS-2026-07-17.md context.' },
   { label: 'σ marker gold ★', text: 'Dynamic (permanent rule as of 2026-07-17, supersedes an earlier same-night fixed-set revert): a marker gets a star exactly when the Sigma-Marker Performance panel\'s pooled "All Cities" row shows positive NET DOLLARS for it — not ROI%, and not a fixed set. Updates automatically on the panel\'s 5-min refresh as trades settle; a marker can gain or lose its star on its own. Star = historically profitable in the pooled data, NOT live trading eligibility — a starred marker can still fall inside cp4_kelly_sizer.py\'s live |z|&lt;1.0 no-trade exclusion zone and be untradeable right now (hover a star for this note).' },
   { label: 'Sigma-Marker Performance panel', text: 'Live, recomputed on every load from every settled trade (weather_position_exits_clean) across all 3 cities — grows as more trades settle, not a snapshot. Each trade\'s entry-time signed z-score is rounded to the nearest integer marker (-4..+4), so these numbers will NOT exactly match WEATHERBHN-SIGMA-ZONE-ANALYSIS-2026-07-17.md\'s custom zone-ranges — different binning method, same underlying trades. Every marker (including 0σ) uses the plain recorded No-side outcome — no Yes-side resimulation. Cell color: green = positive ROI (any sample size), everything else neutral.' },
+  { label: 'Active Trade Summary / running-high auto-indicator', text: 'Today\'s running high-so-far comes from live ASOS readings (weather_bronze_synoptic_asos.air_temp_f, ~15-20min lag), bucketed by each station\'s own local calendar day. NWS\'s official Daily Climate Report is compiled FROM ASOS data — same underlying measurement, not a competing source — but the official report doesn\'t finalize until settlement, and may apply QC/rounding adjustments; treat the live on-track/auto-win indicator as directionally accurate in real time, not as the final settlement value.' },
 ];
 
 const KNOWN_ISSUES = [
@@ -583,7 +584,7 @@ function renderLadderTable(data) {
     // manual checkbox itself.
     const isAutoWinning = data.running_high_bucket_label === b.bucket_label;
     const autoWinBadge = isAutoWinning
-      ? ` <span class="auto-win-badge" title="Today's running high-so-far (${data.running_high_so_far}&deg;F) is currently in this bucket -- automatic, live indicator, not a manual selection.">&#127777; live</span>`
+      ? ` <span class="auto-win-badge" title="Today's running high-so-far (${data.running_high_so_far}&deg;F, live ASOS) is currently in this bucket -- automatic, live indicator, not a manual selection. Based on live ASOS readings; official NWS settlement may finalize differently, especially near real-time.">&#127777; live</span>`
       : '';
 
     tr.innerHTML = `
