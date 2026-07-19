@@ -1,0 +1,18 @@
+# BHN WeatherBHN — Synoptic 5-minute live-temperature collector cadence.
+# Separate fast timer from the main 30-minute bundle (bhn-weather-collector-
+# hillsboro.timer) because Synoptic's HF-METAR-blended data actually updates
+# at ~5-minute resolution; a 30-minute poll would throw away most of it.
+# recent=15 (see fetch_synoptic()) means a single missed 5-minute tick is
+# self-healed by the next one, not a silent gap.
+
+[Unit]
+Description=BHN WeatherBHN Synoptic collector — Hillsboro (every 5 minutes)
+
+[Timer]
+OnCalendar=*-*-* *:0/5:00
+Unit=bhn-weather-collector-synoptic.service
+Persistent=true
+RandomizedDelaySec=30
+
+[Install]
+WantedBy=timers.target

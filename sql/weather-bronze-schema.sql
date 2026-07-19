@@ -301,6 +301,36 @@ CREATE INDEX IF NOT EXISTS idx_era5_klax_valid_time
     ON weather_bronze_era5_klax (valid_time);
 
 
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 9) weather_bronze_synoptic_asos
+--    Synoptic Weather API standard station timeseries (HF-METAR blended,
+--    ~5-minute resolution on the free trial -- confirmed live 2026-07-18).
+--    NOT the dedicated 1-minute "1M" network (separately gated, trial
+--    doesn't have it). Natural key (station_code, observed_at); collector
+--    polls every 5 min requesting recent=15 so overlapping pulls self-heal
+--    missed cycles. Applied via sql/migrations/2026-07-18-synoptic-asos-bronze-table.sql.
+--    SYNOPTIC_API_TOKEN is a 14-day trial token issued 2026-07-18 -- will
+--    stop authenticating after ~2026-08-01 unless upgraded to paid.
+-- ─────────────────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS weather_bronze_synoptic_asos (
+    id                  BIGSERIAL       PRIMARY KEY,
+    station_code        TEXT            NOT NULL,           -- ICAO e.g. 'KDEN' (Synoptic STID)
+    observed_at         TIMESTAMPTZ     NOT NULL,           -- UTC, from API date_time field
+    air_temp_f          NUMERIC,                             -- raw air_temp value (requested in °F)
+    source_payload_json JSONB,          -- raw per-observation object for this station/timestamp
+    retrieved_at        TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT weather_bronze_synoptic_asos_unique
+        UNIQUE (station_code, observed_at)
+);
+
+CREATE INDEX IF NOT EXISTS brsyn_station_observed_idx
+    ON weather_bronze_synoptic_asos (station_code, observed_at DESC);
+
+CREATE INDEX IF NOT EXISTS brsyn_retrieved_idx
+    ON weather_bronze_synoptic_asos (retrieved_at DESC);
+
+
 -- Permissions
 DO $$
 BEGIN
@@ -313,17 +343,25 @@ BEGIN
         GRANT SELECT ON weather_bronze_visual_crossing_actuals TO horizon_agent_reader;
         GRANT SELECT ON weather_bronze_era5_kmia TO horizon_agent_reader;
         GRANT SELECT ON weather_bronze_era5_klax TO horizon_agent_reader;
+        GRANT SELECT ON weather_bronze_synoptic_asos TO horizon_agent_reader;
     END IF;
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'grafana_reader') THEN
         GRANT SELECT ON weather_bronze_visual_crossing_actuals TO grafana_reader;
         GRANT SELECT ON weather_bronze_era5_kmia TO grafana_reader;
         GRANT SELECT ON weather_bronze_era5_klax TO grafana_reader;
+        GRANT SELECT ON weather_bronze_synoptic_asos TO grafana_reader;
     END IF;
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'agent_reader') THEN
         GRANT SELECT ON weather_bronze_visual_crossing_actuals TO agent_reader;
+        GRANT SELECT ON weather_bronze_synoptic_asos TO agent_reader;
     END IF;
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'n8n_user') THEN
         GRANT SELECT ON weather_bronze_visual_crossing_actuals TO n8n_user;
+        GRANT SELECT ON weather_bronze_synoptic_asos TO n8n_user;
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'bhn_weather_collector') THEN
+        GRANT INSERT, SELECT ON weather_bronze_synoptic_asos TO bhn_weather_collector;
+        GRANT USAGE, SELECT ON SEQUENCE weather_bronze_synoptic_asos_id_seq TO bhn_weather_collector;
     END IF;
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'bhn_trader') THEN
         GRANT SELECT, INSERT, UPDATE ON weather_bronze_visual_crossing_actuals TO bhn_trader;

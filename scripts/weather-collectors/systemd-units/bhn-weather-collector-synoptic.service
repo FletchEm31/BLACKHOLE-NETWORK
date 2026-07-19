@@ -1,0 +1,33 @@
+# BHN WeatherBHN — Synoptic 5-minute live-temperature collector.
+# Writes to weather_bronze_synoptic_asos over WireGuard using the same
+# bhn_weather_collector PG role as the rest of Hillsboro's sources (bronze
+# tables only — no trading/ledger access, no Alpaca credentials on this
+# host). Runs standalone on its own 5-minute timer (see the paired .timer
+# unit) rather than inside the 30-minute asos/nws/nbm/... bundle, since
+# Synoptic's data cadence is much faster than the rest of that bundle.
+#
+# On failure this unit exits non-zero, which systemd surfaces via
+# `systemctl --failed` and journalctl — the same visible-failure path as
+# every other collector unit on this host. stdout/stderr also append to
+# the shared collector.log below.
+
+[Unit]
+Description=BHN WeatherBHN Synoptic collector — Hillsboro (synoptic)
+After=network-online.target wg-quick@wg0.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/bhn-weather
+EnvironmentFile=/etc/bhn-weather-collector.env
+
+ExecStart=/usr/bin/python3 /opt/bhn-weather/weather_data_collector.py --source synoptic
+
+StandardOutput=append:/var/log/bhn-weather/collector.log
+StandardError=append:/var/log/bhn-weather/collector.log
+
+TimeoutStartSec=60
+TimeoutStopSec=15
+
+[Install]

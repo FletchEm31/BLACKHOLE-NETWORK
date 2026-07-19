@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-weather_data_collector.py — BHN Strategy 9 (BHN-PREDICTION-ALPHA) Phase 1 collector.
+weather_data_collector.py — BHN Strategy 9 (BHN-PREDICTION-ALPHA) bronze-layer collector.
 
 Polls free weather data sources every 6 hours (via bhn-weather-collector.timer)
 and writes to the weather-schema tables.
@@ -63,6 +63,7 @@ CLI:
   python3 weather_data_collector.py --source asos
   python3 weather_data_collector.py --source kalshi_markets
   python3 weather_data_collector.py --source nws_actuals
+  python3 weather_data_collector.py --source synoptic  # 5-min live temp, weather_bronze_synoptic_asos
   python3 weather_data_collector.py --dry-run    # log only, no PG writes
 """
 from __future__ import annotations
@@ -107,7 +108,7 @@ logger = tc.get_logger("strat_9_weather_alpha_collector")
 
 
 # ─────────────────────────────────────────────────────────────────────────
-# 10 Phase-1 target cities (Kalshi-aligned ICAO codes)
+# 10 target cities (Kalshi-aligned ICAO codes)
 # ─────────────────────────────────────────────────────────────────────────
 
 @dataclass(frozen=True)
@@ -624,7 +625,7 @@ def fetch_usda_crops(dry_run: bool = False) -> int:
     import os
     api_key = os.environ.get("USDA_NASS_API_KEY")
     if not api_key:
-        logger.info("usda_crops: USDA_NASS_API_KEY not set — skipping (Phase 1 scaffold)")
+        logger.info("usda_crops: USDA_NASS_API_KEY not set — skipping (scaffold, not yet wired)")
         return 0
     logger.info("usda_crops: SCAFFOLD — endpoint reachable but PG insert not yet wired.")
     return 0
@@ -1286,6 +1287,118 @@ def fetch_nws_actuals(dry_run: bool = False) -> int:
         logger.debug(f"nws_actuals: {rows_already_exist} cities already have today's CLI (waiting for tomorrow's publish)")
     logger.info(f"nws_actuals: {rows_inserted} new actuals {'(dry-run)' if dry_run else 'inserted'}")
     return rows_inserted
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Source 10: Synoptic Weather API — 5-minute live station temperature
+# ─────────────────────────────────────────────────────────────────────────
+#
+# Confirmed live via curl 2026-07-18: the standard (non-1M) station
+# timeseries endpoint already blends the HF-METAR subset into normal
+# station queries by default, giving ~5-minute resolution for KDEN/KLAX/
+# KMIA (and the rest of the 8-city set) on the free trial — no special
+# network access needed. The dedicated 1-minute "1M" network is separately
+# gated and NOT available on the trial; do not build against it.
+#
+# SYNOPTIC_API_TOKEN IS A 14-DAY TRIAL TOKEN issued 2026-07-18. It will
+# stop authenticating around 2026-08-01 unless upgraded to a paid plan. If
+# this source silently stops writing rows in ~2 weeks, check the token
+# first — a bad/expired token still returns HTTP 200 with a SUMMARY error
+# block, not a clean 401, so watch the log line below, not just exit codes.
+
+SYNOPTIC_TIMESERIES_URL = "https://api.synopticdata.com/v2/stations/timeseries"
+
+
+def fetch_synoptic(dry_run: bool = False, recent_minutes: int = 15) -> int:
+    """Pull recent 5-minute-resolution station temperature from Synoptic.
+
+    Requests `recent_minutes` of history per poll (default 15, poll cadence
+    is 5 min) so overlapping pulls self-heal any single missed cycle instead
+    of leaving a silent gap. Natural key (station_code, observed_at) with
+    ON CONFLICT DO NOTHING makes re-fetching the overlap idempotent.
+    Returns rows inserted."""
+    token = os.environ.get("SYNOPTIC_API_TOKEN")
+    if not token:
+        logger.warning("synoptic: SYNOPTIC_API_TOKEN not set — skipping")
+        return 0
+
+    params = {
+        "stid": ",".join(city.icao for city in CITIES),
+        "recent": recent_minutes,
+        "vars": "air_temp",
+        "units": "english",
+        "token": token,
+    }
+    data = _http_get_json(SYNOPTIC_TIMESERIES_URL, params=params, timeout=30)
+    if not data:
+        logger.error("synoptic: fetch failed (no response)")
+        return 0
+
+    summary = data.get("SUMMARY") or {}
+    if summary.get("RESPONSE_CODE") not in (None, 1, "1"):
+        logger.error(
+            f"synoptic: API error — {summary.get('RESPONSE_MESSAGE')!r} "
+            f"(code={summary.get('RESPONSE_CODE')!r}); if this persists, the "
+            f"14-day trial token from 2026-07-18 has likely expired"
+        )
+        return 0
+
+    stations = data.get("STATION") or []
+    if not stations:
+        logger.warning("synoptic: no STATION data in response")
+        return 0
+
+    rows_inserted = 0
+    retrieved_at = datetime.now(timezone.utc)
+
+    for station in stations:
+        station_code = station.get("STID")
+        if not station_code:
+            continue
+        obs = station.get("OBSERVATIONS") or {}
+        times = obs.get("date_time") or []
+        temps = obs.get("air_temp_set_1") or []
+
+        for i, dt_str in enumerate(times):
+            if i >= len(temps) or temps[i] is None:
+                continue
+            try:
+                observed_at = datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
+            except (ValueError, AttributeError):
+                continue
+
+            if not dry_run:
+                try:
+                    _insert_bronze_synoptic_obs(
+                        station_code=station_code,
+                        observed_at=observed_at,
+                        air_temp_f=float(temps[i]),
+                        source_payload_json={"date_time": dt_str, "air_temp_set_1": temps[i]},
+                        retrieved_at=retrieved_at,
+                    )
+                except Exception as e:
+                    logger.warning(f"synoptic {station_code}/{dt_str}: insert failed: {e}")
+                    continue
+            rows_inserted += 1
+
+    logger.info(f"synoptic: {rows_inserted} observation rows {'(dry-run)' if dry_run else 'upserted'}")
+    return rows_inserted
+
+
+def _insert_bronze_synoptic_obs(*, station_code: str, observed_at: datetime,
+                                  air_temp_f: Optional[float],
+                                  source_payload_json: Optional[dict],
+                                  retrieved_at: datetime) -> None:
+    with tc.get_pg_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO weather_bronze_synoptic_asos
+                    (station_code, observed_at, air_temp_f, source_payload_json, retrieved_at)
+                VALUES (%s, %s, %s, %s::jsonb, %s)
+                ON CONFLICT (station_code, observed_at) DO NOTHING
+            """, (station_code, observed_at, air_temp_f,
+                  json.dumps(source_payload_json) if source_payload_json else None,
+                  retrieved_at))
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -2120,6 +2233,7 @@ SOURCES = {
     "nws_hourly":           fetch_nws_hourly,
     "nws_actuals":          fetch_nws_actuals,
     "nbm":                  fetch_nbm,
+    "synoptic":             fetch_synoptic,
     "kalshi_markets":       fetch_kalshi_markets,
     "kalshi_portfolio":     fetch_kalshi_portfolio,
     "nomads":               fetch_nomads_gfs_ensemble,
