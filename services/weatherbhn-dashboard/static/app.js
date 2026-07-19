@@ -25,6 +25,7 @@ const DATA_SOURCES = [
   { label: 'σ marker gold ★', text: 'Dynamic (permanent rule as of 2026-07-17, supersedes an earlier same-night fixed-set revert): a marker gets a star exactly when the Sigma-Marker Performance panel\'s pooled "All Cities" row shows positive NET DOLLARS for it — not ROI%, and not a fixed set. Updates automatically on the panel\'s 5-min refresh as trades settle; a marker can gain or lose its star on its own. Star = historically profitable in the pooled data, NOT live trading eligibility — a starred marker can still fall inside cp4_kelly_sizer.py\'s live |z|&lt;1.0 no-trade exclusion zone and be untradeable right now (hover a star for this note).' },
   { label: 'Sigma-Marker Performance panel', text: 'Live, recomputed on every load from every settled trade (weather_position_exits_clean) across all 3 cities — grows as more trades settle, not a snapshot. Each trade\'s entry-time signed z-score is rounded to the nearest integer marker (-4..+4), so these numbers will NOT exactly match WEATHERBHN-SIGMA-ZONE-ANALYSIS-2026-07-17.md\'s custom zone-ranges — different binning method, same underlying trades. Every marker (including 0σ) uses the plain recorded No-side outcome — no Yes-side resimulation. Cell color: green = positive ROI (any sample size), everything else neutral.' },
   { label: 'Active Trade Summary / running-high auto-indicator', text: 'Today\'s running high-so-far comes from live ASOS readings (weather_bronze_synoptic_asos.air_temp_f, ~15-20min lag), bucketed by each station\'s own local calendar day. NWS\'s official Daily Climate Report is compiled FROM ASOS data — same underlying measurement, not a competing source — but the official report doesn\'t finalize until settlement, and may apply QC/rounding adjustments; treat the live on-track/auto-win indicator as directionally accurate in real time, not as the final settlement value.' },
+  { label: 'Active Trade Summary / ladder Unreal. ROI%/P&L', text: 'A PROJECTION — "if this settled right now," based on today\'s running-high-so-far vs. each bucket (side-adjusted): full $1/contract payout minus entry cost when currently favorable, full loss of entry cost when unfavorable. Deliberately NOT a live market mark-to-market price (operator direction 2026-07-19) — a thin/slow-to-update market quote crashing toward $0 should not render as a loss on a position the actual temperature already favors.' },
 ];
 
 const KNOWN_ISSUES = [
@@ -534,15 +535,14 @@ function activePositionInlineHtml(pos) {
   const pnlClass = pos.unrealized_pnl_usd == null ? '' : (pos.unrealized_pnl_usd >= 0 ? 'row-win' : 'row-loss');
   const pnlStr = pos.unrealized_pnl_usd == null ? '—' : `${pos.unrealized_pnl_usd >= 0 ? '+' : ''}$${pos.unrealized_pnl_usd.toFixed(2)}`;
   const roiStr = pos.unrealized_roi_pct == null ? '—' : `${pos.unrealized_roi_pct >= 0 ? '+' : ''}${pos.unrealized_roi_pct.toFixed(1)}%`;
-  // "Mkt" prefix deliberately labels this as price-based mark-to-market --
-  // the separate auto-win badge (bucketRangeLabel row, same td) is the only
-  // physical running-high signal on this row; the two are independent and
-  // can disagree, same caveat as Active Trade Summary's Mkt vs Temp Track
-  // columns.
+  // ROI%/P&L here is the same projected-if-settled-now figure as Active
+  // Trade Summary (today's running-high-so-far vs this bucket, side-
+  // adjusted) -- NOT a live market price. See onTrackLabel()/Active Trade
+  // Summary's header tooltips for the exact rule.
   return `
     <div class="active-position-inline">
       <div class="api-row"><span class="api-label">Active:</span> ${pos.side} @ ${fmtC(pos.entry_price_cents)} &times; ${pos.contracts ?? '—'}</div>
-      <div class="api-row ${pnlClass}" title="Mark-to-market off the live market price -- price-based, not temperature-based.">Mkt: ${roiStr} / ${pnlStr}</div>
+      <div class="api-row ${pnlClass}" title="Projected if this settled right now, based on today's running-high-so-far vs this bucket -- not a live market price.">${roiStr} / ${pnlStr}</div>
     </div>`;
 }
 

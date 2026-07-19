@@ -143,14 +143,14 @@
        only (added 2026-07-19). Refreshes every 20s, same cadence as the
        ladder/price feed it depends on. -->
   <section class="panel active-trade-panel">
-    <div class="panel-title">Active Trade Summary <span class="hint">(REAL currently-open paper positions. Mkt ROI%/P&amp;L = price-based mark-to-market; Temp Track (row color) = today's running high-so-far vs the bucket, independent of price &mdash; the two CAN disagree, e.g. when the market hasn't caught up to what the temperature already shows. Temp Track based on live ASOS readings; official NWS settlement may finalize differently, especially near real-time.)</span></div>
+    <div class="panel-title">Active Trade Summary <span class="hint">(REAL currently-open paper positions. Unreal. ROI%/P&amp;L and Temp Track both answer "am I winning right now" from today's running high-so-far vs. each bucket &mdash; NOT live market price. Based on live ASOS readings; official NWS settlement may finalize differently, especially near real-time.)</span></div>
     <div class="table-scroll">
       <table id="activeTradeTable" class="data-table">
         <thead>
           <tr><th>City</th><th>Date</th><th>Bucket</th><th>Side</th><th>Entry</th><th>Contracts</th><th>Stake</th>
-            <th title="Mark-to-market off the LIVE MARKET PRICE (current no_ask vs entry price) -- price-based, not temperature-based.">Mkt ROI%</th>
-            <th title="Mark-to-market off the LIVE MARKET PRICE (current no_ask vs entry price) -- price-based, not temperature-based.">Mkt P&amp;L</th>
-            <th title="Purely today's running-high-so-far vs this bucket's floor/cap -- a PHYSICAL check, completely independent of market price. Can disagree with Mkt ROI/P&amp;L when the market hasn't caught up to the actual temperature yet (or vice versa).">Temp Track</th></tr>
+            <th title="If this settled right now, based on today's running-high-so-far vs this bucket: full $1/contract payout minus entry cost when currently favorable, full loss of entry cost when currently unfavorable. A projection, not a live market price.">Unreal. ROI%</th>
+            <th title="If this settled right now, based on today's running-high-so-far vs this bucket: full $1/contract payout minus entry cost when currently favorable, full loss of entry cost when currently unfavorable. A projection, not a live market price.">Unreal. P&amp;L</th>
+            <th title="Today's running-high-so-far vs this bucket's floor/cap, side-adjusted (outside the bucket = favorable for a NO bet, inside = favorable for a YES bet). Drives both this column and the ROI%/P&amp;L to its left.">Temp Track</th></tr>
         </thead>
         <tbody id="activeTradeBody"></tbody>
       </table>

@@ -145,11 +145,15 @@ def _open_positions_live(cur, station: Optional[str] = None) -> list[dict]:
         contracts = r["final_contracts_recommended"]
         stake_usd = float(r["final_stake_usd_recommended"]) if r["final_stake_usd_recommended"] is not None else None
 
-        unrealized_pnl = unrealized_roi = None
-        if current_no_ask is not None and entry_price is not None and contracts is not None:
-            unrealized_pnl = round(contracts * (current_no_ask - entry_price) / 100.0, 2)
-            if stake_usd:
-                unrealized_roi = round((unrealized_pnl / stake_usd) * 100, 1)
+        # Live market price, kept for reference/debugging only -- NOT what
+        # unrealized_pnl_usd/roi is computed from (see below). Operator
+        # direction 2026-07-19: this table's whole point is "am I currently
+        # winning or losing," which is a physical running-high-vs-bucket
+        # question, not a live-tradeable-value question -- a thin/slow-to-
+        # update market price crashing toward $0 while the actual
+        # temperature has already moved outside the bucket should NOT
+        # render as a loss here.
+        current_no_ask_live = current_no_ask
 
         floor = float(r["bucket_floor"]) if r["bucket_floor"] is not None else None
         cap = float(r["bucket_cap"]) if r["bucket_cap"] is not None else None
@@ -157,6 +161,20 @@ def _open_positions_live(cur, station: Optional[str] = None) -> list[dict]:
         if running_high is not None:
             inside = _bucket_contains(floor, cap, running_high)
             on_track = (not inside) if r["side"] == "NO" else inside
+
+        # unrealized_pnl_usd/roi: "if this settled right now, based on where
+        # the running-high-so-far currently sits relative to the bucket,
+        # what would the payout be" -- full $1/contract payout minus what
+        # was paid at entry when currently favorable, full loss of the
+        # entry cost when currently unfavorable. None (not zero) when
+        # on_track is None -- no running-high data yet to project from
+        # (e.g. tomorrow's contract), not "breakeven."
+        unrealized_pnl = unrealized_roi = None
+        if on_track is not None and entry_price is not None and contracts is not None:
+            unrealized_pnl = round(contracts * (100.0 - entry_price) / 100.0, 2) if on_track \
+                else round(-contracts * entry_price / 100.0, 2)
+            if stake_usd:
+                unrealized_roi = round((unrealized_pnl / stake_usd) * 100, 1)
 
         positions.append({
             "station_code": st,
@@ -167,7 +185,7 @@ def _open_positions_live(cur, station: Optional[str] = None) -> list[dict]:
             "bucket_cap": cap,
             "side": r["side"],
             "entry_price_cents": entry_price,
-            "current_no_ask_cents": current_no_ask,
+            "current_no_ask_cents_live": current_no_ask_live,
             "contracts": contracts,
             "stake_usd": stake_usd,
             "unrealized_pnl_usd": unrealized_pnl,
