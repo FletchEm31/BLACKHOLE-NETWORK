@@ -747,14 +747,20 @@ def get_sigma_performance():
 
 @app.get("/api/position-exits")
 def get_position_exits(station: Optional[str] = Query(None)):
-    """SETTLED paper-trading history only (scored_at IS NOT NULL) -- as of
-    2026-07-19, currently-open positions live exclusively in the Active
-    Trade Summary panel (/api/active-positions) above this one, which also
-    carries their live mark-to-market P&L; this panel no longer shows OPEN
-    rows at all. No date filter otherwise -- operator direction 2026-07-18:
-    'full paper-trading history... not scoped to the current city/date tab
-    or any rolling window.' station is an optional display filter only,
-    not a default scope -- omit it to see every city.
+    """Full paper-trading history, EVERY trade (open and settled) -- no
+    filtering on scored_at, exactly as this endpoint has always worked.
+    Active Trade Summary (/api/active-positions) is an ADDITIONAL view of
+    the open subset with its own live-tracking features (unrealized P&L/
+    ROI, on-track highlighting) layered on top -- it is not the exclusive
+    home for open positions, and nothing "transfers" out of this endpoint
+    when a trade opens or settles (operator direction 2026-07-20, reverting
+    the 2026-07-19 same-night split: that split risked a data gap during
+    the transition since a trade briefly existed in neither place; this
+    endpoint never stops tracking a trade in the first place, it just shows
+    less detail on an OPEN row until it settles). No date filter -- operator
+    direction 2026-07-18: 'full paper-trading history... not scoped to the
+    current city/date tab or any rolling window.' station is an optional
+    display filter only, not a default scope -- omit it to see every city.
 
     result is side-aware: side='NO' wins when final_outcome='NO_WIN',
     side='YES' (none exist yet, but this is the actual bug the 2026-07-18b
@@ -768,7 +774,7 @@ def get_position_exits(station: Optional[str] = Query(None)):
     cp4_kelly_sizer.py's _maker_fee() docstring -- so no adjustment is
     needed here to keep Investment/Fee from double-counting).
     """
-    where = "WHERE scored_at IS NOT NULL"
+    where = "WHERE 1=1"
     params: list = []
     if station:
         where += " AND station_code = %s"

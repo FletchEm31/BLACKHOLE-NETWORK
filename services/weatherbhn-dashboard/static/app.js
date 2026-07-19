@@ -936,13 +936,16 @@ async function refreshSigmaPerformance() {
 
 // ---------------------------------------------------------------------------
 // Active Trade Summary -- REAL currently-open paper positions (any city),
-// via /api/active-positions. Added 2026-07-19: OPEN rows used to live in
-// Paper Position Summary below; they now live here exclusively, with live
-// mark-to-market P&L/ROI% and an on-track (green/red) flag driven by
-// today's actual running-high-so-far -- Paper Position Summary now only
-// ever shows settled trades (backend filters scored_at IS NOT NULL).
-// Refreshes on the same 20s cadence as the ladder/price data it depends on,
-// not the 5-min settled-trade cadence Paper Position Summary uses.
+// via /api/active-positions. An ADDITIONAL live-tracking view of the same
+// open subset Paper Position Summary already shows (projected unrealized
+// P&L/ROI% + an on-track green/red flag driven by today's actual
+// running-high-so-far) -- not the exclusive home for open rows. Reverted
+// 2026-07-20 after a same-night attempt to make Paper Position Summary
+// settled-only: that split risked a data gap during the transition, and
+// Paper Position Summary never needs to stop tracking a trade in the first
+// place. Refreshes on the same 20s cadence as the ladder/price data it
+// depends on, not the 5-min settled-trade cadence Paper Position Summary
+// uses.
 // ---------------------------------------------------------------------------
 function onTrackClass(onTrack) {
   if (onTrack === true) return 'row-win';
@@ -1001,15 +1004,17 @@ function renderActiveTradeSummary(positions) {
 }
 
 // ---------------------------------------------------------------------------
-// Paper Position Summary -- SETTLED real paper trades from
-// weather_position_exits, via /api/position-exits (backend now filters to
-// scored_at IS NOT NULL -- open positions moved to Active Trade Summary
-// above, 2026-07-19). Deliberately separate from renderSimulation() above:
-// that panel is manual what-if entries, never reads or writes this table.
-// Full history, no date filter (operator direction 2026-07-18: "full
-// paper-trading history... not scoped to the current city/date tab or any
-// rolling window") -- the city dropdown here is an optional display filter
-// only, independent of the ladder's city tabs/state.station.
+// Paper Position Summary -- EVERY real paper trade (open and settled) from
+// weather_position_exits, via /api/position-exits, exactly as this panel
+// has always worked -- no filtering, nothing moved out when Active Trade
+// Summary was added above (that panel is an additional live-tracking view
+// of the same open subset, not a replacement). Deliberately separate from
+// renderSimulation() above: that panel is manual what-if entries, never
+// reads or writes this table. Full history, no date filter (operator
+// direction 2026-07-18: "full paper-trading history... not scoped to the
+// current city/date tab or any rolling window") -- the city dropdown here
+// is an optional display filter only, independent of the ladder's city
+// tabs/state.station.
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------

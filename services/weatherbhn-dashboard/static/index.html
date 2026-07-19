@@ -138,10 +138,14 @@
   </section>
 
   <!-- Active Trade Summary -- REAL currently-open paper positions, any
-       city, live mark-to-market P&L + running-high on-track flag. Sits
-       above Paper Position Summary; that panel now shows settled trades
-       only (added 2026-07-19). Refreshes every 20s, same cadence as the
-       ladder/price feed it depends on. -->
+       city, with live-tracking features (projected unrealized P&L/ROI,
+       running-high on-track flag) layered on top of the same open subset
+       Paper Position Summary already shows. An ADDITIONAL view, not the
+       exclusive home for open rows (reverted 2026-07-20 after a same-night
+       attempt to split them -- that risked a data gap during the
+       transition; Paper Position Summary never stops tracking a trade).
+       Refreshes every 20s, same cadence as the ladder/price feed it
+       depends on. -->
   <section class="panel active-trade-panel">
     <div class="panel-title">Active Trade Summary <span class="hint">(REAL currently-open paper positions. Unreal. ROI%/P&amp;L and Temp Track both answer "am I winning right now" from today's running high-so-far vs. each bucket &mdash; NOT live market price. Based on live ASOS readings; official NWS settlement may finalize differently, especially near real-time.)</span></div>
     <div class="table-scroll">
@@ -158,15 +162,17 @@
   </section>
 
   <!-- Paper Position Summary -- REAL system-placed paper trades from
-       weather_position_exits, SETTLED ONLY (open positions live in Active
-       Trade Summary above, as of 2026-07-19). Deliberately separate from
-       Simulation Summary above (manual what-if entries, never touches this
-       table) -- distinct styling (paper-position-panel) and header wording
-       so it's never ambiguous which one you're looking at. Full history,
-       no date filter (shows every settled trade ever placed, not just the
-       current city/date tab) -- city is an optional display filter only. -->
+       weather_position_exits, EVERY trade (open and settled), exactly as
+       this panel has always worked -- no filtering, nothing moved out of
+       here when Active Trade Summary was added above. Deliberately
+       separate from Simulation Summary above (manual what-if entries,
+       never touches this table) -- distinct styling (paper-position-panel)
+       and header wording so it's never ambiguous which one you're looking
+       at. Full history, no date filter (shows every trade ever placed, not
+       just the current city/date tab) -- city is an optional display
+       filter only. -->
   <section class="panel paper-position-panel">
-    <div class="panel-title">Paper Position Summary <span class="hint">(REAL settled paper trades from weather_position_exits &mdash; full history, not the current ladder's city/date. Not a simulation. Open positions are in Active Trade Summary above.)</span></div>
+    <div class="panel-title">Paper Position Summary <span class="hint">(REAL system-placed paper trades from weather_position_exits &mdash; every trade, open and settled, full history, not the current ladder's city/date. Not a simulation. Active Trade Summary above is an additional live-tracking view of the open subset, not a replacement for open rows here.)</span></div>
     <div class="paper-position-controls">
       <label for="paperPositionCityFilter">City</label>
       <select id="paperPositionCityFilter">
