@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>WeatherBHN Trading Dashboard</title>
-<link rel="stylesheet" href="style.css?v=25">
+<link rel="stylesheet" href="style.css?v=26">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 </head>
 <body>
@@ -137,15 +137,33 @@
     <div class="sim-totals" id="simTotals"></div>
   </section>
 
+  <!-- Active Trade Summary -- REAL currently-open paper positions, any
+       city, live mark-to-market P&L + running-high on-track flag. Sits
+       above Paper Position Summary; that panel now shows settled trades
+       only (added 2026-07-19). Refreshes every 20s, same cadence as the
+       ladder/price feed it depends on. -->
+  <section class="panel active-trade-panel">
+    <div class="panel-title">Active Trade Summary <span class="hint">(REAL currently-open paper positions, live mark-to-market P&amp;L. Green/red = currently on/off track per today's running high-so-far.)</span></div>
+    <div class="table-scroll">
+      <table id="activeTradeTable" class="data-table">
+        <thead>
+          <tr><th>City</th><th>Date</th><th>Bucket</th><th>Side</th><th>Entry</th><th>Contracts</th><th>Stake</th><th>Unreal. ROI%</th><th>Unreal. P&amp;L</th><th>Status</th></tr>
+        </thead>
+        <tbody id="activeTradeBody"></tbody>
+      </table>
+    </div>
+  </section>
+
   <!-- Paper Position Summary -- REAL system-placed paper trades from
-       weather_position_exits. Deliberately separate from Simulation
-       Summary above (manual what-if entries, never touches this table) --
-       distinct styling (paper-position-panel) and header wording so it's
-       never ambiguous which one you're looking at. Full history, no date
-       filter (shows every trade ever placed, not just the current
-       city/date tab) -- city is an optional display filter only. -->
+       weather_position_exits, SETTLED ONLY (open positions live in Active
+       Trade Summary above, as of 2026-07-19). Deliberately separate from
+       Simulation Summary above (manual what-if entries, never touches this
+       table) -- distinct styling (paper-position-panel) and header wording
+       so it's never ambiguous which one you're looking at. Full history,
+       no date filter (shows every settled trade ever placed, not just the
+       current city/date tab) -- city is an optional display filter only. -->
   <section class="panel paper-position-panel">
-    <div class="panel-title">Paper Position Summary <span class="hint">(REAL system-placed paper trades from weather_position_exits &mdash; full history, not the current ladder's city/date. Not a simulation.)</span></div>
+    <div class="panel-title">Paper Position Summary <span class="hint">(REAL settled paper trades from weather_position_exits &mdash; full history, not the current ladder's city/date. Not a simulation. Open positions are in Active Trade Summary above.)</span></div>
     <div class="paper-position-controls">
       <label for="paperPositionCityFilter">City</label>
       <select id="paperPositionCityFilter">
@@ -214,6 +232,6 @@
 
 </main>
 
-<script src="app.js?v=25"></script>
+<script src="app.js?v=26"></script>
 </body>
 </html>

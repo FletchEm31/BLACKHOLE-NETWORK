@@ -185,6 +185,36 @@ main { padding: 16px 20px 60px; display: flex; flex-direction: column; gap: 16px
 .ladder-table td.col-bucket, .ladder-table th.col-bucket { text-align: left; }
 
 .col-bucket .bucket-range { font-weight: 700; }
+
+/* Automatic winning-bucket indicator -- live, informational only, separate
+   from the manual .win-checkbox column (which stays as-is for hypothetical
+   Simulation Summary testing). Deliberately distinct visual language (a
+   badge, not a checkbox) so it's never confused with a manual selection. */
+.auto-win-badge {
+  display: inline-block; font-size: 11px; font-weight: 700; color: var(--green);
+  border: 1px solid var(--green); background: var(--green-dim);
+  border-radius: var(--radius-pill); padding: 1px 8px; margin-left: 6px; cursor: help;
+}
+
+/* Inline active-position block, beneath a ladder row's bucket-range text --
+   read-only/informational, never affects the price/position calculator
+   inputs on this or any other row. Absent entirely on rows with no open
+   position (activePositionInlineHtml() returns ''), so those rows look
+   exactly as before. */
+.active-position-inline {
+  margin-top: 4px; padding: 4px 6px; border-left: 2px solid var(--panel-border);
+  font-size: 11px; line-height: 1.5; color: var(--text-dim);
+}
+.active-position-inline .api-label { font-weight: 700; color: var(--text-faint); }
+.active-position-inline .api-row.row-win { color: var(--green); }
+.active-position-inline .api-row.row-loss { color: var(--red); }
+
+/* Active Trade Summary: full-row background tint on top of the shared
+   .row-win/.row-loss text coloring -- distinct from every other table's
+   plain per-cell text coloring, since a whole-row highlight is what
+   "on track / off track today" is meant to read as at a glance. */
+#activeTradeTable tbody tr.row-win  { background: var(--green-dim); }
+#activeTradeTable tbody tr.row-loss { background: var(--red-dim); }
 /* Stacked vertically (bell-curve order, -4sigma top -> +4sigma bottom),
    not wrapped inline -- multiple markers in one bucket sit right on top
    of each other. */

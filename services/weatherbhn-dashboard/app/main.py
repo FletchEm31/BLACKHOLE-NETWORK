@@ -8,6 +8,7 @@ config change, not a rebuild, per operator scope note.
 """
 from datetime import date, datetime, timezone
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import JSONResponse
@@ -29,8 +30,164 @@ CITIES = [
     {"station_code": "KAUS", "city": "Austin",              "timezone": "America/Chicago",      "enabled": False},
 ]
 ENABLED_STATIONS = {c["station_code"] for c in CITIES if c["enabled"]}
+STATION_TZ = {c["station_code"]: c["timezone"] for c in CITIES}
 
 SIGMA_MARKERS = list(range(-4, 5))  # -4sigma .. +4sigma
+
+
+# ---------------------------------------------------------------------------
+# Active positions — shared by /api/active-positions (Active Trade Summary
+# panel) and /api/ladder's inline per-bucket surfacing, so both always agree
+# on the same live P&L and on-track numbers.
+# ---------------------------------------------------------------------------
+
+def _is_local_today(station_code: str, d: date) -> bool:
+    tz_name = STATION_TZ.get(station_code)
+    if not tz_name:
+        return False
+    return d == datetime.now(ZoneInfo(tz_name)).date()
+
+
+def _running_high_so_far(cur, station_code: str) -> Optional[float]:
+    """Live running high-so-far for the station's own local calendar day,
+    from raw ASOS observations (weather_bronze_synoptic_asos.air_temp_f,
+    ~5-20min reporting lag). Only meaningful when the target_date in
+    question IS that local today -- callers must check _is_local_today()
+    themselves; this always computes off "right now"."""
+    tz_name = STATION_TZ.get(station_code)
+    if not tz_name:
+        return None
+    tz = ZoneInfo(tz_name)
+    now_local = datetime.now(tz)
+    midnight_local = datetime(now_local.year, now_local.month, now_local.day, tzinfo=tz)
+    cur.execute("""
+        SELECT MAX(air_temp_f) AS running_high
+        FROM weather_bronze_synoptic_asos
+        WHERE station_code = %s AND observed_at >= %s
+    """, (station_code, midnight_local.astimezone(timezone.utc)))
+    row = cur.fetchone()
+    return float(row["running_high"]) if row and row["running_high"] is not None else None
+
+
+def _bucket_contains(floor, cap, temp: float) -> bool:
+    lo = floor if floor is not None else float("-inf")
+    hi = cap if cap is not None else float("inf")
+    return lo <= temp <= hi
+
+
+def _latest_no_ask_by_bucket(cur, station: str, target_date: date) -> dict:
+    """Same latest-single-batch + 45min staleness query /api/ladder uses,
+    scoped to bucket_label -> no_ask, so every live price shown outside the
+    ladder itself (Active Trade Summary, inline ladder positions) always
+    matches what the ladder's own Yes/No cents column shows."""
+    cur.execute("""
+        SELECT bucket_label, no_ask
+        FROM weather_bronze_kalshi_market_snapshots
+        WHERE station_code = %s AND target_date = %s AND contract_side = 'high'
+          AND retrieved_at = (
+              SELECT MAX(retrieved_at) FROM weather_bronze_kalshi_market_snapshots
+              WHERE station_code = %s AND target_date = %s AND contract_side = 'high'
+          )
+          AND retrieved_at >= NOW() - INTERVAL '45 minutes'
+    """, (station, target_date, station, target_date))
+    return {row["bucket_label"]: (float(row["no_ask"]) if row["no_ask"] is not None else None)
+            for row in cur.fetchall()}
+
+
+def _open_positions_live(cur, station: Optional[str] = None) -> list[dict]:
+    """Every currently-open real paper position (weather_position_exits_clean,
+    scored_at IS NULL) with live mark-to-market P&L and an on-track flag
+    driven by today's actual running-high-so-far.
+
+    unrealized_pnl_usd is computed fresh here off the CURRENT no_ask price
+    vs entry_no_ask_cents -- deliberately NOT sourced from the
+    weather_open_positions view, which still LATERAL-joins the retired
+    weather_bronze_kalshi_market_snapshots_old table (superseded by the
+    partitioned _new scheme) and so always returns NULL for this. Uses the
+    same live snapshot table /api/ladder itself queries instead.
+
+    on_track: True (green) when today's running-high-so-far currently sits
+    OUTSIDE this bucket (favorable for a NO position), False (red) when
+    currently INSIDE it (unfavorable), None when there's no running-high
+    data yet (contract is for tomorrow, or no ASOS report yet today).
+    """
+    where = "WHERE scored_at IS NULL"
+    params: list = []
+    if station:
+        where += " AND station_code = %s"
+        params.append(station)
+
+    cur.execute(f"""
+        SELECT station_code, target_date, contract_ticker, bucket_label,
+               bucket_floor, bucket_cap, side, entry_no_ask_cents,
+               final_contracts_recommended, final_stake_usd_recommended,
+               entry_captured_at
+        FROM weather_position_exits_clean
+        {where}
+        ORDER BY target_date, station_code, bucket_label
+    """, params)
+    rows = cur.fetchall()
+
+    price_cache: dict = {}
+    running_high_cache: dict = {}
+    positions = []
+    for r in rows:
+        st, td = r["station_code"], r["target_date"]
+        if (st, td) not in price_cache:
+            price_cache[(st, td)] = _latest_no_ask_by_bucket(cur, st, td)
+        current_no_ask = price_cache[(st, td)].get(r["bucket_label"])
+
+        if st not in running_high_cache:
+            running_high_cache[st] = _running_high_so_far(cur, st)
+        running_high = running_high_cache[st] if _is_local_today(st, td) else None
+
+        entry_price = float(r["entry_no_ask_cents"]) if r["entry_no_ask_cents"] is not None else None
+        contracts = r["final_contracts_recommended"]
+        stake_usd = float(r["final_stake_usd_recommended"]) if r["final_stake_usd_recommended"] is not None else None
+
+        unrealized_pnl = unrealized_roi = None
+        if current_no_ask is not None and entry_price is not None and contracts is not None:
+            unrealized_pnl = round(contracts * (current_no_ask - entry_price) / 100.0, 2)
+            if stake_usd:
+                unrealized_roi = round((unrealized_pnl / stake_usd) * 100, 1)
+
+        floor = float(r["bucket_floor"]) if r["bucket_floor"] is not None else None
+        cap = float(r["bucket_cap"]) if r["bucket_cap"] is not None else None
+        on_track = None
+        if running_high is not None:
+            inside = _bucket_contains(floor, cap, running_high)
+            on_track = (not inside) if r["side"] == "NO" else inside
+
+        positions.append({
+            "station_code": st,
+            "target_date": td.isoformat(),
+            "contract_ticker": r["contract_ticker"],
+            "bucket_label": r["bucket_label"],
+            "bucket_floor": floor,
+            "bucket_cap": cap,
+            "side": r["side"],
+            "entry_price_cents": entry_price,
+            "current_no_ask_cents": current_no_ask,
+            "contracts": contracts,
+            "stake_usd": stake_usd,
+            "unrealized_pnl_usd": unrealized_pnl,
+            "unrealized_roi_pct": unrealized_roi,
+            "running_high_so_far": running_high,
+            "on_track": on_track,
+            "entry_captured_at": r["entry_captured_at"].isoformat() if r["entry_captured_at"] else None,
+        })
+    return positions
+
+
+@app.get("/api/active-positions")
+def get_active_positions(station: Optional[str] = Query(None)):
+    """Active Trade Summary panel — every currently-open real paper
+    position (any city, unless filtered), with live mark-to-market P&L and
+    the running-high on-track flag. Global scope like /api/position-exits
+    below, not tied to the ladder's current city/date tab."""
+    with db.conn_cursor() as cur:
+        positions = _open_positions_live(cur, station)
+    return {"positions": positions}
 
 
 @app.on_event("startup")
@@ -138,6 +295,15 @@ def get_ladder(station: str = Query(...), target_date: date = Query(...)):
             WHERE station_code = %s AND month = %s
         """, (station, target_date.month))
         clim_row = cur.fetchone()
+
+        # Active-position inline surfacing + auto winning-bucket indicator --
+        # fetched inside this same cursor block (open_positions_for_city
+        # queries other stations'/dates' open contracts too, but only this
+        # station/date's are used below; the shared helper doesn't take a
+        # target_date filter since Active Trade Summary needs all of them).
+        open_positions_for_city = _open_positions_live(cur, station)
+        running_high_so_far = (_running_high_so_far(cur, station)
+                                if _is_local_today(station, target_date) else None)
 
         # side = 'NO' added 2026-07-18b: this ladder is CP4's NO-side view.
         # Without the filter, once a YES-side row can exist for the same
@@ -306,6 +472,20 @@ def get_ladder(station: str = Query(...), target_date: date = Query(...)):
             "retrieved_at":  b["retrieved_at"].isoformat() if b["retrieved_at"] else None,
         })
 
+    # Read-only, informational only -- attaching active_position to a bucket
+    # never touches rowInputs/the calculator, which stay fully editable for
+    # every row regardless of whether it's carrying a real open position.
+    target_date_iso = target_date.isoformat()
+    active_positions_map = {
+        p["bucket_label"]: p for p in open_positions_for_city if p["target_date"] == target_date_iso
+    }
+    running_high_bucket_label = None
+    for b in buckets:
+        b["active_position"] = active_positions_map.get(b["bucket_label"])
+        if (running_high_bucket_label is None and running_high_so_far is not None
+                and _bucket_contains(b["bucket_floor"], b["bucket_cap"], running_high_so_far)):
+            running_high_bucket_label = b["bucket_label"]
+
     market_close_dt = model_math.market_close_time_utc(station, target_date)
 
     return {
@@ -317,6 +497,8 @@ def get_ladder(station: str = Query(...), target_date: date = Query(...)):
         "sigma_markers": sigma_markers,
         "hours_to_settle": float(hours_to_settle) if hours_to_settle is not None else None,
         "buckets": buckets,
+        "running_high_so_far": running_high_so_far,
+        "running_high_bucket_label": running_high_bucket_label,
         "data_stale": data_stale,
         "market_listed": market_listed,
         "market_open_time": market_open_time,
@@ -547,10 +729,14 @@ def get_sigma_performance():
 
 @app.get("/api/position-exits")
 def get_position_exits(station: Optional[str] = Query(None)):
-    """Full paper-trading history, no date filter -- operator direction
-    2026-07-18: 'full paper-trading history... not scoped to the current
-    city/date tab or any rolling window.' station is an optional display
-    filter only, not a default scope -- omit it to see every city.
+    """SETTLED paper-trading history only (scored_at IS NOT NULL) -- as of
+    2026-07-19, currently-open positions live exclusively in the Active
+    Trade Summary panel (/api/active-positions) above this one, which also
+    carries their live mark-to-market P&L; this panel no longer shows OPEN
+    rows at all. No date filter otherwise -- operator direction 2026-07-18:
+    'full paper-trading history... not scoped to the current city/date tab
+    or any rolling window.' station is an optional display filter only,
+    not a default scope -- omit it to see every city.
 
     result is side-aware: side='NO' wins when final_outcome='NO_WIN',
     side='YES' (none exist yet, but this is the actual bug the 2026-07-18b
@@ -564,7 +750,7 @@ def get_position_exits(station: Optional[str] = Query(None)):
     cp4_kelly_sizer.py's _maker_fee() docstring -- so no adjustment is
     needed here to keep Investment/Fee from double-counting).
     """
-    where = "WHERE 1=1"
+    where = "WHERE scored_at IS NOT NULL"
     params: list = []
     if station:
         where += " AND station_code = %s"

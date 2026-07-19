@@ -165,9 +165,15 @@ async function init() {
   await refreshAll(true);
   await refreshJournal();
   await refreshNotepad();
+  await refreshActivePositions();
   await refreshPaperPositions();
 
   setInterval(() => refreshLadder(false), PRICE_REFRESH_MS);
+  // Active Trade Summary depends on the same live price feed as the ladder
+  // (mark-to-market P&L) and the same live running-high tracking as the
+  // ladder's auto-winning-bucket badge -- same 20s cadence, not the 5-min
+  // settled-trade cadence Paper Position Summary/sigma-performance use.
+  setInterval(refreshActivePositions, PRICE_REFRESH_MS);
   setInterval(tickCountdown, 1000);
   // Global, city-agnostic view (all 3 cities' settled trades) -- trades
   // settle once a day via the nightly recon job, so the 5-min orchestrator
@@ -517,6 +523,23 @@ function markerColorClass(n) {
 // so every reader/writer of winningBuckets agrees on the exact key format.
 function stationDateKey(station, date) { return `${station}::${date}`; }
 
+// Inline active-position block, rendered beneath a ladder row's bucket-range
+// text -- read-only/informational only (per operator direction 2026-07-19):
+// never touches rowInputs, never disables the price/position calculator
+// inputs on this or any other row. Returns '' for buckets with no open
+// position, so those rows render exactly as before.
+function activePositionInlineHtml(pos) {
+  if (!pos) return '';
+  const pnlClass = pos.unrealized_pnl_usd == null ? '' : (pos.unrealized_pnl_usd >= 0 ? 'row-win' : 'row-loss');
+  const pnlStr = pos.unrealized_pnl_usd == null ? '—' : `${pos.unrealized_pnl_usd >= 0 ? '+' : ''}$${pos.unrealized_pnl_usd.toFixed(2)}`;
+  const roiStr = pos.unrealized_roi_pct == null ? '—' : `${pos.unrealized_roi_pct >= 0 ? '+' : ''}${pos.unrealized_roi_pct.toFixed(1)}%`;
+  return `
+    <div class="active-position-inline">
+      <div class="api-row"><span class="api-label">Active:</span> ${pos.side} @ ${fmtC(pos.entry_price_cents)} &times; ${pos.contracts ?? '—'}</div>
+      <div class="api-row ${pnlClass}">${roiStr} / ${pnlStr}</div>
+    </div>`;
+}
+
 function renderLadderTable(data) {
   const tbody = document.getElementById('ladderBody');
   tbody.innerHTML = '';
@@ -549,9 +572,26 @@ function renderLadderTable(data) {
     const edgeClass = b.edge_pct == null ? '' : (b.edge_pct >= 0 ? 'edge-pos' : 'edge-neg');
     const edgeStr = b.edge_pct == null ? '—' : `${b.edge_pct >= 0 ? '+' : ''}${b.edge_pct}%`;
 
+    // Automatic winning-bucket indicator -- distinct from the manual
+    // win-checkbox in the first column (that stays exactly as-is, for
+    // hypothetical Simulation Summary scenario testing on ANY bucket).
+    // This badge is purely informational: it marks whichever bucket
+    // today's actual running-high-so-far currently falls into, for real,
+    // currently-tracking data only (data.running_high_bucket_label is
+    // null whenever there's no live running-high for this city/date, e.g.
+    // tomorrow's contracts or no ASOS report yet) -- never auto-checks the
+    // manual checkbox itself.
+    const isAutoWinning = data.running_high_bucket_label === b.bucket_label;
+    const autoWinBadge = isAutoWinning
+      ? ` <span class="auto-win-badge" title="Today's running high-so-far (${data.running_high_so_far}&deg;F) is currently in this bucket -- automatic, live indicator, not a manual selection.">&#127777; live</span>`
+      : '';
+
     tr.innerHTML = `
       <td><input type="checkbox" class="win-checkbox" ${state.winningBuckets[wbKey] === b.bucket_label ? 'checked' : ''}></td>
-      <td class="col-bucket"><span class="bucket-range">${bucketRangeLabel(b)}</span></td>
+      <td class="col-bucket">
+        <span class="bucket-range">${bucketRangeLabel(b)}</span>${autoWinBadge}
+        ${activePositionInlineHtml(b.active_position)}
+      </td>
       <td class="col-sigma">${sigmaChips || '&nbsp;'}</td>
       <td class="col-chance">${b.chance_pct != null ? b.chance_pct + '%' : '—'}</td>
       <td class="col-model">${b.model_prob_pct != null ? b.model_prob_pct + '%' : '—'}</td>
@@ -889,14 +929,73 @@ async function refreshSigmaPerformance() {
 }
 
 // ---------------------------------------------------------------------------
-// Paper Position Summary -- REAL system-placed paper trades from
-// weather_position_exits, via /api/position-exits. Deliberately separate
-// from renderSimulation() above: that panel is manual what-if entries,
-// never reads or writes this table. Full history, no date filter (operator
-// direction 2026-07-18: "full paper-trading history... not scoped to the
-// current city/date tab or any rolling window") -- the city dropdown here
-// is an optional display filter only, independent of the ladder's city
-// tabs/state.station.
+// Active Trade Summary -- REAL currently-open paper positions (any city),
+// via /api/active-positions. Added 2026-07-19: OPEN rows used to live in
+// Paper Position Summary below; they now live here exclusively, with live
+// mark-to-market P&L/ROI% and an on-track (green/red) flag driven by
+// today's actual running-high-so-far -- Paper Position Summary now only
+// ever shows settled trades (backend filters scored_at IS NOT NULL).
+// Refreshes on the same 20s cadence as the ladder/price data it depends on,
+// not the 5-min settled-trade cadence Paper Position Summary uses.
+// ---------------------------------------------------------------------------
+function onTrackClass(onTrack) {
+  if (onTrack === true) return 'row-win';
+  if (onTrack === false) return 'row-loss';
+  return '';
+}
+function onTrackLabel(onTrack) {
+  if (onTrack === true) return 'On track';
+  if (onTrack === false) return 'Off track';
+  return '—';
+}
+
+async function refreshActivePositions() {
+  let data;
+  try {
+    data = await fetchJSON('/api/active-positions');
+  } catch (e) {
+    console.error(e);
+    return;
+  }
+  renderActiveTradeSummary(data.positions);
+}
+
+function renderActiveTradeSummary(positions) {
+  const tbody = document.getElementById('activeTradeBody');
+  if (!tbody) return;
+  if (!positions.length) {
+    tbody.innerHTML = '<tr><td colspan="10" class="hint">No open positions right now.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = positions.map(p => {
+    const pnlClass = p.unrealized_pnl_usd == null ? '' : (p.unrealized_pnl_usd >= 0 ? 'row-win' : 'row-loss');
+    const roiClass = p.unrealized_roi_pct == null ? '' : (p.unrealized_roi_pct >= 0 ? 'row-win' : 'row-loss');
+    const cityName = (state.cities.find(c => c.station_code === p.station_code) || {}).city || p.station_code;
+    return `<tr class="${onTrackClass(p.on_track)}">
+      <td>${cityName}</td>
+      <td>${p.target_date}</td>
+      <td class="bucket-cell">${bucketRangeLabel(p)}</td>
+      <td>${p.side}</td>
+      <td>${fmtC(p.entry_price_cents)}</td>
+      <td>${p.contracts ?? '—'}</td>
+      <td>${p.stake_usd == null ? '—' : '$' + p.stake_usd.toFixed(2)}</td>
+      <td class="${roiClass}">${p.unrealized_roi_pct == null ? '—' : (p.unrealized_roi_pct >= 0 ? '+' : '') + p.unrealized_roi_pct.toFixed(1) + '%'}</td>
+      <td class="${pnlClass}">${p.unrealized_pnl_usd == null ? '—' : (p.unrealized_pnl_usd >= 0 ? '+' : '') + '$' + p.unrealized_pnl_usd.toFixed(2)}</td>
+      <td>${onTrackLabel(p.on_track)}${p.running_high_so_far != null ? ` (${p.running_high_so_far}&deg;F)` : ''}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ---------------------------------------------------------------------------
+// Paper Position Summary -- SETTLED real paper trades from
+// weather_position_exits, via /api/position-exits (backend now filters to
+// scored_at IS NOT NULL -- open positions moved to Active Trade Summary
+// above, 2026-07-19). Deliberately separate from renderSimulation() above:
+// that panel is manual what-if entries, never reads or writes this table.
+// Full history, no date filter (operator direction 2026-07-18: "full
+// paper-trading history... not scoped to the current city/date tab or any
+// rolling window") -- the city dropdown here is an optional display filter
+// only, independent of the ladder's city tabs/state.station.
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
