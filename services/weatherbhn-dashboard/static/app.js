@@ -1036,11 +1036,23 @@ function buildPaperPositionHeader() {
 
 function buildPaperPositionColsPanel() {
   const panel = document.getElementById('paperPositionColsPanel');
-  panel.innerHTML = PP_COLUMNS.map(c =>
-    `<label class="col-picker-item">` +
-      `<input type="checkbox" data-col-key="${c.key}" ${ppState.hidden[c.key] ? '' : 'checked'}> ${c.label}` +
-    `</label>`
-  ).join('');
+  // Explicit close button, not a "click outside" auto-close -- that
+  // pattern got stuck open (event-propagation edge case, never fully
+  // pinned down without a live browser). This is guaranteed closable
+  // regardless of what caused it.
+  panel.innerHTML =
+    `<div class="col-picker-header">` +
+      `<span>Show/hide columns</span>` +
+      `<button type="button" id="paperPositionColsClose" class="col-picker-close">Close ✕</button>` +
+    `</div>` +
+    `<div class="col-picker-grid">` +
+    PP_COLUMNS.map(c =>
+      `<label class="col-picker-item">` +
+        `<input type="checkbox" data-col-key="${c.key}" ${ppState.hidden[c.key] ? '' : 'checked'}> ${c.label}` +
+      `</label>`
+    ).join('') +
+    `</div>`;
+
   panel.querySelectorAll('input[type=checkbox]').forEach(cb => {
     cb.addEventListener('change', () => {
       const key = cb.dataset.colKey;
@@ -1052,9 +1064,9 @@ function buildPaperPositionColsPanel() {
   });
 
   const btn = document.getElementById('paperPositionColsBtn');
-  btn.addEventListener('click', (e) => { e.stopPropagation(); panel.hidden = !panel.hidden; });
-  document.addEventListener('click', (e) => {
-    if (!panel.hidden && !panel.contains(e.target) && e.target !== btn) panel.hidden = true;
+  btn.addEventListener('click', () => { panel.hidden = !panel.hidden; });
+  document.getElementById('paperPositionColsClose').addEventListener('click', () => {
+    panel.hidden = true;
   });
 }
 
