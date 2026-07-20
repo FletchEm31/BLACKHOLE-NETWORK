@@ -395,3 +395,97 @@ BEGIN
         GRANT USAGE, SELECT ON SEQUENCE weather_bronze_era5_klax_id_seq TO ehuser;
     END IF;
 END $$;
+
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 10) weather_bronze_asos_historic_lax_1min / weather_bronze_asos_historic_lax_5min
+--     Historical IEM ASOS data for KLAX, bulk-loaded from operator-staged flat
+--     files (infrastructure/docs/WeatherBHN/ASOS1M-LAX*.txt / ASOS5M-LAX*.txt).
+--     Two separate tables on purpose -- the 5-minute IEM product is a genuinely
+--     reduced field set (no gust/precip/pressure in that feed at all), confirmed
+--     from the real file headers, not assumed from the 1-minute table's shape.
+--     "M" in source files means missing -- converted to NULL at load time.
+--     Ingested via scripts/weather/asos_historic_lax_loader.py.
+--     Applied via sql/migrations/2026-07-20-asos-historic-lax-tables.sql.
+-- ─────────────────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS weather_bronze_asos_historic_lax_1min (
+    id                  BIGSERIAL       PRIMARY KEY,
+    station_code        TEXT            NOT NULL,       -- normalized ICAO, 'KLAX'
+    observed_at         TIMESTAMPTZ     NOT NULL,        -- UTC, from source valid(UTC)
+    air_temp_f          NUMERIC,                         -- tmpf
+    dew_point_temp_f    NUMERIC,                         -- dwpf
+    wind_speed_kt       NUMERIC,                         -- sknt
+    wind_direction_deg  NUMERIC,                         -- drct
+    gust_direction_deg  NUMERIC,                         -- gust_drct
+    gust_speed_kt       NUMERIC,                         -- gust_sknt
+    precip_type_code    TEXT,                            -- ptype (e.g. 'NP', 'R', 'R+')
+    precip_in           NUMERIC,                         -- precip (1-min accumulation, inches)
+    pressure_1_inhg     NUMERIC,                         -- pres1
+    pressure_2_inhg     NUMERIC,                         -- pres2
+    pressure_3_inhg     NUMERIC,                         -- pres3
+    source_file         TEXT,
+    retrieved_at        TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT weather_bronze_asos_historic_lax_1min_unique
+        UNIQUE (station_code, observed_at)
+);
+
+CREATE INDEX IF NOT EXISTS brasoslax1m_station_observed_idx
+    ON weather_bronze_asos_historic_lax_1min (station_code, observed_at DESC);
+
+CREATE TABLE IF NOT EXISTS weather_bronze_asos_historic_lax_5min (
+    id                  BIGSERIAL       PRIMARY KEY,
+    station_code        TEXT            NOT NULL,       -- normalized ICAO, 'KLAX'
+    observed_at         TIMESTAMPTZ     NOT NULL,        -- UTC, from source valid(UTC)
+    air_temp_f          NUMERIC,                         -- tmpf
+    dew_point_temp_f    NUMERIC,                         -- dwpf
+    wind_speed_kt       NUMERIC,                         -- sknt
+    wind_direction_deg  NUMERIC,                         -- drct
+    source_file         TEXT,
+    retrieved_at        TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT weather_bronze_asos_historic_lax_5min_unique
+        UNIQUE (station_code, observed_at)
+);
+
+CREATE INDEX IF NOT EXISTS brasoslax5m_station_observed_idx
+    ON weather_bronze_asos_historic_lax_5min (station_code, observed_at DESC);
+
+-- Permissions
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'bhn_weather_collector') THEN
+        GRANT INSERT, SELECT ON weather_bronze_asos_historic_lax_1min TO bhn_weather_collector;
+        GRANT USAGE, SELECT ON SEQUENCE weather_bronze_asos_historic_lax_1min_id_seq TO bhn_weather_collector;
+        GRANT INSERT, SELECT ON weather_bronze_asos_historic_lax_5min TO bhn_weather_collector;
+        GRANT USAGE, SELECT ON SEQUENCE weather_bronze_asos_historic_lax_5min_id_seq TO bhn_weather_collector;
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'horizon_agent_reader') THEN
+        GRANT SELECT ON weather_bronze_asos_historic_lax_1min TO horizon_agent_reader;
+        GRANT SELECT ON weather_bronze_asos_historic_lax_5min TO horizon_agent_reader;
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'grafana_reader') THEN
+        GRANT SELECT ON weather_bronze_asos_historic_lax_1min TO grafana_reader;
+        GRANT SELECT ON weather_bronze_asos_historic_lax_5min TO grafana_reader;
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'agent_reader') THEN
+        GRANT SELECT ON weather_bronze_asos_historic_lax_1min TO agent_reader;
+        GRANT SELECT ON weather_bronze_asos_historic_lax_5min TO agent_reader;
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'n8n_user') THEN
+        GRANT SELECT ON weather_bronze_asos_historic_lax_1min TO n8n_user;
+        GRANT SELECT ON weather_bronze_asos_historic_lax_5min TO n8n_user;
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'bhn_trader') THEN
+        GRANT SELECT, INSERT, UPDATE ON weather_bronze_asos_historic_lax_1min TO bhn_trader;
+        GRANT USAGE, SELECT ON SEQUENCE weather_bronze_asos_historic_lax_1min_id_seq TO bhn_trader;
+        GRANT SELECT, INSERT, UPDATE ON weather_bronze_asos_historic_lax_5min TO bhn_trader;
+        GRANT USAGE, SELECT ON SEQUENCE weather_bronze_asos_historic_lax_5min_id_seq TO bhn_trader;
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ehuser') THEN
+        GRANT SELECT, INSERT, UPDATE ON weather_bronze_asos_historic_lax_1min TO ehuser;
+        GRANT USAGE, SELECT ON SEQUENCE weather_bronze_asos_historic_lax_1min_id_seq TO ehuser;
+        GRANT SELECT, INSERT, UPDATE ON weather_bronze_asos_historic_lax_5min TO ehuser;
+        GRANT USAGE, SELECT ON SEQUENCE weather_bronze_asos_historic_lax_5min_id_seq TO ehuser;
+    END IF;
+END $$;
