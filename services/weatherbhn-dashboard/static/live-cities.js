@@ -195,12 +195,61 @@ function renderBigChart(station, data) {
   const labels = data.observations.map(o => localDayTime(o.observed_at, tz));
   const liveTemp = data.observations.map(o => o.air_temp_f);
   const flat = (v) => data.observations.map(() => v);
+  // null-through, not 0 -- a gap (pre-deploy history, or a station with no
+  // reading this cycle) should break the line, not draw a false value.
+  const nullable = (key) => data.observations.map(o => (o[key] == null ? null : o[key]));
+
+  // Synoptic reports cloud_layer_1_condition as a lowercase description,
+  // NOT a METAR code (confirmed against live data 2026-07-20: 'clear',
+  // 'scattered', 'thin scattered' seen so far) -- mapped to the METAR
+  // sky-cover band it corresponds to, midpoint %. Falls back to matching
+  // on a substring since Synoptic's exact wording for broken/overcast/few
+  // hasn't been observed yet locally; unrecognized text -> null (skip),
+  // never a guessed number.
+  const CLOUD_PCT_BANDS = [
+    [/clear|sky clear/, 0],
+    [/few/, 12],
+    [/thin scattered|scattered/, 37],
+    [/broken/, 69],
+    [/overcast/, 100],
+  ];
+  const cloudPctFor = (cond) => {
+    if (!cond) return null;
+    const lc = cond.toLowerCase();
+    const hit = CLOUD_PCT_BANDS.find(([re]) => re.test(lc));
+    return hit ? hit[1] : null;
+  };
+  const cloudPct = data.observations.map(o => cloudPctFor(o.cloud_layer_1_condition));
 
   const datasets = [
     {
-      type: 'line', label: 'Live temp (ASOS)', data: liveTemp,
+      type: 'line', label: 'Live temp (ASOS)', data: liveTemp, yAxisID: 'y',
       borderColor: '#4d8dff', backgroundColor: '#4d8dff',
       tension: 0.15, pointRadius: 0, borderWidth: 2,
+    },
+    {
+      type: 'line', label: 'Dew point', data: nullable('dew_point_f'), yAxisID: 'y',
+      borderColor: '#5ad1c9', backgroundColor: '#5ad1c9', spanGaps: false,
+      tension: 0.15, pointRadius: 0, borderWidth: 1.5,
+    },
+    {
+      type: 'line', label: 'Wind speed (mph)', data: nullable('wind_speed_mph'), yAxisID: 'yWind',
+      borderColor: '#f0a63a', backgroundColor: '#f0a63a', spanGaps: false,
+      tension: 0.15, pointRadius: 0, borderWidth: 1.5,
+    },
+    {
+      type: 'line', label: 'Wind direction (°)', data: nullable('wind_direction_deg'), yAxisID: 'yDir',
+      borderColor: '#a97cd6', backgroundColor: '#a97cd6', spanGaps: false,
+      tension: 0, pointRadius: 0, borderWidth: 1, borderDash: [1, 2],
+    },
+    {
+      // Segmented/highlighted look per operator request -- filled area
+      // (not a sharp line) so each reported band (30%, 40%, etc.) reads as
+      // a light shaded region rather than competing visually with the
+      // actual temperature/wind lines.
+      type: 'line', label: 'Cloud cover (%, METAR band)', data: cloudPct, yAxisID: 'yCloud',
+      borderColor: 'rgba(150, 160, 175, 0.5)', backgroundColor: 'rgba(150, 160, 175, 0.18)',
+      fill: true, stepped: true, spanGaps: false, tension: 0, pointRadius: 0, borderWidth: 1,
     },
   ];
   // Reference lines (today's model mu/sigma, NWS/GFS forecast highs) are
@@ -271,13 +320,36 @@ function renderBigChart(station, data) {
       scales: {
         x: { ticks: { color: '#8891a3', maxTicksLimit: 12 }, grid: { color: '#232937' } },
         y: {
+          position: 'left',
           ticks: { color: '#8891a3' }, grid: { color: '#232937' },
-          title: { display: true, text: '°F', color: '#8891a3' },
+          title: { display: true, text: '°F (temp / dew point)', color: '#8891a3' },
+        },
+        yWind: {
+          position: 'right', min: 0,
+          ticks: { color: '#f0a63a' }, grid: { drawOnChartArea: false },
+          title: { display: true, text: 'mph (wind)', color: '#f0a63a' },
+        },
+        yDir: {
+          position: 'right', min: 0, max: 360,
+          ticks: { color: '#a97cd6', stepSize: 90 }, grid: { drawOnChartArea: false },
+          title: { display: true, text: '° (wind dir)', color: '#a97cd6' },
+        },
+        yCloud: {
+          position: 'right', min: 0, max: 100,
+          ticks: { color: '#8891a3' }, grid: { drawOnChartArea: false },
+          title: { display: true, text: '% cloud cover', color: '#8891a3' },
         },
       },
       plugins: {
         legend: { labels: { color: '#e6e9ef', boxWidth: 12, font: { size: 11 } } },
-        zoom: ZOOM_PLUGIN_OPTS,
+        // mode: 'x' only, not 'xy' -- with 4 differently-scaled y-axes now,
+        // dragging one zoom gesture across all of them at once (the
+        // single-axis chart's original 'xy' mode) doesn't make sense; each
+        // y-axis auto-fits to whatever time range is currently zoomed in.
+        zoom: {
+          pan: { ...ZOOM_PLUGIN_OPTS.pan, mode: 'x' },
+          zoom: { ...ZOOM_PLUGIN_OPTS.zoom, mode: 'x' },
+        },
       },
     },
   });

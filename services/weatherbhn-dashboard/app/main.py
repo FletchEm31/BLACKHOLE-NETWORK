@@ -643,15 +643,28 @@ def get_live_trajectory(station: str = Query(...), target_date: date = Query(...
     observations: list[dict] = []
     with db.conn_cursor() as cur:
         if window_hours is not None:
+            # Extended vars (2026-07-20, CC2's collector work) -- dew point/
+            # wind/cloud cover, only on the big chart's rolling-window path.
+            # Rows collected before that deploy have NULL for all of these;
+            # left as None here rather than coerced to 0, so the frontend
+            # can skip them instead of drawing a false flatline at zero.
             cur.execute("""
-                SELECT observed_at, air_temp_f
+                SELECT observed_at, air_temp_f, dew_point_f, wind_speed_mph,
+                       wind_direction_deg, cloud_layer_1_condition
                 FROM weather_bronze_synoptic_asos
                 WHERE station_code = %s AND observed_at >= NOW() - (%s || ' hours')::interval
                   AND air_temp_f IS NOT NULL
                 ORDER BY observed_at ASC
             """, (station, window_hours))
             observations = [
-                {"observed_at": r["observed_at"].isoformat(), "air_temp_f": float(r["air_temp_f"])}
+                {
+                    "observed_at": r["observed_at"].isoformat(),
+                    "air_temp_f": float(r["air_temp_f"]),
+                    "dew_point_f": float(r["dew_point_f"]) if r["dew_point_f"] is not None else None,
+                    "wind_speed_mph": float(r["wind_speed_mph"]) if r["wind_speed_mph"] is not None else None,
+                    "wind_direction_deg": float(r["wind_direction_deg"]) if r["wind_direction_deg"] is not None else None,
+                    "cloud_layer_1_condition": r["cloud_layer_1_condition"],
+                }
                 for r in cur.fetchall()
             ]
         elif is_today and tz_name:
