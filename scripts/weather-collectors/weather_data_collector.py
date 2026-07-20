@@ -1290,15 +1290,40 @@ def fetch_nws_actuals(dry_run: bool = False) -> int:
 
 
 # ─────────────────────────────────────────────────────────────────────────
-# Source 10: Synoptic Weather API — 5-minute live station temperature
+# Source 10: Synoptic Weather API — 5-minute live station observations
 # ─────────────────────────────────────────────────────────────────────────
 #
 # Confirmed live via curl 2026-07-18: the standard (non-1M) station
 # timeseries endpoint already blends the HF-METAR subset into normal
-# station queries by default, giving ~5-minute resolution for KDEN/KLAX/
-# KMIA (and the rest of the 8-city set) on the free trial — no special
-# network access needed. The dedicated 1-minute "1M" network is separately
-# gated and NOT available on the trial; do not build against it.
+# station queries by default, giving 5-minute resolution on the free trial
+# — no special network access needed. The dedicated 1-minute "1M" network
+# is separately gated and NOT available on the trial; do not build against it.
+#
+# CADENCE CAVEAT (confirmed live 2026-07-20): KPHX, KAUS, KDFW, KMIA, KORD,
+# and KLAX get true 5-minute resolution, but KDEN and KNYC only report
+# hourly (:53-ish METAR only, no HF-METAR fill) on this trial token. KNYC
+# is Kalshi's real settlement station, so this is a live gap, not a
+# hypothetical one — `recent=15` polls will legitimately return 0 rows for
+# those two stations most cycles. Not fixed here; flagged for follow-up.
+#
+# VARIABLE NAMES confirmed against GET /v2/variables 2026-07-20 (some
+# fields — e.g. IEM/METAR mnemonics like tmpf/dwpf/relh/drct/sknt — are
+# NOT what this API expects, don't guess from those). Each var comes back
+# as `{var}_set_1` (raw sensor) and, for several fields, also `{var}_set_1d`
+# (derived — e.g. computed from temp+RH, or filled between raw METAR obs).
+# We prefer raw and fall back to derived, same pattern NWS gridpoints
+# parsing already uses elsewhere in this file.
+#
+# Units: `units=english` converts air_temp/altimeter/visibility but NOT
+# wind — wind_speed and wind_gust still come back in knots and need
+# conversion. precip_accum_one_hour comes back in inches already.
+# pressure/sea_level_pressure come back in millibars already.
+#
+# wind_gust and precip_accum_one_hour are event-based (gusty wind / active
+# precip only) — expect frequent NULLs, that's normal, not a bug.
+#
+# cloud_layer_1 is a compound derived object ({sky_condition, height_agl}),
+# not a scalar — split into two columns.
 #
 # SYNOPTIC_API_TOKEN IS A 14-DAY TRIAL TOKEN issued 2026-07-18. It will
 # stop authenticating around 2026-08-01 unless upgraded to a paid plan. If
@@ -1308,9 +1333,23 @@ def fetch_nws_actuals(dry_run: bool = False) -> int:
 
 SYNOPTIC_TIMESERIES_URL = "https://api.synopticdata.com/v2/stations/timeseries"
 
+SYNOPTIC_VARS = (
+    "air_temp", "dew_point_temperature", "relative_humidity",
+    "wind_speed", "wind_direction", "wind_gust",
+    "pressure", "sea_level_pressure",
+    "cloud_layer_1", "weather_condition",
+    "precip_accum_one_hour",
+)
+
+
+def _kt_to_mph(kt: Optional[float]) -> Optional[float]:
+    return None if kt is None else (kt * 1.15078)
+
 
 def fetch_synoptic(dry_run: bool = False, recent_minutes: int = 15) -> int:
-    """Pull recent 5-minute-resolution station temperature from Synoptic.
+    """Pull recent 5-minute-resolution station observations from Synoptic
+    (temp, dew point, RH, wind, pressure, cloud layer 1, weather condition,
+    1hr precip — see SYNOPTIC_VARS).
 
     Requests `recent_minutes` of history per poll (default 15, poll cadence
     is 5 min) so overlapping pulls self-heal any single missed cycle instead
@@ -1325,7 +1364,7 @@ def fetch_synoptic(dry_run: bool = False, recent_minutes: int = 15) -> int:
     params = {
         "stid": ",".join(city.icao for city in CITIES),
         "recent": recent_minutes,
-        "vars": "air_temp",
+        "vars": ",".join(SYNOPTIC_VARS),
         "units": "english",
         "token": token,
     }
@@ -1357,23 +1396,82 @@ def fetch_synoptic(dry_run: bool = False, recent_minutes: int = 15) -> int:
             continue
         obs = station.get("OBSERVATIONS") or {}
         times = obs.get("date_time") or []
-        temps = obs.get("air_temp_set_1") or []
+
+        # Each var: prefer raw `_set_1`, fall back to derived `_set_1d`.
+        def _series(var: str) -> list:
+            raw = obs.get(f"{var}_set_1")
+            der = obs.get(f"{var}_set_1d")
+            if raw is None:
+                return der or []
+            if der is None:
+                return raw
+            return [r if r is not None else (der[i] if i < len(der) else None)
+                    for i, r in enumerate(raw)]
+
+        air_temp = _series("air_temp")
+        dewpoint = _series("dew_point_temperature")
+        rh = _series("relative_humidity")
+        wind_speed = _series("wind_speed")
+        wind_dir = _series("wind_direction")
+        wind_gust = _series("wind_gust")
+        pressure = _series("pressure")
+        slp = _series("sea_level_pressure")
+        cloud1 = _series("cloud_layer_1")
+        wx_cond = _series("weather_condition")
+        precip_1hr = _series("precip_accum_one_hour")
+
+        def _at(series: list, i: int) -> Optional[Any]:
+            return series[i] if i < len(series) else None
 
         for i, dt_str in enumerate(times):
-            if i >= len(temps) or temps[i] is None:
+            temp_val = _at(air_temp, i)
+            if temp_val is None:
                 continue
             try:
                 observed_at = datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
             except (ValueError, AttributeError):
                 continue
 
+            cloud1_val = _at(cloud1, i)
+            cloud1_condition = None
+            cloud1_height_ft = None
+            if isinstance(cloud1_val, dict):
+                cloud1_condition = cloud1_val.get("sky_condition")
+                cloud1_height_ft = cloud1_val.get("height_agl")
+
+            raw_obs = {
+                "date_time": dt_str,
+                "air_temp_set_1": temp_val,
+                "dew_point_temperature": _at(dewpoint, i),
+                "relative_humidity": _at(rh, i),
+                "wind_speed_kt": _at(wind_speed, i),
+                "wind_direction": _at(wind_dir, i),
+                "wind_gust_kt": _at(wind_gust, i),
+                "pressure_mb": _at(pressure, i),
+                "sea_level_pressure_mb": _at(slp, i),
+                "cloud_layer_1": cloud1_val,
+                "weather_condition": _at(wx_cond, i),
+                "precip_accum_one_hour_in": _at(precip_1hr, i),
+            }
+
             if not dry_run:
                 try:
                     _insert_bronze_synoptic_obs(
                         station_code=station_code,
                         observed_at=observed_at,
-                        air_temp_f=float(temps[i]),
-                        source_payload_json={"date_time": dt_str, "air_temp_set_1": temps[i]},
+                        air_temp_f=float(temp_val),
+                        dew_point_f=_to_float(_at(dewpoint, i)),
+                        relative_humidity_pct=_to_float(_at(rh, i)),
+                        wind_speed_mph=_kt_to_mph(_to_float(_at(wind_speed, i))),
+                        wind_direction_deg=_to_float(_at(wind_dir, i)),
+                        wind_gust_mph=_kt_to_mph(_to_float(_at(wind_gust, i))),
+                        pressure_mb=_to_float(_at(pressure, i)),
+                        sea_level_pressure_mb=_to_float(_at(slp, i)),
+                        cloud_layer_1_condition=cloud1_condition,
+                        cloud_layer_1_height_ft=_to_float(cloud1_height_ft),
+                        weather_condition=_at(wx_cond, i),
+                        precip_1hr_in=_to_float(_at(precip_1hr, i)),
+                        source_payload_json=raw_obs,
                         retrieved_at=retrieved_at,
                     )
                 except Exception as e:
@@ -1385,18 +1483,42 @@ def fetch_synoptic(dry_run: bool = False, recent_minutes: int = 15) -> int:
     return rows_inserted
 
 
+def _to_float(v: Optional[Any]) -> Optional[float]:
+    return None if v is None else float(v)
+
+
 def _insert_bronze_synoptic_obs(*, station_code: str, observed_at: datetime,
                                   air_temp_f: Optional[float],
+                                  dew_point_f: Optional[float],
+                                  relative_humidity_pct: Optional[float],
+                                  wind_speed_mph: Optional[float],
+                                  wind_direction_deg: Optional[float],
+                                  wind_gust_mph: Optional[float],
+                                  pressure_mb: Optional[float],
+                                  sea_level_pressure_mb: Optional[float],
+                                  cloud_layer_1_condition: Optional[str],
+                                  cloud_layer_1_height_ft: Optional[float],
+                                  weather_condition: Optional[str],
+                                  precip_1hr_in: Optional[float],
                                   source_payload_json: Optional[dict],
                                   retrieved_at: datetime) -> None:
     with tc.get_pg_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
                 INSERT INTO weather_bronze_synoptic_asos
-                    (station_code, observed_at, air_temp_f, source_payload_json, retrieved_at)
-                VALUES (%s, %s, %s, %s::jsonb, %s)
+                    (station_code, observed_at, air_temp_f, dew_point_f,
+                     relative_humidity_pct, wind_speed_mph, wind_direction_deg,
+                     wind_gust_mph, pressure_mb, sea_level_pressure_mb,
+                     cloud_layer_1_condition, cloud_layer_1_height_ft,
+                     weather_condition, precip_1hr_in,
+                     source_payload_json, retrieved_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s)
                 ON CONFLICT (station_code, observed_at) DO NOTHING
-            """, (station_code, observed_at, air_temp_f,
+            """, (station_code, observed_at, air_temp_f, dew_point_f,
+                  relative_humidity_pct, wind_speed_mph, wind_direction_deg,
+                  wind_gust_mph, pressure_mb, sea_level_pressure_mb,
+                  cloud_layer_1_condition, cloud_layer_1_height_ft,
+                  weather_condition, precip_1hr_in,
                   json.dumps(source_payload_json) if source_payload_json else None,
                   retrieved_at))
 

@@ -304,21 +304,36 @@ CREATE INDEX IF NOT EXISTS idx_era5_klax_valid_time
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 9) weather_bronze_synoptic_asos
 --    Synoptic Weather API standard station timeseries (HF-METAR blended,
---    ~5-minute resolution on the free trial -- confirmed live 2026-07-18).
+--    5-minute resolution on the free trial for KPHX/KAUS/KDFW/KMIA/KORD/KLAX
+--    -- confirmed live 2026-07-18/2026-07-20. KDEN and KNYC are hourly-only
+--    on this trial token (confirmed 2026-07-20) -- KNYC is Kalshi's real
+--    settlement station, so that's a live gap, not hypothetical.
 --    NOT the dedicated 1-minute "1M" network (separately gated, trial
 --    doesn't have it). Natural key (station_code, observed_at); collector
 --    polls every 5 min requesting recent=15 so overlapping pulls self-heal
---    missed cycles. Applied via sql/migrations/2026-07-18-synoptic-asos-bronze-table.sql.
+--    missed cycles. Applied via sql/migrations/2026-07-18-synoptic-asos-bronze-table.sql,
+--    extended via sql/migrations/2026-07-20-synoptic-asos-extended-vars.sql.
 --    SYNOPTIC_API_TOKEN is a 14-day trial token issued 2026-07-18 -- will
 --    stop authenticating after ~2026-08-01 unless upgraded to paid.
 -- ─────────────────────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS weather_bronze_synoptic_asos (
-    id                  BIGSERIAL       PRIMARY KEY,
-    station_code        TEXT            NOT NULL,           -- ICAO e.g. 'KDEN' (Synoptic STID)
-    observed_at         TIMESTAMPTZ     NOT NULL,           -- UTC, from API date_time field
-    air_temp_f          NUMERIC,                             -- raw air_temp value (requested in °F)
-    source_payload_json JSONB,          -- raw per-observation object for this station/timestamp
-    retrieved_at        TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+    id                      BIGSERIAL       PRIMARY KEY,
+    station_code            TEXT            NOT NULL,       -- ICAO e.g. 'KDEN' (Synoptic STID)
+    observed_at             TIMESTAMPTZ     NOT NULL,       -- UTC, from API date_time field
+    air_temp_f              NUMERIC,                        -- raw air_temp value (requested in °F)
+    dew_point_f             NUMERIC,                        -- dew_point_temperature (°F)
+    relative_humidity_pct   NUMERIC,                        -- relative_humidity (%)
+    wind_speed_mph          NUMERIC,                        -- wind_speed, converted from knots
+    wind_direction_deg      NUMERIC,                        -- wind_direction (degrees)
+    wind_gust_mph           NUMERIC,                        -- wind_gust, converted from knots (event-based, often NULL)
+    pressure_mb             NUMERIC,                        -- station pressure (mb) -- almost always the derived _set_1d value; METAR doesn't carry raw station pressure
+    sea_level_pressure_mb   NUMERIC,                        -- sea_level_pressure (mb)
+    cloud_layer_1_condition TEXT,                           -- cloud_layer_1.sky_condition (e.g. 'clear', 'thin scattered')
+    cloud_layer_1_height_ft NUMERIC,                        -- cloud_layer_1.height_agl
+    weather_condition       TEXT,                           -- weather_condition text (e.g. 'haze') -- mostly the derived _set_1d value
+    precip_1hr_in           NUMERIC,                        -- precip_accum_one_hour (inches, event-based, often NULL)
+    source_payload_json     JSONB,          -- raw per-observation object for this station/timestamp
+    retrieved_at            TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
 
     CONSTRAINT weather_bronze_synoptic_asos_unique
         UNIQUE (station_code, observed_at)
