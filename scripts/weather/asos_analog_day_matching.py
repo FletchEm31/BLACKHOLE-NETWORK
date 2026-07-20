@@ -68,6 +68,12 @@ def _load_data(conn, station: str) -> pd.DataFrame:
            WHERE station_code = %(station)s""",
         conn, params={"station": station},
     )
+    running = pd.read_sql(
+        """SELECT local_date, local_hour, running_high_so_far_f, running_low_so_far_f
+           FROM weather_silver_asos_running_extremes
+           WHERE station_code = %(station)s""",
+        conn, params={"station": station},
+    )
 
     snaps["wdir_sin"] = np.sin(np.radians(snaps["wind_direction_deg"]))
     snaps["wdir_cos"] = np.cos(np.radians(snaps["wind_direction_deg"]))
@@ -78,7 +84,12 @@ def _load_data(conn, station: str) -> pd.DataFrame:
     pivot.columns = [f"{feat}_{hr}" for feat, hr in pivot.columns]
     pivot = pivot.reset_index()
 
-    df = pivot.merge(hilo, on="local_date", how="inner")
+    run_pivot = running.pivot(index="local_date", columns="local_hour",
+                               values=["running_high_so_far_f", "running_low_so_far_f"])
+    run_pivot.columns = [f"{feat}_{hr}" for feat, hr in run_pivot.columns]
+    run_pivot = run_pivot.reset_index()
+
+    df = pivot.merge(hilo, on="local_date", how="inner").merge(run_pivot, on="local_date", how="inner")
     df["local_date"] = pd.to_datetime(df["local_date"])
     return df
 
@@ -140,71 +151,122 @@ def analog_distribution(df: pd.DataFrame, zdf: pd.DataFrame, query_idx: int,
     }
 
 
-def run_backtest(df: pd.DataFrame, as_of_hour: int, year: int):
-    feature_cols = _feature_cols(as_of_hour)
-    zdf = _zscore_by_season(df, feature_cols)
+def _persistence_offset_baseline(df: pd.DataFrame, query_indices, as_of_hour: int):
+    """Stronger baseline than unconditional climatology: running high/low
+    ALREADY OBSERVED as of as_of_hour, plus a season/hour-specific mean
+    offset (actual_final - running_so_far) computed leave-out style
+    (excludes the query day +/- EXCLUDE_WINDOW_DAYS, same as the analog
+    pool). This baseline DOES use today's information -- if analog
+    matching can't beat this, the RMSE gain over pure climatology was
+    just 'using today's data' rather than a real analog-matching edge."""
+    high_col = f"running_high_so_far_f_{as_of_hour}"
+    low_col = f"running_low_so_far_f_{as_of_hour}"
+    preds_high, preds_low, actual_h, actual_l = [], [], [], []
 
-    year_mask = df["local_date"].dt.year == year
-    query_indices = df[year_mask].index
-
-    results = []
     for idx in query_indices:
-        dist = analog_distribution(df, zdf, idx, feature_cols)
-        if dist is None:
+        if pd.isna(df.loc[idx, high_col]) or pd.isna(df.loc[idx, low_col]):
             continue
-        actual_high = df.loc[idx, "high_temp_f"]
-        actual_low = df.loc[idx, "low_temp_f"]
-        results.append({
-            "local_date": df.loc[idx, "local_date"],
-            "actual_high": actual_high, "actual_low": actual_low,
-            **dist,
-            "high_in_p10_p90": dist["high_p10"] <= actual_high <= dist["high_p90"],
-            "low_in_p10_p90": dist["low_p10"] <= actual_low <= dist["low_p90"],
-        })
-
-    if not results:
-        print("No valid backtest days (insufficient checkpoint data or pool size).")
-        return
-
-    res = pd.DataFrame(results)
-
-    # Naive baseline: same-season climatological mean (excluding the exclusion
-    # window), to see whether analog matching adds anything over "just knowing
-    # the season average." Computed per query day using that day's own season.
-    clim_rmse_high = clim_rmse_low = None
-    clim_preds_high, clim_preds_low, actual_h, actual_l = [], [], [], []
-    for idx in query_indices:
         row_season = df.loc[idx, "season"]
         query_date = df.loc[idx, "local_date"]
         pool = df[(df["season"] == row_season) &
                   ((df["local_date"] - query_date).abs() > pd.Timedelta(days=EXCLUDE_WINDOW_DAYS))]
+        pool = pool.dropna(subset=[high_col, low_col])
         if len(pool) < 10:
             continue
-        clim_preds_high.append(pool["high_temp_f"].mean())
-        clim_preds_low.append(pool["low_temp_f"].mean())
+        offset_high = (pool["high_temp_f"] - pool[high_col]).mean()
+        offset_low = (pool["low_temp_f"] - pool[low_col]).mean()
+        preds_high.append(df.loc[idx, high_col] + offset_high)
+        preds_low.append(df.loc[idx, low_col] + offset_low)
         actual_h.append(df.loc[idx, "high_temp_f"])
         actual_l.append(df.loc[idx, "low_temp_f"])
-    if clim_preds_high:
+
+    if not preds_high:
+        return None, None, 0
+    rmse_high = float(np.sqrt(np.mean((np.array(preds_high) - np.array(actual_h)) ** 2)))
+    rmse_low = float(np.sqrt(np.mean((np.array(preds_low) - np.array(actual_l)) ** 2)))
+    return rmse_high, rmse_low, len(preds_high)
+
+
+def run_backtest(df: pd.DataFrame, year: int, as_of_hours=None):
+    """Sweeps all (or the given) checkpoint hours in one run and reports,
+    per hour: analog-matching RMSE/coverage, the persistence+offset
+    baseline (uses today's data, the fair comparison), and the
+    unconditional climatology baseline (uses none -- kept only for
+    context, not as the headline comparison)."""
+    hours = as_of_hours or list(CHECKPOINT_HOURS)
+    year_mask = df["local_date"].dt.year == year
+    query_indices_all = df[year_mask].index
+
+    rows = []
+    for as_of_hour in hours:
+        feature_cols = _feature_cols(as_of_hour)
+        zdf = _zscore_by_season(df, feature_cols)
+
+        results = []
+        for idx in query_indices_all:
+            dist = analog_distribution(df, zdf, idx, feature_cols)
+            if dist is None:
+                continue
+            actual_high = df.loc[idx, "high_temp_f"]
+            actual_low = df.loc[idx, "low_temp_f"]
+            results.append({
+                "actual_high": actual_high, "actual_low": actual_low,
+                **dist,
+                "high_in_p10_p90": dist["high_p10"] <= actual_high <= dist["high_p90"],
+                "low_in_p10_p90": dist["low_p10"] <= actual_low <= dist["low_p90"],
+            })
+
+        if not results:
+            rows.append({"hour": as_of_hour, "n": 0})
+            continue
+
+        res = pd.DataFrame(results)
+        analog_rmse_high = float(np.sqrt(np.mean((res["high_median"] - res["actual_high"]) ** 2)))
+        analog_rmse_low = float(np.sqrt(np.mean((res["low_median"] - res["actual_low"]) ** 2)))
+        high_cov = float(res["high_in_p10_p90"].mean() * 100)
+        low_cov = float(res["low_in_p10_p90"].mean() * 100)
+
+        # unconditional climatology (context only, not the headline comparison)
+        clim_preds_high, clim_preds_low, actual_h, actual_l = [], [], [], []
+        for idx in query_indices_all:
+            row_season = df.loc[idx, "season"]
+            query_date = df.loc[idx, "local_date"]
+            pool = df[(df["season"] == row_season) &
+                      ((df["local_date"] - query_date).abs() > pd.Timedelta(days=EXCLUDE_WINDOW_DAYS))]
+            if len(pool) < 10:
+                continue
+            clim_preds_high.append(pool["high_temp_f"].mean())
+            clim_preds_low.append(pool["low_temp_f"].mean())
+            actual_h.append(df.loc[idx, "high_temp_f"])
+            actual_l.append(df.loc[idx, "low_temp_f"])
         clim_rmse_high = float(np.sqrt(np.mean((np.array(clim_preds_high) - np.array(actual_h)) ** 2)))
         clim_rmse_low = float(np.sqrt(np.mean((np.array(clim_preds_low) - np.array(actual_l)) ** 2)))
 
-    analog_rmse_high = float(np.sqrt(np.mean((res["high_median"] - res["actual_high"]) ** 2)))
-    analog_rmse_low = float(np.sqrt(np.mean((res["low_median"] - res["actual_low"]) ** 2)))
-    high_coverage = float(res["high_in_p10_p90"].mean() * 100)
-    low_coverage = float(res["low_in_p10_p90"].mean() * 100)
+        persist_rmse_high, persist_rmse_low, persist_n = _persistence_offset_baseline(
+            df, query_indices_all, as_of_hour)
 
-    print(f"\n=== Backtest: {year}, as-of hour {as_of_hour}:00 local, k={K_NEIGHBORS} ===")
-    print(f"Query days evaluated: {len(res)}")
-    print(f"\nHIGH:")
-    print(f"  Analog median RMSE:        {analog_rmse_high:.2f} F")
-    if clim_rmse_high is not None:
-        print(f"  Season-climatology RMSE:   {clim_rmse_high:.2f} F  (naive baseline)")
-    print(f"  Actual within [P10,P90]:   {high_coverage:.1f}%  (well-calibrated ~80%)")
-    print(f"\nLOW:")
-    print(f"  Analog median RMSE:        {analog_rmse_low:.2f} F")
-    if clim_rmse_low is not None:
-        print(f"  Season-climatology RMSE:   {clim_rmse_low:.2f} F  (naive baseline)")
-    print(f"  Actual within [P10,P90]:   {low_coverage:.1f}%  (well-calibrated ~80%)")
+        rows.append({
+            "hour": as_of_hour, "n": len(res),
+            "analog_high_rmse": analog_rmse_high, "analog_low_rmse": analog_rmse_low,
+            "persist_high_rmse": persist_rmse_high, "persist_low_rmse": persist_rmse_low,
+            "clim_high_rmse": clim_rmse_high, "clim_low_rmse": clim_rmse_low,
+            "high_cov": high_cov, "low_cov": low_cov,
+        })
+
+    print(f"\n=== Backtest: {year}, k={K_NEIGHBORS}, all checkpoint hours ===")
+    print(f"{'hour':>5} {'n':>5}  {'analog_hi':>10} {'persist_hi':>11} {'clim_hi':>8}  "
+          f"{'analog_lo':>10} {'persist_lo':>11} {'clim_lo':>8}  {'cov_hi':>7} {'cov_lo':>7}")
+    for r in rows:
+        if r["n"] == 0:
+            print(f"{r['hour']:>5} {0:>5}  (no valid days)")
+            continue
+        ph = f"{r['persist_high_rmse']:.2f}" if r['persist_high_rmse'] is not None else "n/a"
+        pl = f"{r['persist_low_rmse']:.2f}" if r['persist_low_rmse'] is not None else "n/a"
+        print(f"{r['hour']:>5} {r['n']:>5}  {r['analog_high_rmse']:>10.2f} {ph:>11} {r['clim_high_rmse']:>8.2f}  "
+              f"{r['analog_low_rmse']:>10.2f} {pl:>11} {r['clim_low_rmse']:>8.2f}  "
+              f"{r['high_cov']:>6.1f}% {r['low_cov']:>6.1f}%")
+    print("\nRMSE in F. 'persist_*' = running-so-far + season/hour offset (uses today's data --")
+    print("the fair comparison). 'clim_*' = unconditional same-season mean (uses none -- context only).")
 
 
 def run_query(df: pd.DataFrame, as_of_hour: int, query_date: str):
@@ -231,7 +293,8 @@ def run_query(df: pd.DataFrame, as_of_hour: int, query_date: str):
 def parse_args():
     p = argparse.ArgumentParser(description="ASOS analog-day matching")
     p.add_argument("--station", required=True, choices=["KLAX", "KMIA"])
-    p.add_argument("--as-of-hour", type=int, required=True, choices=CHECKPOINT_HOURS)
+    p.add_argument("--as-of-hour", type=int, choices=CHECKPOINT_HOURS,
+                   help="Required for --query-date. For --backtest-year, omit to sweep all 8 checkpoint hours.")
     p.add_argument("--backtest-year", type=int)
     p.add_argument("--query-date")
     return p.parse_args()
@@ -241,6 +304,8 @@ def main():
     args = parse_args()
     if not args.backtest_year and not args.query_date:
         sys.exit("ERROR: specify --backtest-year or --query-date")
+    if args.query_date and args.as_of_hour is None:
+        sys.exit("ERROR: --query-date requires --as-of-hour")
 
     db_url = os.environ.get("DATABASE_URL")
     if not db_url:
@@ -253,7 +318,8 @@ def main():
         conn.close()
 
     if args.backtest_year:
-        run_backtest(df, args.as_of_hour, args.backtest_year)
+        hours = [args.as_of_hour] if args.as_of_hour is not None else None
+        run_backtest(df, args.backtest_year, as_of_hours=hours)
     else:
         run_query(df, args.as_of_hour, args.query_date)
 
