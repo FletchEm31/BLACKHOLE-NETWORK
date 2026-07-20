@@ -667,6 +667,7 @@ def get_live_trajectory(station: str = Query(...), target_date: date = Query(...
                 }
                 for r in cur.fetchall()
             ]
+
         elif is_today and tz_name:
             tz = ZoneInfo(tz_name)
             now_local = datetime.now(tz)
@@ -679,6 +680,34 @@ def get_live_trajectory(station: str = Query(...), target_date: date = Query(...
             """, (station, midnight_local.astimezone(timezone.utc)))
             observations = [
                 {"observed_at": r["observed_at"].isoformat(), "air_temp_f": float(r["air_temp_f"])}
+                for r in cur.fetchall()
+            ]
+
+        # Trade markers (2026-07-20, operator request): every real system-
+        # placed paper position ("whatever the system decides") captured
+        # for this station within the same rolling window, so it can be
+        # seen directly against the live temp/dew/wind trajectory that
+        # drove it. Any side/status -- open or settled -- entry_captured_at
+        # is set at first qualification either way.
+        trade_markers: list[dict] = []
+        if window_hours is not None:
+            cur.execute("""
+                SELECT entry_captured_at, side, bucket_label, target_date,
+                       entry_no_ask_cents, edge_cents, final_contracts_recommended
+                FROM weather_position_exits_clean
+                WHERE station_code = %s AND entry_captured_at >= NOW() - (%s || ' hours')::interval
+                ORDER BY entry_captured_at ASC
+            """, (station, window_hours))
+            trade_markers = [
+                {
+                    "entry_captured_at": r["entry_captured_at"].isoformat(),
+                    "side": r["side"],
+                    "bucket_label": r["bucket_label"],
+                    "target_date": r["target_date"].isoformat(),
+                    "entry_price_cents": float(r["entry_no_ask_cents"]) if r["entry_no_ask_cents"] is not None else None,
+                    "edge_cents": float(r["edge_cents"]) if r["edge_cents"] is not None else None,
+                    "contracts": r["final_contracts_recommended"],
+                }
                 for r in cur.fetchall()
             ]
 
@@ -704,6 +733,7 @@ def get_live_trajectory(station: str = Query(...), target_date: date = Query(...
         "window_hours": window_hours,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "observations": observations,
+        "trade_markers": trade_markers,
         "running_high_so_far": running_high_so_far,
         "mu": mu, "mu_source": sig["mu_source"],
         "sigma": sigma, "sigma_source": sig["sigma_source"],

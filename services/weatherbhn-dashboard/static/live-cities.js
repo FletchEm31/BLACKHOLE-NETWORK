@@ -221,6 +221,27 @@ function renderBigChart(station, data) {
   };
   const cloudPct = data.observations.map(o => cloudPctFor(o.cloud_layer_1_condition));
 
+  // Trade markers ("whatever the system decides"): the x-axis here is a
+  // category axis keyed to observation timestamps, not a continuous time
+  // scale, so each trade's entry_captured_at is snapped to its NEAREST
+  // observation index (not necessarily exact-second) and drawn as a point
+  // sitting on the live temp line at that index -- close enough to place
+  // it correctly relative to the trajectory, without pulling in a second
+  // charting dependency (a true time-scale axis needs chartjs-adapter-*).
+  const obsTimes = data.observations.map(o => new Date(o.observed_at).getTime());
+  const tradeMeta = new Array(data.observations.length).fill(null);
+  const tradeMarkerData = new Array(data.observations.length).fill(null);
+  for (const t of (data.trade_markers || [])) {
+    const tTime = new Date(t.entry_captured_at).getTime();
+    let bestIdx = 0, bestDiff = Infinity;
+    for (let i = 0; i < obsTimes.length; i++) {
+      const diff = Math.abs(obsTimes[i] - tTime);
+      if (diff < bestDiff) { bestDiff = diff; bestIdx = i; }
+    }
+    tradeMarkerData[bestIdx] = liveTemp[bestIdx];
+    tradeMeta[bestIdx] = t;
+  }
+
   const datasets = [
     {
       type: 'line', label: 'Live temp (ASOS)', data: liveTemp, yAxisID: 'y',
@@ -250,6 +271,21 @@ function renderBigChart(station, data) {
       type: 'line', label: 'Cloud cover (%, METAR band)', data: cloudPct, yAxisID: 'yCloud',
       borderColor: 'rgba(150, 160, 175, 0.5)', backgroundColor: 'rgba(150, 160, 175, 0.18)',
       fill: true, stepped: true, spanGaps: false, tension: 0, pointRadius: 0, borderWidth: 1,
+    },
+    {
+      // Sparse dataset -- null everywhere except the observation index
+      // nearest each real trade's entry_captured_at, drawn as a point-only
+      // marker (no connecting line) on the temp axis, colored by side.
+      type: 'line', label: 'Trade', data: tradeMarkerData, yAxisID: 'y',
+      showLine: false, spanGaps: false,
+      pointRadius: (ctx) => (tradeMeta[ctx.dataIndex] ? 8 : 0),
+      pointStyle: 'triangle',
+      pointBackgroundColor: (ctx) => {
+        const t = tradeMeta[ctx.dataIndex];
+        return t ? (t.side === 'NO' ? '#17c964' : '#ff4d5e') : 'transparent';
+      },
+      pointBorderColor: '#e6e9ef', pointBorderWidth: 1,
+      tradeMeta,
     },
   ];
   // Reference lines (today's model mu/sigma, NWS/GFS forecast highs) are
@@ -342,6 +378,21 @@ function renderBigChart(station, data) {
       },
       plugins: {
         legend: { labels: { color: '#e6e9ef', boxWidth: 12, font: { size: 11 } } },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => {
+              if (ctx.dataset.label !== 'Trade') return `${ctx.dataset.label}: ${ctx.formattedValue}`;
+              const t = ctx.dataset.tradeMeta[ctx.dataIndex];
+              if (!t) return null;
+              return [
+                `Trade: ${t.side} ${t.bucket_label} (${t.target_date})`,
+                `Entry: ${t.entry_price_cents != null ? t.entry_price_cents.toFixed(1) + '¢' : '—'}`
+                  + `, edge ${t.edge_cents != null ? t.edge_cents.toFixed(1) + '¢' : '—'}`
+                  + `, ${t.contracts ?? '—'} contracts`,
+              ];
+            },
+          },
+        },
         // mode: 'x' only, not 'xy' -- with 4 differently-scaled y-axes now,
         // dragging one zoom gesture across all of them at once (the
         // single-axis chart's original 'xy' mode) doesn't make sense; each
