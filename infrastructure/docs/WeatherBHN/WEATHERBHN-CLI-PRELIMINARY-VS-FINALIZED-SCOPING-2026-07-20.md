@@ -22,6 +22,10 @@ Confirmed directly against raw product text (not inferred from timestamps alone)
 3. **Backfill decision**: the 38 already-stored preliminary rows for KLAX (and presumably a similar fraction for the other 5 stations with genuine CLI data) need a decision — re-fetch the true finalized report retroactively if NWS's product archive still has it, or leave them flagged as `is_final = FALSE` / `provisional` going forward without a full historical correction.
 4. **Re-check settlement impact**: once finalized values are available (or at least once the magnitude of preliminary-vs-finalized divergence is known per station), re-run `weather_settlement_reconciliation.py`'s logic against the corrected values for the 348 already-resolved rows and confirm none of them would have settled differently. This is the concrete way to close out "did this actually cause a wrong trade" rather than reasoning about it abstractly.
 
+## Confirmed: all 348 resolved rows are HIGH-side, zero LOW-side
+
+Checked directly: `weather_model_accuracy` shows `variable = 'tmax_f'` for all 348 resolved rows, no `tmin_f` rows at all. This is consistent with (not a contradiction of) the earlier LOW-side scoping finding that CP4 has never written a `'low'` row — there is currently **zero LOW-side exposure** to this bug, because no LOW-side trade has ever been settled. The entire exposure is HIGH-side, which is the mechanically lower-risk case per item 2's own finding (LAX highs almost always land before the 5pm preliminary-report cutoff; LOW would have been much worse, since ~16% of lows land after 8pm). Doesn't eliminate the need to verify actual settlement impact (item 4 below), but narrows the real-world risk considerably from what it could have been.
+
 ## Not yet checked
 
 - Whether this same 95%-preliminary pattern holds for the other 5 stations with genuine CLI data (KDEN, KMIA, KPHX, KDFW, KNYC) — only KLAX has been checked directly against raw product text.
