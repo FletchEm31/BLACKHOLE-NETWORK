@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WeatherBHN — Live Trajectory (All Cities)</title>
+<link rel="stylesheet" href="style.css?v=26">
+<link rel="stylesheet" href="live-cities.css?v=1">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <img src="img/bhn-logo.png" alt="BHN" class="brand-logo">
+    <div class="brand-text">
+      <div class="brand-title">WeatherBHN — Live Trajectory</div>
+      <div class="brand-subtitle">Per-city live ASOS temperature, all 3 tradeable cities side by side</div>
+    </div>
+  </div>
+  <div class="topbar-controls">
+    <a href="/" class="icon-btn back-link" title="Back to ladder">&larr; Ladder</a>
+    <div class="refresh-indicator" id="refreshIndicator">live <span id="liveCountdown"></span></div>
+  </div>
+</header>
+
+<main class="live-cities-main">
+  <!-- One panel per enabled city (KDEN/KLAX/KMIA), rendered in the operator's
+       requested display order (Los Angeles, Denver, Miami) -- NOT the
+       CITIES config order in app/main.py, which lists KDEN first. See
+       CITY_DISPLAY_ORDER in live-cities.js. Each panel polls
+       /api/live-trajectory independently but on the same shared 30s
+       interval (one fetch batch per tick, not 3 staggered timers). -->
+  <section class="panel city-traj-panel" id="panel-KLAX">
+    <div class="chart-panel-header">
+      <div class="panel-title" id="title-KLAX">Los Angeles (KLAX)</div>
+    </div>
+    <canvas id="chart-KLAX" height="200"></canvas>
+    <div class="source-badges" id="badges-KLAX"></div>
+  </section>
+
+  <section class="panel city-traj-panel" id="panel-KDEN">
+    <div class="chart-panel-header">
+      <div class="panel-title" id="title-KDEN">Denver (KDEN)</div>
+    </div>
+    <canvas id="chart-KDEN" height="200"></canvas>
+    <div class="source-badges" id="badges-KDEN"></div>
+  </section>
+
+  <section class="panel city-traj-panel" id="panel-KMIA">
+    <div class="chart-panel-header">
+      <div class="panel-title" id="title-KMIA">Miami (KMIA)</div>
+    </div>
+    <canvas id="chart-KMIA" height="200"></canvas>
+    <div class="source-badges" id="badges-KMIA"></div>
+  </section>
+</main>
+
+<script src="live-cities.js?v=1"></script>
+</body>
+</html>

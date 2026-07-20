@@ -245,6 +245,118 @@ def _chance_pct(b: dict) -> Optional[float]:
     return None
 
 
+def _resolve_mu_sigma(cur, station: str, target_date: date) -> dict:
+    """mu/sigma resolution, extracted verbatim from get_ladder() (2026-07-20)
+    so /api/live-trajectory can share the exact same source-of-truth logic
+    instead of re-deriving it -- same drift risk this codebase has hit
+    repeatedly (dual computations silently diverging) is why this is now a
+    single function instead of two copies. Must be called with an open
+    cursor (`cur`) inside a `with db.conn_cursor() as cur:` block; issues its
+    own queries against that cursor. Returns
+    {mu, mu_source, sigma, sigma_source, hours_to_settle} -- same fields/
+    semantics get_ladder has always returned for these.
+    """
+    # side = 'NO' added 2026-07-18b: this ladder is CP4's NO-side view.
+    # Without the filter, once a YES-side row can exist for the same
+    # station/date, ORDER BY decision_timestamp DESC LIMIT 1 would
+    # arbitrarily return whichever side was decided more recently, with
+    # no side label surfaced to the frontend -- a real redesign (side
+    # selector, or showing both), not fixed by this filter alone; this
+    # just keeps today's NO-only behavior stable in the meantime.
+    cur.execute("""
+        SELECT final_entry_predicted_tmax_f, final_entry_sigma_used,
+               predicted_tmax_f, sigma_used, decision_timestamp,
+               hours_to_settle
+        FROM weather_position_exits_clean
+        WHERE station_code = %s AND target_date = %s AND side = 'NO'
+        ORDER BY decision_timestamp DESC
+        LIMIT 1
+    """, (station, target_date))
+    signal_row = cur.fetchone()
+
+    # weather_position_exits only ever gets a row when a bucket
+    # QUALIFIES as a trade (edge >= threshold) -- on a day/cycle where
+    # nothing has qualified yet, signal_row is None even though CP4 has
+    # evaluated every bucket. weather_gold_contract_ledger logs every
+    # evaluated bucket (including SKIP), so it's a much more complete
+    # mu source: predicted_tmax_f = nws_forecast_f + model_delta_f
+    # (mirrors cp4_kelly_sizer.py's model_delta_f definition exactly).
+    ledger_row = None
+    if signal_row is None or (signal_row.get("final_entry_predicted_tmax_f") is None
+                               and signal_row.get("predicted_tmax_f") is None):
+        cur.execute("""
+            SELECT nws_forecast_f, model_delta_f, signal_generated_at
+            FROM weather_gold_contract_ledger
+            WHERE station_code = %s AND target_date = %s
+              AND nws_forecast_f IS NOT NULL AND model_delta_f IS NOT NULL
+            ORDER BY signal_generated_at DESC
+            LIMIT 1
+        """, (station, target_date))
+        ledger_row = cur.fetchone()
+
+    base_sigma_row = None
+    need_computed_sigma = signal_row is None or (
+        signal_row.get("final_entry_sigma_used") is None
+        and signal_row.get("sigma_used") is None
+    )
+    if need_computed_sigma:
+        # Day-of-year shrinkage calibration (2026-07-18c) -- mirrors
+        # cp3_inference.py's real base_rmse lookup exactly, so the
+        # dashboard's "computed fresh" sigma preview matches what CP4
+        # actually uses. Falls back to the season-bucket model_calibration
+        # table if this station/day-of-year has no row yet.
+        cur.execute("""
+            SELECT blended_sigma AS rmse FROM weather_model_calibration_daily
+            WHERE station_code = %s AND variable = 'tmax_f'
+              AND source_model = 'nws' AND lead_time_hours = 24
+              AND day_of_year = %s
+        """, (station, target_date.timetuple().tm_yday))
+        base_sigma_row = cur.fetchone()
+        if base_sigma_row is None or base_sigma_row.get("rmse") is None:
+            cur.execute("""
+                SELECT rmse FROM model_calibration
+                WHERE station_code = %s AND variable = 'tmax_f'
+                  AND source_model = 'nws' AND lead_time_hours = 24
+                  AND season = %s
+            """, (station, model_math.season_for(target_date)))
+            base_sigma_row = cur.fetchone()
+
+    mu = sigma = None
+    mu_source = sigma_source = "none"
+    hours_to_settle = None
+    if signal_row:
+        hours_to_settle = signal_row.get("hours_to_settle")
+        if signal_row.get("final_entry_predicted_tmax_f") is not None:
+            mu, mu_source = float(signal_row["final_entry_predicted_tmax_f"]), "entry_frozen"
+        elif signal_row.get("predicted_tmax_f") is not None:
+            mu, mu_source = float(signal_row["predicted_tmax_f"]), "live"
+        if signal_row.get("final_entry_sigma_used") is not None:
+            sigma, sigma_source = float(signal_row["final_entry_sigma_used"]), "entry_frozen"
+        elif signal_row.get("sigma_used") is not None:
+            sigma, sigma_source = float(signal_row["sigma_used"]), "live"
+
+    if mu is None and ledger_row is not None:
+        mu = float(ledger_row["nws_forecast_f"]) + float(ledger_row["model_delta_f"])
+        mu_source = "ledger_skip"  # bucket(s) evaluated this cycle, none qualified as a trade
+
+    if sigma is None and base_sigma_row is not None and base_sigma_row.get("rmse") is not None:
+        now_utc = datetime.now(timezone.utc)
+        sigma = round(model_math.calculate_time_decayed_sigma(
+            float(base_sigma_row["rmse"]), station, now_utc, target_date
+        ), 4)
+        sigma_source = "computed_fresh"  # same formula CP4 uses, computed here since no signal row exists yet
+        if hours_to_settle is None:
+            hours_to_settle = round(
+                max((model_math.settlement_dt(station, target_date) - now_utc).total_seconds() / 3600.0, 0.0), 2
+            )
+
+    return {
+        "mu": mu, "mu_source": mu_source,
+        "sigma": sigma, "sigma_source": sigma_source,
+        "hours_to_settle": hours_to_settle,
+    }
+
+
 @app.get("/api/ladder")
 def get_ladder(station: str = Query(...), target_date: date = Query(...)):
     if station not in {c["station_code"] for c in CITIES}:
@@ -323,99 +435,11 @@ def get_ladder(station: str = Query(...), target_date: date = Query(...)):
         running_high_so_far = (_running_high_so_far(cur, station)
                                 if _is_local_today(station, target_date) else None)
 
-        # side = 'NO' added 2026-07-18b: this ladder is CP4's NO-side view.
-        # Without the filter, once a YES-side row can exist for the same
-        # station/date, ORDER BY decision_timestamp DESC LIMIT 1 would
-        # arbitrarily return whichever side was decided more recently, with
-        # no side label surfaced to the frontend -- a real redesign (side
-        # selector, or showing both), not fixed by this filter alone; this
-        # just keeps today's NO-only behavior stable in the meantime.
-        cur.execute("""
-            SELECT final_entry_predicted_tmax_f, final_entry_sigma_used,
-                   predicted_tmax_f, sigma_used, decision_timestamp,
-                   hours_to_settle
-            FROM weather_position_exits_clean
-            WHERE station_code = %s AND target_date = %s AND side = 'NO'
-            ORDER BY decision_timestamp DESC
-            LIMIT 1
-        """, (station, target_date))
-        signal_row = cur.fetchone()
+        sig = _resolve_mu_sigma(cur, station, target_date)
 
-        # weather_position_exits only ever gets a row when a bucket
-        # QUALIFIES as a trade (edge >= threshold) -- on a day/cycle where
-        # nothing has qualified yet, signal_row is None even though CP4 has
-        # evaluated every bucket. weather_gold_contract_ledger logs every
-        # evaluated bucket (including SKIP), so it's a much more complete
-        # mu source: predicted_tmax_f = nws_forecast_f + model_delta_f
-        # (mirrors cp4_kelly_sizer.py's model_delta_f definition exactly).
-        ledger_row = None
-        if signal_row is None or (signal_row.get("final_entry_predicted_tmax_f") is None
-                                   and signal_row.get("predicted_tmax_f") is None):
-            cur.execute("""
-                SELECT nws_forecast_f, model_delta_f, signal_generated_at
-                FROM weather_gold_contract_ledger
-                WHERE station_code = %s AND target_date = %s
-                  AND nws_forecast_f IS NOT NULL AND model_delta_f IS NOT NULL
-                ORDER BY signal_generated_at DESC
-                LIMIT 1
-            """, (station, target_date))
-            ledger_row = cur.fetchone()
-
-        base_sigma_row = None
-        need_computed_sigma = signal_row is None or (
-            signal_row.get("final_entry_sigma_used") is None
-            and signal_row.get("sigma_used") is None
-        )
-        if need_computed_sigma:
-            # Day-of-year shrinkage calibration (2026-07-18c) -- mirrors
-            # cp3_inference.py's real base_rmse lookup exactly, so the
-            # dashboard's "computed fresh" sigma preview matches what CP4
-            # actually uses. Falls back to the season-bucket model_calibration
-            # table if this station/day-of-year has no row yet.
-            cur.execute("""
-                SELECT blended_sigma AS rmse FROM weather_model_calibration_daily
-                WHERE station_code = %s AND variable = 'tmax_f'
-                  AND source_model = 'nws' AND lead_time_hours = 24
-                  AND day_of_year = %s
-            """, (station, target_date.timetuple().tm_yday))
-            base_sigma_row = cur.fetchone()
-            if base_sigma_row is None or base_sigma_row.get("rmse") is None:
-                cur.execute("""
-                    SELECT rmse FROM model_calibration
-                    WHERE station_code = %s AND variable = 'tmax_f'
-                      AND source_model = 'nws' AND lead_time_hours = 24
-                      AND season = %s
-                """, (station, model_math.season_for(target_date)))
-                base_sigma_row = cur.fetchone()
-
-    mu = sigma = None
-    mu_source = sigma_source = "none"
-    hours_to_settle = None
-    if signal_row:
-        hours_to_settle = signal_row.get("hours_to_settle")
-        if signal_row.get("final_entry_predicted_tmax_f") is not None:
-            mu, mu_source = float(signal_row["final_entry_predicted_tmax_f"]), "entry_frozen"
-        elif signal_row.get("predicted_tmax_f") is not None:
-            mu, mu_source = float(signal_row["predicted_tmax_f"]), "live"
-        if signal_row.get("final_entry_sigma_used") is not None:
-            sigma, sigma_source = float(signal_row["final_entry_sigma_used"]), "entry_frozen"
-        elif signal_row.get("sigma_used") is not None:
-            sigma, sigma_source = float(signal_row["sigma_used"]), "live"
-
-    if mu is None and ledger_row is not None:
-        mu = float(ledger_row["nws_forecast_f"]) + float(ledger_row["model_delta_f"])
-        mu_source = "ledger_skip"  # bucket(s) evaluated this cycle, none qualified as a trade
-
-    if sigma is None and base_sigma_row is not None and base_sigma_row.get("rmse") is not None:
-        now_utc = datetime.now(timezone.utc)
-        sigma = round(model_math.calculate_time_decayed_sigma(
-            float(base_sigma_row["rmse"]), station, now_utc, target_date
-        ), 4)
-        sigma_source = "computed_fresh"  # same formula CP4 uses, computed here since no signal row exists yet
-        if hours_to_settle is None:
-            hours_to_settle = round(
-                max((model_math.settlement_dt(station, target_date) - now_utc).total_seconds() / 3600.0, 0.0), 2
-            )
+    mu, mu_source = sig["mu"], sig["mu_source"]
+    sigma, sigma_source = sig["sigma"], sig["sigma_source"]
+    hours_to_settle = sig["hours_to_settle"]
 
     sigma_markers = []
     if mu is not None and sigma is not None:
@@ -527,6 +551,135 @@ def get_ladder(station: str = Query(...), target_date: date = Query(...)):
                                     if clim_row and clim_row["average_dailyhigh_time_utc"] else None),
         "avg_dailyhigh_timezone": clim_row["local_timezone"] if clim_row else None,
         "avg_dailyhigh_source_note": clim_row["source_station_note"] if clim_row else None,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Live Temperature Trajectory — high-frequency monitoring view added
+# 2026-07-20 per operator request: a live-refreshing (30s poll) line chart of
+# the raw Synoptic/HF-ASOS observed temperature for the station's own local
+# calendar day, overlaid with the fast reference forecasts (NWS, GFS via
+# Open-Meteo's gfs_seamless model) and CP3's own blended model prediction
+# (mu) +/- 1 sigma, so the operator can watch the live trajectory relative to
+# what each source expects the day's high to be. Read-only, same as every
+# other endpoint in this file -- does not feed CP1-4, does not touch
+# DRY_RUN/enabled, does not write anything.
+#
+# Only meaningful for the station's own "today" -- ASOS observations are
+# real-time-only, there is nothing to plot for a future contract date.
+# target_date is still required (matches every other endpoint's signature)
+# so the frontend can pass state.date unconditionally; observations come
+# back empty (with is_today: false) for a non-today date, but the forecast
+# reference values (NWS/GFS/model) still resolve normally so tomorrow's
+# contract can be previewed ahead of any live data existing for it.
+# ---------------------------------------------------------------------------
+
+def _latest_nws_forecast_tmax(cur, station: str, target_date: date) -> Optional[dict]:
+    """Most recently retrieved NWS gridpoints forecast tmax_f for this
+    station/date, plus the run time it came from -- NOT an average or a
+    blend, the single latest snapshot, same "most recent wins" convention
+    used everywhere else in this file."""
+    cur.execute("""
+        SELECT tmax_f, forecast_run_time
+        FROM weather_bronze_nws_forecast_snapshots
+        WHERE station_code = %s AND target_date = %s AND tmax_f IS NOT NULL
+        ORDER BY forecast_run_time DESC
+        LIMIT 1
+    """, (station, target_date))
+    row = cur.fetchone()
+    if row is None:
+        return None
+    return {"tmax_f": float(row["tmax_f"]), "run_time": row["forecast_run_time"].isoformat()}
+
+
+def _latest_gfs_forecast_tmax(cur, station: str, target_date: date) -> Optional[dict]:
+    """GFS-derived forecast high for this station/date via Open-Meteo's
+    gfs_seamless model. weather_bronze_openmeteo_forecast_snapshots stores
+    hourly rows (temperature_2m per hour), not a precomputed daily max, so
+    this takes MAX(temperature_2m) across every hour row from the single
+    latest forecast_run_time -- same "pin to the latest run" convention as
+    the NWS helper above, just with an extra aggregation step since GFS's
+    own table shape is hourly."""
+    cur.execute("""
+        SELECT MAX(forecast_run_time) AS latest_run
+        FROM weather_bronze_openmeteo_forecast_snapshots
+        WHERE station_code = %s AND target_date = %s AND model = 'gfs_seamless'
+    """, (station, target_date))
+    run_row = cur.fetchone()
+    latest_run = run_row["latest_run"] if run_row else None
+    if latest_run is None:
+        return None
+    cur.execute("""
+        SELECT MAX(temperature_2m) AS tmax_f
+        FROM weather_bronze_openmeteo_forecast_snapshots
+        WHERE station_code = %s AND target_date = %s AND model = 'gfs_seamless'
+          AND forecast_run_time = %s
+    """, (station, target_date, latest_run))
+    row = cur.fetchone()
+    if row is None or row["tmax_f"] is None:
+        return None
+    return {"tmax_f": float(row["tmax_f"]), "run_time": latest_run.isoformat()}
+
+
+@app.get("/api/live-trajectory")
+def get_live_trajectory(station: str = Query(...), target_date: date = Query(...)):
+    if station not in {c["station_code"] for c in CITIES}:
+        raise HTTPException(400, f"unknown station {station!r}")
+
+    is_today = _is_local_today(station, target_date)
+    tz_name = STATION_TZ.get(station)
+
+    observations: list[dict] = []
+    with db.conn_cursor() as cur:
+        if is_today and tz_name:
+            tz = ZoneInfo(tz_name)
+            now_local = datetime.now(tz)
+            midnight_local = datetime(now_local.year, now_local.month, now_local.day, tzinfo=tz)
+            cur.execute("""
+                SELECT observed_at, air_temp_f
+                FROM weather_bronze_synoptic_asos
+                WHERE station_code = %s AND observed_at >= %s AND air_temp_f IS NOT NULL
+                ORDER BY observed_at ASC
+            """, (station, midnight_local.astimezone(timezone.utc)))
+            observations = [
+                {"observed_at": r["observed_at"].isoformat(), "air_temp_f": float(r["air_temp_f"])}
+                for r in cur.fetchall()
+            ]
+
+        running_high_so_far = _running_high_so_far(cur, station) if is_today else None
+        nws = _latest_nws_forecast_tmax(cur, station, target_date)
+        gfs = _latest_gfs_forecast_tmax(cur, station, target_date)
+        sig = _resolve_mu_sigma(cur, station, target_date)
+
+        cur.execute("""
+            SELECT average_dailyhigh_time_local, local_timezone
+            FROM weather_station_climatology
+            WHERE station_code = %s AND month = %s
+        """, (station, target_date.month))
+        clim_row = cur.fetchone()
+
+    mu, sigma = sig["mu"], sig["sigma"]
+    market_close_dt = model_math.market_close_time_utc(station, target_date)
+
+    return {
+        "station_code": station,
+        "target_date": target_date.isoformat(),
+        "is_today": is_today,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "observations": observations,
+        "running_high_so_far": running_high_so_far,
+        "mu": mu, "mu_source": sig["mu_source"],
+        "sigma": sigma, "sigma_source": sig["sigma_source"],
+        "mu_plus_1sigma": round(mu + sigma, 1) if mu is not None and sigma is not None else None,
+        "mu_minus_1sigma": round(mu - sigma, 1) if mu is not None and sigma is not None else None,
+        "nws_forecast_tmax_f": nws["tmax_f"] if nws else None,
+        "nws_forecast_run_time": nws["run_time"] if nws else None,
+        "gfs_forecast_tmax_f": gfs["tmax_f"] if gfs else None,
+        "gfs_forecast_run_time": gfs["run_time"] if gfs else None,
+        "market_close_time": market_close_dt.isoformat() if market_close_dt else None,
+        "avg_dailyhigh_time_local": (clim_row["average_dailyhigh_time_local"].isoformat()
+                                      if clim_row and clim_row["average_dailyhigh_time_local"] else None),
+        "avg_dailyhigh_timezone": clim_row["local_timezone"] if clim_row else None,
     }
 
 

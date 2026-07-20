@@ -24,6 +24,7 @@
            markets only). No historical/past-date browsing, per scope. -->
       <div class="city-tabs" id="dayToggle"></div>
     </div>
+    <a href="live-cities.html" class="icon-btn back-link" title="Live trajectory, all cities side by side" style="width:auto;padding:0 12px;text-decoration:none;font-size:13px;display:inline-flex;align-items:center;">All-cities live &rarr;</a>
     <div class="refresh-indicator" id="refreshIndicator">live</div>
   </div>
 </header>
@@ -73,6 +74,23 @@
     <div id="marketTimesRow" class="market-times-row"></div>
     <div id="sigmaMarkerStrip" class="sigma-marker-strip"></div>
     <div class="source-badges" id="sourceBadges"></div>
+  </section>
+
+  <!-- Live Temperature Trajectory -- added 2026-07-20. Live ASOS observed
+       temp (Synoptic HF-METAR blend, ~5min cadence) for the station's own
+       "today" only, polled every 30s (fastest useful cadence given the
+       underlying data's own ~5min resolution + ~10-12min collection lag),
+       overlaid with the fast reference forecasts (NWS/GFS) and CP3's
+       blended model prediction (mu) +/- 1 sigma. Empty/flat on a "tomorrow"
+       tab -- no live ASOS data exists for a future contract date, but the
+       forecast reference badges below the chart still populate. -->
+  <section class="panel trajectory-panel">
+    <div class="chart-panel-header">
+      <div class="panel-title">Live Temperature Trajectory <span class="hint">(raw Synoptic/HF-ASOS observations, today only &mdash; not a forecast)</span></div>
+      <div class="refresh-countdown" id="trajectoryRefreshCountdown">30s</div>
+    </div>
+    <canvas id="trajectoryChart" height="200"></canvas>
+    <div class="source-badges" id="trajectoryBadges"></div>
   </section>
 
   <!-- Charts row -->
@@ -241,6 +259,6 @@
 
 </main>
 
-<script src="app.js?v=26"></script>
+<script src="app.js?v=27"></script>
 </body>
 </html>

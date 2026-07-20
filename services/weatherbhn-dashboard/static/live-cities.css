@@ -1,0 +1,26 @@
+/* Live Trajectory (All Cities) — layout only; colors/panel/badge styling
+   all come from style.css (:root variables, .panel, .badge, .source-badges,
+   .chart-panel-header, .refresh-indicator, .icon-btn) so this page stays
+   visually consistent with the main ladder dashboard without duplicating
+   the theme. */
+
+.live-cities-main {
+  padding: 16px 20px 60px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  max-width: 1800px;
+  margin: 0 auto;
+}
+@media (max-width: 1200px) {
+  .live-cities-main { grid-template-columns: 1fr; }
+}
+
+.city-traj-panel .panel-title { font-size: 14px; }
+
+.back-link {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: auto; padding: 0 12px; text-decoration: none; font-size: 13px;
+}
+
+#liveCountdown { color: var(--text-dim); font-weight: 400; }

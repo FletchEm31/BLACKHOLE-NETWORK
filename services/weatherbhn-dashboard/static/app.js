@@ -3,6 +3,12 @@
 
 const PRICE_REFRESH_MS = 20000;   // live Kalshi price/volume/chance
 const MODEL_REFRESH_MS = 5 * 60000; // mu/sigma — matches orchestrator cadence
+// Live Temperature Trajectory poll -- underlying ASOS data only actually
+// updates ~every 5min (plus ~10-12min collection lag), but 30s is the
+// fastest cadence that's still cheap (single indexed range SELECT) and
+// catches a new point promptly rather than batching several at once,
+// per operator request 2026-07-20 ("30 sec to 1 min as fast as possible").
+const TRAJECTORY_REFRESH_MS = 30000;
 
 // ---------------------------------------------------------------------------
 // Footer content — edit these two arrays directly, no markup changes needed.
@@ -26,6 +32,7 @@ const DATA_SOURCES = [
   { label: 'Sigma-Marker Performance panel', text: 'Live, recomputed on every load from every settled trade (weather_position_exits_clean) across all 3 cities — grows as more trades settle, not a snapshot. Each trade\'s entry-time signed z-score is rounded to the nearest integer marker (-4..+4), so these numbers will NOT exactly match WEATHERBHN-SIGMA-ZONE-ANALYSIS-2026-07-17.md\'s custom zone-ranges — different binning method, same underlying trades. Every marker (including 0σ) uses the plain recorded No-side outcome — no Yes-side resimulation. Cell color: green = positive ROI (any sample size), everything else neutral.' },
   { label: 'Active Trade Summary / running-high auto-indicator', text: 'Today\'s running high-so-far comes from live ASOS readings (weather_bronze_synoptic_asos.air_temp_f, ~15-20min lag), bucketed by each station\'s own local calendar day. NWS\'s official Daily Climate Report is compiled FROM ASOS data — same underlying measurement, not a competing source — but the official report doesn\'t finalize until settlement, and may apply QC/rounding adjustments; treat the live on-track/auto-win indicator as directionally accurate in real time, not as the final settlement value.' },
   { label: 'Active Trade Summary / ladder Unreal. ROI%/P&L', text: 'A PROJECTION — "if this settled right now," based on today\'s running-high-so-far vs. each bucket (side-adjusted): full $1/contract payout minus entry cost when currently favorable, full loss of entry cost when unfavorable. Deliberately NOT a live market mark-to-market price (operator direction 2026-07-19) — a thin/slow-to-update market quote crashing toward $0 should not render as a loss on a position the actual temperature already favors.' },
+  { label: 'Live Temperature Trajectory', text: 'Raw weather_bronze_synoptic_asos observations (Synoptic API, blends the HF-METAR subset into standard station queries — ~5min resolution, ~10-12min collection lag), today only. Polled every 30s. Reference lines: NWS = latest weather_bronze_nws_forecast_snapshots tmax_f for this station/date; GFS = MAX(temperature_2m) across the latest Open-Meteo gfs_seamless run\'s hourly rows for this date; Model μ/σ = the same _resolve_mu_sigma() CP4 signal resolution the ladder\'s reference strip uses, one shared function as of 2026-07-20 (not a second computation).' },
 ];
 
 const KNOWN_ISSUES = [
@@ -70,6 +77,8 @@ const state = {
   probChart: null,
   countdownSec: PRICE_REFRESH_MS / 1000,
   sigmaPerfPooled: null,  // /api/sigma-performance's pooled row, keyed by marker -- feeds BOTH the live performance panel AND isStarredMarker() (positive net $), same source of truth so they stay in sync automatically
+  trajectoryChart: null,
+  trajectoryCountdownSec: TRAJECTORY_REFRESH_MS / 1000,
 };
 
 // Browser-local calendar date, NOT UTC (toISOString()/setUTCDate() give the
@@ -169,8 +178,12 @@ async function init() {
   await refreshNotepad();
   await refreshActivePositions();
   await refreshPaperPositions();
+  await refreshLiveTrajectory();
 
   setInterval(() => refreshLadder(false), PRICE_REFRESH_MS);
+  // Independent poll loop from the ladder's -- the underlying ASOS data has
+  // its own ~5min cadence, unrelated to the 20s Kalshi price feed.
+  setInterval(refreshLiveTrajectory, TRAJECTORY_REFRESH_MS);
   // Active Trade Summary depends on the same live price feed as the ladder
   // (mark-to-market P&L) and the same live running-high tracking as the
   // ladder's auto-winning-bucket badge -- same 20s cadence, not the 5-min
@@ -216,12 +229,17 @@ function onCityOrDateChanged() {
   // sessions), not silently vanish.
   refreshAll(true);
   refreshJournal();
+  refreshLiveTrajectory();
 }
 
 function tickCountdown() {
   state.countdownSec = Math.max(0, state.countdownSec - 1);
   const el = document.getElementById('refreshCountdown');
   if (el) el.textContent = `${state.countdownSec}s`;
+
+  state.trajectoryCountdownSec = Math.max(0, state.trajectoryCountdownSec - 1);
+  const tEl = document.getElementById('trajectoryRefreshCountdown');
+  if (tEl) tEl.textContent = `${state.trajectoryCountdownSec}s`;
 }
 
 function renderCityTabs() {
@@ -461,6 +479,139 @@ function renderVolumeTable(data) {
       <td class="${liquidClass}">${liquid}</td>`;
     tbody.appendChild(tr);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Live Temperature Trajectory -- added 2026-07-20. Independent poll loop
+// (TRAJECTORY_REFRESH_MS, 30s) from the ladder's 20s price feed -- separate
+// data source (weather_bronze_synoptic_asos), separate cadence, no shared
+// state with refreshLadder() beyond station/date. Category x-axis (local
+// HH:MM labels), NOT Chart.js's time scale -- no date adapter is loaded
+// (only chart.umd.min.js itself, see index.html), matching the existing
+// probability chart's own category-axis approach rather than adding a new
+// CDN dependency for this one panel.
+// ---------------------------------------------------------------------------
+async function refreshLiveTrajectory() {
+  try {
+    const data = await fetchJSON(`/api/live-trajectory?station=${state.station}&target_date=${state.date}`);
+    renderTrajectoryChart(data);
+    renderTrajectoryBadges(data);
+
+    state.trajectoryCountdownSec = TRAJECTORY_REFRESH_MS / 1000;
+    const cd = document.getElementById('trajectoryRefreshCountdown');
+    if (cd) {
+      cd.textContent = `${state.trajectoryCountdownSec}s`;
+      cd.classList.add('reset');
+      setTimeout(() => cd.classList.remove('reset'), 400);
+    }
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+function localHHMM(iso, tz) {
+  return new Date(iso).toLocaleString('en-US', {
+    timeZone: tz, hour: 'numeric', minute: '2-digit', hour12: false,
+  });
+}
+
+function renderTrajectoryChart(data) {
+  const ctx = document.getElementById('trajectoryChart');
+  const cityTz = (state.cities.find(c => c.station_code === state.station) || {}).timezone;
+
+  const emptyMsgId = 'trajectoryEmptyMsg';
+  document.getElementById(emptyMsgId)?.remove();
+  if (!data.is_today || data.observations.length === 0) {
+    if (state.trajectoryChart) { state.trajectoryChart.destroy(); state.trajectoryChart = null; }
+    const msg = document.createElement('div');
+    msg.id = emptyMsgId;
+    msg.className = 'hint';
+    msg.style.padding = '40px 0';
+    msg.style.textAlign = 'center';
+    msg.textContent = data.is_today
+      ? 'No live ASOS observations yet today for this station.'
+      : 'Live trajectory only applies to today — switch to the Today tab to see it. Forecast reference badges below still apply to this date.';
+    ctx.parentElement.appendChild(msg);
+    return;
+  }
+
+  const labels = data.observations.map(o => localHHMM(o.observed_at, cityTz));
+  const liveTemp = data.observations.map(o => o.air_temp_f);
+  const flat = (v) => data.observations.map(() => v);
+
+  const datasets = [
+    {
+      type: 'line',
+      label: 'Live temp (ASOS)',
+      data: liveTemp,
+      borderColor: '#4d8dff',
+      backgroundColor: '#4d8dff',
+      tension: 0.2,
+      pointRadius: 0,
+      borderWidth: 2,
+    },
+  ];
+  if (data.mu != null) {
+    datasets.push({
+      type: 'line', label: `Model μ (${data.mu_source})`, data: flat(data.mu),
+      borderColor: '#c9a94d', borderDash: [6, 4], pointRadius: 0, borderWidth: 1.5,
+    });
+  }
+  if (data.mu_plus_1sigma != null) {
+    datasets.push({
+      type: 'line', label: 'μ +1σ', data: flat(data.mu_plus_1sigma),
+      borderColor: 'rgba(201, 169, 77, 0.45)', borderDash: [2, 3], pointRadius: 0, borderWidth: 1,
+    });
+    datasets.push({
+      type: 'line', label: 'μ −1σ', data: flat(data.mu_minus_1sigma),
+      borderColor: 'rgba(201, 169, 77, 0.45)', borderDash: [2, 3], pointRadius: 0, borderWidth: 1,
+    });
+  }
+  if (data.nws_forecast_tmax_f != null) {
+    datasets.push({
+      type: 'line', label: 'NWS forecast high', data: flat(data.nws_forecast_tmax_f),
+      borderColor: '#17c964', borderDash: [4, 4], pointRadius: 0, borderWidth: 1.5,
+    });
+  }
+  if (data.gfs_forecast_tmax_f != null) {
+    datasets.push({
+      type: 'line', label: 'GFS forecast high', data: flat(data.gfs_forecast_tmax_f),
+      borderColor: '#e0578f', borderDash: [4, 4], pointRadius: 0, borderWidth: 1.5,
+    });
+  }
+
+  if (state.trajectoryChart) state.trajectoryChart.destroy();
+  state.trajectoryChart = new Chart(ctx, {
+    data: { labels, datasets },
+    options: {
+      responsive: true,
+      animation: false,
+      interaction: { mode: 'nearest', intersect: false },
+      scales: {
+        x: { ticks: { color: '#8891a3', maxTicksLimit: 12 }, grid: { color: '#232937' } },
+        y: {
+          ticks: { color: '#8891a3' }, grid: { color: '#232937' },
+          title: { display: true, text: '°F', color: '#8891a3' },
+        },
+      },
+      plugins: { legend: { labels: { color: '#e6e9ef' } } },
+    },
+  });
+}
+
+function renderTrajectoryBadges(data) {
+  const el = document.getElementById('trajectoryBadges');
+  el.innerHTML = '';
+  const chip = (label, value) => {
+    const span = document.createElement('span');
+    span.className = 'badge live';
+    span.textContent = value == null ? `${label}: —` : `${label}: ${value}°F`;
+    return span;
+  };
+  if (data.running_high_so_far != null) el.appendChild(chip('Running high so far', data.running_high_so_far));
+  el.appendChild(chip(`NWS forecast (${data.nws_forecast_run_time ? new Date(data.nws_forecast_run_time).toLocaleTimeString() : 'n/a'})`, data.nws_forecast_tmax_f));
+  el.appendChild(chip(`GFS forecast (${data.gfs_forecast_run_time ? new Date(data.gfs_forecast_run_time).toLocaleTimeString() : 'n/a'})`, data.gfs_forecast_tmax_f));
+  el.appendChild(chip(`Model μ (${data.mu_source})`, data.mu));
 }
 
 // Mirrors Kalshi's real ticker convention: a "between" bucket's ticker
