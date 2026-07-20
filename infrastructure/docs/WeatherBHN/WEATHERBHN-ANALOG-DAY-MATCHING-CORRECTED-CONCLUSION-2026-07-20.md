@@ -36,10 +36,16 @@ hour   analog_hi  persist_hi  |  analog_lo  persist_lo
 
 The scoped, honest claim: **analog-day matching has a real but narrow use case — HIGH-side prediction in the first few hours after local midnight, before the day has developed enough for a simple running-high rule to have anything to work with. It does not add value for LOW-side prediction, and it does not add value for HIGH-side prediction past mid-morning, where persistence is either better or the question is nearly already answered by direct observation.**
 
-## What has NOT yet been checked (tuning sweep queued, results to be appended here)
+## Tuning sweep (2026-07-20) — confirms this is structural, not an implementation artifact
 
-Whether the narrow early-morning HIGH edge (and the total absence of a LOW edge) is a structural finding about this problem, or an artifact of this specific implementation:
-- k=30 neighbors — untested against other values (e.g. k=10, k=100)
-- Season-only z-score normalization — untested against per-(season, checkpoint-hour) normalization, which might preserve more signal than the current season-pooled approach
+Ran `scripts/weather/asos_analog_tuning_sweep.py`: k in {10, 30, 100}, and month-level z-score normalization as an alternative to season-level, at hours 0/6/12/18 for both stations.
 
-If a quick sweep on these doesn't change the shape of the result above, this conclusion stands as the closing scope of item 4. If it does change materially, this doc needs a follow-up correction — the same discipline that produced this correction in the first place.
+- **k=10 beats k=30 and k=100 at every hour tested, both stations.** Tighter neighbor pool = better match. This *strengthens* the early-morning HIGH edge rather than erasing it — e.g. LAX hour 6 goes from a near-tie at k=30 (3.78 vs persist 3.88) to a clear win at k=10 (3.66 vs 3.88); KMIA hour 6 similarly widens (2.72 vs persist 3.44).
+- **Month-level normalization is worse than season-level everywhere tested** — the per-month population is thin enough (roughly 90 days) that the normalization itself adds noise. Not a fix, don't pursue it.
+- **The LOW-side conclusion doesn't move.** Even with the better k=10, persistence still wins at essentially every hour/station combination. The one exception — KMIA hour 0, k=10: analog 2.39°F vs persist 2.45°F — is a 0.06°F difference, i.e. noise, not a finding. Nothing here overturns "no real LOW-side edge."
+
+**Closing scope for item 4, with k=10 as the recommended parameter going forward:**
+- **HIGH-side**: a real, now better-quantified edge in the early-morning window (roughly midnight-9am local), where analog matching beats a simple running-high-plus-offset rule. Past mid-morning, persistence wins increasingly decisively, and by afternoon the question is largely already answered by direct observation.
+- **LOW-side**: no edge over persistence at any hour, at either station, under any of the k/normalization variants tested. Persistence (running low so far + season/hour offset) is simply the better predictor throughout the day.
+
+This is the final, scoped conclusion for item 4. Any future work building on this should use k=10, restrict analog-matching's claimed value to HIGH-side early-morning prediction, and use plain persistence everywhere else.
