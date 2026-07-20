@@ -82,7 +82,7 @@ body {
 @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.25; } }
 
 /* ---------- Layout ---------- */
-main { padding: 16px 20px 60px; display: flex; flex-direction: column; gap: 16px; max-width: 1400px; margin: 0 auto; }
+main { padding: 16px 20px 60px; display: flex; flex-direction: column; gap: 16px; max-width: 2400px; margin: 0 auto; }
 
 .panel {
   background: var(--panel-bg); border: 1px solid var(--panel-border);
