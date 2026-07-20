@@ -24,6 +24,14 @@ const charts = {};       // station_code -> Chart.js instance
 let cityMeta = {};        // station_code -> {city, timezone}
 let countdownSec = REFRESH_MS / 1000;
 
+// Big rolling-72h single-city chart, added 2026-07-20 -- separate Chart.js
+// instance/state from the small per-city panels above (charts{}), own
+// dropdown-selected city, but polled on the same shared 30s tick so
+// everything on the page refreshes together.
+const BIG_WINDOW_HOURS = 72;
+let bigChart = null;
+let bigSelectedStation = null;
+
 async function fetchJSON(url) {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`${url} -> ${res.status}`);
@@ -138,6 +146,149 @@ function renderBadges(station, data) {
   el.appendChild(chip('Model μ', data.mu));
 }
 
+// Includes the date (not just HH:MM like the small panels' localHHMM) --
+// a 72h window spans multiple calendar days, so a bare time would be
+// ambiguous about which day a point falls on.
+function localDayTime(iso, tz) {
+  return new Date(iso).toLocaleString('en-US', {
+    timeZone: tz, month: 'short', day: 'numeric',
+    hour: 'numeric', minute: '2-digit', hour12: false,
+  });
+}
+
+function renderBigChart(station, data) {
+  const ctx = document.getElementById('bigTrajChart');
+  if (!ctx) return;
+  const tz = (cityMeta[station] || {}).timezone;
+
+  const emptyId = 'bigTrajEmptyMsg';
+  document.getElementById(emptyId)?.remove();
+  if (!data.observations.length) {
+    if (bigChart) { bigChart.destroy(); bigChart = null; }
+    const msg = document.createElement('div');
+    msg.id = emptyId;
+    msg.className = 'hint';
+    msg.style.padding = '60px 0';
+    msg.style.textAlign = 'center';
+    msg.textContent = `No live ASOS observations in the last ${BIG_WINDOW_HOURS}h for this station.`;
+    ctx.parentElement.appendChild(msg);
+    return;
+  }
+
+  const labels = data.observations.map(o => localDayTime(o.observed_at, tz));
+  const liveTemp = data.observations.map(o => o.air_temp_f);
+  const flat = (v) => data.observations.map(() => v);
+
+  const datasets = [
+    {
+      type: 'line', label: 'Live temp (ASOS)', data: liveTemp,
+      borderColor: '#4d8dff', backgroundColor: '#4d8dff',
+      tension: 0.15, pointRadius: 0, borderWidth: 2,
+    },
+  ];
+  // Reference lines (today's model mu/sigma, NWS/GFS forecast highs) are
+  // inherently per-contract/per-target_date values -- they're plotted flat
+  // across the whole 72h window as a reference backdrop for TODAY's
+  // contract specifically, not a separate value per historical day.
+  if (data.mu != null) {
+    datasets.push({
+      type: 'line', label: `Model μ, today (${data.mu_source})`, data: flat(data.mu),
+      borderColor: '#c9a94d', borderDash: [6, 4], pointRadius: 0, borderWidth: 1.5,
+    });
+  }
+  if (data.mu_plus_1sigma != null) {
+    datasets.push({
+      type: 'line', label: 'μ +1σ, today', data: flat(data.mu_plus_1sigma),
+      borderColor: 'rgba(201, 169, 77, 0.45)', borderDash: [2, 3], pointRadius: 0, borderWidth: 1,
+    });
+    datasets.push({
+      type: 'line', label: 'μ −1σ, today', data: flat(data.mu_minus_1sigma),
+      borderColor: 'rgba(201, 169, 77, 0.45)', borderDash: [2, 3], pointRadius: 0, borderWidth: 1,
+    });
+  }
+  if (data.nws_forecast_tmax_f != null) {
+    datasets.push({
+      type: 'line', label: 'NWS forecast high, today', data: flat(data.nws_forecast_tmax_f),
+      borderColor: '#17c964', borderDash: [4, 4], pointRadius: 0, borderWidth: 1.5,
+    });
+  }
+  if (data.gfs_forecast_tmax_f != null) {
+    datasets.push({
+      type: 'line', label: 'GFS forecast high, today', data: flat(data.gfs_forecast_tmax_f),
+      borderColor: '#e0578f', borderDash: [4, 4], pointRadius: 0, borderWidth: 1.5,
+    });
+  }
+
+  if (bigChart) bigChart.destroy();
+  bigChart = new Chart(ctx, {
+    data: { labels, datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      interaction: { mode: 'nearest', intersect: false },
+      scales: {
+        x: { ticks: { color: '#8891a3', maxTicksLimit: 12 }, grid: { color: '#232937' } },
+        y: {
+          ticks: { color: '#8891a3' }, grid: { color: '#232937' },
+          title: { display: true, text: '°F', color: '#8891a3' },
+        },
+      },
+      plugins: { legend: { labels: { color: '#e6e9ef', boxWidth: 12, font: { size: 11 } } } },
+    },
+  });
+}
+
+function renderBigBadges(station, data) {
+  const el = document.getElementById('bigTrajBadges');
+  if (!el) return;
+  el.innerHTML = '';
+  const chip = (label, value) => {
+    const span = document.createElement('span');
+    span.className = 'badge live';
+    span.textContent = value == null ? `${label}: —` : `${label}: ${value}°F`;
+    return span;
+  };
+  if (data.running_high_so_far != null) el.appendChild(chip("High so far (today)", data.running_high_so_far));
+  el.appendChild(chip('NWS (today)', data.nws_forecast_tmax_f));
+  el.appendChild(chip('GFS (today)', data.gfs_forecast_tmax_f));
+  el.appendChild(chip('Model μ (today)', data.mu));
+}
+
+async function refreshBigChart() {
+  if (!bigSelectedStation) return;
+  try {
+    const data = await fetchJSON(
+      `/api/live-trajectory?station=${bigSelectedStation}&target_date=${todayIso()}&window_hours=${BIG_WINDOW_HOURS}`
+    );
+    renderBigChart(bigSelectedStation, data);
+    renderBigBadges(bigSelectedStation, data);
+  } catch (e) {
+    console.error('big trajectory fetch failed:', e);
+    const el = document.getElementById('bigTrajBadges');
+    if (el) el.innerHTML = '<span class="badge none">refresh failed</span>';
+  }
+}
+
+function initBigCitySelect() {
+  const sel = document.getElementById('bigCitySelect');
+  if (!sel) return;
+  sel.innerHTML = '';
+  for (const station of CITY_DISPLAY_ORDER) {
+    if (!cityMeta[station]) continue;
+    const opt = document.createElement('option');
+    opt.value = station;
+    opt.textContent = `${cityMeta[station].city} (${station})`;
+    sel.appendChild(opt);
+  }
+  bigSelectedStation = CITY_DISPLAY_ORDER.find(s => cityMeta[s]) || null;
+  if (bigSelectedStation) sel.value = bigSelectedStation;
+  sel.addEventListener('change', () => {
+    bigSelectedStation = sel.value;
+    refreshBigChart();
+  });
+}
+
 async function refreshCity(station) {
   try {
     const data = await fetchJSON(`/api/live-trajectory?station=${station}&target_date=${todayIso()}`);
@@ -152,7 +303,10 @@ async function refreshCity(station) {
 
 async function refreshAllCities() {
   const indicator = document.getElementById('refreshIndicator');
-  await Promise.all(CITY_DISPLAY_ORDER.filter(s => cityMeta[s]).map(refreshCity));
+  await Promise.all([
+    ...CITY_DISPLAY_ORDER.filter(s => cityMeta[s]).map(refreshCity),
+    refreshBigChart(),
+  ]);
   indicator.classList.remove('stale');
   countdownSec = REFRESH_MS / 1000;
 }
@@ -184,6 +338,7 @@ async function init() {
     if (titleEl) titleEl.textContent = `${cityMeta[station].city} (${station})`;
   }
 
+  initBigCitySelect();
   await refreshAllCities();
   setInterval(refreshAllCities, REFRESH_MS);
   setInterval(tick, 1000);

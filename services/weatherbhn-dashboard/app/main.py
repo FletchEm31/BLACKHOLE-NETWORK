@@ -622,16 +622,39 @@ def _latest_gfs_forecast_tmax(cur, station: str, target_date: date) -> Optional[
 
 
 @app.get("/api/live-trajectory")
-def get_live_trajectory(station: str = Query(...), target_date: date = Query(...)):
+def get_live_trajectory(station: str = Query(...), target_date: date = Query(...),
+                         window_hours: Optional[int] = Query(None, gt=0, le=168)):
     if station not in {c["station_code"] for c in CITIES}:
         raise HTTPException(400, f"unknown station {station!r}")
 
     is_today = _is_local_today(station, target_date)
     tz_name = STATION_TZ.get(station)
 
+    # window_hours (added 2026-07-20, operator request): the big single-city
+    # "rolling 72h" chart on live-cities.html passes this to see the live
+    # rollout against the last few days' shape, not just since local
+    # midnight. Deliberately a ROLLING NOW()-based window, not day-aligned --
+    # unlike the today-only path below, it has nothing to do with
+    # is_today/target_date, so it's the one case where observations don't
+    # depend on is_today at all (a 72h window always has SOME data as long
+    # as the collector's been running that long). The small per-city panels
+    # (live-cities.js's renderChart) and the main dashboard's inline panel
+    # never pass this -- they keep the exact original today-only behavior.
     observations: list[dict] = []
     with db.conn_cursor() as cur:
-        if is_today and tz_name:
+        if window_hours is not None:
+            cur.execute("""
+                SELECT observed_at, air_temp_f
+                FROM weather_bronze_synoptic_asos
+                WHERE station_code = %s AND observed_at >= NOW() - (%s || ' hours')::interval
+                  AND air_temp_f IS NOT NULL
+                ORDER BY observed_at ASC
+            """, (station, window_hours))
+            observations = [
+                {"observed_at": r["observed_at"].isoformat(), "air_temp_f": float(r["air_temp_f"])}
+                for r in cur.fetchall()
+            ]
+        elif is_today and tz_name:
             tz = ZoneInfo(tz_name)
             now_local = datetime.now(tz)
             midnight_local = datetime(now_local.year, now_local.month, now_local.day, tzinfo=tz)
@@ -665,6 +688,7 @@ def get_live_trajectory(station: str = Query(...), target_date: date = Query(...
         "station_code": station,
         "target_date": target_date.isoformat(),
         "is_today": is_today,
+        "window_hours": window_hours,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "observations": observations,
         "running_high_so_far": running_high_so_far,

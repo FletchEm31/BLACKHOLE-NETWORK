@@ -18,6 +18,21 @@
 
 .city-traj-panel .panel-title { font-size: 14px; }
 
+/* Big rolling-72h chart, added 2026-07-20 -- spans the full grid width
+   (all 3 columns) below the small per-city panels, and is visibly larger
+   (400px canvas vs the small panels' 200px) since it's meant to be the
+   detailed "watch it roll in" view. */
+.big-traj-panel {
+  grid-column: 1 / -1;
+}
+.big-traj-panel canvas {
+  height: 400px !important;
+}
+.big-city-select {
+  background: var(--input-bg); color: var(--text); border: 1px solid var(--panel-border);
+  border-radius: 6px; padding: 4px 10px; font-size: 13px;
+}
+
 .back-link {
   display: inline-flex; align-items: center; justify-content: center;
   width: auto; padding: 0 12px; text-decoration: none; font-size: 13px;

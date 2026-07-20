@@ -54,6 +54,20 @@
     <canvas id="chart-KMIA" height="200"></canvas>
     <div class="source-badges" id="badges-KMIA"></div>
   </section>
+
+  <!-- Big rolling-72h single-city chart, added 2026-07-20 per operator
+       request -- the 3 panels above stay exactly as they were (today-only,
+       side by side); this is an ADDITIONAL big view below them, one city
+       at a time via the dropdown, showing a rolling 72h window so the
+       live rollout can be seen against the last few days' shape. -->
+  <section class="panel big-traj-panel">
+    <div class="chart-panel-header">
+      <div class="panel-title">Rolling 72-Hour Trajectory</div>
+      <select id="bigCitySelect" class="big-city-select"></select>
+    </div>
+    <canvas id="bigTrajChart" height="110"></canvas>
+    <div class="source-badges" id="bigTrajBadges"></div>
+  </section>
 </main>
 
 <script src="live-cities.js?v=1"></script>
