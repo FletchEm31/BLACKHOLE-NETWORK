@@ -1241,9 +1241,11 @@ def fetch_nws_actuals(dry_run: bool = False) -> int:
                 except (ValueError, TypeError):
                     pass
 
+            is_final_report = not _is_preliminary_cli_report(product_text)
+
             if not dry_run:
                 try:
-                    is_new = _insert_bronze_actual(
+                    was_written = _insert_bronze_actual(
                         city=city.name,
                         station_code=city.icao,
                         cli_location=cli_code,
@@ -1251,16 +1253,23 @@ def fetch_nws_actuals(dry_run: bool = False) -> int:
                         final_tmax_f=tmax_f,
                         final_tmin_f=tmin_f,
                         report_issued_at=report_issued_at,
+                        is_final=is_final_report,
                         source_payload_json={"product_text": product_text[:2000],
                                               "issuance_time": issuance_time_str},
                     )
-                    if not is_new:
+                    if not was_written:
                         rows_already_exist += 1
                         logger.debug(
-                            f"{city.icao}: CLI actual {target_date} already stored — skipping"
+                            f"{city.icao}: CLI actual {target_date} already stored as final — skipping"
                         )
                         continue
-                    # Silver is idempotent (DO UPDATE) — write unconditionally on new bronze
+                    if not is_final_report:
+                        logger.info(
+                            f"{city.icao}: CLI actual {target_date} stored as PRELIMINARY "
+                            f"('VALID TODAY AS OF' report) — will upgrade when the true "
+                            f"finalized report is fetched on a later run"
+                        )
+                    # Silver is idempotent (DO UPDATE, same is_final guard as bronze)
                     _populate_silver_actuals(
                         city=city.name,
                         station_code=city.icao,
@@ -1268,6 +1277,7 @@ def fetch_nws_actuals(dry_run: bool = False) -> int:
                         final_tmax_f=tmax_f,
                         final_tmin_f=tmin_f,
                         report_issued_at=report_issued_at,
+                        is_final=is_final_report,
                     )
                 except Exception as e:
                     logger.warning(f"{city.icao}: CLI bronze/silver write failed: {e}")
@@ -1752,23 +1762,48 @@ def _upsert_kalshi_catalog(*, market_ticker: str, event_ticker: Optional[str],
                   json.dumps(source_payload_json) if source_payload_json else None))
 
 
+def _is_preliminary_cli_report(product_text: str) -> bool:
+    """NWS issues (at least) two CLI-family products per station per day:
+    a same-day preliminary summary explicitly marked 'VALID TODAY AS OF
+    <time> LOCAL TIME' (doesn't cover the full 24h), and the true
+    finalized report ~1-2am the following morning covering the full prior
+    day with no such caveat. Confirmed 2026-07-20 by reading raw product
+    text directly -- 95% of KLAX's stored CLI rows were the preliminary
+    kind, silently marked is_final=TRUE regardless. This is the detection
+    this bug was missing."""
+    return "VALID TODAY AS OF" in product_text.upper()
+
+
 def _insert_bronze_actual(*, city: str, station_code: str,
                             cli_location: Optional[str], target_date: date,
                             final_tmax_f: Optional[float], final_tmin_f: Optional[float],
                             report_issued_at: Optional[datetime],
+                            is_final: bool,
                             source_payload_json: Optional[dict]) -> bool:
-    """Returns True if a new row was inserted (False = conflict / already exists)."""
+    """Returns True if a row was written (new insert OR upgrading an
+    existing preliminary row to finalized) -- False if the existing row
+    is already final (never overwritten) or an identical write occurred.
+    A preliminary report is stored (better than nothing) but can be
+    upgraded later once the true finalized report is fetched; a finalized
+    report is never downgraded by a later preliminary one (shouldn't
+    happen chronologically, but guarded anyway)."""
     with tc.get_pg_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
                 INSERT INTO weather_bronze_nws_actuals
                     (city, station_code, cli_location, target_date,
                      final_tmax_f, final_tmin_f, report_issued_at,
-                     source_payload_json)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s::jsonb)
-                ON CONFLICT (station_code, target_date) DO NOTHING
+                     is_final, source_payload_json)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+                ON CONFLICT (station_code, target_date) DO UPDATE SET
+                    final_tmax_f         = EXCLUDED.final_tmax_f,
+                    final_tmin_f         = EXCLUDED.final_tmin_f,
+                    report_issued_at     = EXCLUDED.report_issued_at,
+                    is_final             = EXCLUDED.is_final,
+                    source_payload_json  = EXCLUDED.source_payload_json
+                WHERE weather_bronze_nws_actuals.is_final = FALSE
             """, (city, station_code, cli_location, target_date,
-                  final_tmax_f, final_tmin_f, report_issued_at,
+                  final_tmax_f, final_tmin_f, report_issued_at, is_final,
                   json.dumps(source_payload_json) if source_payload_json else None))
             return cur.rowcount > 0
 
@@ -1902,22 +1937,27 @@ def _populate_silver_actuals(*, city: str, station_code: str,
                                target_date: date,
                                final_tmax_f: Optional[float],
                                final_tmin_f: Optional[float],
-                               report_issued_at: Optional[datetime]) -> None:
+                               report_issued_at: Optional[datetime],
+                               is_final: bool) -> None:
     with tc.get_pg_conn() as conn:
         with conn.cursor() as cur:
-            # Upsert actuals
+            # Upsert actuals. is_final reflects whether this specific report was
+            # the true finalized CLI report or a same-day preliminary one (see
+            # _is_preliminary_cli_report) -- no longer hardcoded TRUE regardless.
             cur.execute("""
                 INSERT INTO weather_silver_actuals_conformed
                     (city, station_code, target_date, final_tmax_f, final_tmin_f,
                      actual_source, report_issued_at, is_final)
-                VALUES (%s, %s, %s, %s, %s, 'nws_cli', %s, TRUE)
+                VALUES (%s, %s, %s, %s, %s, 'nws_cli', %s, %s)
                 ON CONFLICT (station_code, target_date, actual_source) DO UPDATE SET
                     final_tmax_f     = EXCLUDED.final_tmax_f,
                     final_tmin_f     = EXCLUDED.final_tmin_f,
                     report_issued_at = EXCLUDED.report_issued_at,
-                    is_final         = TRUE
+                    is_final         = EXCLUDED.is_final
+                WHERE weather_silver_actuals_conformed.is_final = FALSE
+                   OR weather_silver_actuals_conformed.is_final IS NULL
             """, (city, station_code, target_date, final_tmax_f, final_tmin_f,
-                  report_issued_at))
+                  report_issued_at, is_final))
 
             # Write forecast error pairs for each source with matching forecasts
             if final_tmax_f is not None:
