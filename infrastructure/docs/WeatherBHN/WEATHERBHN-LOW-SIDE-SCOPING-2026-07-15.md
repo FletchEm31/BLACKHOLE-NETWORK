@@ -40,3 +40,14 @@ Checked directly: KPHX has 96 active LOW-side Kalshi contracts, KDFW has 90, bot
 ## Not investigated here
 
 Kelly/edge-threshold tuning for LOW markets specifically — climatology and error structure differ between high and low temps per city (colder-side tail behavior, etc.), so even after the code changes above, LOW would likely need its own threshold/backtest pass before going live, not just a copy of HIGH's thresholds.
+
+## Known label-accuracy issue to resolve before LOW goes live (added 2026-07-20)
+
+While validating `weather_bronze_noaa_daily_actuals` as a long-history label source against genuine NWS CLI rows (the only rows with `report_issued_at` populated, `cli_location` matching, full product text, and not tagged `visual_crossing_backfill` in `source_payload_json`), tmin showed real, city-specific discrepancies that tmax did not. This directly affects the LOW-side ground truth this doc is scoping toward — logging it here now so it isn't rediscovered from scratch once LOW-side work actually starts.
+
+- **KLAX**: 13 comparable days, tmax 13/13 exact, **tmin only 8/13 exact**. All 5 mismatches one-directional (CLI tmin always *higher* than NOAA's, +1°F or +2°F, never negative) — e.g. 2026-06-13: CLI 63°F vs NOAA 61°F. Consistent with the ASOS-algorithm finding elsewhere (CLI's tmin comes from a running 5-minute average recomputed every minute, which smooths out brief cold dips that a daily-summary computation may catch) — this reads as a real, systematic, and now-documented effect, not sensor noise.
+- **KPHX**: 38 comparable days, tmax 36/38, tmin 33/38 — messier than KLAX, **not** one-directional. tmax was off by -1°F and -2°F on two dates (CLI *lower* than NOAA); tmin was off by +2 to **+8°F** on four dates, all CLI-higher. The +8°F gap (2026-07-16: CLI 87°F vs NOAA 79°F) is large enough to warrant its own look, not just a rounding-convention explanation — worth checking whether it's a single bad NOAA day, a CLI amendment, or something structural to Phoenix's extreme-heat readings specifically.
+- **KDFW**: clean — 38/38 exact on both tmax and tmin. No issue found.
+- **KAUS, KDEN, KMIA, KNYC, KORD**: clean — 100% exact match on both tmax and tmin everywhere NOAA data overlaps genuine CLI.
+
+**Implication for LOW-side rollout**: if `weather_bronze_noaa_daily_actuals` becomes the long-history tmin label source (as decided 2026-07-20 for HIGH-side historical backfill), KLAX and especially KPHX need their tmin labels treated with lower confidence than the other stations until this is root-caused — don't assume uniform label quality across all 8 cities just because the HIGH-side validation came back mostly clean.
