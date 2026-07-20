@@ -336,6 +336,27 @@ function initBigCitySelect() {
   if (resetBtn) {
     resetBtn.addEventListener('click', () => { bigChart?.resetZoom(); });
   }
+
+  // Native Fullscreen API on the panel element (not just the canvas) so the
+  // dropdown/reset/badges stay visible and usable in fullscreen too. Chart.js
+  // is responsive, so it auto-resizes to the panel's new fullscreen
+  // dimensions -- just needs a resize() nudge since the fullscreen
+  // transition doesn't always fire a window resize event reliably.
+  const fsBtn = document.getElementById('bigTrajFullscreen');
+  const panel = document.querySelector('.big-traj-panel');
+  if (fsBtn && panel) {
+    fsBtn.addEventListener('click', () => {
+      if (document.fullscreenElement) {
+        document.exitFullscreen();
+      } else {
+        panel.requestFullscreen?.();
+      }
+    });
+    document.addEventListener('fullscreenchange', () => {
+      fsBtn.textContent = document.fullscreenElement ? '⛶ Exit fullscreen' : '⛶ Fullscreen';
+      setTimeout(() => bigChart?.resize(), 50);
+    });
+  }
 }
 
 async function refreshCity(station) {

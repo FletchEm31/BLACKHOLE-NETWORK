@@ -9,7 +9,7 @@
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 16px;
-  max-width: 1800px;
+  max-width: 2400px;
   margin: 0 auto;
 }
 @media (max-width: 1200px) {
@@ -18,20 +18,40 @@
 
 .city-traj-panel .panel-title { font-size: 14px; }
 
-/* Big rolling-72h chart, added 2026-07-20 -- spans the full grid width
-   (all 3 columns) below the small per-city panels, and is visibly larger
-   (400px canvas vs the small panels' 200px) since it's meant to be the
-   detailed "watch it roll in" view. */
+/* Big rolling-72h chart, added 2026-07-20, enlarged same day (operator:
+   "like a real Bloomberg trading terminal graph... ALOT of information to
+   visualize") -- spans the full grid width below the small per-city
+   panels, tall enough to hold multiple stacked/overlaid data series once
+   dew point/wind/pressure are wired in, not just a single temp line. */
 .big-traj-panel {
   grid-column: 1 / -1;
 }
 .big-traj-panel canvas {
-  height: 400px !important;
+  height: 640px !important;
 }
 .big-city-select {
   background: var(--input-bg); color: var(--text); border: 1px solid var(--panel-border);
   border-radius: 6px; padding: 4px 10px; font-size: 13px;
 }
+
+/* Fullscreen mode (native Fullscreen API on the panel element) -- give the
+   chart the whole viewport instead of the page's max-width/grid
+   constraints, and let the canvas grow to fill it. */
+.big-traj-panel:fullscreen {
+  display: flex; flex-direction: column;
+  width: 100vw; height: 100vh; padding: 16px 24px; box-sizing: border-box;
+  background: var(--bg);
+}
+.big-traj-panel:fullscreen canvas {
+  height: auto !important;
+  flex: 1 1 auto;
+}
+.fullscreen-btn {
+  flex: 0 0 auto; background: var(--input-bg); border: 1px solid var(--panel-border);
+  color: var(--text-dim); border-radius: 6px; padding: 4px 10px; font-size: 11px;
+  cursor: pointer; white-space: nowrap;
+}
+.fullscreen-btn:hover { background: var(--row-hover); color: var(--text); }
 
 .back-link {
   display: inline-flex; align-items: center; justify-content: center;
