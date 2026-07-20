@@ -1,43 +1,32 @@
 #!/usr/bin/env python3
 """
-Historical IEM ASOS loader for KLAX -- 1-minute and 5-minute resolutions.
+Historical IEM ASOS loader for KMIA -- 1-minute and 5-minute resolutions.
 
 Source files (operator-staged, flat CSV-in-.txt) live in
 infrastructure/docs/WeatherBHN/. Real per-file date ranges were confirmed by
 reading file content directly -- do NOT trust the embedded year ranges in
-the filenames, they don't line up with what's actually inside (e.g.
-ASOS1M-LAX14-11.txt is actually 2010-2014, not what the "14-11" suffix
-would suggest, and the directory index doc's own filenames don't even
-match what's on disk).
+the filenames or the directory index doc (both were checked and matched
+disk contents for MIA, but that's not guaranteed in general).
 
 1-minute header: station,station_name,valid(UTC),tmpf,dwpf,sknt,drct,
                  gust_drct,gust_sknt,ptype,precip,pres1,pres2,pres3
-5-minute header: SAME as 1-minute, full 14-column set.
-
-CORRECTION (2026-07-20): an earlier version of this loader used three
-older, reduced-field 5-min files (ASOS5M-LAX14-11.txt, ASOS5M-LAX17-15.txt,
-ASOS5M-LAX21-18.txt -- 4 weather variables only: tmpf/dwpf/sknt/drct, no
-gust/precip/pressure) because that's what the directory index doc listed
-and no other 5-min file was noticed at the time. A consolidated file,
-ASOS5M-LAX26-11-FULL15YR.txt, was sitting in the same folder the whole
-time with the full 14-column header (same shape as MIA's 5-min file) and
-the same 2011-2026 span -- confirmed as a genuine superset replacement,
-not new/different data, by comparing content directly. The bronze table
-was altered to the full column set and reloaded from this one file;
-the three reduced-field files are no longer used by this loader.
+5-minute header: SAME as 1-minute -- unlike LAX, MIA's 5-minute file is NOT
+a reduced field set. Confirmed from actual file content 2026-07-20: full
+14-column header, single file covering the entire 2011-2026 range (LAX's
+5-min data ships as 3 chunked files with fewer columns; MIA does not
+mirror that layout). Both MIA tables are shaped identically as a result.
 
 Missing values in the source are the literal string "M", converted to
 SQL NULL at load time.
 
-Loads via a TEMP staging table + COPY (fast enough for the ~25M rows in
-the 1-minute set) followed by INSERT ... ON CONFLICT DO NOTHING into the
-real bronze table, so re-running the loader after a partial/interrupted
-run is safe and idempotent.
+Loads via a TEMP staging table + COPY, followed by INSERT ... ON CONFLICT
+DO NOTHING into the real bronze table, so re-running the loader after a
+partial/interrupted run is safe and idempotent.
 
 Usage:
-    python3 asos_historic_lax_loader.py --resolution 1min --dry-run
-    python3 asos_historic_lax_loader.py --resolution 1min
-    python3 asos_historic_lax_loader.py --resolution 5min
+    python3 asos_historic_mia_loader.py --resolution 1min --dry-run
+    python3 asos_historic_mia_loader.py --resolution 1min
+    python3 asos_historic_mia_loader.py --resolution 5min
 
 Environment:
     DATABASE_URL  PostgreSQL connection string (from /etc/bhn-trading/env)
@@ -59,16 +48,9 @@ import psycopg2
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = REPO_ROOT / "infrastructure" / "docs" / "WeatherBHN"
 
-STATION_CODE = "KLAX"
-SOURCE_STATION_ID = "LAX"  # what the IEM files call it -- sanity-checked, not trusted blindly
+STATION_CODE = "KMIA"
+SOURCE_STATION_ID = "MIA"  # what the IEM files call it -- sanity-checked, not trusted blindly
 
-# Chronological order matters only for progress reporting, not correctness
-# (natural key + ON CONFLICT DO NOTHING makes load order irrelevant to the
-# final result). Real ranges confirmed by reading file content 2026-07-20:
-#   ASOS1M-LAX14-11.txt           2010-01-01 08:28 -> 2014-12-31 00:58
-#   ASOS1M-LAX20-15.txt           2015-01-01 00:00 -> 2020-12-31 00:58
-#   ASOS1M-LAX26-21.txt           2021-01-01 08:00 -> 2026-07-18 05:34
-#   ASOS5M-LAX26-11-FULL15YR.txt  2011-01-01 00:00 -> 2026-07-18 05:30 (single file, full range)
 _FULL_HEADER = ["station", "station_name", "valid(UTC)", "tmpf", "dwpf",
                 "sknt", "drct", "gust_drct", "gust_sknt", "ptype",
                 "precip", "pres1", "pres2", "pres3"]
@@ -77,16 +59,21 @@ _FULL_COLUMNS = ["station_code", "observed_at", "air_temp_f", "dew_point_temp_f"
                   "gust_speed_kt", "precip_type_code", "precip_in",
                   "pressure_1_inhg", "pressure_2_inhg", "pressure_3_inhg", "source_file"]
 
+# Real ranges confirmed by reading file content 2026-07-20:
+#   ASOS1M-MIA14-11.txt              2011-01-01 00:00 -> 2014-12-31 23:58
+#   ASOS1M-MIA20-15.txt              2015-01-01 00:00 -> 2020-12-31 13:59
+#   ASOS1M-MIA26-21.txt              2021-01-01 05:00 -> 2026-07-19 07:01
+#   ASOS5M-MIA26-11-FULL15YR.txt     2011-01-01 00:00 -> 2026-07-19 07:00 (single file, full range)
 RESOLUTIONS = {
     "1min": {
-        "table": "weather_bronze_asos_historic_lax_1min",
-        "files": ["ASOS1M-LAX14-11.txt", "ASOS1M-LAX20-15.txt", "ASOS1M-LAX26-21.txt"],
+        "table": "weather_bronze_asos_historic_mia_1min",
+        "files": ["ASOS1M-MIA14-11.txt", "ASOS1M-MIA20-15.txt", "ASOS1M-MIA26-21.txt"],
         "expected_header": _FULL_HEADER,
         "columns": _FULL_COLUMNS,
     },
     "5min": {
-        "table": "weather_bronze_asos_historic_lax_5min",
-        "files": ["ASOS5M-LAX26-11-FULL15YR.txt"],
+        "table": "weather_bronze_asos_historic_mia_5min",
+        "files": ["ASOS5M-MIA26-11-FULL15YR.txt"],
         "expected_header": _FULL_HEADER,
         "columns": _FULL_COLUMNS,
     },
@@ -96,7 +83,7 @@ BATCH_SIZE = 200_000
 
 
 def parse_args():
-    p = argparse.ArgumentParser(description="Historical IEM ASOS KLAX bronze loader")
+    p = argparse.ArgumentParser(description="Historical IEM ASOS KMIA bronze loader")
     p.add_argument("--resolution", required=True, choices=list(RESOLUTIONS),
                    help="Which source set to load")
     p.add_argument("--dry-run", action="store_true",
@@ -116,7 +103,7 @@ def _m(v: str) -> Optional[str]:
 
 
 def _parse_observed_at(valid_str: str) -> Optional[str]:
-    """'2010-01-01 08:28' -> ISO string with explicit UTC offset for COPY."""
+    """'2011-01-01 00:00' -> ISO string with explicit UTC offset for COPY."""
     valid_str = valid_str.strip()
     try:
         datetime.strptime(valid_str, "%Y-%m-%d %H:%M")

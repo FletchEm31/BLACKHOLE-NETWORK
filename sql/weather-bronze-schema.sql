@@ -400,13 +400,20 @@ END $$;
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 10) weather_bronze_asos_historic_lax_1min / weather_bronze_asos_historic_lax_5min
 --     Historical IEM ASOS data for KLAX, bulk-loaded from operator-staged flat
---     files (infrastructure/docs/WeatherBHN/ASOS1M-LAX*.txt / ASOS5M-LAX*.txt).
---     Two separate tables on purpose -- the 5-minute IEM product is a genuinely
---     reduced field set (no gust/precip/pressure in that feed at all), confirmed
---     from the real file headers, not assumed from the 1-minute table's shape.
+--     files (infrastructure/docs/WeatherBHN/ASOS1M-LAX*.txt /
+--     ASOS5M-LAX26-11-FULL15YR.txt). Both tables share the same full
+--     14-column shape -- corrected 2026-07-20 (see
+--     2026-07-20b-asos-historic-lax-5min-full-fields-fix.sql): the 5-minute
+--     table was originally built reduced (4 weather columns only) against
+--     three older chunked files that turned out not to be the only 5-min
+--     source in the folder. A consolidated full-field file
+--     (ASOS5M-LAX26-11-FULL15YR.txt, same 2011-2026 span, same shape as
+--     the 1-minute file and as MIA's 5-minute file) was already staged
+--     alongside them and is what the loader uses now.
 --     "M" in source files means missing -- converted to NULL at load time.
 --     Ingested via scripts/weather/asos_historic_lax_loader.py.
---     Applied via sql/migrations/2026-07-20-asos-historic-lax-tables.sql.
+--     Applied via sql/migrations/2026-07-20-asos-historic-lax-tables.sql,
+--     corrected via 2026-07-20b-asos-historic-lax-5min-full-fields-fix.sql.
 -- ─────────────────────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS weather_bronze_asos_historic_lax_1min (
     id                  BIGSERIAL       PRIMARY KEY,
@@ -441,6 +448,13 @@ CREATE TABLE IF NOT EXISTS weather_bronze_asos_historic_lax_5min (
     dew_point_temp_f    NUMERIC,                         -- dwpf
     wind_speed_kt       NUMERIC,                         -- sknt
     wind_direction_deg  NUMERIC,                         -- drct
+    gust_direction_deg  NUMERIC,                         -- gust_drct
+    gust_speed_kt       NUMERIC,                         -- gust_sknt
+    precip_type_code    TEXT,                            -- ptype (e.g. 'NP', 'R', 'R+')
+    precip_in           NUMERIC,                         -- precip
+    pressure_1_inhg     NUMERIC,                         -- pres1
+    pressure_2_inhg     NUMERIC,                         -- pres2
+    pressure_3_inhg     NUMERIC,                         -- pres3
     source_file         TEXT,
     retrieved_at        TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
 
