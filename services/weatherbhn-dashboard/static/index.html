@@ -6,6 +6,7 @@
 <title>WeatherBHN Trading Dashboard</title>
 <link rel="stylesheet" href="style.css?v=26">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
 </head>
 <body>
 
@@ -86,7 +87,8 @@
        forecast reference badges below the chart still populate. -->
   <section class="panel trajectory-panel">
     <div class="chart-panel-header">
-      <div class="panel-title">Live Temperature Trajectory <span class="hint">(raw Synoptic/HF-ASOS observations, today only &mdash; not a forecast)</span></div>
+      <div class="panel-title">Live Temperature Trajectory <span class="hint">(raw Synoptic/HF-ASOS observations, today only &mdash; not a forecast. Drag to zoom, scroll/pinch to zoom, shift+drag to pan.)</span></div>
+      <button type="button" id="trajectoryResetZoom" class="zoom-reset-btn">Reset zoom</button>
       <div class="refresh-countdown" id="trajectoryRefreshCountdown">30s</div>
     </div>
     <canvas id="trajectoryChart" height="200"></canvas>

@@ -10,6 +10,19 @@ const MODEL_REFRESH_MS = 5 * 60000; // mu/sigma — matches orchestrator cadence
 // per operator request 2026-07-20 ("30 sec to 1 min as fast as possible").
 const TRAJECTORY_REFRESH_MS = 30000;
 
+// chartjs-plugin-zoom (CDN script tag in index.html) -- drag to zoom into
+// an x/y range, wheel/pinch to zoom, shift+drag to pan, double-click or
+// the "Reset zoom" button to widen back out. Added 2026-07-20 per operator
+// request. See renderTrajectoryChart()'s in-place-update branch for how
+// the zoom/pan state survives each 30s poll instead of resetting.
+if (typeof Chart !== 'undefined' && typeof ChartZoom !== 'undefined') {
+  Chart.register(ChartZoom);
+}
+const TRAJECTORY_ZOOM_OPTS = {
+  pan: { enabled: true, mode: 'xy', modifierKey: 'shift' },
+  zoom: { drag: { enabled: true }, wheel: { enabled: true }, pinch: { enabled: true }, mode: 'xy' },
+};
+
 // ---------------------------------------------------------------------------
 // Footer content — edit these two arrays directly, no markup changes needed.
 // Rendered once on load by renderFooter(). KNOWN_ISSUES is meant to be a
@@ -78,6 +91,7 @@ const state = {
   countdownSec: PRICE_REFRESH_MS / 1000,
   sigmaPerfPooled: null,  // /api/sigma-performance's pooled row, keyed by marker -- feeds BOTH the live performance panel AND isStarredMarker() (positive net $), same source of truth so they stay in sync automatically
   trajectoryChart: null,
+  trajectoryChartStation: null,  // which station/date key trajectoryChart's current instance was built for
   trajectoryCountdownSec: TRAJECTORY_REFRESH_MS / 1000,
 };
 
@@ -167,6 +181,9 @@ async function init() {
   renderPaperPositionCityFilter();
   initPaperPositionColumns();
   document.getElementById('journalForm').addEventListener('submit', onJournalSubmit);
+  document.getElementById('trajectoryResetZoom')?.addEventListener('click', () => {
+    state.trajectoryChart?.resetZoom();
+  });
 
   // Sigma-performance fetched BEFORE the first ladder render -- it drives
   // which sigma markers get a star, so state.sigmaPerfPooled needs to be
@@ -522,7 +539,7 @@ function renderTrajectoryChart(data) {
   const emptyMsgId = 'trajectoryEmptyMsg';
   document.getElementById(emptyMsgId)?.remove();
   if (!data.is_today || data.observations.length === 0) {
-    if (state.trajectoryChart) { state.trajectoryChart.destroy(); state.trajectoryChart = null; }
+    if (state.trajectoryChart) { state.trajectoryChart.destroy(); state.trajectoryChart = null; state.trajectoryChartStation = null; }
     const msg = document.createElement('div');
     msg.id = emptyMsgId;
     msg.className = 'hint';
@@ -580,7 +597,21 @@ function renderTrajectoryChart(data) {
     });
   }
 
-  if (state.trajectoryChart) state.trajectoryChart.destroy();
+  // Same city/date as the existing instance -- update in place so any
+  // zoom/pan the user has applied survives this poll, same "lock" pattern
+  // as live-cities.js's big chart (added 2026-07-20). A city/date switch
+  // (or dataset shape change) falls through to a full rebuild instead.
+  const trajKey = `${state.station}::${state.date}`;
+  if (state.trajectoryChart && state.trajectoryChartStation === trajKey
+      && state.trajectoryChart.data.datasets.length === datasets.length) {
+    state.trajectoryChart.data.labels = labels;
+    state.trajectoryChart.data.datasets.forEach((ds, i) => { ds.data = datasets[i].data; });
+    state.trajectoryChart.update('none');
+    return;
+  }
+  if (state.trajectoryChart) { state.trajectoryChart.destroy(); state.trajectoryChart = null; }
+
+  state.trajectoryChartStation = trajKey;
   state.trajectoryChart = new Chart(ctx, {
     data: { labels, datasets },
     options: {
@@ -594,7 +625,10 @@ function renderTrajectoryChart(data) {
           title: { display: true, text: '°F', color: '#8891a3' },
         },
       },
-      plugins: { legend: { labels: { color: '#e6e9ef' } } },
+      plugins: {
+        legend: { labels: { color: '#e6e9ef' } },
+        zoom: TRAJECTORY_ZOOM_OPTS,
+      },
     },
   });
 }

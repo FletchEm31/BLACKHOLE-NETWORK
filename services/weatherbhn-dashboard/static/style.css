@@ -153,7 +153,15 @@ main { padding: 16px 20px 60px; display: flex; flex-direction: column; gap: 16px
 .charts-row { display: grid; grid-template-columns: 1.4fr 1fr; gap: 16px; }
 @media (max-width: 900px) { .charts-row { grid-template-columns: 1fr; } }
 
-.chart-panel-header { display: flex; justify-content: space-between; align-items: center; }
+.chart-panel-header { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.chart-panel-header .panel-title { flex: 1 1 auto; min-width: 0; }
+
+.zoom-reset-btn {
+  flex: 0 0 auto; background: var(--input-bg); border: 1px solid var(--panel-border);
+  color: var(--text-dim); border-radius: 6px; padding: 4px 10px; font-size: 11px;
+  cursor: pointer; white-space: nowrap;
+}
+.zoom-reset-btn:hover { background: var(--row-hover); color: var(--text); }
 .refresh-countdown {
   font-size: 11px; color: var(--text-dim); border: 1px solid var(--panel-border);
   border-radius: var(--radius-pill); padding: 2px 10px; min-width: 58px; text-align: center;

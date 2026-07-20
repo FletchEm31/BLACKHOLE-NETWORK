@@ -30,7 +30,24 @@ let countdownSec = REFRESH_MS / 1000;
 // everything on the page refreshes together.
 const BIG_WINDOW_HOURS = 72;
 let bigChart = null;
+let bigChartStation = null;  // which station bigChart's current instance was built for
 let bigSelectedStation = null;
+
+// chartjs-plugin-zoom (loaded via CDN script tag in live-cities.html) --
+// drag to zoom into an x/y range, wheel/pinch to zoom, shift+drag to pan,
+// double-click or the "Reset zoom" button to widen back out. Added
+// 2026-07-20 per operator request ("lock and drag to narrow and widen the
+// x and y axis"). "Lock" is handled by NOT destroying/recreating the chart
+// on every 30s poll (see renderBigChart below) -- only updating its data
+// in place, so whatever zoom/pan the user has applied survives each
+// refresh instead of snapping back to full-range every 30s.
+if (typeof Chart !== 'undefined' && typeof ChartZoom !== 'undefined') {
+  Chart.register(ChartZoom);
+}
+const ZOOM_PLUGIN_OPTS = {
+  pan: { enabled: true, mode: 'xy', modifierKey: 'shift' },
+  zoom: { drag: { enabled: true }, wheel: { enabled: true }, pinch: { enabled: true }, mode: 'xy' },
+};
 
 async function fetchJSON(url) {
   const res = await fetch(url);
@@ -164,7 +181,7 @@ function renderBigChart(station, data) {
   const emptyId = 'bigTrajEmptyMsg';
   document.getElementById(emptyId)?.remove();
   if (!data.observations.length) {
-    if (bigChart) { bigChart.destroy(); bigChart = null; }
+    if (bigChart) { bigChart.destroy(); bigChart = null; bigChartStation = null; }
     const msg = document.createElement('div');
     msg.id = emptyId;
     msg.className = 'hint';
@@ -219,7 +236,31 @@ function renderBigChart(station, data) {
     });
   }
 
-  if (bigChart) bigChart.destroy();
+  // Same station as the existing chart instance -- update data in place
+  // (chart.update()) instead of destroying/recreating, so any zoom/pan the
+  // user has applied stays exactly where it is across this 30s refresh.
+  // Only a city switch (or first render) tears down and rebuilds.
+  if (bigChart && bigChartStation === station) {
+    bigChart.data.labels = labels;
+    bigChart.data.datasets.forEach((ds, i) => { if (datasets[i]) ds.data = datasets[i].data; });
+    // Dataset COUNT can change run to run (e.g. mu/sigma go from unresolved
+    // to resolved) -- if the shape changed, fall through to a full rebuild
+    // rather than silently dropping/misaligning datasets.
+    if (bigChart.data.datasets.length !== datasets.length) {
+      bigChart.destroy();
+      bigChart = null;
+      bigChartStation = null;
+    } else {
+      bigChart.update('none');
+      return;
+    }
+  } else if (bigChart) {
+    bigChart.destroy();
+    bigChart = null;
+    bigChartStation = null;
+  }
+
+  bigChartStation = station;
   bigChart = new Chart(ctx, {
     data: { labels, datasets },
     options: {
@@ -234,7 +275,10 @@ function renderBigChart(station, data) {
           title: { display: true, text: '°F', color: '#8891a3' },
         },
       },
-      plugins: { legend: { labels: { color: '#e6e9ef', boxWidth: 12, font: { size: 11 } } } },
+      plugins: {
+        legend: { labels: { color: '#e6e9ef', boxWidth: 12, font: { size: 11 } } },
+        zoom: ZOOM_PLUGIN_OPTS,
+      },
     },
   });
 }
@@ -287,6 +331,11 @@ function initBigCitySelect() {
     bigSelectedStation = sel.value;
     refreshBigChart();
   });
+
+  const resetBtn = document.getElementById('bigTrajResetZoom');
+  if (resetBtn) {
+    resetBtn.addEventListener('click', () => { bigChart?.resetZoom(); });
+  }
 }
 
 async function refreshCity(station) {
