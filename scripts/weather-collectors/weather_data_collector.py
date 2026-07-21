@@ -78,10 +78,30 @@ from dataclasses import dataclass
 from datetime import datetime, date, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable, Optional
+from zoneinfo import ZoneInfo
 
 import re
+import socket
 
 import requests
+import urllib3.util.connection as _urllib3_conn
+
+# IPv6 to api.weather.gov (and possibly other endpoints) is broken/blackholed
+# from this host, confirmed 2026-07-21: `curl -6` times out completely while
+# `curl -4` returns in ~70ms. DNS for api.weather.gov returns IPv6 addresses
+# FIRST, so requests/urllib3 tries those first and hangs -- this is the
+# confirmed root cause of nws_hourly (and likely fetch_nws) producing no new
+# rows since 2026-06-13: enough per-city hangs accumulate to blow through the
+# systemd 5-minute service timeout before nws_hourly's loop ever completes.
+# Force IPv4-only DNS resolution for every requests call in this process --
+# standard urllib3 monkeypatch, not host-specific hackery, and safe since
+# every endpoint this script talks to (NWS, Synoptic, IEM, NOMADS) is
+# reachable over IPv4. Does not touch system-wide IPv6 routing/config.
+def _allowed_gai_family():
+    return socket.AF_INET
+
+
+_urllib3_conn.allowed_gai_family = _allowed_gai_family
 
 
 def _prime_env() -> None:
@@ -2265,18 +2285,83 @@ def fetch_nbm(dry_run: bool = False) -> int:
     return n
 
 
-def fetch_nws_hourly(dry_run: bool = False) -> int:
-    """Fetch NWS hourly gridpoints forecast for each city.
+_NWS_HOURLY_TZ = {
+    "KNYC": "America/New_York",    "KORD": "America/Chicago",
+    "KMIA": "America/New_York",    "KAUS": "America/Chicago",
+    "KPHX": "America/Phoenix",     "KDEN": "America/Denver",
+    "KLAX": "America/Los_Angeles", "KDFW": "America/Chicago",
+}
 
-    Extracts per hour for today + tomorrow:
-      temperature_f, dewpoint_f, wind_speed_mph, cloud_cover_pct, pop_pct
+
+def _parse_nws_gridpoints_hourly(values: list[dict], tz: "ZoneInfo",
+                                  target_dates: set[date]) -> dict[tuple[date, int], float]:
+    """Like _parse_nws_gridpoints_property but keyed by (local_date, local_hour)
+    instead of aggregated per-day. Each grid value covers validTime's ISO-8601
+    duration suffix (e.g. '.../PT3H' = 3 hours from start, NWS grid data
+    coarsens from hourly to 3h/6h resolution beyond the near term) -- forward-
+    fills every covered hour with that value rather than leaving gaps, since
+    the value genuinely does apply across that whole window per NWS's own
+    format, not just at the start instant.
+    """
+    result: dict[tuple[date, int], float] = {}
+    for item in values:
+        vt = item.get("validTime", "")
+        val = item.get("value")
+        if val is None or "/" not in vt:
+            continue
+        start_str, dur_str = vt.split("/", 1)
+        try:
+            start_dt_utc = datetime.fromisoformat(start_str)
+        except ValueError:
+            continue
+        m = re.match(r"PT(\d+)H", dur_str)
+        hours_span = int(m.group(1)) if m else 1
+        for h in range(hours_span):
+            dt_local = (start_dt_utc + timedelta(hours=h)).astimezone(tz)
+            d = dt_local.date()
+            if d not in target_dates:
+                continue
+            result[(d, dt_local.hour)] = float(val)
+    return result
+
+
+# 16-point compass -> degrees, only needed as a fallback if a future NWS
+# response shape ever returns windDirection as a compass string on this raw
+# gridpoints endpoint (it doesn't today -- confirmed via a real fetch
+# 2026-07-21, it's the OLDER 'value'-in-degrees dict format like every other
+# grid property) -- kept defensive rather than assuming the API never changes.
+_COMPASS_TO_DEG = {
+    "N": 0, "NNE": 22.5, "NE": 45, "ENE": 67.5, "E": 90, "ESE": 112.5,
+    "SE": 135, "SSE": 157.5, "S": 180, "SSW": 202.5, "SW": 225, "WSW": 247.5,
+    "W": 270, "WNW": 292.5, "NW": 315, "NNW": 337.5,
+}
+
+
+def fetch_nws_hourly(dry_run: bool = False) -> int:
+    """Fetch NWS hourly forecast for each city from the RAW gridpoints endpoint
+    (same one fetch_nws() already uses for extended daily fields) -- NOT the
+    human-readable /forecast/hourly periods endpoint this function used
+    before 2026-07-21. Switched because the periods endpoint:
+      (a) has no skyCover field at all (confirmed via real fetch) -- the old
+          code fell back to relativeHumidity's value when skyCover was
+          missing, which was ALWAYS, so cloud_cover_pct silently stored RH
+          data mislabeled as cloud cover for as long as this function existed;
+      (b) never wrote rh_pct at all -- not in the old INSERT's column list;
+      (c) returns windDirection as a compass string ('NW'), not the
+          {'value': degrees} dict the old code assumed -- caused an
+          AttributeError crash once the real IPv6-hang bug (see the
+          allowed_gai_family monkeypatch above) was fixed and this function
+          could finally reach real data.
+    The raw grid endpoint has genuine per-hour skyCover, relativeHumidity,
+    windGust, and windDirection-in-degrees as real time series, fixing all
+    three at once.
+
+    Extracts per hour for today + tomorrow: temperature_f, dewpoint_f,
+    wind_speed_mph, wind_gust_mph, wind_direction_deg, cloud_cover_pct
+    (true sky cover), rh_pct, pop_pct.
 
     Writes to weather_bronze_nws_forecast_snapshots with source_name='nws_hourly'.
     tmax_f stores the hourly temperature (not a daily max).
-
-    Afternoon peak logic: max(temperature_f, hours 12-18 local) is used by the
-    edge calculator as nws_hourly_peak. If it differs from daily NWS high, the
-    edge sheet uses the hourly peak and flags quality_flag='hourly_override'.
     """
     today = datetime.now(timezone.utc).date()
     target_dates = {today, today + timedelta(days=1)}
@@ -2288,97 +2373,86 @@ def fetch_nws_hourly(dry_run: bool = False) -> int:
         if gridpoint is None:
             continue
         _, office, grid_x, grid_y = gridpoint
+        tz = ZoneInfo(_NWS_HOURLY_TZ.get(city.icao, "UTC"))
 
-        hourly_url = f"{NWS_API_BASE}/gridpoints/{office}/{grid_x},{grid_y}/forecast/hourly"
-        data = _http_get_json(hourly_url, timeout=30)
+        raw_url = f"{NWS_API_BASE}/gridpoints/{office}/{grid_x},{grid_y}"
+        data = _http_get_json(raw_url, timeout=30)
         if not data:
             logger.warning(f"nws_hourly {city.icao}: fetch failed")
             continue
 
-        periods = ((data.get("properties") or {}).get("periods") or [])
-        if not periods:
-            logger.warning(f"nws_hourly {city.icao}: empty periods")
+        gp_props = (data.get("properties") or {})
+
+        def _hourly(prop: str) -> dict[tuple[date, int], float]:
+            return _parse_nws_gridpoints_hourly(
+                gp_props.get(prop, {}).get("values", []), tz, target_dates
+            )
+
+        temp_h = _hourly("temperature")
+        if not temp_h:
+            logger.warning(f"nws_hourly {city.icao}: empty temperature series")
             continue
+        dewpoint_h = _hourly("dewpoint")
+        rh_h = _hourly("relativeHumidity")
+        wind_speed_h = _hourly("windSpeed")
+        wind_gust_h = _hourly("windGust")
+        wind_dir_h = _hourly("windDirection")
+        cloud_h = _hourly("skyCover")
+        pop_h = _hourly("probabilityOfPrecipitation")
 
         rows_city = 0
-        for period in periods:
-            start_str = period.get("startTime") or ""
-            if not start_str:
-                continue
-            try:
-                dt_local = datetime.fromisoformat(start_str)
-                target_date = dt_local.date()
-                hour_local = dt_local.hour
-            except (ValueError, AttributeError):
-                continue
-
-            if target_date not in target_dates:
-                continue
-
-            temp = period.get("temperature")
-            temp_unit = period.get("temperatureUnit", "F")
-            if temp is None:
-                continue
-            temp_f = float(temp) if temp_unit == "F" else _c_to_f(float(temp))
-            if temp_f is None:
-                continue
-
-            # Extract extended fields where available
-            dewpoint_raw = (period.get("dewpoint") or {}).get("value")
-            dewpoint_f = _c_to_f(dewpoint_raw) if dewpoint_raw is not None else None
-
-            wind_raw = period.get("windSpeed") or ""
-            wind_f: Optional[float] = None
-            if wind_raw:
-                try:
-                    wind_f = float(str(wind_raw).split()[0])
-                except (ValueError, IndexError):
-                    pass
-
-            wind_dir_raw = (period.get("windDirection") or {}).get("value")
-            wind_dir_deg: Optional[float] = float(wind_dir_raw) if wind_dir_raw is not None else None
-
-            cloud_raw = (period.get("skyCover") or period.get("relativeHumidity") or {})
-            cloud_f: Optional[float] = None
-            if isinstance(cloud_raw, dict):
-                v = cloud_raw.get("value")
-                cloud_f = float(v) if v is not None else None
-
-            pop_raw = (period.get("probabilityOfPrecipitation") or {}).get("value")
-            pop_f = float(pop_raw) if pop_raw is not None else None
-
-            if dry_run:
-                n += 1
-                continue
-
+        # One connection per CITY (48 rows), not one per row -- the original
+        # code opened a fresh connection for every single hourly row (384
+        # total across 8 cities), which over a WireGuard mesh link is slow
+        # enough on its own to blow through the systemd timeout even without
+        # the IPv6 fetch bug. Confirmed by direct testing 2026-07-21: dry_run
+        # (no DB writes) completed in 1.3s; the original per-row-connection
+        # write path hung past a 25s test window on the very first city.
+        if dry_run:
+            n += len(temp_h)
+            rows_city = len(temp_h)
+        else:
             try:
                 with tc.get_pg_conn() as conn:
                     with conn.cursor() as cur:
-                        cur.execute("""
-                            INSERT INTO weather_bronze_nws_forecast_snapshots
-                                (city, station_code, nws_office, forecast_run_time,
-                                 target_date, lead_hours, hour,
-                                 tmax_f, dewpoint_f, wind_speed_mph, wind_direction_deg,
-                                 cloud_cover_pct, pop_pct,
-                                 source_name, source_payload_json)
-                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'nws_hourly', NULL)
-                            ON CONFLICT (station_code, source_name, forecast_run_time, target_date, hour)
-                            WHERE source_name = 'nws_hourly' DO NOTHING
-                        """, (
-                            city.name, city.icao, office, run_time,
-                            target_date,
-                            (target_date - today).days * 24 + hour_local,
-                            hour_local,
-                            temp_f, dewpoint_f, wind_f, wind_dir_deg,
-                            cloud_f, pop_f,
-                        ))
-                n += 1
-                rows_city += 1
+                        for (target_date, hour_local), temp_c in temp_h.items():
+                            temp_f = _c_to_f(temp_c)
+                            if temp_f is None:
+                                continue
+                            dewpoint_f = _c_to_f(dewpoint_h.get((target_date, hour_local)))
+                            wind_f = _kmh_to_mph(wind_speed_h.get((target_date, hour_local)))
+                            wind_gust_f = _kmh_to_mph(wind_gust_h.get((target_date, hour_local)))
+                            wind_dir_deg = wind_dir_h.get((target_date, hour_local))
+                            cloud_f = cloud_h.get((target_date, hour_local))
+                            rh_f = rh_h.get((target_date, hour_local))
+                            pop_f = pop_h.get((target_date, hour_local))
+                            try:
+                                cur.execute("""
+                                    INSERT INTO weather_bronze_nws_forecast_snapshots
+                                        (city, station_code, nws_office, forecast_run_time,
+                                         target_date, lead_hours, hour,
+                                         tmax_f, dewpoint_f, wind_speed_mph, wind_gust_mph,
+                                         wind_direction_deg, cloud_cover_pct, rh_pct, pop_pct,
+                                         source_name, source_payload_json)
+                                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'nws_hourly', NULL)
+                                    ON CONFLICT (station_code, source_name, forecast_run_time, target_date, hour)
+                                    WHERE source_name = 'nws_hourly' DO NOTHING
+                                """, (
+                                    city.name, city.icao, office, run_time,
+                                    target_date,
+                                    (target_date - today).days * 24 + hour_local,
+                                    hour_local,
+                                    temp_f, dewpoint_f, wind_f, wind_gust_f,
+                                    wind_dir_deg, cloud_f, rh_f, pop_f,
+                                ))
+                                n += 1
+                                rows_city += 1
+                            except Exception as e:
+                                logger.warning(f"nws_hourly {city.icao}/{target_date}/{hour_local}: row failed: {e}")
             except Exception as e:
-                logger.warning(f"nws_hourly {city.icao}/{target_date}/{hour_local}: write failed: {e}")
+                logger.warning(f"nws_hourly {city.icao}: connection failed: {e}")
 
-        if rows_city or dry_run:
-            logger.debug(f"nws_hourly {city.icao}: {rows_city} hourly rows inserted")
+        logger.debug(f"nws_hourly {city.icao}: {rows_city} hourly rows {'(dry-run)' if dry_run else 'inserted'}")
 
     logger.info(f"nws_hourly: {n} rows {'(dry-run)' if dry_run else 'inserted'}")
     return n
