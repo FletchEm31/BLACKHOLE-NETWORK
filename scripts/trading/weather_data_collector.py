@@ -956,6 +956,29 @@ _KALSHI_TICKER_STATION: dict[str, str] = {
     "KXHIGHLAX": "KLAX", "KXLOWTLAX": "KLAX",
     "KXHIGHDFW": "KDFW", "KXLOWTDAL": "KDFW",
     "KXHIGHAUS": "KAUS", "KXLOWTAUS": "KAUS",
+    # Added 2026-07-21 -- 12-city data-collection expansion (see
+    # kalshi_client.py's WEATHER_SERIES/_TICKER_CITY_TO_STATION comments
+    # for the same mapping and the HIGH-vs-LOW ticker-shape note). This
+    # dict independently duplicates that mapping because
+    # fetch_kalshi_markets() below uses this startswith-prefix matcher, NOT
+    # kalshi_client.py's _parse_ticker_metadata() -- both needed the fix,
+    # confirmed live 2026-07-21 (this one was still producing blank
+    # station_code for the new cities after only kalshi_client.py was
+    # patched). station_code here is a data-labeling field only -- none of
+    # these 12 cities are wired into prediction_signal's trading-decision
+    # mapping.
+    "KXHIGHPHIL": "KPHL", "KXLOWTPHIL": "KPHL",
+    "KXHIGHTATL": "KATL", "KXLOWTATL":  "KATL",
+    "KXHIGHTBOS": "KBOS", "KXLOWTBOS":  "KBOS",
+    "KXHIGHTDC":  "KDCA", "KXLOWTDC":   "KDCA",
+    "KXHIGHTHOU": "KHOU", "KXLOWTHOU":  "KHOU",
+    "KXHIGHTLV":  "KLAS", "KXLOWTLV":   "KLAS",
+    "KXHIGHTMIN": "KMSP", "KXLOWTMIN":  "KMSP",
+    "KXHIGHTNOLA": "KMSY", "KXLOWTNOLA": "KMSY",
+    "KXHIGHTOKC": "KOKC", "KXLOWTOKC":  "KOKC",
+    "KXHIGHTSATX": "KSAT", "KXLOWTSATX": "KSAT",
+    "KXHIGHTSEA": "KSEA", "KXLOWTSEA":  "KSEA",
+    "KXHIGHTSFO": "KSFO", "KXLOWTSFO":  "KSFO",
 }
 
 

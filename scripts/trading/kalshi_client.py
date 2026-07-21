@@ -646,6 +646,24 @@ class KalshiClient:
         "KXHIGHNY",  "KXLOWTNYC",
         "KXHIGHCHI", "KXLOWTCHI",
         "KXHIGHAUS", "KXLOWTAUS",
+        # Added 2026-07-21 -- 12 more cities confirmed with real open
+        # markets via a live /series?category=Climate and Weather query
+        # (data-collection expansion only; NOT added to prediction_signal's
+        # SERIES_TO_STATION_VAR, so none of this feeds live CP1-4 trading
+        # decisions -- that pipeline's own ACTIVE_STATIONS stays KDEN/KLAX/
+        # KMIA exactly as before).
+        "KXHIGHPHIL",  "KXLOWTPHIL",   # Philadelphia
+        "KXHIGHTATL",  "KXLOWTATL",    # Atlanta
+        "KXHIGHTBOS",  "KXLOWTBOS",    # Boston
+        "KXHIGHTDC",   "KXLOWTDC",     # Washington DC
+        "KXHIGHTMIN",  "KXLOWTMIN",    # Minneapolis
+        "KXHIGHTNOLA", "KXLOWTNOLA",   # New Orleans
+        "KXHIGHTOKC",  "KXLOWTOKC",    # Oklahoma City
+        "KXHIGHTSATX", "KXLOWTSATX",   # San Antonio
+        "KXHIGHTSEA",  "KXLOWTSEA",    # Seattle
+        "KXHIGHTSFO",  "KXLOWTSFO",    # San Francisco
+        "KXHIGHTLV",   "KXLOWTLV",     # Las Vegas
+        "KXHIGHTHOU",  "KXLOWTHOU",    # Houston
     )
 
     def get_weather_markets(self, *, status: str = "open") -> list:
@@ -1217,6 +1235,25 @@ _KALSHI_TITLE_STATION_MAP = (
     ("lax",         "KLAX"),
     ("dallas",      "KDFW"),
     ("dfw",         "KDFW"),
+    # Added 2026-07-21 with the 12-city data-collection expansion --
+    # station_code is a data-labeling field only for these (none are wired
+    # into prediction_signal's trading-decision mapping), airport ICAO
+    # chosen as the conventional primary reporting station per city, NOT
+    # independently verified against Kalshi's exact settlement source the
+    # way KNYC (Central Park, not JFK/LGA) was -- fine for bronze labeling,
+    # would need the same verification rigor as KNYC before ever trading on it.
+    ("philadelphia", "KPHL"),
+    ("atlanta",       "KATL"),
+    ("boston",        "KBOS"),
+    ("washington",    "KDCA"),
+    ("minneapolis",   "KMSP"),
+    ("new orleans",   "KMSY"),
+    ("oklahoma city", "KOKC"),
+    ("san antonio",   "KSAT"),
+    ("seattle",       "KSEA"),
+    ("san francisco", "KSFO"),
+    ("las vegas",     "KLAS"),
+    ("houston",       "KHOU"),
 )
 
 # Ticker series prefix → ICAO station code
@@ -1228,6 +1265,25 @@ _TICKER_CITY_TO_STATION: dict[str, str] = {
     "DEN": "KDEN", "MIA": "KMIA", "PHX": "KPHX",
     "LAX": "KLAX", "DFW": "KDFW", "DAL": "KDFW", "NYC": "KNYC",
     "CHI": "KORD", "AUS": "KAUS", "NY":  "KNYC",
+    # Added 2026-07-21 -- 12-city data-collection expansion. HIGH and LOW
+    # series use DIFFERENT city-code suffixes for these (confirmed against
+    # real captured tickers, not assumed): HIGH series keep an extra "T"
+    # prefix on the city code (e.g. KXHIGHTATL -> "TATL") that LOW series
+    # don't (KXLOWTATL -> "ATL") -- same pattern as DFW/DAL above, just a
+    # different letter. Philadelphia is the one exception -- both its HIGH
+    # (KXHIGHPHIL) and LOW (KXLOWTPHIL) series give the same code "PHIL".
+    "PHIL": "KPHL",
+    "TATL": "KATL",  "ATL":  "KATL",
+    "TBOS": "KBOS",  "BOS":  "KBOS",
+    "TDC":  "KDCA",  "DC":   "KDCA",
+    "THOU": "KHOU",  "HOU":  "KHOU",
+    "TLV":  "KLAS",  "LV":   "KLAS",
+    "TMIN": "KMSP",  "MIN":  "KMSP",
+    "TNOLA": "KMSY", "NOLA": "KMSY",
+    "TOKC": "KOKC",  "OKC":  "KOKC",
+    "TSATX": "KSAT", "SATX": "KSAT",
+    "TSEA": "KSEA",  "SEA":  "KSEA",
+    "TSFO": "KSFO",  "SFO":  "KSFO",
 }
 
 

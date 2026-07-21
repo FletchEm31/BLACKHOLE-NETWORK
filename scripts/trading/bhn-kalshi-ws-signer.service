@@ -1,0 +1,18 @@
+[Unit]
+Description=BHN Kalshi WS handshake signer -- LA holds the private key, NJ's relay calls this over the mesh
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/bhn/trading
+ExecStart=/usr/bin/python3 -u /opt/bhn/trading/kalshi_ws_signer.py
+Restart=on-failure
+RestartSec=5
+
+StandardOutput=append:/var/log/bhn-weather/kalshi-ws-signer.log
+StandardError=append:/var/log/bhn-weather/kalshi-ws-signer.log
+
+[Install]
+WantedBy=multi-user.target

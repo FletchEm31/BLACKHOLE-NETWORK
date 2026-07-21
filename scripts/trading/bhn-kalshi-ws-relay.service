@@ -1,0 +1,20 @@
+[Unit]
+Description=BHN Kalshi WebSocket relay -- NJ egress/capture only, no decision logic
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/bhn/trading
+EnvironmentFile=/etc/bhn-trading/env
+EnvironmentFile=/etc/bhn-trading/kalshi-ws-public.env
+ExecStart=/usr/bin/python3 -u /opt/bhn/trading/kalshi_ws_relay.py
+Restart=on-failure
+RestartSec=10
+
+StandardOutput=append:/var/log/bhn-trading/kalshi-ws-relay.log
+StandardError=append:/var/log/bhn-trading/kalshi-ws-relay.log
+
+[Install]
+WantedBy=multi-user.target
