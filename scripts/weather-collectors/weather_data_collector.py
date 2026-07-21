@@ -2458,6 +2458,129 @@ def fetch_nws_hourly(dry_run: bool = False) -> int:
     return n
 
 
+_GFS_HOURLY_VARS = ("temperature_2m", "dewpoint_2m", "relative_humidity_2m",
+                    "cloud_cover", "precipitation_probability",
+                    "wind_speed_10m", "wind_gusts_10m", "wind_direction_10m")
+
+
+def fetch_gfs_hourly(dry_run: bool = False) -> int:
+    """Fetch Open-Meteo gfs_seamless hourly forecast for each city -- the GFS
+    side of the dashboard's NWS+GFS 48h forecast overlay (2026-07-21).
+
+    Writes to weather_bronze_nws_forecast_snapshots with source_name=
+    'gfs_hourly' -- reuses the SAME multi-source table fetch_nws_hourly()
+    writes to (already has every needed column: dewpoint_f, wind_speed_mph,
+    wind_gust_mph, wind_direction_deg, cloud_cover_pct, rh_pct, pop_pct),
+    rather than weather_bronze_openmeteo_forecast_snapshots, which only
+    stores a single generic temperature_2m field -- not enough for this
+    overlay. Requires the partial unique index added in
+    sql/migrations/2026-07-21-gfs-hourly-unique-index.sql (the existing
+    brnws_hourly_unique index is scoped to source_name='nws_hourly' only).
+
+    Simpler than fetch_nws_hourly's parsing: Open-Meteo's hourly response is
+    flat parallel arrays already in the requested city's local timezone
+    (passed via the `timezone` param), units already converted via
+    temperature_unit=fahrenheit/wind_speed_unit=mph -- no UTC-duration
+    expansion or unit conversion needed, unlike NWS's raw grid format.
+    """
+    today = datetime.now(timezone.utc).date()
+    target_dates = {today, today + timedelta(days=1)}
+    run_time = datetime.now(timezone.utc)
+    n = 0
+
+    for city in CITIES:
+        tz_name = _NWS_HOURLY_TZ.get(city.icao, "UTC")
+        params = {
+            "latitude": city.lat, "longitude": city.lon,
+            "hourly": ",".join(_GFS_HOURLY_VARS),
+            "models": "gfs_seamless",
+            "temperature_unit": "fahrenheit",
+            "wind_speed_unit": "mph",
+            "timezone": tz_name,
+            "forecast_days": 3,
+        }
+        data = _http_get_json(OPEN_METEO_URL, params=params, timeout=30)
+        if not data or "hourly" not in data:
+            logger.warning(f"gfs_hourly {city.icao}: fetch failed")
+            continue
+
+        hourly = data["hourly"]
+        times = hourly.get("time") or []
+        if not times:
+            logger.warning(f"gfs_hourly {city.icao}: empty hourly series")
+            continue
+
+        def _series(var: str) -> list:
+            vals = hourly.get(var)
+            return vals if isinstance(vals, list) else [None] * len(times)
+
+        temp_s = _series("temperature_2m")
+        dew_s = _series("dewpoint_2m")
+        rh_s = _series("relative_humidity_2m")
+        cloud_s = _series("cloud_cover")
+        pop_s = _series("precipitation_probability")
+        wind_s = _series("wind_speed_10m")
+        gust_s = _series("wind_gusts_10m")
+        dir_s = _series("wind_direction_10m")
+
+        rows_city = 0
+        if dry_run:
+            for t in times:
+                try:
+                    dt_local = datetime.fromisoformat(t)
+                except ValueError:
+                    continue
+                if dt_local.date() in target_dates:
+                    n += 1
+                    rows_city += 1
+        else:
+            try:
+                with tc.get_pg_conn() as conn:
+                    with conn.cursor() as cur:
+                        for i, t in enumerate(times):
+                            try:
+                                dt_local = datetime.fromisoformat(t)
+                            except ValueError:
+                                continue
+                            target_date = dt_local.date()
+                            if target_date not in target_dates:
+                                continue
+                            temp_f = temp_s[i] if i < len(temp_s) else None
+                            if temp_f is None:
+                                continue
+                            hour_local = dt_local.hour
+                            try:
+                                cur.execute("""
+                                    INSERT INTO weather_bronze_nws_forecast_snapshots
+                                        (city, station_code, nws_office, forecast_run_time,
+                                         target_date, lead_hours, hour,
+                                         tmax_f, dewpoint_f, wind_speed_mph, wind_gust_mph,
+                                         wind_direction_deg, cloud_cover_pct, rh_pct, pop_pct,
+                                         source_name, source_payload_json)
+                                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'gfs_hourly', NULL)
+                                    ON CONFLICT (station_code, source_name, forecast_run_time, target_date, hour)
+                                    WHERE source_name = 'gfs_hourly' DO NOTHING
+                                """, (
+                                    city.name, city.icao, "open-meteo-gfs", run_time,
+                                    target_date,
+                                    (target_date - today).days * 24 + hour_local,
+                                    hour_local,
+                                    temp_f, dew_s[i], wind_s[i], gust_s[i],
+                                    dir_s[i], cloud_s[i], rh_s[i], pop_s[i],
+                                ))
+                                n += 1
+                                rows_city += 1
+                            except Exception as e:
+                                logger.warning(f"gfs_hourly {city.icao}/{target_date}/{hour_local}: row failed: {e}")
+            except Exception as e:
+                logger.warning(f"gfs_hourly {city.icao}: connection failed: {e}")
+
+        logger.debug(f"gfs_hourly {city.icao}: {rows_city} hourly rows {'(dry-run)' if dry_run else 'inserted'}")
+
+    logger.info(f"gfs_hourly: {n} rows {'(dry-run)' if dry_run else 'inserted'}")
+    return n
+
+
 # WeatherBHN active sources — Kalshi weather trading stack only.
 # fetch_enso / compute_degree_days_from_observations are Phase 2/5 and excluded.
 SOURCES = {
@@ -2467,6 +2590,7 @@ SOURCES = {
     "usda_crops":           fetch_usda_crops,
     "nws":                  fetch_nws,
     "nws_hourly":           fetch_nws_hourly,
+    "gfs_hourly":           fetch_gfs_hourly,
     "nws_actuals":          fetch_nws_actuals,
     "nbm":                  fetch_nbm,
     "synoptic":             fetch_synoptic,
